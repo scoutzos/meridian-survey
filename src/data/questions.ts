@@ -155,6 +155,46 @@ export const categories: Category[] = [
       priority: "critical",
       options: ["12-month non-compete and non-solicitation", "24-month non-compete and non-solicitation", "Non-solicitation only (can't recruit members or take LLC relationships), no non-compete", "No restrictions after exit"] },
   ]},
+  { name: "Tax & Distributions", questions: [
+    { text: "Will the LLC make mandatory tax distributions so members can cover taxes on K-1 income even when cash isn't distributed?",
+      priority: "critical",
+      options: ["Yes — mandatory quarterly tax distributions based on estimated liability", "Yes — annual tax distribution before K-1s are issued", "No — members are responsible for their own taxes from personal funds", "Tax distributions at the highest marginal rate to cover all members"] },
+  ]},
+  { name: "Spousal Consent", questions: [
+    { text: "Should spouses/partners be required to sign an acknowledgment of the Operating Agreement waiving any claim to membership rights?",
+      priority: "critical",
+      options: ["Yes — required before signing the Operating Agreement", "Yes — required within 30 days of signing", "Recommended but not required", "No — unnecessary if divorce provisions are strong enough"] },
+  ]},
+  { name: "Intellectual Property & Brand", questions: [
+    { text: "Who owns the Meridian Collective name, logo, website, and social media accounts — and what happens to them if the group dissolves or a member leaves?",
+      priority: "critical",
+      options: ["The LLC owns all IP — departing members have no claim", "The LLC owns all IP — upon dissolution, IP is sold or transferred by majority vote", "Founding members retain equal rights to the brand even after dissolution", "The LLC owns all IP — a departing member cannot use the name or brand in any capacity"] },
+  ]},
+  { name: "Deadlock Provisions", questions: [
+    { text: "If the group is deadlocked on a critical decision for 60+ days and can't reach the required vote, what happens?",
+      priority: "critical",
+      options: ["Mandatory mediation with a neutral third party", "Any member can trigger a buyout process — deadlocked members must buy or sell", "The decision defaults to the Managing Member's recommendation", "Forced dissolution if deadlock persists beyond 90 days", "Bring in a mutually agreed advisor to cast the deciding vote"] },
+  ]},
+  { name: "Fiduciary Duties", questions: [
+    { text: "Do members owe fiduciary duties (duty of loyalty and duty of care) to the LLC and each other?",
+      priority: "critical",
+      options: ["Yes — full fiduciary duties as defined by Georgia law", "Yes — but modified to allow outside real estate activity with disclosure", "Yes — duty of care only (no duty of loyalty, allowing outside deals)", "Let the attorney define appropriate fiduciary standards for our structure"] },
+  ]},
+  { name: "Insurance Requirements", questions: [
+    { text: "What insurance coverage will the LLC maintain to protect members?",
+      priority: "critical",
+      options: ["General liability + property insurance on each asset", "General liability + property + umbrella policy ($1M+)", "General liability + property + umbrella + builder's risk for active projects", "Full coverage package — let insurance broker recommend based on our activity"] },
+  ]},
+  { name: "Books, Records & Transparency", questions: [
+    { text: "Who maintains the financial books and do members have the right to inspect records at any time?",
+      priority: "critical",
+      options: ["Professional bookkeeper maintains records; any member can inspect anytime with 48-hour notice", "Managing Member maintains records; quarterly reports to all members, inspection by request", "CPA firm maintains records; monthly reports, open access to all members at all times", "Designated member maintains records; real-time access via shared accounting software for all members"] },
+  ]},
+  { name: "Indemnification", questions: [
+    { text: "Will the LLC indemnify (legally protect and cover costs for) members for actions taken in good faith on behalf of the business?",
+      priority: "critical",
+      options: ["Yes — full indemnification for all actions taken in good faith within their authority", "Yes — but only for the Managing Member(s) acting within their defined authority", "Yes — for all members, but not for gross negligence or intentional misconduct", "No indemnification — each member is responsible for their own legal exposure"] },
+  ]},
   { name: "Working Style & Communication", questions: [
     { text: "How do you handle conflict or disagreement?",
       priority: "critical",
