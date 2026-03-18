@@ -211,6 +211,14 @@ export const categories: Category[] = [
       priority: "critical",
       options: ["Up to $5,000", "Up to $10,000", "Up to $25,000", "Up to $50,000", "$50,000+", "I don't have extra capital right now"] },
   ]},
+  { name: "Additional Questions & Concerns", questions: [
+    { text: "Is there anything NOT covered in this survey that you think the operating agreement should address?",
+      priority: "critical" },
+    { text: "What is your biggest unanswered question or concern about this partnership?",
+      priority: "critical" },
+    { text: "Is there anything you want to say to the group that you haven't had the chance to bring up yet?",
+      priority: "important" },
+  ]},
 ];
 
 // NOTE: Full 270-question archive preserved in questions-full-archive.ts
