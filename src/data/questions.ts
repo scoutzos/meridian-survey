@@ -906,5 +906,5 @@ export const categories: Category[] = [
   ]},
 ];
 
-export const MEMBERS = ["Courtney", "Odessa", "Raquel", "Tiffany", "Aaliyah", "Peggy"] as const;
+export const MEMBERS = ["Courtney", "Odessa", "Raquel", "Tiffany", "Aaliyah", "Peggee"] as const;
 export type Member = typeof MEMBERS[number];
