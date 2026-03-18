@@ -20,7 +20,7 @@ export default function NavBar() {
   ];
 
   return (
-    <nav style={{
+    <nav className="top-nav-bar" style={{
       position: "fixed", top: 0, left: 0, right: 0, zIndex: 100,
       background: "var(--bg)", borderBottom: "1px solid var(--border)",
       padding: "0 16px", height: 56, display: "flex", alignItems: "center", justifyContent: "space-between",

@@ -47,3 +47,47 @@ button {
 ::-webkit-scrollbar-track { background: var(--bg); }
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--muted); }
+
+/* Bottom Nav - mobile only */
+.bottom-nav {
+  display: none;
+  position: fixed;
+  bottom: 0; left: 0; right: 0;
+  height: 56px;
+  background: var(--bg);
+  border-top: 1px solid var(--border);
+  z-index: 200;
+  align-items: center;
+  justify-content: space-around;
+}
+.bottom-nav-tab {
+  flex: 1;
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 400;
+  height: 100%;
+  cursor: pointer;
+  position: relative;
+  transition: color 0.15s;
+}
+.bottom-nav-active {
+  color: var(--gold);
+  font-weight: 600;
+}
+.bottom-nav-active::after {
+  content: "";
+  position: absolute;
+  bottom: 0; left: 20%; right: 20%;
+  height: 3px;
+  background: var(--gold);
+  border-radius: 3px 3px 0 0;
+}
+
+@media (max-width: 767px) {
+  .bottom-nav { display: flex; }
+  .main-content { padding-bottom: 70px; }
+  /* Hide top nav on mobile */
+  .top-nav-bar { display: none !important; }
+}
