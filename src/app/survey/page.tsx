@@ -1,11 +1,29 @@
 "use client";
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { categories } from "@/data/questions";
+import { categories, Question } from "@/data/questions";
 
 const totalQuestions = categories.reduce((s, c) => s + c.questions.length, 0);
 
 function getStorageKey(user: string) { return `meridian_answers_${user}`; }
+
+const priorityBadge = (p: Question["priority"]) => {
+  const config = {
+    critical: { emoji: "🔴", label: "Critical", color: "#e55" },
+    important: { emoji: "🟡", label: "Important", color: "#da5" },
+    recommended: { emoji: "🟢", label: "Recommended", color: "#5a5" },
+  };
+  const c = config[p];
+  return (
+    <span style={{ fontSize: 11, fontWeight: 600, color: c.color, marginLeft: 8, whiteSpace: "nowrap" }}>
+      {c.emoji} {c.label}
+    </span>
+  );
+};
+
+const priorityOrder = { critical: 0, important: 1, recommended: 2 };
+
+type PriorityFilter = "all" | "critical" | "important" | "recommended";
 
 export default function SurveyPage() {
   const router = useRouter();
@@ -13,6 +31,7 @@ export default function SurveyPage() {
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [activeCategory, setActiveCategory] = useState(0);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [priorityFilter, setPriorityFilter] = useState<PriorityFilter>("all");
 
   useEffect(() => {
     const u = localStorage.getItem("meridian_user");
@@ -36,7 +55,6 @@ export default function SurveyPage() {
   const totalAnswered = Object.values(answers).filter(v => v?.trim()).length;
   const overallPct = Math.round((totalAnswered / totalQuestions) * 100);
 
-  // Determine if the current answer is "Other"
   const isOtherSelected = (ci: number, qi: number) => {
     const answer = answers[qKey(ci, qi)] || "";
     const q = categories[ci].questions[qi];
@@ -54,7 +72,27 @@ export default function SurveyPage() {
     return "";
   };
 
+  // Sort questions: critical first, then important, then recommended
+  const getSortedQuestions = (ci: number) => {
+    const questions = categories[ci].questions.map((q, qi) => ({ q, originalIndex: qi }));
+    questions.sort((a, b) => priorityOrder[a.q.priority] - priorityOrder[b.q.priority]);
+    return questions;
+  };
+
+  const getFilteredQuestions = (ci: number) => {
+    const sorted = getSortedQuestions(ci);
+    if (priorityFilter === "all") return sorted;
+    return sorted.filter(({ q }) => q.priority === priorityFilter);
+  };
+
   if (!user) return null;
+
+  const filterButtons: { value: PriorityFilter; label: string; emoji: string }[] = [
+    { value: "all", label: "All", emoji: "" },
+    { value: "critical", label: "Critical", emoji: "🔴" },
+    { value: "important", label: "Important", emoji: "🟡" },
+    { value: "recommended", label: "Recommended", emoji: "🟢" },
+  ];
 
   return (
     <div style={{ display: "flex", minHeight: "100vh" }}>
@@ -101,7 +139,7 @@ export default function SurveyPage() {
             return (
               <button
                 key={ci}
-                onClick={() => { setActiveCategory(ci); setSidebarOpen(false); }}
+                onClick={() => { setActiveCategory(ci); setSidebarOpen(false); setPriorityFilter("all"); }}
                 style={{
                   display: "block", width: "100%", textAlign: "left", padding: "10px 20px",
                   background: ci === activeCategory ? "var(--surface2)" : "transparent",
@@ -139,15 +177,34 @@ export default function SurveyPage() {
 
       {/* Main content */}
       <main style={{ flex: 1, padding: "40px 40px 80px", maxWidth: 800 }} className="main-content">
-        <div style={{ marginBottom: 32 }}>
+        <div style={{ marginBottom: 24 }}>
           <p style={{ fontSize: 12, color: "var(--gold)", marginBottom: 4, textTransform: "uppercase", letterSpacing: 1 }}>
             Category {activeCategory + 1} of {categories.length}
           </p>
           <h1 style={{ fontSize: 24, fontWeight: 700 }}>{categories[activeCategory].name}</h1>
         </div>
 
+        {/* Priority filter buttons */}
+        <div style={{ display: "flex", gap: 8, marginBottom: 28, flexWrap: "wrap" }}>
+          {filterButtons.map(fb => (
+            <button
+              key={fb.value}
+              onClick={() => setPriorityFilter(fb.value)}
+              style={{
+                padding: "6px 14px", borderRadius: 20, fontSize: 12, border: "1px solid var(--border)",
+                background: priorityFilter === fb.value ? "var(--gold)" : "transparent",
+                color: priorityFilter === fb.value ? "var(--bg)" : "var(--muted)",
+                fontWeight: priorityFilter === fb.value ? 600 : 400,
+                cursor: "pointer", transition: "all 0.15s",
+              }}
+            >
+              {fb.emoji ? `${fb.emoji} ` : ""}{fb.label}
+            </button>
+          ))}
+        </div>
+
         <div style={{ display: "flex", flexDirection: "column", gap: 32 }}>
-          {categories[activeCategory].questions.map((q, qi) => {
+          {getFilteredQuestions(activeCategory).map(({ q, originalIndex: qi }, displayIdx) => {
             const key = qKey(activeCategory, qi);
             const currentAnswer = answers[key] || "";
             const hasOptions = q.options && q.options.length > 0;
@@ -157,7 +214,9 @@ export default function SurveyPage() {
             return (
               <div key={qi}>
                 <label style={{ display: "block", fontSize: 14, fontWeight: 500, marginBottom: 12, lineHeight: 1.5 }}>
-                  <span style={{ color: "var(--gold)", marginRight: 8 }}>{qi + 1}.</span>{q.text}
+                  <span style={{ color: "var(--gold)", marginRight: 8 }}>{displayIdx + 1}.</span>
+                  {q.text}
+                  {priorityBadge(q.priority)}
                 </label>
 
                 {hasOptions ? (
@@ -230,7 +289,7 @@ export default function SurveyPage() {
         {/* Nav buttons */}
         <div style={{ display: "flex", justifyContent: "space-between", marginTop: 40, gap: 16 }}>
           <button
-            onClick={() => { setActiveCategory(Math.max(0, activeCategory - 1)); window.scrollTo(0, 0); }}
+            onClick={() => { setActiveCategory(Math.max(0, activeCategory - 1)); setPriorityFilter("all"); window.scrollTo(0, 0); }}
             disabled={activeCategory === 0}
             style={{
               padding: "10px 24px", borderRadius: 8, border: "1px solid var(--border)",
@@ -241,7 +300,7 @@ export default function SurveyPage() {
             ← Previous
           </button>
           <button
-            onClick={() => { setActiveCategory(Math.min(categories.length - 1, activeCategory + 1)); window.scrollTo(0, 0); }}
+            onClick={() => { setActiveCategory(Math.min(categories.length - 1, activeCategory + 1)); setPriorityFilter("all"); window.scrollTo(0, 0); }}
             disabled={activeCategory === categories.length - 1}
             style={{
               padding: "10px 24px", borderRadius: 8, border: "none",
