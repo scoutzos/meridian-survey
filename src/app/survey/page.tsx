@@ -143,7 +143,7 @@ export default function SurveyPage() {
       {/* Sidebar */}
       <aside style={{
         width: 280, minWidth: 280, background: "var(--surface)", borderRight: "1px solid var(--border)",
-        padding: "20px 0", overflowY: "auto", height: "100vh", position: "sticky", top: 0,
+        padding: "76px 0 20px", overflowY: "auto", height: "100vh", position: "sticky", top: 0,
         ...(sidebarOpen ? { position: "fixed", zIndex: 40, left: 0, top: 0 } : {}),
       }} className="sidebar">
         <div style={{ padding: "0 20px 20px" }}>
@@ -193,10 +193,14 @@ export default function SurveyPage() {
           })}
         </nav>
 
-        <div style={{ padding: "20px" }}>
-          <button onClick={() => { localStorage.removeItem("meridian_user"); router.push("/"); }}
-            style={{ background: "none", border: "none", color: "var(--muted)", fontSize: 12, textDecoration: "underline" }}>
-            Sign out
+        <div style={{ padding: "20px", display: "flex", flexDirection: "column", gap: 8 }}>
+          <button onClick={() => router.push("/results")}
+            style={{ background: "var(--surface2)", border: "1px solid var(--border)", color: "var(--gold)", fontSize: 12, padding: "8px 12px", borderRadius: 6, cursor: "pointer" }}>
+            📊 View Results
+          </button>
+          <button onClick={() => router.push("/hub")}
+            style={{ background: "var(--surface2)", border: "1px solid var(--border)", color: "var(--gold)", fontSize: 12, padding: "8px 12px", borderRadius: 6, cursor: "pointer" }}>
+            🏠 Partnership Hub
           </button>
         </div>
       </aside>
@@ -207,7 +211,7 @@ export default function SurveyPage() {
       }} />}
 
       {/* Main content */}
-      <main style={{ flex: 1, padding: "40px 40px 80px", maxWidth: 800 }} className="main-content">
+      <main style={{ flex: 1, padding: "80px 40px 80px", maxWidth: 800 }} className="main-content">
         <div style={{ marginBottom: 24 }}>
           <p style={{ fontSize: 12, color: "var(--gold)", marginBottom: 4, textTransform: "uppercase", letterSpacing: 1 }}>
             Category {activeCategory + 1} of {categories.length}
@@ -351,7 +355,7 @@ export default function SurveyPage() {
         @media (max-width: 768px) {
           .mobile-header { display: flex !important; }
           .sidebar { display: ${sidebarOpen ? "block" : "none"}; width: 280px; }
-          .main-content { padding: 70px 16px 40px !important; }
+          .main-content { padding: 80px 16px 40px !important; }
         }
       `}</style>
     </div>

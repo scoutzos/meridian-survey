@@ -22,7 +22,7 @@ export default function LoginPage() {
       <div style={{ width: "100%", maxWidth: 420, textAlign: "center" }}>
         <div style={{ fontSize: 48, marginBottom: 8 }}>◆</div>
         <h1 style={{ fontSize: 28, fontWeight: 700, marginBottom: 4, letterSpacing: "-0.5px" }}>Meridian Collective</h1>
-        <p style={{ color: "var(--muted)", marginBottom: 32, fontSize: 14 }}>Operating Agreement Survey</p>
+        <p style={{ color: "var(--muted)", marginBottom: 32, fontSize: 14 }}>Partnership Transparency Hub</p>
 
         <form onSubmit={handleLogin} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
           <select
@@ -65,8 +65,10 @@ export default function LoginPage() {
         </form>
 
         <p style={{ color: "var(--muted)", fontSize: 12, marginTop: 32 }}>
-          Need the admin view?{" "}
-          <a href="/results" style={{ color: "var(--gold)", textDecoration: "none" }}>Results →</a>
+          View everyone&apos;s answers →{" "}
+          <a href="/results" style={{ color: "var(--gold)", textDecoration: "none" }}>Results</a>
+          {" · "}
+          <a href="/hub" style={{ color: "var(--gold)", textDecoration: "none" }}>Hub</a>
         </p>
       </div>
     </div>

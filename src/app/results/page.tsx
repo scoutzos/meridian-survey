@@ -1,5 +1,6 @@
 "use client";
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { categories, MEMBERS, Question } from "@/data/questions";
 
 const priorityBadge = (p: Question["priority"]) => {
@@ -17,41 +18,25 @@ const priorityBadge = (p: Question["priority"]) => {
 };
 
 export default function ResultsPage() {
-  const [authed, setAuthed] = useState(false);
-  const [code, setCode] = useState("");
+  const router = useRouter();
+  const [user, setUser] = useState<string | null>(null);
   const [allAnswers, setAllAnswers] = useState<Record<string, Record<string, string[] | string>>>({});
   const [activeCategory, setActiveCategory] = useState(0);
   const [showCriticalSummary, setShowCriticalSummary] = useState(false);
 
   useEffect(() => {
-    if (!authed) return;
+    const u = localStorage.getItem("meridian_user");
+    if (!u) { router.push("/"); return; }
+    setUser(u);
     const data: Record<string, Record<string, string>> = {};
     MEMBERS.forEach(m => {
       const raw = localStorage.getItem(`meridian_answers_${m}`);
       if (raw) data[m] = JSON.parse(raw);
     });
     setAllAnswers(data);
-  }, [authed]);
+  }, [router]);
 
-  if (!authed) {
-    return (
-      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
-        <div style={{ textAlign: "center", maxWidth: 380 }}>
-          <h1 style={{ fontSize: 24, fontWeight: 700, marginBottom: 8 }}>Results Access</h1>
-          <p style={{ color: "var(--muted)", fontSize: 14, marginBottom: 24 }}>Enter admin code to view all responses.</p>
-          <form onSubmit={e => { e.preventDefault(); if (code === "admin2026") setAuthed(true); }} style={{ display: "flex", gap: 12 }}>
-            <input
-              type="password" placeholder="Admin code" value={code} onChange={e => setCode(e.target.value)}
-              style={{ flex: 1, background: "var(--surface)", border: "1px solid var(--border)", color: "var(--fg)", borderRadius: 8, padding: "10px 14px", fontSize: 14 }}
-            />
-            <button type="submit" style={{ background: "var(--gold)", color: "var(--bg)", border: "none", borderRadius: 8, padding: "10px 20px", fontWeight: 600, fontSize: 14 }}>
-              View
-            </button>
-          </form>
-        </div>
-      </div>
-    );
-  }
+  if (!user) return null;
 
   const qKey = (ci: number, qi: number) => `${ci}-${qi}`;
   const membersWithData = MEMBERS.filter(m => allAnswers[m]);
@@ -70,27 +55,19 @@ export default function ResultsPage() {
       if (sel.length > 0) allSelections.push(sel);
     });
     if (allSelections.length === 0) return null;
-
-    // Count how many members selected each option
     const counts: Record<string, number> = {};
     allSelections.forEach(sel => {
       sel.forEach(opt => { counts[opt] = (counts[opt] || 0) + 1; });
     });
-
-    // Check for shared selections (any option selected by 2+)
     const sharedOptions = Object.entries(counts).filter(([, c]) => c >= 2).sort((a, b) => b[1] - a[1]);
     const total = allSelections.length;
-
     return { counts, sharedOptions, total };
   };
 
-  // Gather all critical questions across all categories
   const criticalQuestions: { ci: number; qi: number; catName: string; q: Question }[] = [];
   categories.forEach((cat, ci) => {
     cat.questions.forEach((q, qi) => {
-      if (q.priority === "critical") {
-        criticalQuestions.push({ ci, qi, catName: cat.name, q });
-      }
+      if (q.priority === "critical") criticalQuestions.push({ ci, qi, catName: cat.name, q });
     });
   });
 
@@ -105,12 +82,9 @@ export default function ResultsPage() {
           <span style={{ color: "var(--gold)" }}>{displayNum}.</span> {q.text}
           {priorityBadge(q.priority)}
         </p>
-
-        {/* Tally / consensus banner */}
         {tally && tally.sharedOptions.length > 0 && (
           <div style={{
-            background: "rgba(200,170,50,0.12)",
-            border: "1px solid rgba(200,170,50,0.25)",
+            background: "rgba(200,170,50,0.12)", border: "1px solid rgba(200,170,50,0.25)",
             borderRadius: 8, padding: "10px 14px", marginBottom: 16, fontSize: 12,
           }}>
             {tally.sharedOptions.map(([opt, count]) => {
@@ -126,7 +100,6 @@ export default function ResultsPage() {
             })}
           </div>
         )}
-
         {membersWithData.length === 0 ? (
           <p style={{ color: "var(--muted)", fontSize: 13, fontStyle: "italic" }}>No responses yet.</p>
         ) : (
@@ -136,17 +109,13 @@ export default function ResultsPage() {
               const selections = parseSelections(raw);
               if (selections.length === 0) return null;
               return (
-                <div key={m} style={{
-                  background: "var(--surface2)", borderRadius: 8, padding: "12px 16px",
-                  borderLeft: "3px solid transparent",
-                }}>
+                <div key={m} style={{ background: "var(--surface2)", borderRadius: 8, padding: "12px 16px", borderLeft: "3px solid transparent" }}>
                   <p style={{ fontSize: 11, color: "var(--gold)", fontWeight: 600, marginBottom: 8, textTransform: "uppercase", letterSpacing: 0.5 }}>{m}</p>
                   <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                     {selections.map((sel, i) => (
                       <span key={i} style={{
                         display: "inline-block", padding: "4px 10px", borderRadius: 12,
-                        background: "var(--surface)", border: "1px solid var(--border)",
-                        fontSize: 12, lineHeight: 1.4,
+                        background: "var(--surface)", border: "1px solid var(--border)", fontSize: 12, lineHeight: 1.4,
                       }}>{sel}</span>
                     ))}
                   </div>
@@ -160,16 +129,14 @@ export default function ResultsPage() {
   };
 
   return (
-    <div style={{ padding: "40px 20px", maxWidth: 1200, margin: "0 auto" }}>
+    <div style={{ padding: "72px 20px 80px", maxWidth: 1200, margin: "0 auto" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 32 }}>
         <div>
           <h1 style={{ fontSize: 24, fontWeight: 700 }}>Survey Results</h1>
           <p style={{ color: "var(--muted)", fontSize: 13 }}>{membersWithData.length} of {MEMBERS.length} members have responded</p>
         </div>
-        <a href="/" style={{ color: "var(--gold)", fontSize: 13, textDecoration: "none" }}>← Back</a>
       </div>
 
-      {/* View toggle: Critical Summary vs Categories */}
       <div style={{ display: "flex", gap: 12, marginBottom: 24 }}>
         <button
           onClick={() => setShowCriticalSummary(false)}
@@ -201,14 +168,11 @@ export default function ResultsPage() {
             These {criticalQuestions.length} questions must be answered before the operating agreement can be drafted.
           </p>
           <div style={{ display: "flex", flexDirection: "column", gap: 32 }}>
-            {criticalQuestions.map((cq, idx) =>
-              renderQuestion(cq.ci, cq.qi, cq.q, idx + 1, cq.catName)
-            )}
+            {criticalQuestions.map((cq, idx) => renderQuestion(cq.ci, cq.qi, cq.q, idx + 1, cq.catName))}
           </div>
         </>
       ) : (
         <>
-          {/* Category tabs */}
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 32 }}>
             {categories.map((cat, ci) => (
               <button key={ci} onClick={() => setActiveCategory(ci)} style={{
@@ -221,12 +185,8 @@ export default function ResultsPage() {
               </button>
             ))}
           </div>
-
-          {/* Questions & answers */}
           <div style={{ display: "flex", flexDirection: "column", gap: 32 }}>
-            {categories[activeCategory].questions.map((q, qi) =>
-              renderQuestion(activeCategory, qi, q, qi + 1)
-            )}
+            {categories[activeCategory].questions.map((q, qi) => renderQuestion(activeCategory, qi, q, qi + 1))}
           </div>
         </>
       )}
