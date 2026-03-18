@@ -13,7 +13,7 @@ export const categories: Category[] = [
   { name: "Vision & Alignment", questions: [
     { text: "What is your vision for Meridian Collective — what does success look like in 1 year and 3-5 years?",
       priority: "critical",
-      options: ["Completed first profitable flip, building pipeline", "2-3 deals done with consistent profits and a rental portfolio started", "Established brand with multiple completed builds in metro Atlanta", "Generational wealth vehicle — each member financially free in 5 years", "Full-service real estate firm (build, manage, sell)"] },
+      options: ["Build a few houses together for experience, then branch off individually with our own capital", "Completed first profitable flip, building pipeline", "2-3 deals done with consistent profits and a rental portfolio started", "Established brand with multiple completed builds in metro Atlanta", "Generational wealth vehicle — each member financially free in 5 years", "Full-service real estate firm (build, manage, sell)"] },
     { text: "What is your PRIMARY personal goal for joining this group?",
       priority: "critical",
       options: ["Build generational wealth through real estate", "Learn the development process hands-on with a supportive team", "Generate active income through flips and builds", "Create passive income through rental properties", "Build something bigger than I could alone — leverage the collective"] },
@@ -47,7 +47,7 @@ export const categories: Category[] = [
       options: ["$5,000 each within 30 days", "$10,000 each within 30 days", "$25,000 each within 60 days", "$50,000 each within 90 days", "Variable amounts based on individual capacity"] },
     { text: "What forms of contribution are acceptable — cash only, or also property, services, or sweat equity?",
       priority: "critical",
-      options: ["Cash only", "Cash and real property", "Cash, property, and documented services/sweat equity", "Any form with agreed-upon valuation by all members"] },
+      options: ["Cash only", "Cash and real property", "Cash, property, and documented services/sweat equity", "Cash, property, services, and credit/lending capacity", "Any form with agreed-upon valuation by all members"] },
     { text: "What happens if a member cannot make their contribution on time?",
       priority: "critical",
       options: ["30-day grace period, then ownership percentage is reduced", "Automatic forfeiture of membership", "Treated as a loan from other members at agreed interest rate", "Remaining members cover the shortfall and adjust equity accordingly"] },
@@ -99,6 +99,15 @@ export const categories: Category[] = [
     { text: "What are the grounds for involuntary removal of a member?",
       priority: "critical",
       options: ["Fraud, embezzlement, or criminal conviction related to business", "Any felony conviction", "Consistent failure to fulfill responsibilities after written notice", "All of the above", "All of the above plus personal bankruptcy"] },
+    { text: "What happens to a member's interest if they pass away?",
+      priority: "critical",
+      options: ["Interest passes to estate/heirs automatically", "Group has mandatory buyout right at fair market value", "Heir inherits economic interest only (no voting rights) unless group approves", "Group has right of first refusal before heirs can keep it", "Life insurance policy funds a mandatory buyout"] },
+    { text: "What happens to a member's interest if they become incapacitated and can no longer participate?",
+      priority: "critical",
+      options: ["Power of attorney holder acts on their behalf", "Group has mandatory buyout right at fair market value", "Member retains ownership but loses voting rights", "6-month grace period, then mandatory buyout if no recovery", "Designate a successor representative in advance"] },
+    { text: "What happens to a member's interest if they go through a divorce and their spouse claims a share?",
+      priority: "critical",
+      options: ["Operating agreement explicitly excludes spouse claims", "Group has mandatory buyout right before spouse receives interest", "Spouse can only receive financial value, not membership rights", "Handle case-by-case with group vote"] },
   ]},
   { name: "Financing & Debt", questions: [
     { text: "Is the group open to taking on debt for deals? What types of financing?",
@@ -111,7 +120,7 @@ export const categories: Category[] = [
   { name: "Banking & Financial Controls", questions: [
     { text: "How many signatures are required for large payments, and what's the spending limit before group approval?",
       priority: "critical",
-      options: ["Two signatures over $5,000; group approval over $5,000", "Two signatures over $10,000; group approval over $10,000", "Managing Member alone up to $10,000; two signatures and group approval above", "Single signature for budgeted items; group approval for all unbudgeted expenses"] },
+      options: ["All member signatures required for every transaction", "Two signatures over $5,000; group approval over $5,000", "Two signatures over $10,000; group approval over $10,000", "Managing Member alone up to $10,000; two signatures and group approval above", "Single signature for budgeted items; group approval for all unbudgeted expenses"] },
   ]},
   { name: "Conflicts of Interest & Outside Deals", questions: [
     { text: "Can members pursue real estate deals outside of the LLC?",
