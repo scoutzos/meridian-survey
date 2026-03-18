@@ -28,7 +28,7 @@ type PriorityFilter = "all" | "critical" | "important" | "recommended";
 export default function SurveyPage() {
   const router = useRouter();
   const [user, setUser] = useState<string | null>(null);
-  const [answers, setAnswers] = useState<Record<string, string>>({});
+  const [answers, setAnswers] = useState<Record<string, string[] | string>>({});
   const [activeCategory, setActiveCategory] = useState(0);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [priorityFilter, setPriorityFilter] = useState<PriorityFilter>("all");
@@ -41,7 +41,7 @@ export default function SurveyPage() {
     if (saved) setAnswers(JSON.parse(saved));
   }, [router]);
 
-  const save = useCallback((newAnswers: Record<string, string>) => {
+  const save = useCallback((newAnswers: Record<string, string[] | string>) => {
     if (!user) return;
     setAnswers(newAnswers);
     localStorage.setItem(getStorageKey(user), JSON.stringify(newAnswers));
@@ -49,27 +49,58 @@ export default function SurveyPage() {
 
   const qKey = (ci: number, qi: number) => `${ci}-${qi}`;
 
-  const answeredInCategory = (ci: number) =>
-    categories[ci].questions.filter((_, qi) => answers[qKey(ci, qi)]?.trim()).length;
+  const isAnswered = (val: string[] | string | undefined): boolean => {
+    if (!val) return false;
+    if (Array.isArray(val)) return val.length > 0;
+    return typeof val === "string" && val.trim() !== "";
+  };
 
-  const totalAnswered = Object.values(answers).filter(v => v?.trim()).length;
+  const answeredInCategory = (ci: number) =>
+    categories[ci].questions.filter((_, qi) => isAnswered(answers[qKey(ci, qi)])).length;
+
+  const totalAnswered = Object.values(answers).filter(v => isAnswered(v)).length;
   const overallPct = Math.round((totalAnswered / totalQuestions) * 100);
 
+  const getSelections = (ci: number, qi: number): string[] => {
+    const val = answers[qKey(ci, qi)];
+    if (Array.isArray(val)) return val;
+    // migrate legacy string answers
+    if (typeof val === "string" && val.trim()) return [val];
+    return [];
+  };
+
   const isOtherSelected = (ci: number, qi: number) => {
-    const answer = answers[qKey(ci, qi)] || "";
-    const q = categories[ci].questions[qi];
-    if (!q.options || q.options.length === 0) return false;
-    if (!answer) return false;
-    if (answer.startsWith("Other: ")) return true;
-    return !q.options.includes(answer);
+    return getSelections(ci, qi).some(s => s.startsWith("Other: "));
   };
 
   const getOtherText = (ci: number, qi: number) => {
-    const answer = answers[qKey(ci, qi)] || "";
-    if (answer.startsWith("Other: ")) return answer.slice(7);
-    const q = categories[ci].questions[qi];
-    if (q.options && !q.options.includes(answer) && answer) return answer;
-    return "";
+    const other = getSelections(ci, qi).find(s => s.startsWith("Other: "));
+    return other ? other.slice(7) : "";
+  };
+
+  const toggleOption = (ci: number, qi: number, option: string) => {
+    const key = qKey(ci, qi);
+    const current = getSelections(ci, qi);
+    const newSelections = current.includes(option)
+      ? current.filter(s => s !== option)
+      : [...current, option];
+    save({ ...answers, [key]: newSelections });
+  };
+
+  const toggleOther = (ci: number, qi: number) => {
+    const key = qKey(ci, qi);
+    const current = getSelections(ci, qi);
+    if (isOtherSelected(ci, qi)) {
+      save({ ...answers, [key]: current.filter(s => !s.startsWith("Other: ")) });
+    } else {
+      save({ ...answers, [key]: [...current, "Other: "] });
+    }
+  };
+
+  const setOtherText = (ci: number, qi: number, text: string) => {
+    const key = qKey(ci, qi);
+    const current = getSelections(ci, qi).filter(s => !s.startsWith("Other: "));
+    save({ ...answers, [key]: [...current, `Other: ${text}`] });
   };
 
   // Sort questions: critical first, then important, then recommended
@@ -206,7 +237,8 @@ export default function SurveyPage() {
         <div style={{ display: "flex", flexDirection: "column", gap: 32 }}>
           {getFilteredQuestions(activeCategory).map(({ q, originalIndex: qi }, displayIdx) => {
             const key = qKey(activeCategory, qi);
-            const currentAnswer = answers[key] || "";
+            const currentAnswer = answers[key];
+            const selections = getSelections(activeCategory, qi);
             const hasOptions = q.options && q.options.length > 0;
             const otherSelected = isOtherSelected(activeCategory, qi);
             const otherText = getOtherText(activeCategory, qi);
@@ -217,32 +249,35 @@ export default function SurveyPage() {
                   <span style={{ color: "var(--gold)", marginRight: 8 }}>{displayIdx + 1}.</span>
                   {q.text}
                   {priorityBadge(q.priority)}
+                  <span style={{ fontSize: 11, color: "var(--muted)", marginLeft: 8 }}>(select all that apply)</span>
                 </label>
 
                 {hasOptions ? (
                   <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                    {q.options!.map((option, oi) => (
-                      <label
-                        key={oi}
-                        style={{
-                          display: "flex", alignItems: "center", gap: 10,
-                          padding: "10px 14px", borderRadius: 8,
-                          background: currentAnswer === option ? "var(--surface2)" : "var(--surface)",
-                          border: currentAnswer === option ? "1px solid var(--gold)" : "1px solid var(--border)",
-                          cursor: "pointer", fontSize: 13, lineHeight: 1.5,
-                          transition: "all 0.15s",
-                        }}
-                      >
-                        <input
-                          type="radio"
-                          name={key}
-                          checked={currentAnswer === option}
-                          onChange={() => save({ ...answers, [key]: option })}
-                          style={{ accentColor: "var(--gold)", flexShrink: 0 }}
-                        />
-                        <span>{option}</span>
-                      </label>
-                    ))}
+                    {q.options!.map((option, oi) => {
+                      const checked = selections.includes(option);
+                      return (
+                        <label
+                          key={oi}
+                          style={{
+                            display: "flex", alignItems: "center", gap: 10,
+                            padding: "10px 14px", borderRadius: 8,
+                            background: checked ? "var(--surface2)" : "var(--surface)",
+                            border: checked ? "1px solid var(--gold)" : "1px solid var(--border)",
+                            cursor: "pointer", fontSize: 13, lineHeight: 1.5,
+                            transition: "all 0.15s",
+                          }}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => toggleOption(activeCategory, qi, option)}
+                            style={{ accentColor: "var(--gold)", flexShrink: 0 }}
+                          />
+                          <span>{option}</span>
+                        </label>
+                      );
+                    })}
                     {/* Other option */}
                     <label
                       style={{
@@ -255,10 +290,9 @@ export default function SurveyPage() {
                       }}
                     >
                       <input
-                        type="radio"
-                        name={key}
+                        type="checkbox"
                         checked={otherSelected}
-                        onChange={() => save({ ...answers, [key]: "Other: " })}
+                        onChange={() => toggleOther(activeCategory, qi)}
                         style={{ accentColor: "var(--gold)", flexShrink: 0 }}
                       />
                       <span>Other</span>
@@ -266,7 +300,7 @@ export default function SurveyPage() {
                     {otherSelected && (
                       <textarea
                         value={otherText}
-                        onChange={e => save({ ...answers, [key]: `Other: ${e.target.value}` })}
+                        onChange={e => setOtherText(activeCategory, qi, e.target.value)}
                         placeholder="Please specify..."
                         rows={3}
                         style={{ marginLeft: 28 }}
@@ -275,7 +309,7 @@ export default function SurveyPage() {
                   </div>
                 ) : (
                   <textarea
-                    value={currentAnswer}
+                    value={typeof currentAnswer === "string" ? currentAnswer : ""}
                     onChange={e => save({ ...answers, [key]: e.target.value })}
                     placeholder="Type your answer..."
                     rows={3}

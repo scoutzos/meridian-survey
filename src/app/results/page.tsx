@@ -19,7 +19,7 @@ const priorityBadge = (p: Question["priority"]) => {
 export default function ResultsPage() {
   const [authed, setAuthed] = useState(false);
   const [code, setCode] = useState("");
-  const [allAnswers, setAllAnswers] = useState<Record<string, Record<string, string>>>({});
+  const [allAnswers, setAllAnswers] = useState<Record<string, Record<string, string[] | string>>>({});
   const [activeCategory, setActiveCategory] = useState(0);
   const [showCriticalSummary, setShowCriticalSummary] = useState(false);
 
@@ -56,22 +56,32 @@ export default function ResultsPage() {
   const qKey = (ci: number, qi: number) => `${ci}-${qi}`;
   const membersWithData = MEMBERS.filter(m => allAnswers[m]);
 
-  const getConsensus = (ci: number, qi: number) => {
-    const responses: string[] = [];
+  const parseSelections = (val: string[] | string | undefined): string[] => {
+    if (!val) return [];
+    if (Array.isArray(val)) return val;
+    if (typeof val === "string" && val.trim()) return [val];
+    return [];
+  };
+
+  const getOptionTally = (ci: number, qi: number) => {
+    const allSelections: string[][] = [];
     MEMBERS.forEach(m => {
-      const answer = allAnswers[m]?.[qKey(ci, qi)]?.trim();
-      if (answer) responses.push(answer);
+      const sel = parseSelections(allAnswers[m]?.[qKey(ci, qi)]);
+      if (sel.length > 0) allSelections.push(sel);
     });
-    if (responses.length < 2) return null;
+    if (allSelections.length === 0) return null;
 
+    // Count how many members selected each option
     const counts: Record<string, number> = {};
-    responses.forEach(r => { counts[r] = (counts[r] || 0) + 1; });
+    allSelections.forEach(sel => {
+      sel.forEach(opt => { counts[opt] = (counts[opt] || 0) + 1; });
+    });
 
-    const maxCount = Math.max(...Object.values(counts));
-    if (maxCount < 2) return null;
+    // Check for shared selections (any option selected by 2+)
+    const sharedOptions = Object.entries(counts).filter(([, c]) => c >= 2).sort((a, b) => b[1] - a[1]);
+    const total = allSelections.length;
 
-    const topAnswer = Object.entries(counts).find(([, c]) => c === maxCount)!;
-    return { answer: topAnswer[0], count: topAnswer[1], total: responses.length };
+    return { counts, sharedOptions, total };
   };
 
   // Gather all critical questions across all categories
@@ -85,7 +95,7 @@ export default function ResultsPage() {
   });
 
   const renderQuestion = (ci: number, qi: number, q: Question, displayNum: number, showCategory?: string) => {
-    const consensus = getConsensus(ci, qi);
+    const tally = getOptionTally(ci, qi);
     return (
       <div key={`${ci}-${qi}`} style={{ background: "var(--surface)", borderRadius: 12, padding: 24 }}>
         {showCategory && (
@@ -96,16 +106,24 @@ export default function ResultsPage() {
           {priorityBadge(q.priority)}
         </p>
 
-        {consensus && (
+        {/* Tally / consensus banner */}
+        {tally && tally.sharedOptions.length > 0 && (
           <div style={{
-            background: consensus.count === consensus.total ? "rgba(90,170,90,0.15)" : "rgba(200,170,50,0.12)",
-            border: consensus.count === consensus.total ? "1px solid rgba(90,170,90,0.3)" : "1px solid rgba(200,170,50,0.25)",
+            background: "rgba(200,170,50,0.12)",
+            border: "1px solid rgba(200,170,50,0.25)",
             borderRadius: 8, padding: "10px 14px", marginBottom: 16, fontSize: 12,
           }}>
-            <span style={{ fontWeight: 600, color: consensus.count === consensus.total ? "#5a5" : "var(--gold)" }}>
-              {consensus.count === consensus.total ? "✓ Full Consensus" : `⚡ ${consensus.count}/${consensus.total} agree`}:
-            </span>{" "}
-            <span style={{ color: "var(--fg)" }}>{consensus.answer}</span>
+            {tally.sharedOptions.map(([opt, count]) => {
+              const isFull = count === tally.total;
+              return (
+                <div key={opt} style={{ marginBottom: 4 }}>
+                  <span style={{ fontWeight: 600, color: isFull ? "#5a5" : "var(--gold)" }}>
+                    {isFull ? "✓" : "⚡"} {count}/{tally.total} selected
+                  </span>{" "}
+                  <span style={{ color: "var(--fg)" }}>{opt}</span>
+                </div>
+              );
+            })}
           </div>
         )}
 
@@ -114,16 +132,24 @@ export default function ResultsPage() {
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
             {MEMBERS.map(m => {
-              const answer = allAnswers[m]?.[qKey(ci, qi)];
-              if (!answer?.trim()) return null;
-              const isConsensusAnswer = consensus && answer === consensus.answer;
+              const raw = allAnswers[m]?.[qKey(ci, qi)];
+              const selections = parseSelections(raw);
+              if (selections.length === 0) return null;
               return (
                 <div key={m} style={{
                   background: "var(--surface2)", borderRadius: 8, padding: "12px 16px",
-                  borderLeft: isConsensusAnswer ? "3px solid #5a5" : "3px solid transparent",
+                  borderLeft: "3px solid transparent",
                 }}>
-                  <p style={{ fontSize: 11, color: "var(--gold)", fontWeight: 600, marginBottom: 4, textTransform: "uppercase", letterSpacing: 0.5 }}>{m}</p>
-                  <p style={{ fontSize: 13, lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{answer}</p>
+                  <p style={{ fontSize: 11, color: "var(--gold)", fontWeight: 600, marginBottom: 8, textTransform: "uppercase", letterSpacing: 0.5 }}>{m}</p>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                    {selections.map((sel, i) => (
+                      <span key={i} style={{
+                        display: "inline-block", padding: "4px 10px", borderRadius: 12,
+                        background: "var(--surface)", border: "1px solid var(--border)",
+                        fontSize: 12, lineHeight: 1.4,
+                      }}>{sel}</span>
+                    ))}
+                  </div>
                 </div>
               );
             })}
