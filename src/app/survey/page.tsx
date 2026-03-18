@@ -36,6 +36,24 @@ export default function SurveyPage() {
   const totalAnswered = Object.values(answers).filter(v => v?.trim()).length;
   const overallPct = Math.round((totalAnswered / totalQuestions) * 100);
 
+  // Determine if the current answer is "Other"
+  const isOtherSelected = (ci: number, qi: number) => {
+    const answer = answers[qKey(ci, qi)] || "";
+    const q = categories[ci].questions[qi];
+    if (!q.options || q.options.length === 0) return false;
+    if (!answer) return false;
+    if (answer.startsWith("Other: ")) return true;
+    return !q.options.includes(answer);
+  };
+
+  const getOtherText = (ci: number, qi: number) => {
+    const answer = answers[qKey(ci, qi)] || "";
+    if (answer.startsWith("Other: ")) return answer.slice(7);
+    const q = categories[ci].questions[qi];
+    if (q.options && !q.options.includes(answer) && answer) return answer;
+    return "";
+  };
+
   if (!user) return null;
 
   return (
@@ -129,19 +147,84 @@ export default function SurveyPage() {
         </div>
 
         <div style={{ display: "flex", flexDirection: "column", gap: 32 }}>
-          {categories[activeCategory].questions.map((q, qi) => (
-            <div key={qi}>
-              <label style={{ display: "block", fontSize: 14, fontWeight: 500, marginBottom: 8, lineHeight: 1.5 }}>
-                <span style={{ color: "var(--gold)", marginRight: 8 }}>{qi + 1}.</span>{q}
-              </label>
-              <textarea
-                value={answers[qKey(activeCategory, qi)] || ""}
-                onChange={e => save({ ...answers, [qKey(activeCategory, qi)]: e.target.value })}
-                placeholder="Type your answer..."
-                rows={3}
-              />
-            </div>
-          ))}
+          {categories[activeCategory].questions.map((q, qi) => {
+            const key = qKey(activeCategory, qi);
+            const currentAnswer = answers[key] || "";
+            const hasOptions = q.options && q.options.length > 0;
+            const otherSelected = isOtherSelected(activeCategory, qi);
+            const otherText = getOtherText(activeCategory, qi);
+
+            return (
+              <div key={qi}>
+                <label style={{ display: "block", fontSize: 14, fontWeight: 500, marginBottom: 12, lineHeight: 1.5 }}>
+                  <span style={{ color: "var(--gold)", marginRight: 8 }}>{qi + 1}.</span>{q.text}
+                </label>
+
+                {hasOptions ? (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                    {q.options!.map((option, oi) => (
+                      <label
+                        key={oi}
+                        style={{
+                          display: "flex", alignItems: "center", gap: 10,
+                          padding: "10px 14px", borderRadius: 8,
+                          background: currentAnswer === option ? "var(--surface2)" : "var(--surface)",
+                          border: currentAnswer === option ? "1px solid var(--gold)" : "1px solid var(--border)",
+                          cursor: "pointer", fontSize: 13, lineHeight: 1.5,
+                          transition: "all 0.15s",
+                        }}
+                      >
+                        <input
+                          type="radio"
+                          name={key}
+                          checked={currentAnswer === option}
+                          onChange={() => save({ ...answers, [key]: option })}
+                          style={{ accentColor: "var(--gold)", flexShrink: 0 }}
+                        />
+                        <span>{option}</span>
+                      </label>
+                    ))}
+                    {/* Other option */}
+                    <label
+                      style={{
+                        display: "flex", alignItems: "center", gap: 10,
+                        padding: "10px 14px", borderRadius: 8,
+                        background: otherSelected ? "var(--surface2)" : "var(--surface)",
+                        border: otherSelected ? "1px solid var(--gold)" : "1px solid var(--border)",
+                        cursor: "pointer", fontSize: 13, lineHeight: 1.5,
+                        transition: "all 0.15s",
+                      }}
+                    >
+                      <input
+                        type="radio"
+                        name={key}
+                        checked={otherSelected}
+                        onChange={() => save({ ...answers, [key]: "Other: " })}
+                        style={{ accentColor: "var(--gold)", flexShrink: 0 }}
+                      />
+                      <span>Other</span>
+                    </label>
+                    {otherSelected && (
+                      <textarea
+                        value={otherText}
+                        onChange={e => save({ ...answers, [key]: `Other: ${e.target.value}` })}
+                        placeholder="Please specify..."
+                        rows={3}
+                        style={{ marginLeft: 28 }}
+                      />
+                    )}
+                  </div>
+                ) : (
+                  <textarea
+                    value={currentAnswer}
+                    onChange={e => save({ ...answers, [key]: e.target.value })}
+                    placeholder="Type your answer..."
+                    rows={3}
+                  />
+                )}
+              </div>
+            );
+          })}
         </div>
 
         {/* Nav buttons */}
