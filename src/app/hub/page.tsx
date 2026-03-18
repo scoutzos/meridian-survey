@@ -200,7 +200,7 @@ export default function HubPage() {
       {/* ANNOUNCEMENTS */}
       <div style={sectionStyle(!!openSections.announcements)}>
         <div style={sectionHeader} onClick={() => toggle("announcements")}>
-          <h2 style={{ fontSize: 16, fontWeight: 600 }}>📢 Announcements</h2>
+          <h2 style={{ fontSize: 16, fontWeight: 600 }}>Announcements</h2>
           <span style={{ color: "var(--muted)", fontSize: 18 }}>{openSections.announcements ? "−" : "+"}</span>
         </div>
         {openSections.announcements && (
@@ -226,7 +226,7 @@ export default function HubPage() {
       {/* MEETING TRANSCRIPTS */}
       <div style={sectionStyle(!!openSections.transcripts)}>
         <div style={sectionHeader} onClick={() => toggle("transcripts")}>
-          <h2 style={{ fontSize: 16, fontWeight: 600 }}>📝 Meeting Transcripts</h2>
+          <h2 style={{ fontSize: 16, fontWeight: 600 }}>Meeting Transcripts</h2>
           <span style={{ color: "var(--muted)", fontSize: 18 }}>{openSections.transcripts ? "−" : "+"}</span>
         </div>
         {openSections.transcripts && (
@@ -253,7 +253,7 @@ export default function HubPage() {
       {/* DOCUMENT VAULT */}
       <div style={sectionStyle(!!openSections.documents)}>
         <div style={sectionHeader} onClick={() => toggle("documents")}>
-          <h2 style={{ fontSize: 16, fontWeight: 600 }}>📁 Document Vault</h2>
+          <h2 style={{ fontSize: 16, fontWeight: 600 }}>Document Vault</h2>
           <span style={{ color: "var(--muted)", fontSize: 18 }}>{openSections.documents ? "−" : "+"}</span>
         </div>
         {openSections.documents && (
@@ -286,7 +286,7 @@ export default function HubPage() {
       {/* MEMBER PROFILES */}
       <div style={sectionStyle(!!openSections.profiles)}>
         <div style={sectionHeader} onClick={() => toggle("profiles")}>
-          <h2 style={{ fontSize: 16, fontWeight: 600 }}>👥 Member Profiles</h2>
+          <h2 style={{ fontSize: 16, fontWeight: 600 }}>Member Profiles</h2>
           <span style={{ color: "var(--muted)", fontSize: 18 }}>{openSections.profiles ? "−" : "+"}</span>
         </div>
         {openSections.profiles && (
@@ -332,7 +332,7 @@ export default function HubPage() {
       {/* KEY DECISIONS LOG */}
       <div style={sectionStyle(!!openSections.decisions)}>
         <div style={sectionHeader} onClick={() => toggle("decisions")}>
-          <h2 style={{ fontSize: 16, fontWeight: 600 }}>⚖️ Key Decisions Log</h2>
+          <h2 style={{ fontSize: 16, fontWeight: 600 }}>Key Decisions Log</h2>
           <span style={{ color: "var(--muted)", fontSize: 18 }}>{openSections.decisions ? "−" : "+"}</span>
         </div>
         {openSections.decisions && (
@@ -371,7 +371,7 @@ export default function HubPage() {
       {/* SHARED LINKS & RESOURCES */}
       <div style={sectionStyle(!!openSections.links)}>
         <div style={sectionHeader} onClick={() => toggle("links")}>
-          <h2 style={{ fontSize: 16, fontWeight: 600 }}>🔗 Shared Links & Resources</h2>
+          <h2 style={{ fontSize: 16, fontWeight: 600 }}>Shared Links & Resources</h2>
           <span style={{ color: "var(--muted)", fontSize: 18 }}>{openSections.links ? "−" : "+"}</span>
         </div>
         {openSections.links && (

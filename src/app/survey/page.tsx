@@ -9,14 +9,14 @@ function getStorageKey(user: string) { return `meridian_answers_${user}`; }
 
 const priorityBadge = (p: Question["priority"]) => {
   const config = {
-    critical: { emoji: "🔴", label: "Critical", color: "#e55" },
-    important: { emoji: "🟡", label: "Important", color: "#da5" },
-    recommended: { emoji: "🟢", label: "Recommended", color: "#5a5" },
+    critical: { label: "Critical", color: "#e55" },
+    important: { label: "Important", color: "#da5" },
+    recommended: { label: "Recommended", color: "#5a5" },
   };
   const c = config[p];
   return (
     <span style={{ fontSize: 11, fontWeight: 600, color: c.color, marginLeft: 8, whiteSpace: "nowrap" }}>
-      {c.emoji} {c.label}
+      <span style={{ display: "inline-block", width: 8, height: 8, borderRadius: "50%", background: c.color, marginRight: 4 }} /> {c.label}
     </span>
   );
 };
@@ -120,9 +120,9 @@ export default function SurveyPage() {
 
   const filterButtons: { value: PriorityFilter; label: string; emoji: string }[] = [
     { value: "all", label: "All", emoji: "" },
-    { value: "critical", label: "Critical", emoji: "🔴" },
-    { value: "important", label: "Important", emoji: "🟡" },
-    { value: "recommended", label: "Recommended", emoji: "🟢" },
+    { value: "critical", label: "Critical", emoji: "" },
+    { value: "important", label: "Important", emoji: "" },
+    { value: "recommended", label: "Recommended", emoji: "" },
   ];
 
   return (
@@ -196,11 +196,11 @@ export default function SurveyPage() {
         <div style={{ padding: "20px", display: "flex", flexDirection: "column", gap: 8 }}>
           <button onClick={() => router.push("/results")}
             style={{ background: "var(--surface2)", border: "1px solid var(--border)", color: "var(--gold)", fontSize: 12, padding: "8px 12px", borderRadius: 6, cursor: "pointer" }}>
-            📊 View Results
+            View Results
           </button>
           <button onClick={() => router.push("/hub")}
             style={{ background: "var(--surface2)", border: "1px solid var(--border)", color: "var(--gold)", fontSize: 12, padding: "8px 12px", borderRadius: 6, cursor: "pointer" }}>
-            🏠 Partnership Hub
+            Partnership Hub
           </button>
         </div>
       </aside>

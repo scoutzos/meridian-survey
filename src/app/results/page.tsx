@@ -5,14 +5,14 @@ import { categories, MEMBERS, Question } from "@/data/questions";
 
 const priorityBadge = (p: Question["priority"]) => {
   const config = {
-    critical: { emoji: "🔴", label: "Critical", color: "#e55" },
-    important: { emoji: "🟡", label: "Important", color: "#da5" },
-    recommended: { emoji: "🟢", label: "Recommended", color: "#5a5" },
+    critical: { label: "Critical", color: "#e55" },
+    important: { label: "Important", color: "#da5" },
+    recommended: { label: "Recommended", color: "#5a5" },
   };
   const c = config[p];
   return (
     <span style={{ fontSize: 11, fontWeight: 600, color: c.color, marginLeft: 8, whiteSpace: "nowrap" }}>
-      {c.emoji} {c.label}
+      <span style={{ display: "inline-block", width: 8, height: 8, borderRadius: "50%", background: c.color, marginRight: 4 }} /> {c.label}
     </span>
   );
 };
@@ -158,7 +158,7 @@ export default function ResultsPage() {
             fontWeight: showCriticalSummary ? 600 : 400, cursor: "pointer",
           }}
         >
-          🔴 Critical Questions ({criticalQuestions.length})
+          Critical Questions ({criticalQuestions.length})
         </button>
       </div>
 

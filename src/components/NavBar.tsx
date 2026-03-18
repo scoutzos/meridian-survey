@@ -14,9 +14,9 @@ export default function NavBar() {
   if (!user || pathname === "/") return null;
 
   const links = [
-    { href: "/survey", label: "Survey", icon: "📋" },
-    { href: "/results", label: "Results", icon: "📊" },
-    { href: "/hub", label: "Hub", icon: "🏠" },
+    { href: "/survey", label: "Survey", icon: "" },
+    { href: "/results", label: "Results", icon: "" },
+    { href: "/hub", label: "Hub", icon: "" },
   ];
 
   return (
