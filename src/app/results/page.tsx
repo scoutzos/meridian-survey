@@ -2,6 +2,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { categories, MEMBERS, Question } from "@/data/questions";
+import { supabase } from "@/lib/supabase";
 
 const priorityBadge = (p: Question["priority"]) => {
   const config = {
@@ -65,23 +66,19 @@ export default function ResultsPage() {
     if (!u) { router.push("/"); return; }
     setUser(u);
 
-    // Load ALL members' answers from server
-    Promise.all(
-      MEMBERS.map(m =>
-        fetch(`/api/responses?member=${encodeURIComponent(m)}`)
-          .then(r => r.json())
-          .then(answers => ({ member: m, answers }))
-          .catch(() => ({ member: m, answers: null }))
-      )
-    ).then(results => {
-      const data: Record<string, Record<string, string[] | string>> = {};
-      results.forEach(({ member, answers }) => {
-        if (answers && Object.keys(answers).length > 0) {
-          data[member] = answers;
+    // Load ALL members' answers from Supabase
+    supabase
+      .from("meridian_responses")
+      .select("member_name, question_id, answer")
+      .then(({ data: rows }) => {
+        const data: Record<string, Record<string, string[] | string>> = {};
+        for (const row of rows || []) {
+          if (!data[row.member_name]) data[row.member_name] = {};
+          try { data[row.member_name][row.question_id] = JSON.parse(row.answer); }
+          catch { data[row.member_name][row.question_id] = row.answer; }
         }
+        setAllAnswers(data);
       });
-      setAllAnswers(data);
-    });
   }, [router]);
 
   if (!user) return null;

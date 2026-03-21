@@ -2,23 +2,38 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { categories, Question } from "@/data/questions";
+import { supabase } from "@/lib/supabase";
 
 const totalQuestions = categories.reduce((s, c) => s + c.questions.length, 0);
 
 function getStorageKey(user: string) { return `meridian_answers_${user}`; }
 
-// Debounced save to server
+// Debounced save to Supabase
 function useDebouncedSaveToServer() {
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const saveToServer = useCallback((member: string, answers: Record<string, string[] | string>) => {
     if (timerRef.current) clearTimeout(timerRef.current);
-    timerRef.current = setTimeout(() => {
-      fetch("/api/responses", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ member, answers }),
-      }).catch(console.error);
-    }, 1000); // 1s debounce
+    timerRef.current = setTimeout(async () => {
+      try {
+        // Delete existing answers for this member
+        await supabase.from("meridian_responses").delete().eq("member_name", member);
+        // Insert all current answers
+        const rows = Object.entries(answers)
+          .filter(([, v]) => {
+            if (Array.isArray(v)) return v.length > 0;
+            return typeof v === "string" && v.trim() !== "";
+          })
+          .map(([questionId, answer]) => ({
+            member_name: member,
+            question_id: questionId,
+            answer: JSON.stringify(answer),
+            updated_at: new Date().toISOString(),
+          }));
+        if (rows.length > 0) {
+          await supabase.from("meridian_responses").insert(rows);
+        }
+      } catch (e) { console.error("Save to DB failed:", e); }
+    }, 1000);
   }, []);
   return saveToServer;
 }
@@ -55,13 +70,19 @@ export default function SurveyPage() {
     if (!u) { router.push("/"); return; }
     setUser(u);
 
-    // Load from server first, fallback to localStorage
-    fetch(`/api/responses?member=${encodeURIComponent(u)}`)
-      .then(r => r.json())
-      .then(serverAnswers => {
-        if (serverAnswers && Object.keys(serverAnswers).length > 0) {
+    // Load from Supabase first, fallback to localStorage
+    supabase
+      .from("meridian_responses")
+      .select("question_id, answer")
+      .eq("member_name", u)
+      .then(({ data, error }) => {
+        if (!error && data && data.length > 0) {
+          const serverAnswers: Record<string, string[] | string> = {};
+          for (const row of data) {
+            try { serverAnswers[row.question_id] = JSON.parse(row.answer); }
+            catch { serverAnswers[row.question_id] = row.answer; }
+          }
           setAnswers(serverAnswers);
-          // Also update localStorage as cache
           localStorage.setItem(getStorageKey(u), JSON.stringify(serverAnswers));
         } else {
           // No server data — check localStorage (may have unsaved responses)
@@ -69,21 +90,25 @@ export default function SurveyPage() {
           if (saved) {
             const parsed = JSON.parse(saved);
             setAnswers(parsed);
-            // Push localStorage data to server (migration)
+            // Auto-migrate localStorage → Supabase
             if (Object.keys(parsed).length > 0) {
-              fetch("/api/responses", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ member: u, answers: parsed }),
-              }).catch(console.error);
+              const rows = Object.entries(parsed)
+                .filter(([, v]) => {
+                  if (Array.isArray(v)) return (v as string[]).length > 0;
+                  return typeof v === "string" && (v as string).trim() !== "";
+                })
+                .map(([qid, answer]) => ({
+                  member_name: u,
+                  question_id: qid,
+                  answer: JSON.stringify(answer),
+                  updated_at: new Date().toISOString(),
+                }));
+              if (rows.length > 0) {
+                supabase.from("meridian_responses").insert(rows).then(() => {});
+              }
             }
           }
         }
-      })
-      .catch(() => {
-        // Server unreachable — fall back to localStorage
-        const saved = localStorage.getItem(getStorageKey(u));
-        if (saved) setAnswers(JSON.parse(saved));
       });
   }, [router]);
 
