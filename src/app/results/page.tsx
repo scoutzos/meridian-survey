@@ -66,6 +66,8 @@ export default function ResultsPage() {
     if (!u) { router.push("/"); return; }
     setUser(u);
 
+    if (!supabase) return;
+
     // Load ALL members' answers from Supabase
     supabase
       .from("meridian_responses")

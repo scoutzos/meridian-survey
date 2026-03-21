@@ -14,6 +14,7 @@ function useDebouncedSaveToServer() {
   const saveToServer = useCallback((member: string, answers: Record<string, string[] | string>) => {
     if (timerRef.current) clearTimeout(timerRef.current);
     timerRef.current = setTimeout(async () => {
+      if (!supabase) return;
       try {
         // Delete existing answers for this member
         await supabase.from("meridian_responses").delete().eq("member_name", member);
@@ -70,6 +71,13 @@ export default function SurveyPage() {
     if (!u) { router.push("/"); return; }
     setUser(u);
 
+    if (!supabase) {
+      // No Supabase configured — use localStorage only
+      const saved = localStorage.getItem(getStorageKey(u));
+      if (saved) setAnswers(JSON.parse(saved));
+      return;
+    }
+
     // Load from Supabase first, fallback to localStorage
     supabase
       .from("meridian_responses")
@@ -104,7 +112,7 @@ export default function SurveyPage() {
                   updated_at: new Date().toISOString(),
                 }));
               if (rows.length > 0) {
-                supabase.from("meridian_responses").insert(rows).then(() => {});
+                supabase!.from("meridian_responses").insert(rows).then(() => {});
               }
             }
           }
