@@ -64,12 +64,24 @@ export default function ResultsPage() {
     const u = localStorage.getItem("meridian_user");
     if (!u) { router.push("/"); return; }
     setUser(u);
-    const data: Record<string, Record<string, string>> = {};
-    MEMBERS.forEach(m => {
-      const raw = localStorage.getItem(`meridian_answers_${m}`);
-      if (raw) data[m] = JSON.parse(raw);
+
+    // Load ALL members' answers from server
+    Promise.all(
+      MEMBERS.map(m =>
+        fetch(`/api/responses?member=${encodeURIComponent(m)}`)
+          .then(r => r.json())
+          .then(answers => ({ member: m, answers }))
+          .catch(() => ({ member: m, answers: null }))
+      )
+    ).then(results => {
+      const data: Record<string, Record<string, string[] | string>> = {};
+      results.forEach(({ member, answers }) => {
+        if (answers && Object.keys(answers).length > 0) {
+          data[member] = answers;
+        }
+      });
+      setAllAnswers(data);
     });
-    setAllAnswers(data);
   }, [router]);
 
   if (!user) return null;

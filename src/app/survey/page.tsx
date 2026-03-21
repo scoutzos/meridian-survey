@@ -1,11 +1,27 @@
 "use client";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { categories, Question } from "@/data/questions";
 
 const totalQuestions = categories.reduce((s, c) => s + c.questions.length, 0);
 
 function getStorageKey(user: string) { return `meridian_answers_${user}`; }
+
+// Debounced save to server
+function useDebouncedSaveToServer() {
+  const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const saveToServer = useCallback((member: string, answers: Record<string, string[] | string>) => {
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(() => {
+      fetch("/api/responses", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ member, answers }),
+      }).catch(console.error);
+    }, 1000); // 1s debounce
+  }, []);
+  return saveToServer;
+}
 
 const priorityBadge = (p: Question["priority"]) => {
   const config = {
@@ -32,20 +48,51 @@ export default function SurveyPage() {
   const [activeCategory, setActiveCategory] = useState(0);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [priorityFilter, setPriorityFilter] = useState<PriorityFilter>("all");
+  const saveToServer = useDebouncedSaveToServer();
 
   useEffect(() => {
     const u = localStorage.getItem("meridian_user");
     if (!u) { router.push("/"); return; }
     setUser(u);
-    const saved = localStorage.getItem(getStorageKey(u));
-    if (saved) setAnswers(JSON.parse(saved));
+
+    // Load from server first, fallback to localStorage
+    fetch(`/api/responses?member=${encodeURIComponent(u)}`)
+      .then(r => r.json())
+      .then(serverAnswers => {
+        if (serverAnswers && Object.keys(serverAnswers).length > 0) {
+          setAnswers(serverAnswers);
+          // Also update localStorage as cache
+          localStorage.setItem(getStorageKey(u), JSON.stringify(serverAnswers));
+        } else {
+          // No server data — check localStorage (may have unsaved responses)
+          const saved = localStorage.getItem(getStorageKey(u));
+          if (saved) {
+            const parsed = JSON.parse(saved);
+            setAnswers(parsed);
+            // Push localStorage data to server (migration)
+            if (Object.keys(parsed).length > 0) {
+              fetch("/api/responses", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ member: u, answers: parsed }),
+              }).catch(console.error);
+            }
+          }
+        }
+      })
+      .catch(() => {
+        // Server unreachable — fall back to localStorage
+        const saved = localStorage.getItem(getStorageKey(u));
+        if (saved) setAnswers(JSON.parse(saved));
+      });
   }, [router]);
 
   const save = useCallback((newAnswers: Record<string, string[] | string>) => {
     if (!user) return;
     setAnswers(newAnswers);
     localStorage.setItem(getStorageKey(user), JSON.stringify(newAnswers));
-  }, [user]);
+    saveToServer(user, newAnswers);
+  }, [user, saveToServer]);
 
   const qKey = (ci: number, qi: number) => `${ci}-${qi}`;
 
