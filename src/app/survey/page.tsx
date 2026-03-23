@@ -417,17 +417,52 @@ export default function SurveyPage() {
           >
             ← Previous
           </button>
-          <button
-            onClick={() => { setActiveCategory(Math.min(categories.length - 1, activeCategory + 1)); setPriorityFilter("all"); window.scrollTo(0, 0); }}
-            disabled={activeCategory === categories.length - 1}
-            style={{
-              padding: "10px 24px", borderRadius: 8, border: "none",
-              background: activeCategory === categories.length - 1 ? "var(--border)" : "var(--gold)",
-              color: "var(--bg)", fontSize: 14, fontWeight: 600,
-            }}
-          >
-            Next →
-          </button>
+          {activeCategory === categories.length - 1 ? (
+            <button
+              onClick={async () => {
+                if (!user) return;
+                // Final save to ensure everything is persisted
+                if (supabase) {
+                  try {
+                    await supabase.from("meridian_responses").delete().eq("member_name", user);
+                    const rows = Object.entries(answers)
+                      .filter(([, v]) => {
+                        if (Array.isArray(v)) return v.length > 0;
+                        return typeof v === "string" && v.trim() !== "";
+                      })
+                      .map(([questionId, answer]) => ({
+                        member_name: user,
+                        question_id: questionId,
+                        answer: JSON.stringify(answer),
+                        updated_at: new Date().toISOString(),
+                      }));
+                    if (rows.length > 0) {
+                      await supabase.from("meridian_responses").insert(rows);
+                    }
+                  } catch (e) { console.error("Final save failed:", e); }
+                }
+                router.push("/results");
+              }}
+              style={{
+                padding: "10px 24px", borderRadius: 8, border: "none",
+                background: "var(--gold)", color: "var(--bg)", fontSize: 14, fontWeight: 600,
+                cursor: "pointer",
+              }}
+            >
+              Submit ✓
+            </button>
+          ) : (
+            <button
+              onClick={() => { setActiveCategory(Math.min(categories.length - 1, activeCategory + 1)); setPriorityFilter("all"); window.scrollTo(0, 0); }}
+              style={{
+                padding: "10px 24px", borderRadius: 8, border: "none",
+                background: "var(--gold)", color: "var(--bg)", fontSize: 14, fontWeight: 600,
+                cursor: "pointer",
+              }}
+            >
+              Next →
+            </button>
+          )}
         </div>
       </main>
 
