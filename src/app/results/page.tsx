@@ -139,8 +139,10 @@ export default function ResultsPage() {
   const needsDiscussionCount = allAlignments.filter(a => a.alignment.percentage < 50).length;
 
   const sortedByAlignment = [...allAlignments].sort((a, b) => b.alignment.percentage - a.alignment.percentage);
-  const top5 = sortedByAlignment.slice(0, 5);
-  const bottom5 = [...allAlignments].sort((a, b) => a.alignment.percentage - b.alignment.percentage).slice(0, 5);
+  // Split into unanimous vs disagreements (only meaningful with 2+ respondents)
+  const unanimousItems = allAlignments.filter(a => a.alignment.percentage === 100);
+  const disagreementItems = [...allAlignments].filter(a => a.alignment.percentage < 100).sort((a, b) => a.alignment.percentage - b.alignment.percentage);
+  const hasEnoughData = membersWithData.length >= 2;
 
   const getCategoryAlignment = (ci: number): number => {
     const catAlignments = allAlignments.filter(a => a.ci === ci);
@@ -232,56 +234,107 @@ export default function ResultsPage() {
   };
 
   const renderAlignmentSummary = () => {
-    if (allAlignments.length === 0) return (
-      <div style={{ background: "var(--surface)", borderRadius: 12, padding: 32, textAlign: "center", marginBottom: 32 }}>
-        <p style={{ color: "var(--muted)", fontSize: 14 }}>No responses yet to calculate alignment.</p>
+    // Response tracker — always show who has/hasn't responded
+    const responseTracker = (
+      <div style={{ background: "var(--surface)", borderRadius: 12, padding: 24, marginBottom: 24 }}>
+        <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 16 }}>👥 Response Tracker</h3>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: 12 }}>
+          {MEMBERS.map(m => {
+            const hasResponded = !!allAnswers[m];
+            const answerCount = hasResponded ? Object.keys(allAnswers[m]).length : 0;
+            const totalQ = categories.reduce((s, c) => s + c.questions.length, 0);
+            return (
+              <div key={m} style={{
+                padding: "12px 16px", borderRadius: 8,
+                background: hasResponded ? "rgba(107,143,123,0.12)" : "var(--surface2)",
+                border: `1px solid ${hasResponded ? "rgba(107,143,123,0.3)" : "var(--border)"}`,
+              }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                  <span style={{ fontSize: 16 }}>{hasResponded ? "✅" : "⏳"}</span>
+                  <span style={{ fontSize: 13, fontWeight: 600 }}>{m}</span>
+                </div>
+                <p style={{ fontSize: 11, color: "var(--muted)" }}>
+                  {hasResponded ? `${answerCount}/${totalQ} questions answered` : "Hasn't started yet"}
+                </p>
+              </div>
+            );
+          })}
+        </div>
       </div>
     );
-    return (
-      <div style={{ background: "var(--surface)", borderRadius: 12, padding: 32, marginBottom: 32 }}>
-        <h2 style={{ fontSize: 20, fontWeight: 700, marginBottom: 24 }}>📊 Alignment Summary</h2>
 
-        <div style={{ display: "flex", gap: 24, flexWrap: "wrap", marginBottom: 28 }}>
-          <div style={{ background: "var(--surface2)", borderRadius: 12, padding: "20px 28px", flex: "1 1 200px", textAlign: "center" }}>
-            <p style={{ fontSize: 36, fontWeight: 800, color: getAlignmentColor(overallAlignment) }}>{Math.round(overallAlignment)}%</p>
-            <p style={{ fontSize: 12, color: "var(--muted)", marginTop: 4 }}>Overall Alignment</p>
-            <p style={{ fontSize: 11, color: getAlignmentColor(overallAlignment), fontWeight: 600 }}>{getAlignmentLabel(overallAlignment)}</p>
-          </div>
-          <div style={{ background: "var(--surface2)", borderRadius: 12, padding: "20px 28px", flex: "1 1 150px", textAlign: "center" }}>
-            <p style={{ fontSize: 36, fontWeight: 800, color: "#6B8F7B" }}>{strongCount}</p>
-            <p style={{ fontSize: 12, color: "var(--muted)", marginTop: 4 }}>Strong Alignment (80%+)</p>
-          </div>
-          <div style={{ background: "var(--surface2)", borderRadius: 12, padding: "20px 28px", flex: "1 1 150px", textAlign: "center" }}>
-            <p style={{ fontSize: 36, fontWeight: 800, color: "#8F6B6B" }}>{needsDiscussionCount}</p>
-            <p style={{ fontSize: 12, color: "var(--muted)", marginTop: 4 }}>Needs Discussion (&lt;50%)</p>
-          </div>
+    if (!hasEnoughData) return (
+      <div>
+        {responseTracker}
+        <div style={{ background: "var(--surface)", borderRadius: 12, padding: 32, textAlign: "center", marginBottom: 32 }}>
+          <p style={{ fontSize: 48, marginBottom: 12 }}>📊</p>
+          <p style={{ fontSize: 16, fontWeight: 600, marginBottom: 8 }}>Waiting for More Responses</p>
+          <p style={{ color: "var(--muted)", fontSize: 13, maxWidth: 400, margin: "0 auto" }}>
+            Alignment scores require at least 2 members to compare. {membersWithData.length === 1 ? `Only ${membersWithData[0]} has responded so far.` : "No one has responded yet."} Have members re-open the survey link to sync their answers.
+          </p>
         </div>
+      </div>
+    );
 
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}>
-          <div>
-            <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 12, color: "#6B8F7B" }}>✅ Top 5 Most Aligned</h3>
-            {top5.map((a, i) => (
-              <div key={i} style={{ marginBottom: 12, padding: "10px 14px", background: "var(--surface2)", borderRadius: 8, borderLeft: `3px solid ${getAlignmentColor(a.alignment.percentage)}` }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <p style={{ fontSize: 12, lineHeight: 1.4, flex: 1, marginRight: 12 }}>{a.q.text.length > 80 ? a.q.text.slice(0, 80) + "…" : a.q.text}</p>
-                  <span style={{ fontSize: 14, fontWeight: 700, color: getAlignmentColor(a.alignment.percentage) }}>{Math.round(a.alignment.percentage)}%</span>
-                </div>
-                <p style={{ fontSize: 10, color: "var(--muted)", marginTop: 4 }}>{a.catName}</p>
-              </div>
-            ))}
+    return (
+      <div>
+        {responseTracker}
+        <div style={{ background: "var(--surface)", borderRadius: 12, padding: 32, marginBottom: 32 }}>
+          <h2 style={{ fontSize: 20, fontWeight: 700, marginBottom: 24 }}>📊 Alignment Summary</h2>
+
+          <div style={{ display: "flex", gap: 24, flexWrap: "wrap", marginBottom: 28 }}>
+            <div style={{ background: "var(--surface2)", borderRadius: 12, padding: "20px 28px", flex: "1 1 200px", textAlign: "center" }}>
+              <p style={{ fontSize: 36, fontWeight: 800, color: getAlignmentColor(overallAlignment) }}>{Math.round(overallAlignment)}%</p>
+              <p style={{ fontSize: 12, color: "var(--muted)", marginTop: 4 }}>Overall Alignment</p>
+              <p style={{ fontSize: 11, color: getAlignmentColor(overallAlignment), fontWeight: 600 }}>{getAlignmentLabel(overallAlignment)}</p>
+            </div>
+            <div style={{ background: "var(--surface2)", borderRadius: 12, padding: "20px 28px", flex: "1 1 150px", textAlign: "center" }}>
+              <p style={{ fontSize: 36, fontWeight: 800, color: "#6B8F7B" }}>{unanimousItems.length}</p>
+              <p style={{ fontSize: 12, color: "var(--muted)", marginTop: 4 }}>Unanimous Agreement</p>
+            </div>
+            <div style={{ background: "var(--surface2)", borderRadius: 12, padding: "20px 28px", flex: "1 1 150px", textAlign: "center" }}>
+              <p style={{ fontSize: 36, fontWeight: 800, color: disagreementItems.length > 0 ? "#C5A572" : "#6B8F7B" }}>{disagreementItems.length}</p>
+              <p style={{ fontSize: 12, color: "var(--muted)", marginTop: 4 }}>Need Discussion</p>
+            </div>
           </div>
-          <div>
-            <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 12, color: "#8F6B6B" }}>⚠️ Top 5 Least Aligned — Discuss These</h3>
-            {bottom5.map((a, i) => (
-              <div key={i} style={{ marginBottom: 12, padding: "10px 14px", background: "var(--surface2)", borderRadius: 8, borderLeft: `3px solid ${getAlignmentColor(a.alignment.percentage)}` }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <p style={{ fontSize: 12, lineHeight: 1.4, flex: 1, marginRight: 12 }}>{a.q.text.length > 80 ? a.q.text.slice(0, 80) + "…" : a.q.text}</p>
-                  <span style={{ fontSize: 14, fontWeight: 700, color: getAlignmentColor(a.alignment.percentage) }}>{Math.round(a.alignment.percentage)}%</span>
+
+          {/* Show disagreements first — these are what matter */}
+          {disagreementItems.length > 0 && (
+            <div style={{ marginBottom: 28 }}>
+              <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 12, color: "#C5A572" }}>⚠️ Where You Differ — Discuss These</h3>
+              <p style={{ fontSize: 12, color: "var(--muted)", marginBottom: 16 }}>Members chose different answers on these questions. These need a conversation.</p>
+              {disagreementItems.map((a, i) => (
+                <div key={i} style={{ marginBottom: 12, padding: "14px 18px", background: "var(--surface2)", borderRadius: 8, borderLeft: "3px solid #C5A572" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
+                    <p style={{ fontSize: 13, lineHeight: 1.5, flex: 1, marginRight: 12, fontWeight: 500 }}>{a.q.text}</p>
+                    <span style={{ fontSize: 14, fontWeight: 700, color: getAlignmentColor(a.alignment.percentage), whiteSpace: "nowrap" }}>{Math.round(a.alignment.percentage)}%</span>
+                  </div>
+                  <p style={{ fontSize: 10, color: "var(--gold)", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 8 }}>{a.catName}</p>
+                  {a.alignment.breakdown.map(({ option, count }) => (
+                    <div key={option} style={{ fontSize: 12, color: "var(--muted)", marginBottom: 2 }}>
+                      <span style={{ fontWeight: 600, color: count === a.alignment.total ? "#6B8F7B" : "var(--fg)" }}>{count}/{a.alignment.total}</span> — {option}
+                    </div>
+                  ))}
                 </div>
-                <p style={{ fontSize: 10, color: "var(--muted)", marginTop: 4 }}>{a.catName}</p>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
+
+          {/* Unanimous agreements — collapsed by default */}
+          {unanimousItems.length > 0 && (
+            <div>
+              <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 12, color: "#6B8F7B" }}>✅ Where You All Agree ({unanimousItems.length})</h3>
+              {unanimousItems.map((a, i) => (
+                <div key={i} style={{ marginBottom: 8, padding: "10px 14px", background: "var(--surface2)", borderRadius: 8, borderLeft: "3px solid #6B8F7B" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <p style={{ fontSize: 12, lineHeight: 1.4, flex: 1, marginRight: 12 }}>{a.q.text.length > 90 ? a.q.text.slice(0, 90) + "…" : a.q.text}</p>
+                    <span style={{ fontSize: 12, fontWeight: 600, color: "#6B8F7B" }}>✓ Unanimous</span>
+                  </div>
+                  <p style={{ fontSize: 10, color: "var(--muted)", marginTop: 4 }}>{a.catName} — {a.alignment.topOption.length > 60 ? a.alignment.topOption.slice(0, 60) + "…" : a.alignment.topOption}</p>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     );
@@ -297,7 +350,7 @@ export default function ResultsPage() {
       </div>
 
       {/* Overall alignment score banner */}
-      {allAlignments.length > 0 && (
+      {hasEnoughData && allAlignments.length > 0 && (
         <div style={{
           background: `linear-gradient(135deg, ${getAlignmentColor(overallAlignment)}22, transparent)`,
           border: `1px solid ${getAlignmentColor(overallAlignment)}44`,
