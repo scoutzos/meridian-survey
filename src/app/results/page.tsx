@@ -135,10 +135,6 @@ export default function ResultsPage() {
     ? allAlignments.reduce((sum, a) => sum + a.alignment.percentage, 0) / allAlignments.length
     : 0;
 
-  const strongCount = allAlignments.filter(a => a.alignment.percentage >= 80).length;
-  const needsDiscussionCount = allAlignments.filter(a => a.alignment.percentage < 50).length;
-
-  const sortedByAlignment = [...allAlignments].sort((a, b) => b.alignment.percentage - a.alignment.percentage);
   // Split into unanimous vs disagreements (only meaningful with 2+ respondents)
   const unanimousItems = allAlignments.filter(a => a.alignment.percentage === 100);
   const disagreementItems = [...allAlignments].filter(a => a.alignment.percentage < 100).sort((a, b) => a.alignment.percentage - b.alignment.percentage);
