@@ -3,6 +3,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { categories, MEMBERS, Question } from "@/data/questions";
 import { supabase } from "@/lib/supabase";
+import { insights } from "@/data/insights";
 
 const priorityBadge = (p: Question["priority"]) => {
   const config = {
@@ -163,6 +164,66 @@ export default function ResultsPage() {
     </div>
   );
 
+  const renderInsight = (ci: number, qi: number) => {
+    const key = qKey(ci, qi);
+    const insight = insights[key];
+    if (!insight) return null;
+
+    const consensusColors: Record<string, string> = {
+      strong: "#6B8F7B",
+      partial: "#C5A572",
+      disagreement: "#8F6B6B",
+      open: "#7B8FA0",
+    };
+    const color = consensusColors[insight.consensus] || "#7B8FA0";
+
+    return (
+      <div style={{
+        marginTop: 16,
+        background: "linear-gradient(135deg, rgba(99,102,241,0.06), rgba(139,92,246,0.06))",
+        border: "1px solid rgba(99,102,241,0.2)",
+        borderRadius: 10,
+        padding: "16px 20px",
+        fontSize: 13,
+        lineHeight: 1.6,
+      }}>
+        <p style={{ fontWeight: 600, color: "#a78bfa", marginBottom: 12, fontSize: 14 }}>
+          AI Insight
+        </p>
+        <div style={{ marginBottom: 8 }}>
+          <span style={{ fontWeight: 600, color: "#c4b5fd" }}>Consensus: </span>
+          <span style={{
+            display: "inline-block", padding: "2px 10px", borderRadius: 10,
+            background: `${color}22`, color, fontSize: 12, fontWeight: 600,
+          }}>{insight.consensusLabel}</span>
+        </div>
+        <div style={{ marginBottom: 8 }}>
+          <span style={{ fontWeight: 600, color: "#c4b5fd" }}>Recommendation: </span>
+          <span style={{ color: "var(--fg)" }}>{insight.rec}</span>
+        </div>
+        <div style={{ marginBottom: 8 }}>
+          <span style={{ fontWeight: 600, color: "#c4b5fd" }}>Why it matters: </span>
+          <span style={{ color: "var(--fg)" }}>{insight.why}</span>
+        </div>
+        <div style={{ marginBottom: 10 }}>
+          <span style={{ fontWeight: 600, color: "#c4b5fd" }}>Watch out: </span>
+          <span style={{ color: "var(--fg)" }}>{insight.watch}</span>
+        </div>
+        <div style={{
+          padding: "8px 12px",
+          background: "rgba(0,0,0,0.15)",
+          borderRadius: 6,
+          borderLeft: "3px solid #6366f1",
+          fontStyle: "italic",
+          color: "var(--muted)",
+          fontSize: 12,
+        }}>
+          Suggested OA language: &ldquo;{insight.lang}&rdquo;
+        </div>
+      </div>
+    );
+  };
+
   const renderQuestion = (ci: number, qi: number, q: Question, displayNum: number, showCategory?: string) => {
     const tally = getOptionTally(ci, qi);
     const alignment = getAlignment(ci, qi);
@@ -225,6 +286,7 @@ export default function ResultsPage() {
             })}
           </div>
         )}
+        {renderInsight(ci, qi)}
       </div>
     );
   };
