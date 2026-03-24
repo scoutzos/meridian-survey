@@ -1,0 +1,2791 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Meridian Collective — Survey Results</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; background: #0a0a1a; color: #e8e8f0; overflow: hidden; height: 100vh; width: 100vw; }
+.slide { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; display: none; opacity: 0; transition: opacity 0.4s ease; }
+.slide.active { display: flex; opacity: 1; }
+.slide-content { width: 100%; height: 100%; padding: 3rem 4rem; display: flex; flex-direction: column; overflow-y: auto; }
+.slide-content::-webkit-scrollbar { width: 4px; }
+.slide-content::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 2px; }
+
+/* Title slide */
+.title-slide { align-items: center; justify-content: center; text-align: center; background: radial-gradient(ellipse at center, #1a1a3e 0%, #0a0a1a 70%); }
+.logo { font-size: 3rem; margin-bottom: 1rem; }
+.title-slide h1 { font-size: 3rem; font-weight: 700; background: linear-gradient(135deg, #6C63FF, #4ECDC4); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin-bottom: 0.5rem; }
+.title-slide h2 { font-size: 1.5rem; font-weight: 300; color: #8888aa; margin-bottom: 1.5rem; }
+.date { font-size: 1.1rem; color: #6666aa; margin-bottom: 2rem; }
+.member-legend { display: flex; flex-wrap: wrap; gap: 1rem; justify-content: center; margin-bottom: 1.5rem; }
+.legend-item { display: flex; align-items: center; gap: 0.4rem; font-size: 0.85rem; color: #aaa; }
+.avatar { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 50%; font-size: 0.65rem; font-weight: 700; color: #000; }
+.avatar-sm { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 50%; font-size: 0.7rem; font-weight: 700; color: #000; flex-shrink: 0; }
+.avatar-xs { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 50%; font-size: 0.55rem; font-weight: 700; color: #000; flex-shrink: 0; }
+.subtitle { font-size: 0.9rem; color: #555; }
+
+/* Question slides */
+.category-badge { display: inline-block; background: rgba(108,99,255,0.15); color: #8B83FF; padding: 0.3rem 1rem; border-radius: 20px; font-size: 0.8rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 1rem; }
+.question-text { font-size: 1.35rem; font-weight: 600; line-height: 1.4; margin-bottom: 1rem; max-width: 90%; }
+.consensus-indicator { padding: 0.4rem 1rem; border-radius: 8px; font-size: 0.85rem; font-weight: 600; display: inline-block; margin-bottom: 1.2rem; }
+.consensus-green { background: rgba(46,204,113,0.15); color: #2ecc71; }
+.consensus-yellow { background: rgba(241,196,15,0.15); color: #f1c40f; }
+.consensus-red { background: rgba(231,76,60,0.15); color: #e74c3c; }
+
+/* Answer grid */
+.answer-grid { flex: 1; display: flex; flex-direction: column; gap: 0.6rem; overflow-y: auto; }
+.answer-row { display: grid; grid-template-columns: 120px 1fr auto 40px; gap: 0.8rem; align-items: center; padding: 0.5rem 0.8rem; background: rgba(255,255,255,0.03); border-radius: 8px; min-height: 38px; }
+.answer-bar-container { height: 6px; background: rgba(255,255,255,0.05); border-radius: 3px; overflow: hidden; }
+.answer-bar { height: 100%; border-radius: 3px; transition: width 0.6s ease; }
+.bar-green { background: linear-gradient(90deg, #2ecc71, #27ae60); }
+.bar-yellow { background: linear-gradient(90deg, #f1c40f, #f39c12); }
+.bar-red { background: linear-gradient(90deg, #e74c3c, #c0392b); }
+.answer-text { font-size: 0.78rem; color: #ccc; line-height: 1.3; }
+.answer-avatars { display: flex; gap: 3px; flex-wrap: wrap; }
+.answer-count { font-size: 0.8rem; font-weight: 700; color: #888; text-align: right; }
+
+/* Open-ended */
+.open-ended-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; flex: 1; }
+.open-card { background: rgba(255,255,255,0.04); border-radius: 12px; padding: 1.2rem; display: flex; flex-direction: column; align-items: flex-start; gap: 0.5rem; }
+.open-name { font-weight: 600; font-size: 0.85rem; }
+.open-text { font-size: 0.82rem; color: #aaa; line-height: 1.5; }
+.open-text.empty { color: #555; font-style: italic; }
+
+/* Takeaway slides */
+.takeaway-slide { background: radial-gradient(ellipse at top, #12122e 0%, #0a0a1a 70%); }
+.takeaway-slide h2 { font-size: 2rem; margin-bottom: 1.5rem; }
+.takeaway-columns { display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; flex: 1; }
+.takeaway-col h3 { font-size: 1.1rem; margin-bottom: 1rem; }
+.takeaway-item { padding: 0.6rem 1rem; border-radius: 8px; font-size: 0.85rem; margin-bottom: 0.5rem; line-height: 1.3; }
+.takeaway-item.green { background: rgba(46,204,113,0.1); border-left: 3px solid #2ecc71; }
+.takeaway-item.red { background: rgba(231,76,60,0.1); border-left: 3px solid #e74c3c; }
+.takeaway-item.dim { color: #555; font-style: italic; }
+
+/* Resolve list */
+.resolve-list { text-align: left; max-width: 700px; width: 100%; }
+.resolve-category { margin-bottom: 1rem; }
+.resolve-category h3 { font-size: 0.95rem; color: #e74c3c; margin-bottom: 0.3rem; }
+.resolve-item { font-size: 0.82rem; color: #aaa; padding: 0.2rem 0; }
+
+/* Slide counter */
+.slide-counter { position: fixed; bottom: 1.5rem; right: 2rem; font-size: 0.8rem; color: #444; z-index: 100; }
+.progress-bar { position: fixed; top: 0; left: 0; height: 3px; background: linear-gradient(90deg, #6C63FF, #4ECDC4); z-index: 100; transition: width 0.3s ease; }
+
+/* Nav hints */
+.nav-hint { position: fixed; bottom: 1.5rem; left: 2rem; font-size: 0.75rem; color: #333; z-index: 100; }
+
+@media (max-width: 900px) {
+  .slide-content { padding: 1.5rem 2rem; }
+  .question-text { font-size: 1.1rem; }
+  .answer-row { grid-template-columns: 80px 1fr auto 30px; }
+  .open-ended-grid { grid-template-columns: repeat(2, 1fr); }
+}
+</style>
+</head>
+<body>
+
+<div class="progress-bar" id="progress"></div>
+<div class="slide-counter" id="counter">1 / 81</div>
+<div class="nav-hint">← → Arrow keys to navigate</div>
+
+
+<div class="slide active" id="slide-0">
+  <div class="slide-content title-slide">
+    <div class="logo">◆</div>
+    <h1>Meridian Collective</h1>
+    <h2>Partnership Survey Results</h2>
+    <div class="date">March 24, 2026</div>
+    <div class="member-legend">
+      <span class="legend-item"><span class="avatar" style="background:#6C63FF">CM</span>Courtney Mosely</span><span class="legend-item"><span class="avatar" style="background:#FF6B6B">OP</span>Odessa Patterson</span><span class="legend-item"><span class="avatar" style="background:#4ECDC4">RT</span>Raquel Twine</span><span class="legend-item"><span class="avatar" style="background:#FFD93D">TS</span>Tiffany Stallworth</span><span class="legend-item"><span class="avatar" style="background:#FF8C42">AT</span>Aaliyah Thomas</span><span class="legend-item"><span class="avatar" style="background:#95E1D3">PG</span>Peggee</span>
+    </div>
+    <div class="subtitle">6 Members · 25 Categories · 54 Responses</div>
+  </div>
+</div>
+
+<div class="slide" id="slide-1">
+  <div class="slide-content">
+    <div class="category-badge">Vision & Alignment</div>
+    <h2 class="question-text">What is your vision for Meridian Collective — what does success look like in 1 year and 3-5 years?</h2>
+    <div class="consensus-indicator consensus-green">Strong Consensus — 4/6 agree</div>
+    <div class="answer-grid">
+      
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-green" style="width:66.66666666666666%"></div>
+        </div>
+        <div class="answer-text">Build a few houses together for experience, then branch off individually with our own capital</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#6C63FF" title="Courtney Mosely">CM</span><span class="avatar-xs" style="background:#4ECDC4" title="Raquel Twine">RT</span><span class="avatar-xs" style="background:#FFD93D" title="Tiffany Stallworth">TS</span><span class="avatar-xs" style="background:#95E1D3" title="Peggee">PG</span></div>
+        <div class="answer-count">4/6</div>
+      </div>
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-yellow" style="width:50%"></div>
+        </div>
+        <div class="answer-text">Completed first profitable flip, building pipeline</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#6C63FF" title="Courtney Mosely">CM</span><span class="avatar-xs" style="background:#4ECDC4" title="Raquel Twine">RT</span><span class="avatar-xs" style="background:#FFD93D" title="Tiffany Stallworth">TS</span></div>
+        <div class="answer-count">3/6</div>
+      </div>
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-yellow" style="width:50%"></div>
+        </div>
+        <div class="answer-text">Generational wealth vehicle — each member financially free in 5 years</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#FF6B6B" title="Odessa Patterson">OP</span><span class="avatar-xs" style="background:#FFD93D" title="Tiffany Stallworth">TS</span><span class="avatar-xs" style="background:#FF8C42" title="Aaliyah Thomas">AT</span></div>
+        <div class="answer-count">3/6</div>
+      </div>
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-yellow" style="width:50%"></div>
+        </div>
+        <div class="answer-text">Established brand with multiple completed builds in metro Atlanta</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#FF6B6B" title="Odessa Patterson">OP</span><span class="avatar-xs" style="background:#FFD93D" title="Tiffany Stallworth">TS</span><span class="avatar-xs" style="background:#FF8C42" title="Aaliyah Thomas">AT</span></div>
+        <div class="answer-count">3/6</div>
+      </div>
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-red" style="width:16.666666666666664%"></div>
+        </div>
+        <div class="answer-text">Full-service real estate firm (build, manage, sell)</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#4ECDC4" title="Raquel Twine">RT</span></div>
+        <div class="answer-count">1/6</div>
+      </div>
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-red" style="width:16.666666666666664%"></div>
+        </div>
+        <div class="answer-text">2-3 deals done with consistent profits and a rental portfolio started</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#FFD93D" title="Tiffany Stallworth">TS</span></div>
+        <div class="answer-count">1/6</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="slide" id="slide-2">
+  <div class="slide-content">
+    <div class="category-badge">Vision & Alignment</div>
+    <h2 class="question-text">What is your PRIMARY personal goal for joining this group?</h2>
+    <div class="consensus-indicator consensus-green">Strong Consensus — 6/6 agree</div>
+    <div class="answer-grid">
+      
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-green" style="width:100%"></div>
+        </div>
+        <div class="answer-text">Learn the development process hands-on with a supportive team</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#6C63FF" title="Courtney Mosely">CM</span><span class="avatar-xs" style="background:#FF6B6B" title="Odessa Patterson">OP</span><span class="avatar-xs" style="background:#4ECDC4" title="Raquel Twine">RT</span><span class="avatar-xs" style="background:#FFD93D" title="Tiffany Stallworth">TS</span><span class="avatar-xs" style="background:#FF8C42" title="Aaliyah Thomas">AT</span><span class="avatar-xs" style="background:#95E1D3" title="Peggee">PG</span></div>
+        <div class="answer-count">6/6</div>
+      </div>
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-green" style="width:66.66666666666666%"></div>
+        </div>
+        <div class="answer-text">Generate active income through flips and builds</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#FF6B6B" title="Odessa Patterson">OP</span><span class="avatar-xs" style="background:#4ECDC4" title="Raquel Twine">RT</span><span class="avatar-xs" style="background:#FFD93D" title="Tiffany Stallworth">TS</span><span class="avatar-xs" style="background:#FF8C42" title="Aaliyah Thomas">AT</span></div>
+        <div class="answer-count">4/6</div>
+      </div>
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-green" style="width:66.66666666666666%"></div>
+        </div>
+        <div class="answer-text">Build something bigger than I could alone — leverage the collective</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#FF6B6B" title="Odessa Patterson">OP</span><span class="avatar-xs" style="background:#4ECDC4" title="Raquel Twine">RT</span><span class="avatar-xs" style="background:#FFD93D" title="Tiffany Stallworth">TS</span><span class="avatar-xs" style="background:#FF8C42" title="Aaliyah Thomas">AT</span></div>
+        <div class="answer-count">4/6</div>
+      </div>
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-red" style="width:33.33333333333333%"></div>
+        </div>
+        <div class="answer-text">Build generational wealth through real estate</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#FF6B6B" title="Odessa Patterson">OP</span><span class="avatar-xs" style="background:#FFD93D" title="Tiffany Stallworth">TS</span></div>
+        <div class="answer-count">2/6</div>
+      </div>
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-red" style="width:16.666666666666664%"></div>
+        </div>
+        <div class="answer-text">Create passive income through rental properties</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#FFD93D" title="Tiffany Stallworth">TS</span></div>
+        <div class="answer-count">1/6</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="slide" id="slide-3">
+  <div class="slide-content">
+    <div class="category-badge">Vision & Alignment</div>
+    <h2 class="question-text">What is your risk tolerance for this venture?</h2>
+    <div class="consensus-indicator consensus-green">Strong Consensus — 5/6 agree</div>
+    <div class="answer-grid">
+      
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-green" style="width:83.33333333333334%"></div>
+        </div>
+        <div class="answer-text">Moderate — willing to take calculated risks with proper research</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#6C63FF" title="Courtney Mosely">CM</span><span class="avatar-xs" style="background:#FF6B6B" title="Odessa Patterson">OP</span><span class="avatar-xs" style="background:#4ECDC4" title="Raquel Twine">RT</span><span class="avatar-xs" style="background:#FFD93D" title="Tiffany Stallworth">TS</span><span class="avatar-xs" style="background:#FF8C42" title="Aaliyah Thomas">AT</span></div>
+        <div class="answer-count">5/6</div>
+      </div>
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-red" style="width:33.33333333333333%"></div>
+        </div>
+        <div class="answer-text">Conservative — protect capital first, grow slowly</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#4ECDC4" title="Raquel Twine">RT</span><span class="avatar-xs" style="background:#95E1D3" title="Peggee">PG</span></div>
+        <div class="answer-count">2/6</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="slide" id="slide-4">
+  <div class="slide-content">
+    <div class="category-badge">Vision & Alignment</div>
+    <h2 class="question-text">How many hours per week can you REALISTICALLY commit to Meridian Collective business?</h2>
+    <div class="consensus-indicator consensus-green">Strong Consensus — 4/6 agree</div>
+    <div class="answer-grid">
+      
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-green" style="width:66.66666666666666%"></div>
+        </div>
+        <div class="answer-text">5-10 hours</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#FF6B6B" title="Odessa Patterson">OP</span><span class="avatar-xs" style="background:#FFD93D" title="Tiffany Stallworth">TS</span><span class="avatar-xs" style="background:#FF8C42" title="Aaliyah Thomas">AT</span><span class="avatar-xs" style="background:#95E1D3" title="Peggee">PG</span></div>
+        <div class="answer-count">4/6</div>
+      </div>
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-yellow" style="width:50%"></div>
+        </div>
+        <div class="answer-text">It varies — some weeks more, some weeks less</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#FF6B6B" title="Odessa Patterson">OP</span><span class="avatar-xs" style="background:#FFD93D" title="Tiffany Stallworth">TS</span><span class="avatar-xs" style="background:#FF8C42" title="Aaliyah Thomas">AT</span></div>
+        <div class="answer-count">3/6</div>
+      </div>
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-red" style="width:33.33333333333333%"></div>
+        </div>
+        <div class="answer-text">10-20 hours</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#6C63FF" title="Courtney Mosely">CM</span><span class="avatar-xs" style="background:#4ECDC4" title="Raquel Twine">RT</span></div>
+        <div class="answer-count">2/6</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="slide" id="slide-5">
+  <div class="slide-content">
+    <div class="category-badge">Vision & Alignment</div>
+    <h2 class="question-text">What would cause you to want to EXIT Meridian Collective?</h2>
+    <div class="consensus-indicator consensus-green">Strong Consensus — 6/6 agree</div>
+    <div class="answer-grid">
+      
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-green" style="width:100%"></div>
+        </div>
+        <div class="answer-text">Lack of progress — no deals closing</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#6C63FF" title="Courtney Mosely">CM</span><span class="avatar-xs" style="background:#FF6B6B" title="Odessa Patterson">OP</span><span class="avatar-xs" style="background:#4ECDC4" title="Raquel Twine">RT</span><span class="avatar-xs" style="background:#FFD93D" title="Tiffany Stallworth">TS</span><span class="avatar-xs" style="background:#FF8C42" title="Aaliyah Thomas">AT</span><span class="avatar-xs" style="background:#95E1D3" title="Peggee">PG</span></div>
+        <div class="answer-count">6/6</div>
+      </div>
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-green" style="width:83.33333333333334%"></div>
+        </div>
+        <div class="answer-text">Trust being broken between members</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#6C63FF" title="Courtney Mosely">CM</span><span class="avatar-xs" style="background:#FF6B6B" title="Odessa Patterson">OP</span><span class="avatar-xs" style="background:#FFD93D" title="Tiffany Stallworth">TS</span><span class="avatar-xs" style="background:#FF8C42" title="Aaliyah Thomas">AT</span><span class="avatar-xs" style="background:#95E1D3" title="Peggee">PG</span></div>
+        <div class="answer-count">5/6</div>
+      </div>
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-yellow" style="width:50%"></div>
+        </div>
+        <div class="answer-text">Consistent financial losses</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#FFD93D" title="Tiffany Stallworth">TS</span><span class="avatar-xs" style="background:#FF8C42" title="Aaliyah Thomas">AT</span><span class="avatar-xs" style="background:#95E1D3" title="Peggee">PG</span></div>
+        <div class="answer-count">3/6</div>
+      </div>
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-red" style="width:33.33333333333333%"></div>
+        </div>
+        <div class="answer-text">Personal financial circumstances changing</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#FFD93D" title="Tiffany Stallworth">TS</span><span class="avatar-xs" style="background:#95E1D3" title="Peggee">PG</span></div>
+        <div class="answer-count">2/6</div>
+      </div>
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-red" style="width:33.33333333333333%"></div>
+        </div>
+        <div class="answer-text">Disagreements on direction that can't be resolved</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#FFD93D" title="Tiffany Stallworth">TS</span><span class="avatar-xs" style="background:#95E1D3" title="Peggee">PG</span></div>
+        <div class="answer-count">2/6</div>
+      </div>
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-red" style="width:16.666666666666664%"></div>
+        </div>
+        <div class="answer-text">I can't see myself leaving — I'm fully committed</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#FF6B6B" title="Odessa Patterson">OP</span></div>
+        <div class="answer-count">1/6</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="slide" id="slide-6">
+  <div class="slide-content takeaway-slide">
+    <div class="category-badge">Vision & Alignment</div>
+    <h2>Key Takeaways</h2>
+    <div class="takeaway-columns">
+      <div class="takeaway-col consensus-col">
+        <h3>✅ Consensus Areas</h3>
+        <div class="takeaway-item green">What is your vision for Meridian Collective — what does succ...</div><div class="takeaway-item green">What is your PRIMARY personal goal for joining this group?...</div><div class="takeaway-item green">What is your risk tolerance for this venture?...</div><div class="takeaway-item green">How many hours per week can you REALISTICALLY commit to Meri...</div><div class="takeaway-item green">What would cause you to want to EXIT Meridian Collective?...</div>
+      </div>
+      <div class="takeaway-col disagreement-col">
+        <h3>⚠️ Needs Discussion</h3>
+        <div class="takeaway-item dim">Good alignment across the board!</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="slide" id="slide-7">
+  <div class="slide-content">
+    <div class="category-badge">Ownership & Membership Structure</div>
+    <h2 class="question-text">How will ownership be structured?</h2>
+    <div class="consensus-indicator consensus-green">Strong Consensus — 4/6 agree</div>
+    <div class="answer-grid">
+      
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-green" style="width:66.66666666666666%"></div>
+        </div>
+        <div class="answer-text">To be determined based on each deal</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#FF6B6B" title="Odessa Patterson">OP</span><span class="avatar-xs" style="background:#FFD93D" title="Tiffany Stallworth">TS</span><span class="avatar-xs" style="background:#FF8C42" title="Aaliyah Thomas">AT</span><span class="avatar-xs" style="background:#95E1D3" title="Peggee">PG</span></div>
+        <div class="answer-count">4/6</div>
+      </div>
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-yellow" style="width:50%"></div>
+        </div>
+        <div class="answer-text">Combination of capital and sweat equity</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#6C63FF" title="Courtney Mosely">CM</span><span class="avatar-xs" style="background:#FFD93D" title="Tiffany Stallworth">TS</span><span class="avatar-xs" style="background:#FF8C42" title="Aaliyah Thomas">AT</span></div>
+        <div class="answer-count">3/6</div>
+      </div>
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-yellow" style="width:50%"></div>
+        </div>
+        <div class="answer-text">Weighted by capital contribution</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#FF6B6B" title="Odessa Patterson">OP</span><span class="avatar-xs" style="background:#FFD93D" title="Tiffany Stallworth">TS</span><span class="avatar-xs" style="background:#FF8C42" title="Aaliyah Thomas">AT</span></div>
+        <div class="answer-count">3/6</div>
+      </div>
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-red" style="width:33.33333333333333%"></div>
+        </div>
+        <div class="answer-text">Equal ownership for all members</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#FF6B6B" title="Odessa Patterson">OP</span><span class="avatar-xs" style="background:#4ECDC4" title="Raquel Twine">RT</span></div>
+        <div class="answer-count">2/6</div>
+      </div>
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-red" style="width:16.666666666666664%"></div>
+        </div>
+        <div class="answer-text">Weighted by time/effort/sweat equity</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#FFD93D" title="Tiffany Stallworth">TS</span></div>
+        <div class="answer-count">1/6</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="slide" id="slide-8">
+  <div class="slide-content">
+    <div class="category-badge">Ownership & Membership Structure</div>
+    <h2 class="question-text">Can new members be added in the future?</h2>
+    <div class="consensus-indicator consensus-green">Strong Consensus — 4/6 agree</div>
+    <div class="answer-grid">
+      
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-green" style="width:66.66666666666666%"></div>
+        </div>
+        <div class="answer-text">Yes, with supermajority (2/3) approval</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#4ECDC4" title="Raquel Twine">RT</span><span class="avatar-xs" style="background:#FFD93D" title="Tiffany Stallworth">TS</span><span class="avatar-xs" style="background:#FF8C42" title="Aaliyah Thomas">AT</span><span class="avatar-xs" style="background:#95E1D3" title="Peggee">PG</span></div>
+        <div class="answer-count">4/6</div>
+      </div>
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-yellow" style="width:50%"></div>
+        </div>
+        <div class="answer-text">Yes, with unanimous approval of existing members</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#6C63FF" title="Courtney Mosely">CM</span><span class="avatar-xs" style="background:#FF6B6B" title="Odessa Patterson">OP</span><span class="avatar-xs" style="background:#FFD93D" title="Tiffany Stallworth">TS</span></div>
+        <div class="answer-count">3/6</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="slide" id="slide-9">
+  <div class="slide-content">
+    <div class="category-badge">Ownership & Membership Structure</div>
+    <h2 class="question-text">Can a member transfer or sell their ownership interest to someone outside the group?</h2>
+    <div class="consensus-indicator consensus-green">Strong Consensus — 4/6 agree</div>
+    <div class="answer-grid">
+      
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-green" style="width:66.66666666666666%"></div>
+        </div>
+        <div class="answer-text">Only with unanimous consent of all members</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#6C63FF" title="Courtney Mosely">CM</span><span class="avatar-xs" style="background:#FF6B6B" title="Odessa Patterson">OP</span><span class="avatar-xs" style="background:#FFD93D" title="Tiffany Stallworth">TS</span><span class="avatar-xs" style="background:#95E1D3" title="Peggee">PG</span></div>
+        <div class="answer-count">4/6</div>
+      </div>
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-yellow" style="width:50%"></div>
+        </div>
+        <div class="answer-text">Allowed with majority approval</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#4ECDC4" title="Raquel Twine">RT</span><span class="avatar-xs" style="background:#FFD93D" title="Tiffany Stallworth">TS</span><span class="avatar-xs" style="background:#FF8C42" title="Aaliyah Thomas">AT</span></div>
+        <div class="answer-count">3/6</div>
+      </div>
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-red" style="width:33.33333333333333%"></div>
+        </div>
+        <div class="answer-text">No outside transfers — must sell back to the group</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#FF6B6B" title="Odessa Patterson">OP</span><span class="avatar-xs" style="background:#FF8C42" title="Aaliyah Thomas">AT</span></div>
+        <div class="answer-count">2/6</div>
+      </div>
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-red" style="width:16.666666666666664%"></div>
+        </div>
+        <div class="answer-text">Allowed freely after a minimum holding period</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#FFD93D" title="Tiffany Stallworth">TS</span></div>
+        <div class="answer-count">1/6</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="slide" id="slide-10">
+  <div class="slide-content">
+    <div class="category-badge">Ownership & Membership Structure</div>
+    <h2 class="question-text">What happens to a member's interest if they pass away, become incapacitated, go through a divorce, or file for bankruptcy?</h2>
+    <div class="consensus-indicator consensus-green">Strong Consensus — 4/6 agree</div>
+    <div class="answer-grid">
+      
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-green" style="width:66.66666666666666%"></div>
+        </div>
+        <div class="answer-text">Group has mandatory buyout right at fair market value in all cases</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#FF6B6B" title="Odessa Patterson">OP</span><span class="avatar-xs" style="background:#FFD93D" title="Tiffany Stallworth">TS</span><span class="avatar-xs" style="background:#FF8C42" title="Aaliyah Thomas">AT</span><span class="avatar-xs" style="background:#95E1D3" title="Peggee">PG</span></div>
+        <div class="answer-count">4/6</div>
+      </div>
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-yellow" style="width:50%"></div>
+        </div>
+        <div class="answer-text">Heir inherits economic interest only (no voting) unless group approves full membership</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#6C63FF" title="Courtney Mosely">CM</span><span class="avatar-xs" style="background:#FF6B6B" title="Odessa Patterson">OP</span><span class="avatar-xs" style="background:#FFD93D" title="Tiffany Stallworth">TS</span></div>
+        <div class="answer-count">3/6</div>
+      </div>
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-red" style="width:33.33333333333333%"></div>
+        </div>
+        <div class="answer-text">Handle each situation case-by-case per the operating agreement provisions</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#4ECDC4" title="Raquel Twine">RT</span><span class="avatar-xs" style="background:#FF8C42" title="Aaliyah Thomas">AT</span></div>
+        <div class="answer-count">2/6</div>
+      </div>
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-red" style="width:33.33333333333333%"></div>
+        </div>
+        <div class="answer-text">Interest passes to estate/heirs with group approval; buyout right for divorce/bankruptcy</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#4ECDC4" title="Raquel Twine">RT</span><span class="avatar-xs" style="background:#FFD93D" title="Tiffany Stallworth">TS</span></div>
+        <div class="answer-count">2/6</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="slide" id="slide-11">
+  <div class="slide-content takeaway-slide">
+    <div class="category-badge">Ownership & Membership Structure</div>
+    <h2>Key Takeaways</h2>
+    <div class="takeaway-columns">
+      <div class="takeaway-col consensus-col">
+        <h3>✅ Consensus Areas</h3>
+        <div class="takeaway-item green">How will ownership be structured?...</div><div class="takeaway-item green">Can new members be added in the future?...</div><div class="takeaway-item green">Can a member transfer or sell their ownership interest to so...</div><div class="takeaway-item green">What happens to a member's interest if they pass away, becom...</div>
+      </div>
+      <div class="takeaway-col disagreement-col">
+        <h3>⚠️ Needs Discussion</h3>
+        <div class="takeaway-item dim">Good alignment across the board!</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="slide" id="slide-12">
+  <div class="slide-content">
+    <div class="category-badge">Capital Contributions</div>
+    <h2 class="question-text">How much is each member contributing to start, and by what date?</h2>
+    <div class="consensus-indicator consensus-green">Strong Consensus — 4/6 agree</div>
+    <div class="answer-grid">
+      
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-green" style="width:66.66666666666666%"></div>
+        </div>
+        <div class="answer-text">Variable amounts based on individual capacity</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#6C63FF" title="Courtney Mosely">CM</span><span class="avatar-xs" style="background:#4ECDC4" title="Raquel Twine">RT</span><span class="avatar-xs" style="background:#FFD93D" title="Tiffany Stallworth">TS</span><span class="avatar-xs" style="background:#FF8C42" title="Aaliyah Thomas">AT</span></div>
+        <div class="answer-count">4/6</div>
+      </div>
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-yellow" style="width:50%"></div>
+        </div>
+        <div class="answer-text">$5,000 each within 30 days</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#FF6B6B" title="Odessa Patterson">OP</span><span class="avatar-xs" style="background:#FFD93D" title="Tiffany Stallworth">TS</span><span class="avatar-xs" style="background:#95E1D3" title="Peggee">PG</span></div>
+        <div class="answer-count">3/6</div>
+      </div>
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-red" style="width:16.666666666666664%"></div>
+        </div>
+        <div class="answer-text">$10,000 each within 30 days</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#FF6B6B" title="Odessa Patterson">OP</span></div>
+        <div class="answer-count">1/6</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="slide" id="slide-13">
+  <div class="slide-content">
+    <div class="category-badge">Capital Contributions</div>
+    <h2 class="question-text">What forms of contribution are acceptable?</h2>
+    <div class="consensus-indicator consensus-green">Strong Consensus — 5/6 agree</div>
+    <div class="answer-grid">
+      
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-green" style="width:83.33333333333334%"></div>
+        </div>
+        <div class="answer-text">Cash, property, services, and credit/lending capacity</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#6C63FF" title="Courtney Mosely">CM</span><span class="avatar-xs" style="background:#4ECDC4" title="Raquel Twine">RT</span><span class="avatar-xs" style="background:#FFD93D" title="Tiffany Stallworth">TS</span><span class="avatar-xs" style="background:#FF8C42" title="Aaliyah Thomas">AT</span><span class="avatar-xs" style="background:#95E1D3" title="Peggee">PG</span></div>
+        <div class="answer-count">5/6</div>
+      </div>
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-yellow" style="width:50%"></div>
+        </div>
+        <div class="answer-text">Cash, property, and documented services/sweat equity</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#4ECDC4" title="Raquel Twine">RT</span><span class="avatar-xs" style="background:#FFD93D" title="Tiffany Stallworth">TS</span><span class="avatar-xs" style="background:#95E1D3" title="Peggee">PG</span></div>
+        <div class="answer-count">3/6</div>
+      </div>
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-red" style="width:33.33333333333333%"></div>
+        </div>
+        <div class="answer-text">Any form with agreed-upon valuation by all members</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#FFD93D" title="Tiffany Stallworth">TS</span><span class="avatar-xs" style="background:#95E1D3" title="Peggee">PG</span></div>
+        <div class="answer-count">2/6</div>
+      </div>
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-red" style="width:16.666666666666664%"></div>
+        </div>
+        <div class="answer-text">Cash only</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#FF6B6B" title="Odessa Patterson">OP</span></div>
+        <div class="answer-count">1/6</div>
+      </div>
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-red" style="width:16.666666666666664%"></div>
+        </div>
+        <div class="answer-text">Cash and real property</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#FF6B6B" title="Odessa Patterson">OP</span></div>
+        <div class="answer-count">1/6</div>
+      </div>
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-red" style="width:16.666666666666664%"></div>
+        </div>
+        <div class="answer-text">LOC</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#FF6B6B" title="Odessa Patterson">OP</span></div>
+        <div class="answer-count">1/6</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="slide" id="slide-14">
+  <div class="slide-content">
+    <div class="category-badge">Capital Contributions</div>
+    <h2 class="question-text">What happens if a member cannot make their contribution on time?</h2>
+    <div class="consensus-indicator consensus-green">Strong Consensus — 5/6 agree</div>
+    <div class="answer-grid">
+      
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-green" style="width:83.33333333333334%"></div>
+        </div>
+        <div class="answer-text">30-day grace period, then ownership percentage is reduced</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#FF6B6B" title="Odessa Patterson">OP</span><span class="avatar-xs" style="background:#4ECDC4" title="Raquel Twine">RT</span><span class="avatar-xs" style="background:#FFD93D" title="Tiffany Stallworth">TS</span><span class="avatar-xs" style="background:#FF8C42" title="Aaliyah Thomas">AT</span><span class="avatar-xs" style="background:#95E1D3" title="Peggee">PG</span></div>
+        <div class="answer-count">5/6</div>
+      </div>
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-green" style="width:66.66666666666666%"></div>
+        </div>
+        <div class="answer-text">Treated as a loan from other members at agreed interest rate</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#6C63FF" title="Courtney Mosely">CM</span><span class="avatar-xs" style="background:#FF6B6B" title="Odessa Patterson">OP</span><span class="avatar-xs" style="background:#4ECDC4" title="Raquel Twine">RT</span><span class="avatar-xs" style="background:#FFD93D" title="Tiffany Stallworth">TS</span></div>
+        <div class="answer-count">4/6</div>
+      </div>
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-yellow" style="width:50%"></div>
+        </div>
+        <div class="answer-text">Remaining members cover the shortfall and adjust equity accordingly</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#FF6B6B" title="Odessa Patterson">OP</span><span class="avatar-xs" style="background:#FFD93D" title="Tiffany Stallworth">TS</span><span class="avatar-xs" style="background:#FF8C42" title="Aaliyah Thomas">AT</span></div>
+        <div class="answer-count">3/6</div>
+      </div>
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-red" style="width:16.666666666666664%"></div>
+        </div>
+        <div class="answer-text">Automatic forfeiture of membership</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#95E1D3" title="Peggee">PG</span></div>
+        <div class="answer-count">1/6</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="slide" id="slide-15">
+  <div class="slide-content">
+    <div class="category-badge">Capital Contributions</div>
+    <h2 class="question-text">If the LLC needs additional capital (capital call), what happens if someone can't or won't contribute?</h2>
+    <div class="consensus-indicator consensus-green">Strong Consensus — 5/6 agree</div>
+    <div class="answer-grid">
+      
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-green" style="width:83.33333333333334%"></div>
+        </div>
+        <div class="answer-text">Optional — contributing members receive preferred return on extra capital</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#6C63FF" title="Courtney Mosely">CM</span><span class="avatar-xs" style="background:#FF6B6B" title="Odessa Patterson">OP</span><span class="avatar-xs" style="background:#4ECDC4" title="Raquel Twine">RT</span><span class="avatar-xs" style="background:#FF8C42" title="Aaliyah Thomas">AT</span><span class="avatar-xs" style="background:#95E1D3" title="Peggee">PG</span></div>
+        <div class="answer-count">5/6</div>
+      </div>
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-red" style="width:33.33333333333333%"></div>
+        </div>
+        <div class="answer-text">Mandatory — non-contributing member's interest is reduced proportionally</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#FF6B6B" title="Odessa Patterson">OP</span><span class="avatar-xs" style="background:#FFD93D" title="Tiffany Stallworth">TS</span></div>
+        <div class="answer-count">2/6</div>
+      </div>
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-red" style="width:16.666666666666664%"></div>
+        </div>
+        <div class="answer-text">Managing Member can authorize a loan instead of a capital call</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#FF6B6B" title="Odessa Patterson">OP</span></div>
+        <div class="answer-count">1/6</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="slide" id="slide-16">
+  <div class="slide-content takeaway-slide">
+    <div class="category-badge">Capital Contributions</div>
+    <h2>Key Takeaways</h2>
+    <div class="takeaway-columns">
+      <div class="takeaway-col consensus-col">
+        <h3>✅ Consensus Areas</h3>
+        <div class="takeaway-item green">How much is each member contributing to start, and by what d...</div><div class="takeaway-item green">What forms of contribution are acceptable?...</div><div class="takeaway-item green">What happens if a member cannot make their contribution on t...</div><div class="takeaway-item green">If the LLC needs additional capital (capital call), what hap...</div>
+      </div>
+      <div class="takeaway-col disagreement-col">
+        <h3>⚠️ Needs Discussion</h3>
+        <div class="takeaway-item dim">Good alignment across the board!</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="slide" id="slide-17">
+  <div class="slide-content">
+    <div class="category-badge">Management & Decision Making</div>
+    <h2 class="question-text">Who will serve as Managing Member(s) and will they be compensated?</h2>
+    <div class="consensus-indicator consensus-green">Strong Consensus — 4/6 agree</div>
+    <div class="answer-grid">
+      
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-green" style="width:66.66666666666666%"></div>
+        </div>
+        <div class="answer-text">Two Co-Managing Members splitting duties, no extra pay</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#FF6B6B" title="Odessa Patterson">OP</span><span class="avatar-xs" style="background:#4ECDC4" title="Raquel Twine">RT</span><span class="avatar-xs" style="background:#FFD93D" title="Tiffany Stallworth">TS</span><span class="avatar-xs" style="background:#FF8C42" title="Aaliyah Thomas">AT</span></div>
+        <div class="answer-count">4/6</div>
+      </div>
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-yellow" style="width:50%"></div>
+        </div>
+        <div class="answer-text">Rotating Managing Member role (e.g., annually)</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#FF6B6B" title="Odessa Patterson">OP</span><span class="avatar-xs" style="background:#FFD93D" title="Tiffany Stallworth">TS</span><span class="avatar-xs" style="background:#95E1D3" title="Peggee">PG</span></div>
+        <div class="answer-count">3/6</div>
+      </div>
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-red" style="width:16.666666666666664%"></div>
+        </div>
+        <div class="answer-text">All members if that is possible</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#6C63FF" title="Courtney Mosely">CM</span></div>
+        <div class="answer-count">1/6</div>
+      </div>
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-red" style="width:16.666666666666664%"></div>
+        </div>
+        <div class="answer-text">Single Managing Member with a monthly management fee</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#FFD93D" title="Tiffany Stallworth">TS</span></div>
+        <div class="answer-count">1/6</div>
+      </div>
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-red" style="width:16.666666666666664%"></div>
+        </div>
+        <div class="answer-text"></div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#FF8C42" title="Aaliyah Thomas">AT</span></div>
+        <div class="answer-count">1/6</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="slide" id="slide-18">
+  <div class="slide-content">
+    <div class="category-badge">Management & Decision Making</div>
+    <h2 class="question-text">What is the dollar threshold that requires a group vote vs. what the Managing Member can decide alone?</h2>
+    <div class="consensus-indicator consensus-green">Strong Consensus — 6/6 agree</div>
+    <div class="answer-grid">
+      
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-green" style="width:100%"></div>
+        </div>
+        <div class="answer-text">All expenditures require group approval regardless of amount</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#6C63FF" title="Courtney Mosely">CM</span><span class="avatar-xs" style="background:#FF6B6B" title="Odessa Patterson">OP</span><span class="avatar-xs" style="background:#4ECDC4" title="Raquel Twine">RT</span><span class="avatar-xs" style="background:#FFD93D" title="Tiffany Stallworth">TS</span><span class="avatar-xs" style="background:#FF8C42" title="Aaliyah Thomas">AT</span><span class="avatar-xs" style="background:#95E1D3" title="Peggee">PG</span></div>
+        <div class="answer-count">6/6</div>
+      </div>
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-red" style="width:33.33333333333333%"></div>
+        </div>
+        <div class="answer-text">Managing Member can approve up to $5,000 independently</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#FF6B6B" title="Odessa Patterson">OP</span><span class="avatar-xs" style="background:#FFD93D" title="Tiffany Stallworth">TS</span></div>
+        <div class="answer-count">2/6</div>
+      </div>
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-red" style="width:16.666666666666664%"></div>
+        </div>
+        <div class="answer-text">Member approval of spend in excess of $2500.</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#FF6B6B" title="Odessa Patterson">OP</span></div>
+        <div class="answer-count">1/6</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="slide" id="slide-19">
+  <div class="slide-content">
+    <div class="category-badge">Management & Decision Making</div>
+    <h2 class="question-text">How will voting work — one vote per member or weighted by ownership?</h2>
+    <div class="consensus-indicator consensus-yellow">Partial Agreement — 3/6 agree</div>
+    <div class="answer-grid">
+      
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-yellow" style="width:50%"></div>
+        </div>
+        <div class="answer-text">One vote per member; neutral third-party mediator for ties</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#6C63FF" title="Courtney Mosely">CM</span><span class="avatar-xs" style="background:#FF6B6B" title="Odessa Patterson">OP</span><span class="avatar-xs" style="background:#4ECDC4" title="Raquel Twine">RT</span></div>
+        <div class="answer-count">3/6</div>
+      </div>
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-yellow" style="width:50%"></div>
+        </div>
+        <div class="answer-text">One vote per member for operations, weighted for financial decisions</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#FF6B6B" title="Odessa Patterson">OP</span><span class="avatar-xs" style="background:#FFD93D" title="Tiffany Stallworth">TS</span><span class="avatar-xs" style="background:#FF8C42" title="Aaliyah Thomas">AT</span></div>
+        <div class="answer-count">3/6</div>
+      </div>
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-red" style="width:33.33333333333333%"></div>
+        </div>
+        <div class="answer-text">One vote per member; Managing Member breaks ties</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#FFD93D" title="Tiffany Stallworth">TS</span><span class="avatar-xs" style="background:#FF8C42" title="Aaliyah Thomas">AT</span></div>
+        <div class="answer-count">2/6</div>
+      </div>
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-red" style="width:16.666666666666664%"></div>
+        </div>
+        <div class="answer-text">Weighted by ownership percentage; table tied votes for 30 days</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#95E1D3" title="Peggee">PG</span></div>
+        <div class="answer-count">1/6</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="slide" id="slide-20">
+  <div class="slide-content">
+    <div class="category-badge">Management & Decision Making</div>
+    <h2 class="question-text">What decisions require simple majority, supermajority, and unanimous votes?</h2>
+    <div class="consensus-indicator consensus-yellow">Partial Agreement — 3/6 agree</div>
+    <div class="answer-grid">
+      
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-yellow" style="width:50%"></div>
+        </div>
+        <div class="answer-text">Majority: day-to-day ops | Supermajority: major expenses, removing a member | Unanimous: new memb...</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#FF6B6B" title="Odessa Patterson">OP</span><span class="avatar-xs" style="background:#FF8C42" title="Aaliyah Thomas">AT</span><span class="avatar-xs" style="background:#95E1D3" title="Peggee">PG</span></div>
+        <div class="answer-count">3/6</div>
+      </div>
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-red" style="width:33.33333333333333%"></div>
+        </div>
+        <div class="answer-text">Unanimous for all major decisions; Managing Member handles everything else</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#6C63FF" title="Courtney Mosely">CM</span><span class="avatar-xs" style="background:#4ECDC4" title="Raquel Twine">RT</span></div>
+        <div class="answer-count">2/6</div>
+      </div>
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-red" style="width:33.33333333333333%"></div>
+        </div>
+        <div class="answer-text">Majority: all operational decisions | Supermajority: debt over $50K | Unanimous: dissolution and ...</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#FF6B6B" title="Odessa Patterson">OP</span><span class="avatar-xs" style="background:#95E1D3" title="Peggee">PG</span></div>
+        <div class="answer-count">2/6</div>
+      </div>
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-red" style="width:33.33333333333333%"></div>
+        </div>
+        <div class="answer-text">Everything requires supermajority except Managing Member's day-to-day authority</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#FFD93D" title="Tiffany Stallworth">TS</span><span class="avatar-xs" style="background:#FF8C42" title="Aaliyah Thomas">AT</span></div>
+        <div class="answer-count">2/6</div>
+      </div>
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-red" style="width:16.666666666666664%"></div>
+        </div>
+        <div class="answer-text">To be determined based on situation</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#4ECDC4" title="Raquel Twine">RT</span></div>
+        <div class="answer-count">1/6</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="slide" id="slide-21">
+  <div class="slide-content">
+    <div class="category-badge">Management & Decision Making</div>
+    <h2 class="question-text">Who has signature authority on bank accounts and contracts?</h2>
+    <div class="consensus-indicator consensus-red">Needs Discussion — 2/6 agree</div>
+    <div class="answer-grid">
+      
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-red" style="width:33.33333333333333%"></div>
+        </div>
+        <div class="answer-text">Managing Member plus one other member</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#FF6B6B" title="Odessa Patterson">OP</span><span class="avatar-xs" style="background:#95E1D3" title="Peggee">PG</span></div>
+        <div class="answer-count">2/6</div>
+      </div>
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-red" style="width:16.666666666666664%"></div>
+        </div>
+        <div class="answer-text">All members should have to sign off</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#6C63FF" title="Courtney Mosely">CM</span></div>
+        <div class="answer-count">1/6</div>
+      </div>
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-red" style="width:16.666666666666664%"></div>
+        </div>
+        <div class="answer-text">Managing Member only</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#4ECDC4" title="Raquel Twine">RT</span></div>
+        <div class="answer-count">1/6</div>
+      </div>
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-red" style="width:16.666666666666664%"></div>
+        </div>
+        <div class="answer-text">Any two members jointly</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#FFD93D" title="Tiffany Stallworth">TS</span></div>
+        <div class="answer-count">1/6</div>
+      </div>
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-red" style="width:16.666666666666664%"></div>
+        </div>
+        <div class="answer-text"></div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#FF8C42" title="Aaliyah Thomas">AT</span></div>
+        <div class="answer-count">1/6</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="slide" id="slide-22">
+  <div class="slide-content takeaway-slide">
+    <div class="category-badge">Management & Decision Making</div>
+    <h2>Key Takeaways</h2>
+    <div class="takeaway-columns">
+      <div class="takeaway-col consensus-col">
+        <h3>✅ Consensus Areas</h3>
+        <div class="takeaway-item green">Who will serve as Managing Member(s) and will they be compen...</div><div class="takeaway-item green">What is the dollar threshold that requires a group vote vs. ...</div>
+      </div>
+      <div class="takeaway-col disagreement-col">
+        <h3>⚠️ Needs Discussion</h3>
+        <div class="takeaway-item red">Who has signature authority on bank accounts and contracts?...</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="slide" id="slide-23">
+  <div class="slide-content">
+    <div class="category-badge">Profits, Distributions & Losses</div>
+    <h2 class="question-text">How will profits be distributed?</h2>
+    <div class="consensus-indicator consensus-green">Strong Consensus — 4/6 agree</div>
+    <div class="answer-grid">
+      
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-green" style="width:66.66666666666666%"></div>
+        </div>
+        <div class="answer-text">Deal-by-deal waterfall based on each member's contribution to that deal</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#6C63FF" title="Courtney Mosely">CM</span><span class="avatar-xs" style="background:#FF6B6B" title="Odessa Patterson">OP</span><span class="avatar-xs" style="background:#FFD93D" title="Tiffany Stallworth">TS</span><span class="avatar-xs" style="background:#FF8C42" title="Aaliyah Thomas">AT</span></div>
+        <div class="answer-count">4/6</div>
+      </div>
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-yellow" style="width:50%"></div>
+        </div>
+        <div class="answer-text">Strictly pro-rata based on ownership percentage</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#FF6B6B" title="Odessa Patterson">OP</span><span class="avatar-xs" style="background:#FF8C42" title="Aaliyah Thomas">AT</span><span class="avatar-xs" style="background:#95E1D3" title="Peggee">PG</span></div>
+        <div class="answer-count">3/6</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="slide" id="slide-24">
+  <div class="slide-content">
+    <div class="category-badge">Profits, Distributions & Losses</div>
+    <h2 class="question-text">How frequently will distributions be made?</h2>
+    <div class="consensus-indicator consensus-green">Strong Consensus — 4/6 agree</div>
+    <div class="answer-grid">
+      
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-green" style="width:66.66666666666666%"></div>
+        </div>
+        <div class="answer-text">After each deal closes</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#FF6B6B" title="Odessa Patterson">OP</span><span class="avatar-xs" style="background:#FFD93D" title="Tiffany Stallworth">TS</span><span class="avatar-xs" style="background:#FF8C42" title="Aaliyah Thomas">AT</span><span class="avatar-xs" style="background:#95E1D3" title="Peggee">PG</span></div>
+        <div class="answer-count">4/6</div>
+      </div>
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-red" style="width:16.666666666666664%"></div>
+        </div>
+        <div class="answer-text">Only when majority votes to distribute</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#6C63FF" title="Courtney Mosely">CM</span></div>
+        <div class="answer-count">1/6</div>
+      </div>
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-red" style="width:16.666666666666664%"></div>
+        </div>
+        <div class="answer-text">Quarterly</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#4ECDC4" title="Raquel Twine">RT</span></div>
+        <div class="answer-count">1/6</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="slide" id="slide-25">
+  <div class="slide-content">
+    <div class="category-badge">Profits, Distributions & Losses</div>
+    <h2 class="question-text">How will losses be allocated among members?</h2>
+    <div class="consensus-indicator consensus-green">Strong Consensus — 4/6 agree</div>
+    <div class="answer-grid">
+      
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-green" style="width:66.66666666666666%"></div>
+        </div>
+        <div class="answer-text">Pro-rata based on ownership percentage</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#FF6B6B" title="Odessa Patterson">OP</span><span class="avatar-xs" style="background:#FFD93D" title="Tiffany Stallworth">TS</span><span class="avatar-xs" style="background:#FF8C42" title="Aaliyah Thomas">AT</span><span class="avatar-xs" style="background:#95E1D3" title="Peggee">PG</span></div>
+        <div class="answer-count">4/6</div>
+      </div>
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-red" style="width:33.33333333333333%"></div>
+        </div>
+        <div class="answer-text">Equally among all members</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#6C63FF" title="Courtney Mosely">CM</span><span class="avatar-xs" style="background:#4ECDC4" title="Raquel Twine">RT</span></div>
+        <div class="answer-count">2/6</div>
+      </div>
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-red" style="width:33.33333333333333%"></div>
+        </div>
+        <div class="answer-text">Allocated to members who approved the deal</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#FFD93D" title="Tiffany Stallworth">TS</span><span class="avatar-xs" style="background:#FF8C42" title="Aaliyah Thomas">AT</span></div>
+        <div class="answer-count">2/6</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="slide" id="slide-26">
+  <div class="slide-content takeaway-slide">
+    <div class="category-badge">Profits, Distributions & Losses</div>
+    <h2>Key Takeaways</h2>
+    <div class="takeaway-columns">
+      <div class="takeaway-col consensus-col">
+        <h3>✅ Consensus Areas</h3>
+        <div class="takeaway-item green">How will profits be distributed?...</div><div class="takeaway-item green">How frequently will distributions be made?...</div><div class="takeaway-item green">How will losses be allocated among members?...</div>
+      </div>
+      <div class="takeaway-col disagreement-col">
+        <h3>⚠️ Needs Discussion</h3>
+        <div class="takeaway-item dim">Good alignment across the board!</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="slide" id="slide-27">
+  <div class="slide-content">
+    <div class="category-badge">Exit & Buyout Provisions</div>
+    <h2 class="question-text">Is there a minimum commitment period before a member can exit?</h2>
+    <div class="consensus-indicator consensus-green">Strong Consensus — 5/6 agree</div>
+    <div class="answer-grid">
+      
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-green" style="width:83.33333333333334%"></div>
+        </div>
+        <div class="answer-text">Cannot exit while active deals are in progress</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#6C63FF" title="Courtney Mosely">CM</span><span class="avatar-xs" style="background:#FF6B6B" title="Odessa Patterson">OP</span><span class="avatar-xs" style="background:#FFD93D" title="Tiffany Stallworth">TS</span><span class="avatar-xs" style="background:#FF8C42" title="Aaliyah Thomas">AT</span><span class="avatar-xs" style="background:#95E1D3" title="Peggee">PG</span></div>
+        <div class="answer-count">5/6</div>
+      </div>
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-yellow" style="width:50%"></div>
+        </div>
+        <div class="answer-text">No minimum — members can exit anytime</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#4ECDC4" title="Raquel Twine">RT</span><span class="avatar-xs" style="background:#FF8C42" title="Aaliyah Thomas">AT</span><span class="avatar-xs" style="background:#95E1D3" title="Peggee">PG</span></div>
+        <div class="answer-count">3/6</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="slide" id="slide-28">
+  <div class="slide-content">
+    <div class="category-badge">Exit & Buyout Provisions</div>
+    <h2 class="question-text">How is a departing member's interest valued?</h2>
+    <div class="consensus-indicator consensus-green">Strong Consensus — 5/6 agree</div>
+    <div class="answer-grid">
+      
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-green" style="width:83.33333333333334%"></div>
+        </div>
+        <div class="answer-text">Negotiation between departing member and remaining members</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#6C63FF" title="Courtney Mosely">CM</span><span class="avatar-xs" style="background:#FF6B6B" title="Odessa Patterson">OP</span><span class="avatar-xs" style="background:#4ECDC4" title="Raquel Twine">RT</span><span class="avatar-xs" style="background:#FFD93D" title="Tiffany Stallworth">TS</span><span class="avatar-xs" style="background:#FF8C42" title="Aaliyah Thomas">AT</span></div>
+        <div class="answer-count">5/6</div>
+      </div>
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-red" style="width:33.33333333333333%"></div>
+        </div>
+        <div class="answer-text">Formula based on capital account plus share of unrealized gains</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#FF6B6B" title="Odessa Patterson">OP</span><span class="avatar-xs" style="background:#4ECDC4" title="Raquel Twine">RT</span></div>
+        <div class="answer-count">2/6</div>
+      </div>
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-red" style="width:16.666666666666664%"></div>
+        </div>
+        <div class="answer-text">Independent third-party appraisal of all LLC assets</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#FFD93D" title="Tiffany Stallworth">TS</span></div>
+        <div class="answer-count">1/6</div>
+      </div>
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-red" style="width:16.666666666666664%"></div>
+        </div>
+        <div class="answer-text">Book value of capital account</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#95E1D3" title="Peggee">PG</span></div>
+        <div class="answer-count">1/6</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="slide" id="slide-29">
+  <div class="slide-content">
+    <div class="category-badge">Exit & Buyout Provisions</div>
+    <h2 class="question-text">Does the group have right of first refusal?</h2>
+    <div class="consensus-indicator consensus-red">Needs Discussion — 2/6 agree</div>
+    <div class="answer-grid">
+      
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-red" style="width:33.33333333333333%"></div>
+        </div>
+        <div class="answer-text">Yes, 30-day right of first refusal</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#6C63FF" title="Courtney Mosely">CM</span><span class="avatar-xs" style="background:#FF8C42" title="Aaliyah Thomas">AT</span></div>
+        <div class="answer-count">2/6</div>
+      </div>
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-red" style="width:33.33333333333333%"></div>
+        </div>
+        <div class="answer-text">No — departing member can sell to anyone with group approval</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#4ECDC4" title="Raquel Twine">RT</span><span class="avatar-xs" style="background:#FFD93D" title="Tiffany Stallworth">TS</span></div>
+        <div class="answer-count">2/6</div>
+      </div>
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-red" style="width:33.33333333333333%"></div>
+        </div>
+        <div class="answer-text">Yes, 60-day right of first refusal</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#FFD93D" title="Tiffany Stallworth">TS</span><span class="avatar-xs" style="background:#95E1D3" title="Peggee">PG</span></div>
+        <div class="answer-count">2/6</div>
+      </div>
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-red" style="width:16.666666666666664%"></div>
+        </div>
+        <div class="answer-text">Yes, 90-day right of first refusal</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#FF6B6B" title="Odessa Patterson">OP</span></div>
+        <div class="answer-count">1/6</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="slide" id="slide-30">
+  <div class="slide-content">
+    <div class="category-badge">Exit & Buyout Provisions</div>
+    <h2 class="question-text">What is the buyout payment timeline?</h2>
+    <div class="consensus-indicator consensus-green">Strong Consensus — 5/6 agree</div>
+    <div class="answer-grid">
+      
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-green" style="width:83.33333333333334%"></div>
+        </div>
+        <div class="answer-text">Negotiated case-by-case</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#6C63FF" title="Courtney Mosely">CM</span><span class="avatar-xs" style="background:#FF6B6B" title="Odessa Patterson">OP</span><span class="avatar-xs" style="background:#4ECDC4" title="Raquel Twine">RT</span><span class="avatar-xs" style="background:#FFD93D" title="Tiffany Stallworth">TS</span><span class="avatar-xs" style="background:#95E1D3" title="Peggee">PG</span></div>
+        <div class="answer-count">5/6</div>
+      </div>
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-red" style="width:16.666666666666664%"></div>
+        </div>
+        <div class="answer-text">Lump sum within 90 days</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#FF8C42" title="Aaliyah Thomas">AT</span></div>
+        <div class="answer-count">1/6</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="slide" id="slide-31">
+  <div class="slide-content">
+    <div class="category-badge">Exit & Buyout Provisions</div>
+    <h2 class="question-text">What are the grounds for involuntary removal of a member?</h2>
+    <div class="consensus-indicator consensus-green">Strong Consensus — 5/6 agree</div>
+    <div class="answer-grid">
+      
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-green" style="width:83.33333333333334%"></div>
+        </div>
+        <div class="answer-text">Fraud, embezzlement, or criminal conviction related to business</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#FF6B6B" title="Odessa Patterson">OP</span><span class="avatar-xs" style="background:#4ECDC4" title="Raquel Twine">RT</span><span class="avatar-xs" style="background:#FFD93D" title="Tiffany Stallworth">TS</span><span class="avatar-xs" style="background:#FF8C42" title="Aaliyah Thomas">AT</span><span class="avatar-xs" style="background:#95E1D3" title="Peggee">PG</span></div>
+        <div class="answer-count">5/6</div>
+      </div>
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-green" style="width:66.66666666666666%"></div>
+        </div>
+        <div class="answer-text">Consistent failure to fulfill responsibilities after written notice</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#FF6B6B" title="Odessa Patterson">OP</span><span class="avatar-xs" style="background:#FFD93D" title="Tiffany Stallworth">TS</span><span class="avatar-xs" style="background:#FF8C42" title="Aaliyah Thomas">AT</span><span class="avatar-xs" style="background:#95E1D3" title="Peggee">PG</span></div>
+        <div class="answer-count">4/6</div>
+      </div>
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-yellow" style="width:50%"></div>
+        </div>
+        <div class="answer-text">All of the above</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#6C63FF" title="Courtney Mosely">CM</span><span class="avatar-xs" style="background:#4ECDC4" title="Raquel Twine">RT</span><span class="avatar-xs" style="background:#95E1D3" title="Peggee">PG</span></div>
+        <div class="answer-count">3/6</div>
+      </div>
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-red" style="width:16.666666666666664%"></div>
+        </div>
+        <div class="answer-text">Any felony conviction</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#95E1D3" title="Peggee">PG</span></div>
+        <div class="answer-count">1/6</div>
+      </div>
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-red" style="width:16.666666666666664%"></div>
+        </div>
+        <div class="answer-text">All of the above plus personal bankruptcy</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#95E1D3" title="Peggee">PG</span></div>
+        <div class="answer-count">1/6</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="slide" id="slide-32">
+  <div class="slide-content">
+    <div class="category-badge">Exit & Buyout Provisions</div>
+    <h2 class="question-text">What happens to a member's interest if they pass away?</h2>
+    <div class="consensus-indicator consensus-yellow">Partial Agreement — 3/6 agree</div>
+    <div class="answer-grid">
+      
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-yellow" style="width:50%"></div>
+        </div>
+        <div class="answer-text">Heir inherits economic interest only (no voting rights) unless group approves</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#6C63FF" title="Courtney Mosely">CM</span><span class="avatar-xs" style="background:#FF6B6B" title="Odessa Patterson">OP</span><span class="avatar-xs" style="background:#FFD93D" title="Tiffany Stallworth">TS</span></div>
+        <div class="answer-count">3/6</div>
+      </div>
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-yellow" style="width:50%"></div>
+        </div>
+        <div class="answer-text">Group has mandatory buyout right at fair market value</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#FF6B6B" title="Odessa Patterson">OP</span><span class="avatar-xs" style="background:#FF8C42" title="Aaliyah Thomas">AT</span><span class="avatar-xs" style="background:#95E1D3" title="Peggee">PG</span></div>
+        <div class="answer-count">3/6</div>
+      </div>
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-yellow" style="width:50%"></div>
+        </div>
+        <div class="answer-text">Interest passes to estate/heirs automatically</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#4ECDC4" title="Raquel Twine">RT</span><span class="avatar-xs" style="background:#FFD93D" title="Tiffany Stallworth">TS</span><span class="avatar-xs" style="background:#95E1D3" title="Peggee">PG</span></div>
+        <div class="answer-count">3/6</div>
+      </div>
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-red" style="width:33.33333333333333%"></div>
+        </div>
+        <div class="answer-text">Life insurance policy funds a mandatory buyout</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#FF6B6B" title="Odessa Patterson">OP</span><span class="avatar-xs" style="background:#95E1D3" title="Peggee">PG</span></div>
+        <div class="answer-count">2/6</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="slide" id="slide-33">
+  <div class="slide-content">
+    <div class="category-badge">Exit & Buyout Provisions</div>
+    <h2 class="question-text">What happens if a member becomes incapacitated?</h2>
+    <div class="consensus-indicator consensus-green">Strong Consensus — 4/6 agree</div>
+    <div class="answer-grid">
+      
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-green" style="width:66.66666666666666%"></div>
+        </div>
+        <div class="answer-text">6-month grace period, then mandatory buyout if no recovery</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#6C63FF" title="Courtney Mosely">CM</span><span class="avatar-xs" style="background:#FF6B6B" title="Odessa Patterson">OP</span><span class="avatar-xs" style="background:#FFD93D" title="Tiffany Stallworth">TS</span><span class="avatar-xs" style="background:#FF8C42" title="Aaliyah Thomas">AT</span></div>
+        <div class="answer-count">4/6</div>
+      </div>
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-yellow" style="width:50%"></div>
+        </div>
+        <div class="answer-text">Power of attorney holder acts on their behalf</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#4ECDC4" title="Raquel Twine">RT</span><span class="avatar-xs" style="background:#FFD93D" title="Tiffany Stallworth">TS</span><span class="avatar-xs" style="background:#95E1D3" title="Peggee">PG</span></div>
+        <div class="answer-count">3/6</div>
+      </div>
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-yellow" style="width:50%"></div>
+        </div>
+        <div class="answer-text">Group has mandatory buyout right at fair market value</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#FFD93D" title="Tiffany Stallworth">TS</span><span class="avatar-xs" style="background:#FF8C42" title="Aaliyah Thomas">AT</span><span class="avatar-xs" style="background:#95E1D3" title="Peggee">PG</span></div>
+        <div class="answer-count">3/6</div>
+      </div>
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-red" style="width:33.33333333333333%"></div>
+        </div>
+        <div class="answer-text">Member retains ownership but loses voting rights</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#FF6B6B" title="Odessa Patterson">OP</span><span class="avatar-xs" style="background:#FFD93D" title="Tiffany Stallworth">TS</span></div>
+        <div class="answer-count">2/6</div>
+      </div>
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-red" style="width:16.666666666666664%"></div>
+        </div>
+        <div class="answer-text">Designate a successor representative in advance</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#95E1D3" title="Peggee">PG</span></div>
+        <div class="answer-count">1/6</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="slide" id="slide-34">
+  <div class="slide-content">
+    <div class="category-badge">Exit & Buyout Provisions</div>
+    <h2 class="question-text">What happens if a member goes through a divorce?</h2>
+    <div class="consensus-indicator consensus-green">Strong Consensus — 4/6 agree</div>
+    <div class="answer-grid">
+      
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-green" style="width:66.66666666666666%"></div>
+        </div>
+        <div class="answer-text">Handle case-by-case with group vote</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#FF6B6B" title="Odessa Patterson">OP</span><span class="avatar-xs" style="background:#4ECDC4" title="Raquel Twine">RT</span><span class="avatar-xs" style="background:#FFD93D" title="Tiffany Stallworth">TS</span><span class="avatar-xs" style="background:#95E1D3" title="Peggee">PG</span></div>
+        <div class="answer-count">4/6</div>
+      </div>
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-yellow" style="width:50%"></div>
+        </div>
+        <div class="answer-text">Operating agreement explicitly excludes spouse claims</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#FF6B6B" title="Odessa Patterson">OP</span><span class="avatar-xs" style="background:#FFD93D" title="Tiffany Stallworth">TS</span><span class="avatar-xs" style="background:#FF8C42" title="Aaliyah Thomas">AT</span></div>
+        <div class="answer-count">3/6</div>
+      </div>
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-red" style="width:33.33333333333333%"></div>
+        </div>
+        <div class="answer-text">Spouse can only receive financial value, not membership rights</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#6C63FF" title="Courtney Mosely">CM</span><span class="avatar-xs" style="background:#FF6B6B" title="Odessa Patterson">OP</span></div>
+        <div class="answer-count">2/6</div>
+      </div>
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-red" style="width:16.666666666666664%"></div>
+        </div>
+        <div class="answer-text">Group has mandatory buyout right before spouse receives interest</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#4ECDC4" title="Raquel Twine">RT</span></div>
+        <div class="answer-count">1/6</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="slide" id="slide-35">
+  <div class="slide-content takeaway-slide">
+    <div class="category-badge">Exit & Buyout Provisions</div>
+    <h2>Key Takeaways</h2>
+    <div class="takeaway-columns">
+      <div class="takeaway-col consensus-col">
+        <h3>✅ Consensus Areas</h3>
+        <div class="takeaway-item green">Is there a minimum commitment period before a member can exi...</div><div class="takeaway-item green">How is a departing member's interest valued?...</div><div class="takeaway-item green">What is the buyout payment timeline?...</div><div class="takeaway-item green">What are the grounds for involuntary removal of a member?...</div><div class="takeaway-item green">What happens if a member becomes incapacitated?...</div><div class="takeaway-item green">What happens if a member goes through a divorce?...</div>
+      </div>
+      <div class="takeaway-col disagreement-col">
+        <h3>⚠️ Needs Discussion</h3>
+        <div class="takeaway-item red">Does the group have right of first refusal?...</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="slide" id="slide-36">
+  <div class="slide-content">
+    <div class="category-badge">Financing & Debt</div>
+    <h2 class="question-text">Is the group open to taking on debt for deals?</h2>
+    <div class="consensus-indicator consensus-green">Strong Consensus — 6/6 agree</div>
+    <div class="answer-grid">
+      
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-green" style="width:100%"></div>
+        </div>
+        <div class="answer-text">Leverage preferred — maximize returns with OPM</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#6C63FF" title="Courtney Mosely">CM</span><span class="avatar-xs" style="background:#FF6B6B" title="Odessa Patterson">OP</span><span class="avatar-xs" style="background:#4ECDC4" title="Raquel Twine">RT</span><span class="avatar-xs" style="background:#FFD93D" title="Tiffany Stallworth">TS</span><span class="avatar-xs" style="background:#FF8C42" title="Aaliyah Thomas">AT</span><span class="avatar-xs" style="background:#95E1D3" title="Peggee">PG</span></div>
+        <div class="answer-count">6/6</div>
+      </div>
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-green" style="width:83.33333333333334%"></div>
+        </div>
+        <div class="answer-text">Hard money for flips, conventional for holds</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#6C63FF" title="Courtney Mosely">CM</span><span class="avatar-xs" style="background:#FF6B6B" title="Odessa Patterson">OP</span><span class="avatar-xs" style="background:#4ECDC4" title="Raquel Twine">RT</span><span class="avatar-xs" style="background:#FFD93D" title="Tiffany Stallworth">TS</span><span class="avatar-xs" style="background:#FF8C42" title="Aaliyah Thomas">AT</span></div>
+        <div class="answer-count">5/6</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="slide" id="slide-37">
+  <div class="slide-content">
+    <div class="category-badge">Financing & Debt</div>
+    <h2 class="question-text">Will members be required to personally guarantee loans?</h2>
+    <div class="consensus-indicator consensus-green">Strong Consensus — 4/6 agree</div>
+    <div class="answer-grid">
+      
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-green" style="width:66.66666666666666%"></div>
+        </div>
+        <div class="answer-text">Yes, all members guarantee equally</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#6C63FF" title="Courtney Mosely">CM</span><span class="avatar-xs" style="background:#FF6B6B" title="Odessa Patterson">OP</span><span class="avatar-xs" style="background:#4ECDC4" title="Raquel Twine">RT</span><span class="avatar-xs" style="background:#FF8C42" title="Aaliyah Thomas">AT</span></div>
+        <div class="answer-count">4/6</div>
+      </div>
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-red" style="width:33.33333333333333%"></div>
+        </div>
+        <div class="answer-text">Guarantors rotate based on deal</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#FF6B6B" title="Odessa Patterson">OP</span><span class="avatar-xs" style="background:#FF8C42" title="Aaliyah Thomas">AT</span></div>
+        <div class="answer-count">2/6</div>
+      </div>
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-red" style="width:33.33333333333333%"></div>
+        </div>
+        <div class="answer-text">No personal guarantees — only non-recourse or asset-based lending</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#FFD93D" title="Tiffany Stallworth">TS</span><span class="avatar-xs" style="background:#95E1D3" title="Peggee">PG</span></div>
+        <div class="answer-count">2/6</div>
+      </div>
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-red" style="width:16.666666666666664%"></div>
+        </div>
+        <div class="answer-text">Only Managing Member(s) guarantee, with compensation for the risk</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#FF8C42" title="Aaliyah Thomas">AT</span></div>
+        <div class="answer-count">1/6</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="slide" id="slide-38">
+  <div class="slide-content takeaway-slide">
+    <div class="category-badge">Financing & Debt</div>
+    <h2>Key Takeaways</h2>
+    <div class="takeaway-columns">
+      <div class="takeaway-col consensus-col">
+        <h3>✅ Consensus Areas</h3>
+        <div class="takeaway-item green">Is the group open to taking on debt for deals?...</div><div class="takeaway-item green">Will members be required to personally guarantee loans?...</div>
+      </div>
+      <div class="takeaway-col disagreement-col">
+        <h3>⚠️ Needs Discussion</h3>
+        <div class="takeaway-item dim">Good alignment across the board!</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="slide" id="slide-39">
+  <div class="slide-content">
+    <div class="category-badge">Banking & Financial Controls</div>
+    <h2 class="question-text">How many signatures are required for large payments?</h2>
+    <div class="consensus-indicator consensus-green">Strong Consensus — 4/6 agree</div>
+    <div class="answer-grid">
+      
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-green" style="width:66.66666666666666%"></div>
+        </div>
+        <div class="answer-text">Single signature for budgeted items; group approval for all unbudgeted expenses</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#FF6B6B" title="Odessa Patterson">OP</span><span class="avatar-xs" style="background:#FFD93D" title="Tiffany Stallworth">TS</span><span class="avatar-xs" style="background:#FF8C42" title="Aaliyah Thomas">AT</span><span class="avatar-xs" style="background:#95E1D3" title="Peggee">PG</span></div>
+        <div class="answer-count">4/6</div>
+      </div>
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-red" style="width:33.33333333333333%"></div>
+        </div>
+        <div class="answer-text">All member signatures required for every transaction</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#6C63FF" title="Courtney Mosely">CM</span><span class="avatar-xs" style="background:#4ECDC4" title="Raquel Twine">RT</span></div>
+        <div class="answer-count">2/6</div>
+      </div>
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-red" style="width:16.666666666666664%"></div>
+        </div>
+        <div class="answer-text">Two signatures for budgeted items; group approval for all unbudgeted expenses</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#FF6B6B" title="Odessa Patterson">OP</span></div>
+        <div class="answer-count">1/6</div>
+      </div>
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-red" style="width:16.666666666666664%"></div>
+        </div>
+        <div class="answer-text">Two signatures over $5,000; group approval over $5,000</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#FFD93D" title="Tiffany Stallworth">TS</span></div>
+        <div class="answer-count">1/6</div>
+      </div>
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-red" style="width:16.666666666666664%"></div>
+        </div>
+        <div class="answer-text">Managing Member alone up to $10,000; two signatures and group approval above</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#FF8C42" title="Aaliyah Thomas">AT</span></div>
+        <div class="answer-count">1/6</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="slide" id="slide-40">
+  <div class="slide-content takeaway-slide">
+    <div class="category-badge">Banking & Financial Controls</div>
+    <h2>Key Takeaways</h2>
+    <div class="takeaway-columns">
+      <div class="takeaway-col consensus-col">
+        <h3>✅ Consensus Areas</h3>
+        <div class="takeaway-item green">How many signatures are required for large payments?...</div>
+      </div>
+      <div class="takeaway-col disagreement-col">
+        <h3>⚠️ Needs Discussion</h3>
+        <div class="takeaway-item dim">Good alignment across the board!</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="slide" id="slide-41">
+  <div class="slide-content">
+    <div class="category-badge">Conflicts of Interest & Outside Deals</div>
+    <h2 class="question-text">Can members pursue real estate deals outside of the LLC?</h2>
+    <div class="consensus-indicator consensus-green">Strong Consensus — 5/6 agree</div>
+    <div class="answer-grid">
+      
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-green" style="width:83.33333333333334%"></div>
+        </div>
+        <div class="answer-text">Yes, with full disclosure but no restrictions</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#6C63FF" title="Courtney Mosely">CM</span><span class="avatar-xs" style="background:#FF6B6B" title="Odessa Patterson">OP</span><span class="avatar-xs" style="background:#FFD93D" title="Tiffany Stallworth">TS</span><span class="avatar-xs" style="background:#FF8C42" title="Aaliyah Thomas">AT</span><span class="avatar-xs" style="background:#95E1D3" title="Peggee">PG</span></div>
+        <div class="answer-count">5/6</div>
+      </div>
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-red" style="width:16.666666666666664%"></div>
+        </div>
+        <div class="answer-text">Yes, no disclosure needed</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#4ECDC4" title="Raquel Twine">RT</span></div>
+        <div class="answer-count">1/6</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="slide" id="slide-42">
+  <div class="slide-content">
+    <div class="category-badge">Conflicts of Interest & Outside Deals</div>
+    <h2 class="question-text">Can a member do business with the LLC?</h2>
+    <div class="consensus-indicator consensus-yellow">Partial Agreement — 3/6 agree</div>
+    <div class="answer-grid">
+      
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-yellow" style="width:50%"></div>
+        </div>
+        <div class="answer-text">Yes, at or below market rate with unanimous approval</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#6C63FF" title="Courtney Mosely">CM</span><span class="avatar-xs" style="background:#4ECDC4" title="Raquel Twine">RT</span><span class="avatar-xs" style="background:#FF8C42" title="Aaliyah Thomas">AT</span></div>
+        <div class="answer-count">3/6</div>
+      </div>
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-yellow" style="width:50%"></div>
+        </div>
+        <div class="answer-text">Yes, but must obtain competitive bids to prove fair pricing</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#FF6B6B" title="Odessa Patterson">OP</span><span class="avatar-xs" style="background:#FFD93D" title="Tiffany Stallworth">TS</span><span class="avatar-xs" style="background:#95E1D3" title="Peggee">PG</span></div>
+        <div class="answer-count">3/6</div>
+      </div>
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-red" style="width:33.33333333333333%"></div>
+        </div>
+        <div class="answer-text">Yes, at market rate with full written disclosure and majority approval</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#FF8C42" title="Aaliyah Thomas">AT</span><span class="avatar-xs" style="background:#95E1D3" title="Peggee">PG</span></div>
+        <div class="answer-count">2/6</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="slide" id="slide-43">
+  <div class="slide-content takeaway-slide">
+    <div class="category-badge">Conflicts of Interest & Outside Deals</div>
+    <h2>Key Takeaways</h2>
+    <div class="takeaway-columns">
+      <div class="takeaway-col consensus-col">
+        <h3>✅ Consensus Areas</h3>
+        <div class="takeaway-item green">Can members pursue real estate deals outside of the LLC?...</div>
+      </div>
+      <div class="takeaway-col disagreement-col">
+        <h3>⚠️ Needs Discussion</h3>
+        <div class="takeaway-item dim">Good alignment across the board!</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="slide" id="slide-44">
+  <div class="slide-content">
+    <div class="category-badge">Real Estate Licenses & Commissions</div>
+    <h2 class="question-text">When a licensed member represents the LLC, who keeps the commission?</h2>
+    <div class="consensus-indicator consensus-green">Strong Consensus — 4/6 agree</div>
+    <div class="answer-grid">
+      
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-green" style="width:66.66666666666666%"></div>
+        </div>
+        <div class="answer-text">Commission goes to the LLC as revenue</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#6C63FF" title="Courtney Mosely">CM</span><span class="avatar-xs" style="background:#FF6B6B" title="Odessa Patterson">OP</span><span class="avatar-xs" style="background:#4ECDC4" title="Raquel Twine">RT</span><span class="avatar-xs" style="background:#FF8C42" title="Aaliyah Thomas">AT</span></div>
+        <div class="answer-count">4/6</div>
+      </div>
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-green" style="width:66.66666666666666%"></div>
+        </div>
+        <div class="answer-text">Decided on a deal-by-deal basis</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#4ECDC4" title="Raquel Twine">RT</span><span class="avatar-xs" style="background:#FFD93D" title="Tiffany Stallworth">TS</span><span class="avatar-xs" style="background:#FF8C42" title="Aaliyah Thomas">AT</span><span class="avatar-xs" style="background:#95E1D3" title="Peggee">PG</span></div>
+        <div class="answer-count">4/6</div>
+      </div>
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-yellow" style="width:50%"></div>
+        </div>
+        <div class="answer-text">Split — half to LLC, half to licensed member</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#FF6B6B" title="Odessa Patterson">OP</span><span class="avatar-xs" style="background:#FFD93D" title="Tiffany Stallworth">TS</span><span class="avatar-xs" style="background:#FF8C42" title="Aaliyah Thomas">AT</span></div>
+        <div class="answer-count">3/6</div>
+      </div>
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-red" style="width:16.666666666666664%"></div>
+        </div>
+        <div class="answer-text">With consideration of taxes that the the member will have to pay on the income</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#6C63FF" title="Courtney Mosely">CM</span></div>
+        <div class="answer-count">1/6</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="slide" id="slide-45">
+  <div class="slide-content takeaway-slide">
+    <div class="category-badge">Real Estate Licenses & Commissions</div>
+    <h2>Key Takeaways</h2>
+    <div class="takeaway-columns">
+      <div class="takeaway-col consensus-col">
+        <h3>✅ Consensus Areas</h3>
+        <div class="takeaway-item green">When a licensed member represents the LLC, who keeps the com...</div>
+      </div>
+      <div class="takeaway-col disagreement-col">
+        <h3>⚠️ Needs Discussion</h3>
+        <div class="takeaway-item dim">Good alignment across the board!</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="slide" id="slide-46">
+  <div class="slide-content">
+    <div class="category-badge">Dissolution</div>
+    <h2 class="question-text">What vote is required to dissolve the LLC?</h2>
+    <div class="consensus-indicator consensus-red">Needs Discussion — 2/6 agree</div>
+    <div class="answer-grid">
+      
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-red" style="width:33.33333333333333%"></div>
+        </div>
+        <div class="answer-text">Unanimous vote; pay debts then distribute pro-rata by ownership</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#6C63FF" title="Courtney Mosely">CM</span><span class="avatar-xs" style="background:#FF6B6B" title="Odessa Patterson">OP</span></div>
+        <div class="answer-count">2/6</div>
+      </div>
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-red" style="width:33.33333333333333%"></div>
+        </div>
+        <div class="answer-text">Unanimous; complete active projects first, then pay debts and distribute</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#FF6B6B" title="Odessa Patterson">OP</span><span class="avatar-xs" style="background:#95E1D3" title="Peggee">PG</span></div>
+        <div class="answer-count">2/6</div>
+      </div>
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-red" style="width:33.33333333333333%"></div>
+        </div>
+        <div class="answer-text">Supermajority (2/3); pay debts, return capital, then split remainder pro-rata</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#FFD93D" title="Tiffany Stallworth">TS</span><span class="avatar-xs" style="background:#FF8C42" title="Aaliyah Thomas">AT</span></div>
+        <div class="answer-count">2/6</div>
+      </div>
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-red" style="width:16.666666666666664%"></div>
+        </div>
+        <div class="answer-text">Supermajority (3/4); liquidate everything and distribute cash pro-rata</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#4ECDC4" title="Raquel Twine">RT</span></div>
+        <div class="answer-count">1/6</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="slide" id="slide-47">
+  <div class="slide-content takeaway-slide">
+    <div class="category-badge">Dissolution</div>
+    <h2>Key Takeaways</h2>
+    <div class="takeaway-columns">
+      <div class="takeaway-col consensus-col">
+        <h3>✅ Consensus Areas</h3>
+        <div class="takeaway-item dim">No strong consensus on these questions</div>
+      </div>
+      <div class="takeaway-col disagreement-col">
+        <h3>⚠️ Needs Discussion</h3>
+        <div class="takeaway-item red">What vote is required to dissolve the LLC?...</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="slide" id="slide-48">
+  <div class="slide-content">
+    <div class="category-badge">Dispute Resolution</div>
+    <h2 class="question-text">How will the group resolve disputes?</h2>
+    <div class="consensus-indicator consensus-green">Strong Consensus — 4/6 agree</div>
+    <div class="answer-grid">
+      
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-green" style="width:66.66666666666666%"></div>
+        </div>
+        <div class="answer-text">Mandatory mediation first, then binding arbitration</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#FF6B6B" title="Odessa Patterson">OP</span><span class="avatar-xs" style="background:#4ECDC4" title="Raquel Twine">RT</span><span class="avatar-xs" style="background:#FFD93D" title="Tiffany Stallworth">TS</span><span class="avatar-xs" style="background:#FF8C42" title="Aaliyah Thomas">AT</span></div>
+        <div class="answer-count">4/6</div>
+      </div>
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-red" style="width:33.33333333333333%"></div>
+        </div>
+        <div class="answer-text">Binding arbitration only — no litigation</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#FF8C42" title="Aaliyah Thomas">AT</span><span class="avatar-xs" style="background:#95E1D3" title="Peggee">PG</span></div>
+        <div class="answer-count">2/6</div>
+      </div>
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-red" style="width:16.666666666666664%"></div>
+        </div>
+        <div class="answer-text">Mandatory mediation first, then litigation if unresolved</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#6C63FF" title="Courtney Mosely">CM</span></div>
+        <div class="answer-count">1/6</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="slide" id="slide-49">
+  <div class="slide-content takeaway-slide">
+    <div class="category-badge">Dispute Resolution</div>
+    <h2>Key Takeaways</h2>
+    <div class="takeaway-columns">
+      <div class="takeaway-col consensus-col">
+        <h3>✅ Consensus Areas</h3>
+        <div class="takeaway-item green">How will the group resolve disputes?...</div>
+      </div>
+      <div class="takeaway-col disagreement-col">
+        <h3>⚠️ Needs Discussion</h3>
+        <div class="takeaway-item dim">Good alignment across the board!</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="slide" id="slide-50">
+  <div class="slide-content">
+    <div class="category-badge">Operating Agreement Administration</div>
+    <h2 class="question-text">How often will the Operating Agreement be reviewed?</h2>
+    <div class="consensus-indicator consensus-yellow">Partial Agreement — 3/6 agree</div>
+    <div class="answer-grid">
+      
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-yellow" style="width:50%"></div>
+        </div>
+        <div class="answer-text">Semi-annually for first 2 years then annually; supermajority (3/4) to amend</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#FF6B6B" title="Odessa Patterson">OP</span><span class="avatar-xs" style="background:#FFD93D" title="Tiffany Stallworth">TS</span><span class="avatar-xs" style="background:#FF8C42" title="Aaliyah Thomas">AT</span></div>
+        <div class="answer-count">3/6</div>
+      </div>
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-yellow" style="width:50%"></div>
+        </div>
+        <div class="answer-text">Only when triggered by a major event; unanimous to amend</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#4ECDC4" title="Raquel Twine">RT</span><span class="avatar-xs" style="background:#FFD93D" title="Tiffany Stallworth">TS</span><span class="avatar-xs" style="background:#95E1D3" title="Peggee">PG</span></div>
+        <div class="answer-count">3/6</div>
+      </div>
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-red" style="width:16.666666666666664%"></div>
+        </div>
+        <div class="answer-text">Annually; unanimous vote to amend</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#6C63FF" title="Courtney Mosely">CM</span></div>
+        <div class="answer-count">1/6</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="slide" id="slide-51">
+  <div class="slide-content takeaway-slide">
+    <div class="category-badge">Operating Agreement Administration</div>
+    <h2>Key Takeaways</h2>
+    <div class="takeaway-columns">
+      <div class="takeaway-col consensus-col">
+        <h3>✅ Consensus Areas</h3>
+        <div class="takeaway-item dim">No strong consensus on these questions</div>
+      </div>
+      <div class="takeaway-col disagreement-col">
+        <h3>⚠️ Needs Discussion</h3>
+        <div class="takeaway-item dim">Good alignment across the board!</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="slide" id="slide-52">
+  <div class="slide-content">
+    <div class="category-badge">Confidentiality & Non-Compete</div>
+    <h2 class="question-text">After a member leaves, are there non-compete or non-solicitation restrictions?</h2>
+    <div class="consensus-indicator consensus-green">Strong Consensus — 5/6 agree</div>
+    <div class="answer-grid">
+      
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-green" style="width:83.33333333333334%"></div>
+        </div>
+        <div class="answer-text">No restrictions after exit</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#6C63FF" title="Courtney Mosely">CM</span><span class="avatar-xs" style="background:#4ECDC4" title="Raquel Twine">RT</span><span class="avatar-xs" style="background:#FFD93D" title="Tiffany Stallworth">TS</span><span class="avatar-xs" style="background:#FF8C42" title="Aaliyah Thomas">AT</span><span class="avatar-xs" style="background:#95E1D3" title="Peggee">PG</span></div>
+        <div class="answer-count">5/6</div>
+      </div>
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-red" style="width:16.666666666666664%"></div>
+        </div>
+        <div class="answer-text">Non-solicitation only (can't recruit members or take LLC relationships), no non-compete</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#FF6B6B" title="Odessa Patterson">OP</span></div>
+        <div class="answer-count">1/6</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="slide" id="slide-53">
+  <div class="slide-content takeaway-slide">
+    <div class="category-badge">Confidentiality & Non-Compete</div>
+    <h2>Key Takeaways</h2>
+    <div class="takeaway-columns">
+      <div class="takeaway-col consensus-col">
+        <h3>✅ Consensus Areas</h3>
+        <div class="takeaway-item green">After a member leaves, are there non-compete or non-solicita...</div>
+      </div>
+      <div class="takeaway-col disagreement-col">
+        <h3>⚠️ Needs Discussion</h3>
+        <div class="takeaway-item dim">Good alignment across the board!</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="slide" id="slide-54">
+  <div class="slide-content">
+    <div class="category-badge">Tax & Distributions</div>
+    <h2 class="question-text">Will the LLC make mandatory tax distributions?</h2>
+    <div class="consensus-indicator consensus-yellow">Partial Agreement — 3/6 agree</div>
+    <div class="answer-grid">
+      
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-yellow" style="width:50%"></div>
+        </div>
+        <div class="answer-text">Yes — annual tax distribution before K-1s are issued</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#6C63FF" title="Courtney Mosely">CM</span><span class="avatar-xs" style="background:#FF6B6B" title="Odessa Patterson">OP</span><span class="avatar-xs" style="background:#FFD93D" title="Tiffany Stallworth">TS</span></div>
+        <div class="answer-count">3/6</div>
+      </div>
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-red" style="width:33.33333333333333%"></div>
+        </div>
+        <div class="answer-text">Tax distributions at the highest marginal rate to cover all members</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#FFD93D" title="Tiffany Stallworth">TS</span><span class="avatar-xs" style="background:#FF8C42" title="Aaliyah Thomas">AT</span></div>
+        <div class="answer-count">2/6</div>
+      </div>
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-red" style="width:33.33333333333333%"></div>
+        </div>
+        <div class="answer-text">Yes — mandatory quarterly tax distributions based on estimated liability</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#FF8C42" title="Aaliyah Thomas">AT</span><span class="avatar-xs" style="background:#95E1D3" title="Peggee">PG</span></div>
+        <div class="answer-count">2/6</div>
+      </div>
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-red" style="width:16.666666666666664%"></div>
+        </div>
+        <div class="answer-text">No — members are responsible for their own taxes from personal funds</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#4ECDC4" title="Raquel Twine">RT</span></div>
+        <div class="answer-count">1/6</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="slide" id="slide-55">
+  <div class="slide-content takeaway-slide">
+    <div class="category-badge">Tax & Distributions</div>
+    <h2>Key Takeaways</h2>
+    <div class="takeaway-columns">
+      <div class="takeaway-col consensus-col">
+        <h3>✅ Consensus Areas</h3>
+        <div class="takeaway-item dim">No strong consensus on these questions</div>
+      </div>
+      <div class="takeaway-col disagreement-col">
+        <h3>⚠️ Needs Discussion</h3>
+        <div class="takeaway-item dim">Good alignment across the board!</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="slide" id="slide-56">
+  <div class="slide-content">
+    <div class="category-badge">Spousal Consent</div>
+    <h2 class="question-text">Should spouses/partners be required to sign an acknowledgment?</h2>
+    <div class="consensus-indicator consensus-red">Needs Discussion — 2/6 agree</div>
+    <div class="answer-grid">
+      
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-red" style="width:33.33333333333333%"></div>
+        </div>
+        <div class="answer-text">Recommended but not required</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#FF6B6B" title="Odessa Patterson">OP</span><span class="avatar-xs" style="background:#4ECDC4" title="Raquel Twine">RT</span></div>
+        <div class="answer-count">2/6</div>
+      </div>
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-red" style="width:33.33333333333333%"></div>
+        </div>
+        <div class="answer-text">Yes — required before signing the Operating Agreement</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#FFD93D" title="Tiffany Stallworth">TS</span><span class="avatar-xs" style="background:#FF8C42" title="Aaliyah Thomas">AT</span></div>
+        <div class="answer-count">2/6</div>
+      </div>
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-red" style="width:16.666666666666664%"></div>
+        </div>
+        <div class="answer-text">Not sure</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#6C63FF" title="Courtney Mosely">CM</span></div>
+        <div class="answer-count">1/6</div>
+      </div>
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-red" style="width:16.666666666666664%"></div>
+        </div>
+        <div class="answer-text">No — unnecessary if divorce provisions are strong enough</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#95E1D3" title="Peggee">PG</span></div>
+        <div class="answer-count">1/6</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="slide" id="slide-57">
+  <div class="slide-content takeaway-slide">
+    <div class="category-badge">Spousal Consent</div>
+    <h2>Key Takeaways</h2>
+    <div class="takeaway-columns">
+      <div class="takeaway-col consensus-col">
+        <h3>✅ Consensus Areas</h3>
+        <div class="takeaway-item dim">No strong consensus on these questions</div>
+      </div>
+      <div class="takeaway-col disagreement-col">
+        <h3>⚠️ Needs Discussion</h3>
+        <div class="takeaway-item red">Should spouses/partners be required to sign an acknowledgmen...</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="slide" id="slide-58">
+  <div class="slide-content">
+    <div class="category-badge">Intellectual Property & Brand</div>
+    <h2 class="question-text">Who owns the Meridian Collective name, logo, website, and social media accounts?</h2>
+    <div class="consensus-indicator consensus-green">Strong Consensus — 4/6 agree</div>
+    <div class="answer-grid">
+      
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-green" style="width:66.66666666666666%"></div>
+        </div>
+        <div class="answer-text">The LLC owns all IP — departing members have no claim</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#6C63FF" title="Courtney Mosely">CM</span><span class="avatar-xs" style="background:#FF6B6B" title="Odessa Patterson">OP</span><span class="avatar-xs" style="background:#4ECDC4" title="Raquel Twine">RT</span><span class="avatar-xs" style="background:#95E1D3" title="Peggee">PG</span></div>
+        <div class="answer-count">4/6</div>
+      </div>
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-yellow" style="width:50%"></div>
+        </div>
+        <div class="answer-text">The LLC owns all IP — a departing member cannot use the name or brand in any capacity</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#FF6B6B" title="Odessa Patterson">OP</span><span class="avatar-xs" style="background:#FFD93D" title="Tiffany Stallworth">TS</span><span class="avatar-xs" style="background:#FF8C42" title="Aaliyah Thomas">AT</span></div>
+        <div class="answer-count">3/6</div>
+      </div>
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-red" style="width:33.33333333333333%"></div>
+        </div>
+        <div class="answer-text">The LLC owns all IP — upon dissolution, IP is sold or transferred by majority vote</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#4ECDC4" title="Raquel Twine">RT</span><span class="avatar-xs" style="background:#FF8C42" title="Aaliyah Thomas">AT</span></div>
+        <div class="answer-count">2/6</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="slide" id="slide-59">
+  <div class="slide-content takeaway-slide">
+    <div class="category-badge">Intellectual Property & Brand</div>
+    <h2>Key Takeaways</h2>
+    <div class="takeaway-columns">
+      <div class="takeaway-col consensus-col">
+        <h3>✅ Consensus Areas</h3>
+        <div class="takeaway-item green">Who owns the Meridian Collective name, logo, website, and so...</div>
+      </div>
+      <div class="takeaway-col disagreement-col">
+        <h3>⚠️ Needs Discussion</h3>
+        <div class="takeaway-item dim">Good alignment across the board!</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="slide" id="slide-60">
+  <div class="slide-content">
+    <div class="category-badge">Deadlock Provisions</div>
+    <h2 class="question-text">If the group is deadlocked on a critical decision for 60+ days, what happens?</h2>
+    <div class="consensus-indicator consensus-green">Strong Consensus — 4/6 agree</div>
+    <div class="answer-grid">
+      
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-green" style="width:66.66666666666666%"></div>
+        </div>
+        <div class="answer-text">Mandatory mediation with a neutral third party</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#6C63FF" title="Courtney Mosely">CM</span><span class="avatar-xs" style="background:#4ECDC4" title="Raquel Twine">RT</span><span class="avatar-xs" style="background:#FFD93D" title="Tiffany Stallworth">TS</span><span class="avatar-xs" style="background:#95E1D3" title="Peggee">PG</span></div>
+        <div class="answer-count">4/6</div>
+      </div>
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-green" style="width:66.66666666666666%"></div>
+        </div>
+        <div class="answer-text">Bring in a mutually agreed advisor to cast the deciding vote</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#FF6B6B" title="Odessa Patterson">OP</span><span class="avatar-xs" style="background:#FFD93D" title="Tiffany Stallworth">TS</span><span class="avatar-xs" style="background:#FF8C42" title="Aaliyah Thomas">AT</span><span class="avatar-xs" style="background:#95E1D3" title="Peggee">PG</span></div>
+        <div class="answer-count">4/6</div>
+      </div>
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-red" style="width:33.33333333333333%"></div>
+        </div>
+        <div class="answer-text">Forced dissolution if deadlock persists beyond 90 days</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#4ECDC4" title="Raquel Twine">RT</span><span class="avatar-xs" style="background:#95E1D3" title="Peggee">PG</span></div>
+        <div class="answer-count">2/6</div>
+      </div>
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-red" style="width:16.666666666666664%"></div>
+        </div>
+        <div class="answer-text">The decision defaults to the Managing Member's recommendation</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#95E1D3" title="Peggee">PG</span></div>
+        <div class="answer-count">1/6</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="slide" id="slide-61">
+  <div class="slide-content takeaway-slide">
+    <div class="category-badge">Deadlock Provisions</div>
+    <h2>Key Takeaways</h2>
+    <div class="takeaway-columns">
+      <div class="takeaway-col consensus-col">
+        <h3>✅ Consensus Areas</h3>
+        <div class="takeaway-item green">If the group is deadlocked on a critical decision for 60+ da...</div>
+      </div>
+      <div class="takeaway-col disagreement-col">
+        <h3>⚠️ Needs Discussion</h3>
+        <div class="takeaway-item dim">Good alignment across the board!</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="slide" id="slide-62">
+  <div class="slide-content">
+    <div class="category-badge">Fiduciary Duties</div>
+    <h2 class="question-text">Do members owe fiduciary duties to the LLC and each other?</h2>
+    <div class="consensus-indicator consensus-yellow">Partial Agreement — 3/6 agree</div>
+    <div class="answer-grid">
+      
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-yellow" style="width:50%"></div>
+        </div>
+        <div class="answer-text">Yes — duty of care only (no duty of loyalty, allowing outside deals)</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#6C63FF" title="Courtney Mosely">CM</span><span class="avatar-xs" style="background:#FF6B6B" title="Odessa Patterson">OP</span><span class="avatar-xs" style="background:#95E1D3" title="Peggee">PG</span></div>
+        <div class="answer-count">3/6</div>
+      </div>
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-yellow" style="width:50%"></div>
+        </div>
+        <div class="answer-text">Let the attorney define appropriate fiduciary standards for our structure</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#FF6B6B" title="Odessa Patterson">OP</span><span class="avatar-xs" style="background:#4ECDC4" title="Raquel Twine">RT</span><span class="avatar-xs" style="background:#95E1D3" title="Peggee">PG</span></div>
+        <div class="answer-count">3/6</div>
+      </div>
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-red" style="width:33.33333333333333%"></div>
+        </div>
+        <div class="answer-text">Yes — but modified to allow outside real estate activity with disclosure</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#FFD93D" title="Tiffany Stallworth">TS</span><span class="avatar-xs" style="background:#FF8C42" title="Aaliyah Thomas">AT</span></div>
+        <div class="answer-count">2/6</div>
+      </div>
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-red" style="width:16.666666666666664%"></div>
+        </div>
+        <div class="answer-text">Yes — full fiduciary duties as defined by Georgia law</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#FFD93D" title="Tiffany Stallworth">TS</span></div>
+        <div class="answer-count">1/6</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="slide" id="slide-63">
+  <div class="slide-content takeaway-slide">
+    <div class="category-badge">Fiduciary Duties</div>
+    <h2>Key Takeaways</h2>
+    <div class="takeaway-columns">
+      <div class="takeaway-col consensus-col">
+        <h3>✅ Consensus Areas</h3>
+        <div class="takeaway-item dim">No strong consensus on these questions</div>
+      </div>
+      <div class="takeaway-col disagreement-col">
+        <h3>⚠️ Needs Discussion</h3>
+        <div class="takeaway-item dim">Good alignment across the board!</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="slide" id="slide-64">
+  <div class="slide-content">
+    <div class="category-badge">Insurance Requirements</div>
+    <h2 class="question-text">What insurance coverage will the LLC maintain?</h2>
+    <div class="consensus-indicator consensus-green">Strong Consensus — 4/6 agree</div>
+    <div class="answer-grid">
+      
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-green" style="width:66.66666666666666%"></div>
+        </div>
+        <div class="answer-text">Full coverage package — let insurance broker recommend based on our activity</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#6C63FF" title="Courtney Mosely">CM</span><span class="avatar-xs" style="background:#FF6B6B" title="Odessa Patterson">OP</span><span class="avatar-xs" style="background:#4ECDC4" title="Raquel Twine">RT</span><span class="avatar-xs" style="background:#FFD93D" title="Tiffany Stallworth">TS</span></div>
+        <div class="answer-count">4/6</div>
+      </div>
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-yellow" style="width:50%"></div>
+        </div>
+        <div class="answer-text">General liability + property + umbrella + builder's risk for active projects</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#FF6B6B" title="Odessa Patterson">OP</span><span class="avatar-xs" style="background:#FFD93D" title="Tiffany Stallworth">TS</span><span class="avatar-xs" style="background:#95E1D3" title="Peggee">PG</span></div>
+        <div class="answer-count">3/6</div>
+      </div>
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-red" style="width:16.666666666666664%"></div>
+        </div>
+        <div class="answer-text">Not my expertise</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#FF8C42" title="Aaliyah Thomas">AT</span></div>
+        <div class="answer-count">1/6</div>
+      </div>
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-red" style="width:16.666666666666664%"></div>
+        </div>
+        <div class="answer-text">General liability + property + umbrella policy ($1M+)</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#95E1D3" title="Peggee">PG</span></div>
+        <div class="answer-count">1/6</div>
+      </div>
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-red" style="width:16.666666666666664%"></div>
+        </div>
+        <div class="answer-text">General liability + property insurance on each asset</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#95E1D3" title="Peggee">PG</span></div>
+        <div class="answer-count">1/6</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="slide" id="slide-65">
+  <div class="slide-content takeaway-slide">
+    <div class="category-badge">Insurance Requirements</div>
+    <h2>Key Takeaways</h2>
+    <div class="takeaway-columns">
+      <div class="takeaway-col consensus-col">
+        <h3>✅ Consensus Areas</h3>
+        <div class="takeaway-item green">What insurance coverage will the LLC maintain?...</div>
+      </div>
+      <div class="takeaway-col disagreement-col">
+        <h3>⚠️ Needs Discussion</h3>
+        <div class="takeaway-item dim">Good alignment across the board!</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="slide" id="slide-66">
+  <div class="slide-content">
+    <div class="category-badge">Books, Records & Transparency</div>
+    <h2 class="question-text">Who maintains the financial books and do members have the right to inspect records?</h2>
+    <div class="consensus-indicator consensus-yellow">Partial Agreement — 3/6 agree</div>
+    <div class="answer-grid">
+      
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-yellow" style="width:50%"></div>
+        </div>
+        <div class="answer-text">Designated member maintains records; real-time access via shared accounting software for all members</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#6C63FF" title="Courtney Mosely">CM</span><span class="avatar-xs" style="background:#FF8C42" title="Aaliyah Thomas">AT</span><span class="avatar-xs" style="background:#95E1D3" title="Peggee">PG</span></div>
+        <div class="answer-count">3/6</div>
+      </div>
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-yellow" style="width:50%"></div>
+        </div>
+        <div class="answer-text">Professional bookkeeper maintains records; any member can inspect anytime with 48-hour notice</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#FF6B6B" title="Odessa Patterson">OP</span><span class="avatar-xs" style="background:#4ECDC4" title="Raquel Twine">RT</span><span class="avatar-xs" style="background:#FFD93D" title="Tiffany Stallworth">TS</span></div>
+        <div class="answer-count">3/6</div>
+      </div>
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-red" style="width:33.33333333333333%"></div>
+        </div>
+        <div class="answer-text">CPA firm maintains records; monthly reports, open access to all members at all times</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#FF6B6B" title="Odessa Patterson">OP</span><span class="avatar-xs" style="background:#FFD93D" title="Tiffany Stallworth">TS</span></div>
+        <div class="answer-count">2/6</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="slide" id="slide-67">
+  <div class="slide-content takeaway-slide">
+    <div class="category-badge">Books, Records & Transparency</div>
+    <h2>Key Takeaways</h2>
+    <div class="takeaway-columns">
+      <div class="takeaway-col consensus-col">
+        <h3>✅ Consensus Areas</h3>
+        <div class="takeaway-item dim">No strong consensus on these questions</div>
+      </div>
+      <div class="takeaway-col disagreement-col">
+        <h3>⚠️ Needs Discussion</h3>
+        <div class="takeaway-item dim">Good alignment across the board!</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="slide" id="slide-68">
+  <div class="slide-content">
+    <div class="category-badge">Indemnification</div>
+    <h2 class="question-text">Will the LLC indemnify members for actions taken in good faith?</h2>
+    <div class="consensus-indicator consensus-green">Strong Consensus — 4/6 agree</div>
+    <div class="answer-grid">
+      
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-green" style="width:66.66666666666666%"></div>
+        </div>
+        <div class="answer-text">Yes — for all members, but not for gross negligence or intentional misconduct</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#6C63FF" title="Courtney Mosely">CM</span><span class="avatar-xs" style="background:#FF6B6B" title="Odessa Patterson">OP</span><span class="avatar-xs" style="background:#4ECDC4" title="Raquel Twine">RT</span><span class="avatar-xs" style="background:#FF8C42" title="Aaliyah Thomas">AT</span></div>
+        <div class="answer-count">4/6</div>
+      </div>
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-red" style="width:33.33333333333333%"></div>
+        </div>
+        <div class="answer-text">No indemnification — each member is responsible for their own legal exposure</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#FF6B6B" title="Odessa Patterson">OP</span><span class="avatar-xs" style="background:#FFD93D" title="Tiffany Stallworth">TS</span></div>
+        <div class="answer-count">2/6</div>
+      </div>
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-red" style="width:33.33333333333333%"></div>
+        </div>
+        <div class="answer-text">Yes — full indemnification for all actions taken in good faith within their authority</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#FF8C42" title="Aaliyah Thomas">AT</span><span class="avatar-xs" style="background:#95E1D3" title="Peggee">PG</span></div>
+        <div class="answer-count">2/6</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="slide" id="slide-69">
+  <div class="slide-content takeaway-slide">
+    <div class="category-badge">Indemnification</div>
+    <h2>Key Takeaways</h2>
+    <div class="takeaway-columns">
+      <div class="takeaway-col consensus-col">
+        <h3>✅ Consensus Areas</h3>
+        <div class="takeaway-item green">Will the LLC indemnify members for actions taken in good fai...</div>
+      </div>
+      <div class="takeaway-col disagreement-col">
+        <h3>⚠️ Needs Discussion</h3>
+        <div class="takeaway-item dim">Good alignment across the board!</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="slide" id="slide-70">
+  <div class="slide-content">
+    <div class="category-badge">Working Style & Communication</div>
+    <h2 class="question-text">How do you handle conflict or disagreement?</h2>
+    <div class="consensus-indicator consensus-green">Strong Consensus — 4/6 agree</div>
+    <div class="answer-grid">
+      
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-green" style="width:66.66666666666666%"></div>
+        </div>
+        <div class="answer-text">Directly but privately — pull the person aside</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#4ECDC4" title="Raquel Twine">RT</span><span class="avatar-xs" style="background:#FFD93D" title="Tiffany Stallworth">TS</span><span class="avatar-xs" style="background:#FF8C42" title="Aaliyah Thomas">AT</span><span class="avatar-xs" style="background:#95E1D3" title="Peggee">PG</span></div>
+        <div class="answer-count">4/6</div>
+      </div>
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-yellow" style="width:50%"></div>
+        </div>
+        <div class="answer-text">Directly — address it head-on</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#6C63FF" title="Courtney Mosely">CM</span><span class="avatar-xs" style="background:#FF6B6B" title="Odessa Patterson">OP</span><span class="avatar-xs" style="background:#95E1D3" title="Peggee">PG</span></div>
+        <div class="answer-count">3/6</div>
+      </div>
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-red" style="width:33.33333333333333%"></div>
+        </div>
+        <div class="answer-text">Through a mediator or neutral third party</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#FF6B6B" title="Odessa Patterson">OP</span><span class="avatar-xs" style="background:#FFD93D" title="Tiffany Stallworth">TS</span></div>
+        <div class="answer-count">2/6</div>
+      </div>
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-red" style="width:33.33333333333333%"></div>
+        </div>
+        <div class="answer-text">I need time to process before addressing conflict</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#FFD93D" title="Tiffany Stallworth">TS</span><span class="avatar-xs" style="background:#FF8C42" title="Aaliyah Thomas">AT</span></div>
+        <div class="answer-count">2/6</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="slide" id="slide-71">
+  <div class="slide-content">
+    <div class="category-badge">Working Style & Communication</div>
+    <h2 class="question-text">Are you comfortable being held accountable by the group?</h2>
+    <div class="consensus-indicator consensus-green">Strong Consensus — 5/6 agree</div>
+    <div class="answer-grid">
+      
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-green" style="width:83.33333333333334%"></div>
+        </div>
+        <div class="answer-text">Yes — hold me accountable, that's what I need</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#6C63FF" title="Courtney Mosely">CM</span><span class="avatar-xs" style="background:#FF6B6B" title="Odessa Patterson">OP</span><span class="avatar-xs" style="background:#FFD93D" title="Tiffany Stallworth">TS</span><span class="avatar-xs" style="background:#FF8C42" title="Aaliyah Thomas">AT</span><span class="avatar-xs" style="background:#95E1D3" title="Peggee">PG</span></div>
+        <div class="answer-count">5/6</div>
+      </div>
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-yellow" style="width:50%"></div>
+        </div>
+        <div class="answer-text">Yes, as long as accountability goes both ways</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#4ECDC4" title="Raquel Twine">RT</span><span class="avatar-xs" style="background:#FFD93D" title="Tiffany Stallworth">TS</span><span class="avatar-xs" style="background:#FF8C42" title="Aaliyah Thomas">AT</span></div>
+        <div class="answer-count">3/6</div>
+      </div>
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-red" style="width:33.33333333333333%"></div>
+        </div>
+        <div class="answer-text">Yes, but do it privately, not in front of everyone</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#FFD93D" title="Tiffany Stallworth">TS</span><span class="avatar-xs" style="background:#FF8C42" title="Aaliyah Thomas">AT</span></div>
+        <div class="answer-count">2/6</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="slide" id="slide-72">
+  <div class="slide-content takeaway-slide">
+    <div class="category-badge">Working Style & Communication</div>
+    <h2>Key Takeaways</h2>
+    <div class="takeaway-columns">
+      <div class="takeaway-col consensus-col">
+        <h3>✅ Consensus Areas</h3>
+        <div class="takeaway-item green">How do you handle conflict or disagreement?...</div><div class="takeaway-item green">Are you comfortable being held accountable by the group?...</div>
+      </div>
+      <div class="takeaway-col disagreement-col">
+        <h3>⚠️ Needs Discussion</h3>
+        <div class="takeaway-item dim">Good alignment across the board!</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="slide" id="slide-73">
+  <div class="slide-content">
+    <div class="category-badge">Financial Transparency</div>
+    <h2 class="question-text">Are you comfortable sharing your financial picture with the group?</h2>
+    <div class="consensus-indicator consensus-green">Strong Consensus — 5/6 agree</div>
+    <div class="answer-grid">
+      
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-green" style="width:83.33333333333334%"></div>
+        </div>
+        <div class="answer-text">Yes, but only information directly relevant to the LLC</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#6C63FF" title="Courtney Mosely">CM</span><span class="avatar-xs" style="background:#FF6B6B" title="Odessa Patterson">OP</span><span class="avatar-xs" style="background:#FFD93D" title="Tiffany Stallworth">TS</span><span class="avatar-xs" style="background:#FF8C42" title="Aaliyah Thomas">AT</span><span class="avatar-xs" style="background:#95E1D3" title="Peggee">PG</span></div>
+        <div class="answer-count">5/6</div>
+      </div>
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-yellow" style="width:50%"></div>
+        </div>
+        <div class="answer-text">No — my personal finances are private, only share what's needed per deal</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#4ECDC4" title="Raquel Twine">RT</span><span class="avatar-xs" style="background:#FFD93D" title="Tiffany Stallworth">TS</span><span class="avatar-xs" style="background:#FF8C42" title="Aaliyah Thomas">AT</span></div>
+        <div class="answer-count">3/6</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="slide" id="slide-74">
+  <div class="slide-content">
+    <div class="category-badge">Financial Transparency</div>
+    <h2 class="question-text">What is the maximum amount of personal money you are willing to put at risk in the first year?</h2>
+    <div class="consensus-indicator consensus-yellow">Partial Agreement — 3/6 agree</div>
+    <div class="answer-grid">
+      
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-yellow" style="width:50%"></div>
+        </div>
+        <div class="answer-text">Up to $10,000</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#FF6B6B" title="Odessa Patterson">OP</span><span class="avatar-xs" style="background:#4ECDC4" title="Raquel Twine">RT</span><span class="avatar-xs" style="background:#FFD93D" title="Tiffany Stallworth">TS</span></div>
+        <div class="answer-count">3/6</div>
+      </div>
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-yellow" style="width:50%"></div>
+        </div>
+        <div class="answer-text">Up to $5,000</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#FF6B6B" title="Odessa Patterson">OP</span><span class="avatar-xs" style="background:#FFD93D" title="Tiffany Stallworth">TS</span><span class="avatar-xs" style="background:#95E1D3" title="Peggee">PG</span></div>
+        <div class="answer-count">3/6</div>
+      </div>
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-red" style="width:16.666666666666664%"></div>
+        </div>
+        <div class="answer-text">Depends on the investment strategy</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#6C63FF" title="Courtney Mosely">CM</span></div>
+        <div class="answer-count">1/6</div>
+      </div>
+      <div class="answer-row">
+        <div class="answer-bar-container">
+          <div class="answer-bar bar-red" style="width:16.666666666666664%"></div>
+        </div>
+        <div class="answer-text">Up to $50,000</div>
+        <div class="answer-avatars"><span class="avatar-xs" style="background:#FF8C42" title="Aaliyah Thomas">AT</span></div>
+        <div class="answer-count">1/6</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="slide" id="slide-75">
+  <div class="slide-content takeaway-slide">
+    <div class="category-badge">Financial Transparency</div>
+    <h2>Key Takeaways</h2>
+    <div class="takeaway-columns">
+      <div class="takeaway-col consensus-col">
+        <h3>✅ Consensus Areas</h3>
+        <div class="takeaway-item green">Are you comfortable sharing your financial picture with the ...</div>
+      </div>
+      <div class="takeaway-col disagreement-col">
+        <h3>⚠️ Needs Discussion</h3>
+        <div class="takeaway-item dim">Good alignment across the board!</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="slide" id="slide-76">
+  <div class="slide-content">
+    <div class="category-badge">Additional Questions & Concerns</div>
+    <h2 class="question-text">Is there anything NOT covered that the operating agreement should address?</h2>
+    <div class="open-ended-grid">
+      
+        <div class="open-card">
+          <div class="avatar-sm" style="background:#6C63FF">CM</div>
+          <div class="open-name">Courtney</div>
+          <div class="open-text">Yes we should work on timelines and goals</div>
+        </div>
+        <div class="open-card">
+          <div class="avatar-sm" style="background:#FF6B6B">OP</div>
+          <div class="open-name">Odessa</div>
+          <div class="open-text">Will this membership require continued membership to Delphine's classes?  For say through the completion of the first full build?</div>
+        </div>
+        <div class="open-card">
+          <div class="avatar-sm" style="background:#4ECDC4">RT</div>
+          <div class="open-name">Raquel</div>
+          <div class="open-text empty">No response</div>
+        </div>
+        <div class="open-card">
+          <div class="avatar-sm" style="background:#FFD93D">TS</div>
+          <div class="open-name">Tiffany</div>
+          <div class="open-text empty">No response</div>
+        </div>
+        <div class="open-card">
+          <div class="avatar-sm" style="background:#FF8C42">AT</div>
+          <div class="open-name">Aaliyah</div>
+          <div class="open-text empty">No response</div>
+        </div>
+        <div class="open-card">
+          <div class="avatar-sm" style="background:#95E1D3">PG</div>
+          <div class="open-name">Peggee</div>
+          <div class="open-text">Responsibility for hiring contractors/ GCs.  Disclosure of any conflicts of interest or relationships with providers</div>
+        </div>
+    </div>
+  </div>
+</div>
+
+<div class="slide" id="slide-77">
+  <div class="slide-content">
+    <div class="category-badge">Additional Questions & Concerns</div>
+    <h2 class="question-text">What is your biggest unanswered question or concern?</h2>
+    <div class="open-ended-grid">
+      
+        <div class="open-card">
+          <div class="avatar-sm" style="background:#6C63FF">CM</div>
+          <div class="open-name">Courtney</div>
+          <div class="open-text">Timelines and goals for everyone when it comes to Meridian Collective</div>
+        </div>
+        <div class="open-card">
+          <div class="avatar-sm" style="background:#FF6B6B">OP</div>
+          <div class="open-name">Odessa</div>
+          <div class="open-text">Is everyone ready to go now?</div>
+        </div>
+        <div class="open-card">
+          <div class="avatar-sm" style="background:#4ECDC4">RT</div>
+          <div class="open-name">Raquel</div>
+          <div class="open-text empty">No response</div>
+        </div>
+        <div class="open-card">
+          <div class="avatar-sm" style="background:#FFD93D">TS</div>
+          <div class="open-name">Tiffany</div>
+          <div class="open-text empty">No response</div>
+        </div>
+        <div class="open-card">
+          <div class="avatar-sm" style="background:#FF8C42">AT</div>
+          <div class="open-name">Aaliyah</div>
+          <div class="open-text empty">No response</div>
+        </div>
+        <div class="open-card">
+          <div class="avatar-sm" style="background:#95E1D3">PG</div>
+          <div class="open-name">Peggee</div>
+          <div class="open-text">Spousal involvement; operating capital outside of investment funds</div>
+        </div>
+    </div>
+  </div>
+</div>
+
+<div class="slide" id="slide-78">
+  <div class="slide-content">
+    <div class="category-badge">Additional Questions & Concerns</div>
+    <h2 class="question-text">Is there anything you want to say to the group?</h2>
+    <div class="open-ended-grid">
+      
+        <div class="open-card">
+          <div class="avatar-sm" style="background:#6C63FF">CM</div>
+          <div class="open-name">Courtney</div>
+          <div class="open-text empty">No response</div>
+        </div>
+        <div class="open-card">
+          <div class="avatar-sm" style="background:#FF6B6B">OP</div>
+          <div class="open-name">Odessa</div>
+          <div class="open-text">No. I'm ready to get going!</div>
+        </div>
+        <div class="open-card">
+          <div class="avatar-sm" style="background:#4ECDC4">RT</div>
+          <div class="open-name">Raquel</div>
+          <div class="open-text">Let’s get started and make a lot of money in memories! :-)</div>
+        </div>
+        <div class="open-card">
+          <div class="avatar-sm" style="background:#FFD93D">TS</div>
+          <div class="open-name">Tiffany</div>
+          <div class="open-text empty">No response</div>
+        </div>
+        <div class="open-card">
+          <div class="avatar-sm" style="background:#FF8C42">AT</div>
+          <div class="open-name">Aaliyah</div>
+          <div class="open-text empty">No response</div>
+        </div>
+        <div class="open-card">
+          <div class="avatar-sm" style="background:#95E1D3">PG</div>
+          <div class="open-name">Peggee</div>
+          <div class="open-text">How are members vetted?  What criteria is used?</div>
+        </div>
+    </div>
+  </div>
+</div>
+
+<div class="slide" id="slide-79">
+  <div class="slide-content takeaway-slide">
+    <div class="category-badge">Additional Questions & Concerns</div>
+    <h2>Key Takeaways</h2>
+    <div class="takeaway-columns">
+      <div class="takeaway-col consensus-col">
+        <h3>✅ Consensus Areas</h3>
+        <div class="takeaway-item dim">No strong consensus on these questions</div>
+      </div>
+      <div class="takeaway-col disagreement-col">
+        <h3>⚠️ Needs Discussion</h3>
+        <div class="takeaway-item red">Is there anything NOT covered that the operating agreement s...</div><div class="takeaway-item red">What is your biggest unanswered question or concern?...</div><div class="takeaway-item red">Is there anything you want to say to the group?...</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="slide" id="slide-80">
+  <div class="slide-content title-slide">
+    <div class="logo" style="font-size:2rem">🎯</div>
+    <h1>Top Items to Resolve</h1>
+    <div class="resolve-list">
+      
+      <div class="resolve-category">
+        <h3>Management &amp; Decision Making</h3>
+        <div class="resolve-item">• Who has signature authority on bank accounts and contracts?...</div>
+      </div>
+      <div class="resolve-category">
+        <h3>Exit &amp; Buyout Provisions</h3>
+        <div class="resolve-item">• Does the group have right of first refusal?...</div>
+      </div>
+      <div class="resolve-category">
+        <h3>Dissolution</h3>
+        <div class="resolve-item">• What vote is required to dissolve the LLC?...</div>
+      </div>
+      <div class="resolve-category">
+        <h3>Spousal Consent</h3>
+        <div class="resolve-item">• Should spouses/partners be required to sign an acknowledgmen...</div>
+      </div>
+      <div class="resolve-category">
+        <h3>Additional Questions &amp; Concerns</h3>
+        <div class="resolve-item">• Is there anything NOT covered that the operating agreement s...</div><div class="resolve-item">• What is your biggest unanswered question or concern?...</div><div class="resolve-item">• Is there anything you want to say to the group?...</div>
+      </div>
+    </div>
+    <div class="subtitle" style="margin-top:2rem">Let's discuss these items and find alignment 🤝</div>
+  </div>
+</div>
+
+<script>
+let current = 0;
+const total = 81;
+const slides = document.querySelectorAll('.slide');
+const counter = document.getElementById('counter');
+const progress = document.getElementById('progress');
+
+function goTo(n) {
+  if (n < 0 || n >= total) return;
+  slides[current].classList.remove('active');
+  slides[current].style.display = 'none';
+  current = n;
+  slides[current].classList.add('active');
+  slides[current].style.display = 'flex';
+  counter.textContent = (current + 1) + ' / ' + total;
+  progress.style.width = ((current + 1) / total * 100) + '%';
+}
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'ArrowRight' || e.key === ' ') { e.preventDefault(); goTo(current + 1); }
+  if (e.key === 'ArrowLeft') { e.preventDefault(); goTo(current - 1); }
+  if (e.key === 'Home') goTo(0);
+  if (e.key === 'End') goTo(total - 1);
+});
+
+// Touch support
+let touchStartX = 0;
+document.addEventListener('touchstart', e => touchStartX = e.touches[0].clientX);
+document.addEventListener('touchend', e => {
+  const diff = touchStartX - e.changedTouches[0].clientX;
+  if (Math.abs(diff) > 50) diff > 0 ? goTo(current + 1) : goTo(current - 1);
+});
+
+// Click sides
+document.addEventListener('click', e => {
+  if (e.clientX > window.innerWidth * 0.7) goTo(current + 1);
+  else if (e.clientX < window.innerWidth * 0.3) goTo(current - 1);
+});
+
+goTo(0);
+</script>
+</body>
+</html>
