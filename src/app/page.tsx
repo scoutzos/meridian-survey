@@ -68,6 +68,8 @@ export default function LoginPage() {
           View everyone&apos;s answers →{" "}
           <a href="/results" style={{ color: "var(--gold)", textDecoration: "none" }}>Results</a>
           {" · "}
+          <a href="/decisions" style={{ color: "var(--gold)", textDecoration: "none" }}>Decisions</a>
+          {" · "}
           <a href="/hub" style={{ color: "var(--gold)", textDecoration: "none" }}>Hub</a>
         </p>
       </div>
