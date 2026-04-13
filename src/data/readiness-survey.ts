@@ -83,15 +83,16 @@ export const readinessSurvey: Survey = {
         },
         {
           id: "rc-6",
-          text: "How much are you contributing toward the first deal?",
-          context: "This is your investment capital for the first flip or land purchase. Your contribution determines your ownership percentage on that deal, which goes into the operating agreement.",
+          text: "What is the MOST you'd be willing to invest in a single deal?",
+          context: "This isn't a commitment — it's your ceiling. We need to know everyone's range so we can find deals that fit the group's budget. Your contribution on any deal determines your ownership percentage on that deal, which goes into the operating agreement.",
           priority: "critical",
           options: [
             "Up to $1,000",
             "Up to $5,000",
             "Up to $10,000",
-            "More than $10,000",
-            "I don't have capital for the first deal right now",
+            "Up to $25,000",
+            "More than $25,000",
+            "I don't have capital to invest right now",
           ],
         },
         {
