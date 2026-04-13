@@ -412,6 +412,24 @@ export default function SurveyPage() {
                       />
                     )}
                   </div>
+                ) : q.inputType === "currency" ? (
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={typeof currentAnswer === "string" ? currentAnswer : ""}
+                    onChange={e => {
+                      const raw = e.target.value.replace(/[^0-9]/g, "");
+                      if (raw === "") { save({ ...answers, [q.id]: "" }); return; }
+                      const num = parseInt(raw, 10);
+                      const formatted = "$" + num.toLocaleString("en-US");
+                      save({ ...answers, [q.id]: formatted });
+                    }}
+                    placeholder={q.placeholder || "$0"}
+                    style={{
+                      background: "var(--surface)", border: "1px solid var(--border)", color: "var(--fg)",
+                      borderRadius: 8, padding: "12px 16px", fontSize: 18, fontWeight: 600, width: "100%",
+                    }}
+                  />
                 ) : (
                   <textarea
                     value={typeof currentAnswer === "string" ? currentAnswer : ""}

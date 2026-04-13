@@ -76,6 +76,7 @@ export const readinessSurvey: Survey = {
           text: "Between cash and credit, what is the MOST you'd be willing to invest in a single deal?",
           context: "This isn't a commitment — it's your ceiling. We need to know everyone's total buying power so we can find deals that fit the group's budget. Your contribution on any deal determines your ownership percentage, which goes into the operating agreement.",
           priority: "critical",
+          inputType: "currency",
           placeholder: "e.g. $10,000",
         },
         {
@@ -83,6 +84,7 @@ export const readinessSurvey: Survey = {
           text: "Of that amount, how much is CASH you have available?",
           context: "This is money you can move into the LLC bank account. Be honest — we're planning real deals around these numbers. If $0, just type $0.",
           priority: "critical",
+          inputType: "currency",
           placeholder: "e.g. $5,000",
         },
         {
@@ -90,6 +92,7 @@ export const readinessSurvey: Survey = {
           text: "And how much is available CREDIT? (business credit cards, lines of credit, etc.)",
           context: "Available credit can cover materials, tools, or bridge gaps between funding. This isn't about your credit score — it's about how much buying power you can access if a deal needs it. If $0, just type $0.",
           priority: "critical",
+          inputType: "currency",
           placeholder: "e.g. $15,000",
         },
         {
@@ -122,6 +125,7 @@ export const readinessSurvey: Survey = {
           text: "How much can you put into the LLC bank account THIS WEEK?",
           context: "This is what we use to fund VAs, call tools, and get the operation started immediately. We need real numbers so we know what we're working with right now — not promises, just what you can move this week. If $0, just type $0.",
           priority: "critical",
+          inputType: "currency",
           placeholder: "e.g. $500",
         },
         {
@@ -129,6 +133,7 @@ export const readinessSurvey: Survey = {
           text: "How much MORE can you contribute if given some time?",
           context: "This is the rest of your commitment beyond what you can do this week. Maybe you have money coming in, or you need to move things around. We just need to know the total so we can plan the first deal. If nothing more, just type $0.",
           priority: "critical",
+          inputType: "currency",
           placeholder: "e.g. $5,000",
         },
         {

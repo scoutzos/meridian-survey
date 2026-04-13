@@ -104,6 +104,34 @@ export default function ResultsPage() {
   const categories = survey.categories;
   const membersWithData = MEMBERS.filter(m => allAnswers[m]);
 
+  // Currency helpers
+  const parseCurrency = (val: string | string[] | undefined): number => {
+    if (!val) return 0;
+    const str = typeof val === "string" ? val : Array.isArray(val) ? val[0] : "";
+    const num = parseInt(str.replace(/[^0-9]/g, ""), 10);
+    return isNaN(num) ? 0 : num;
+  };
+
+  const formatCurrency = (num: number): string =>
+    "$" + num.toLocaleString("en-US");
+
+  // Find all currency questions in this survey
+  const currencyQuestions = categories.flatMap(c =>
+    c.questions.filter(q => q.inputType === "currency")
+  );
+
+  // Compute per-member and group totals for currency questions
+  const getCurrencyTotals = (qId: string) => {
+    const perMember: { name: string; amount: number }[] = [];
+    let total = 0;
+    MEMBERS.forEach(m => {
+      const amount = parseCurrency(allAnswers[m]?.[qId]);
+      if (allAnswers[m]?.[qId]) perMember.push({ name: m, amount });
+      total += amount;
+    });
+    return { perMember, total };
+  };
+
   const parseSelections = (val: string[] | string | undefined): string[] => {
     if (!val) return [];
     if (Array.isArray(val)) return val;
@@ -423,6 +451,75 @@ export default function ResultsPage() {
             <AlignmentBar percentage={overallAlignment} size="large" />
           </div>
           <p style={{ fontSize: 12, color: "var(--muted)" }}>{allAlignments.length} questions answered</p>
+        </div>
+      )}
+
+      {/* Capital Summary for currency questions */}
+      {currencyQuestions.length > 0 && membersWithData.length > 0 && (
+        <div style={{
+          background: "var(--surface)", borderRadius: 12, padding: 24, marginBottom: 24,
+        }}>
+          <h3 style={{ fontSize: 16, fontWeight: 700, marginBottom: 20 }}>Capital Summary</h3>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 16, marginBottom: 20 }}>
+            {currencyQuestions.map(q => {
+              const totals = getCurrencyTotals(q.id);
+              return (
+                <div key={q.id} style={{
+                  background: "var(--surface2)", borderRadius: 10, padding: "16px 20px", textAlign: "center",
+                }}>
+                  <p style={{ fontSize: 28, fontWeight: 800, color: "var(--gold)" }}>{formatCurrency(totals.total)}</p>
+                  <p style={{ fontSize: 11, color: "var(--muted)", marginTop: 4, lineHeight: 1.4 }}>
+                    {q.text.length > 50 ? q.text.slice(0, 50) + "..." : q.text}
+                  </p>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Per-member breakdown table */}
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+              <thead>
+                <tr style={{ borderBottom: "1px solid var(--border)" }}>
+                  <th style={{ textAlign: "left", padding: "8px 12px", color: "var(--muted)", fontWeight: 500 }}>Member</th>
+                  {currencyQuestions.map(q => (
+                    <th key={q.id} style={{ textAlign: "right", padding: "8px 12px", color: "var(--muted)", fontWeight: 500, maxWidth: 140 }}>
+                      {q.text.length > 30 ? q.text.slice(0, 30) + "..." : q.text}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {MEMBERS.map(m => {
+                  if (!allAnswers[m]) return null;
+                  return (
+                    <tr key={m} style={{ borderBottom: "1px solid var(--border)" }}>
+                      <td style={{ padding: "8px 12px", fontWeight: 600, color: "var(--gold)" }}>{m}</td>
+                      {currencyQuestions.map(q => {
+                        const amount = parseCurrency(allAnswers[m]?.[q.id]);
+                        return (
+                          <td key={q.id} style={{ textAlign: "right", padding: "8px 12px", fontWeight: 600 }}>
+                            {allAnswers[m]?.[q.id] ? formatCurrency(amount) : "—"}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  );
+                })}
+                <tr style={{ borderTop: "2px solid var(--gold)" }}>
+                  <td style={{ padding: "10px 12px", fontWeight: 700 }}>TOTAL</td>
+                  {currencyQuestions.map(q => {
+                    const totals = getCurrencyTotals(q.id);
+                    return (
+                      <td key={q.id} style={{ textAlign: "right", padding: "10px 12px", fontWeight: 700, color: "var(--gold)", fontSize: 14 }}>
+                        {formatCurrency(totals.total)}
+                      </td>
+                    );
+                  })}
+                </tr>
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 
