@@ -1,227 +1,229 @@
-export interface Question {
-  text: string;
-  options?: string[];
-  priority: "critical" | "important" | "recommended";
-}
+import type { Survey, SurveyQuestion, SurveyCategory } from "./surveys";
 
-export interface Category {
-  name: string;
-  questions: Question[];
-}
+// Re-export types for backward compat
+export type Question = SurveyQuestion;
+export type Category = SurveyCategory;
 
 export const categories: Category[] = [
-  { name: "Vision & Alignment", questions: [
-    { text: "What is your vision for Meridian Collective — what does success look like in 1 year and 3-5 years?",
+  { id: "oa-0", name: "Vision & Alignment", questions: [
+    { id: "oa-0-0", text: "What is your vision for Meridian Collective — what does success look like in 1 year and 3-5 years?",
       priority: "critical",
       options: ["Build a few houses together for experience, then branch off individually with our own capital", "Completed first profitable flip, building pipeline", "2-3 deals done with consistent profits and a rental portfolio started", "Established brand with multiple completed builds in metro Atlanta", "Generational wealth vehicle — each member financially free in 5 years", "Full-service real estate firm (build, manage, sell)"] },
-    { text: "What is your PRIMARY personal goal for joining this group?",
+    { id: "oa-0-1", text: "What is your PRIMARY personal goal for joining this group?",
       priority: "critical",
       options: ["Build generational wealth through real estate", "Learn the development process hands-on with a supportive team", "Generate active income through flips and builds", "Create passive income through rental properties", "Build something bigger than I could alone — leverage the collective"] },
-    { text: "What is your risk tolerance for this venture?",
+    { id: "oa-0-2", text: "What is your risk tolerance for this venture?",
       priority: "critical",
       options: ["Conservative — protect capital first, grow slowly", "Moderate — willing to take calculated risks with proper research", "Aggressive — move fast, take bigger swings for bigger returns", "Very conservative — I cannot afford to lose my investment"] },
-    { text: "How many hours per week can you REALISTICALLY commit to Meridian Collective business?",
+    { id: "oa-0-3", text: "How many hours per week can you REALISTICALLY commit to Meridian Collective business?",
       priority: "critical",
       options: ["5-10 hours", "10-20 hours", "20-30 hours", "30+ hours (this is my primary focus)", "It varies — some weeks more, some weeks less"] },
-    { text: "What would cause you to want to EXIT Meridian Collective?",
+    { id: "oa-0-4", text: "What would cause you to want to EXIT Meridian Collective?",
       priority: "critical",
       options: ["Consistent financial losses", "Trust being broken between members", "Lack of progress — no deals closing", "Personal financial circumstances changing", "Disagreements on direction that can't be resolved", "I can't see myself leaving — I'm fully committed"] },
   ]},
-  { name: "Ownership & Membership Structure", questions: [
-    { text: "How will ownership be structured — equal shares for all members, or weighted based on capital contribution, sweat equity, or a combination?",
+  { id: "oa-1", name: "Ownership & Membership Structure", questions: [
+    { id: "oa-1-0", text: "How will ownership be structured — equal shares for all members, or weighted based on capital contribution, sweat equity, or a combination?",
       priority: "critical",
       options: ["Equal ownership for all members", "Weighted by capital contribution", "Weighted by time/effort/sweat equity", "Combination of capital and sweat equity", "To be determined based on each deal"] },
-    { text: "Can new members be added in the future? If so, what vote is required?",
+    { id: "oa-1-1", text: "Can new members be added in the future? If so, what vote is required?",
       priority: "critical",
       options: ["Yes, with unanimous approval of existing members", "Yes, with supermajority (2/3) approval", "Yes, with Managing Member approval only", "No, membership is closed"] },
-    { text: "Can a member transfer or sell their ownership interest to someone outside the group?",
+    { id: "oa-1-2", text: "Can a member transfer or sell their ownership interest to someone outside the group?",
       priority: "critical",
       options: ["No outside transfers — must sell back to the group", "Only with unanimous consent of all members", "Allowed with majority approval", "Allowed freely after a minimum holding period"] },
-    { text: "What happens to a member's interest if they pass away, become incapacitated, go through a divorce, or file for bankruptcy?",
+    { id: "oa-1-3", text: "What happens to a member's interest if they pass away, become incapacitated, go through a divorce, or file for bankruptcy?",
       priority: "critical",
       options: ["Group has mandatory buyout right at fair market value in all cases", "Interest passes to estate/heirs with group approval; buyout right for divorce/bankruptcy", "Heir inherits economic interest only (no voting) unless group approves full membership", "Handle each situation case-by-case per the operating agreement provisions"] },
   ]},
-  { name: "Capital Contributions", questions: [
-    { text: "How much is each member contributing to start, and by what date?",
+  { id: "oa-2", name: "Capital Contributions", questions: [
+    { id: "oa-2-0", text: "How much is each member contributing to start, and by what date?",
       priority: "critical",
       options: ["$5,000 each within 30 days", "$10,000 each within 30 days", "$25,000 each within 60 days", "$50,000 each within 90 days", "Variable amounts based on individual capacity"] },
-    { text: "What forms of contribution are acceptable — cash only, or also property, services, or sweat equity?",
+    { id: "oa-2-1", text: "What forms of contribution are acceptable — cash only, or also property, services, or sweat equity?",
       priority: "critical",
       options: ["Cash only", "Cash and real property", "Cash, property, and documented services/sweat equity", "Cash, property, services, and credit/lending capacity", "Any form with agreed-upon valuation by all members"] },
-    { text: "What happens if a member cannot make their contribution on time?",
+    { id: "oa-2-2", text: "What happens if a member cannot make their contribution on time?",
       priority: "critical",
       options: ["30-day grace period, then ownership percentage is reduced", "Automatic forfeiture of membership", "Treated as a loan from other members at agreed interest rate", "Remaining members cover the shortfall and adjust equity accordingly"] },
-    { text: "If the LLC needs additional capital (capital call), what happens if someone can't or won't contribute?",
+    { id: "oa-2-3", text: "If the LLC needs additional capital (capital call), what happens if someone can't or won't contribute?",
       priority: "critical",
       options: ["Mandatory — failure to contribute dilutes ownership", "Mandatory — non-contributing member's interest is reduced proportionally", "Optional — contributing members receive preferred return on extra capital", "Managing Member can authorize a loan instead of a capital call"] },
   ]},
-  { name: "Management & Decision Making", questions: [
-    { text: "Who will serve as Managing Member(s) and will they be compensated for their time?",
+  { id: "oa-3", name: "Management & Decision Making", questions: [
+    { id: "oa-3-0", text: "Who will serve as Managing Member(s) and will they be compensated for their time?",
       priority: "critical",
       options: ["Single Managing Member, no extra compensation — part of membership", "Single Managing Member with a monthly management fee", "Two Co-Managing Members splitting duties, no extra pay", "Rotating Managing Member role (e.g., annually)"] },
-    { text: "What is the dollar threshold that requires a group vote vs. what the Managing Member can decide alone?",
+    { id: "oa-3-1", text: "What is the dollar threshold that requires a group vote vs. what the Managing Member can decide alone?",
       priority: "critical",
       options: ["Managing Member can approve up to $5,000 independently", "Managing Member can approve up to $10,000 independently", "Managing Member can approve up to $25,000 independently", "All expenditures require group approval regardless of amount"] },
-    { text: "How will voting work — one vote per member or weighted by ownership? How are ties resolved?",
+    { id: "oa-3-2", text: "How will voting work — one vote per member or weighted by ownership? How are ties resolved?",
       priority: "critical",
       options: ["One vote per member; Managing Member breaks ties", "Weighted by ownership percentage; table tied votes for 30 days", "One vote per member for operations, weighted for financial decisions", "One vote per member; neutral third-party mediator for ties"] },
-    { text: "What decisions require simple majority, supermajority (2/3), and unanimous votes?",
+    { id: "oa-3-3", text: "What decisions require simple majority, supermajority (2/3), and unanimous votes?",
       priority: "critical",
       options: ["Majority: day-to-day ops | Supermajority: major expenses, removing a member | Unanimous: new members, dissolution, amending OA", "Majority: all operational decisions | Supermajority: debt over $50K | Unanimous: dissolution and OA amendments only", "Everything requires supermajority except Managing Member's day-to-day authority", "Unanimous for all major decisions; Managing Member handles everything else"] },
-    { text: "Who has signature authority on bank accounts and contracts?",
+    { id: "oa-3-4", text: "Who has signature authority on bank accounts and contracts?",
       priority: "critical",
       options: ["Managing Member only", "Any two members jointly", "Managing Member plus one other member", "All members have individual signature authority"] },
   ]},
-  { name: "Profits, Distributions & Losses", questions: [
-    { text: "How will profits be distributed — pro-rata by ownership, or is there a preferred return structure?",
+  { id: "oa-4", name: "Profits, Distributions & Losses", questions: [
+    { id: "oa-4-0", text: "How will profits be distributed — pro-rata by ownership, or is there a preferred return structure?",
       priority: "critical",
       options: ["Strictly pro-rata based on ownership percentage", "Preferred return (e.g., 8%) to capital contributors first, then pro-rata", "Preferred return to capital, then 70/30 split (members/managing member)", "Deal-by-deal waterfall based on each member's contribution to that deal"] },
-    { text: "How frequently will distributions be made?",
+    { id: "oa-4-1", text: "How frequently will distributions be made?",
       priority: "critical",
       options: ["Monthly", "Quarterly", "After each deal closes", "Annually", "Only when majority votes to distribute"] },
-    { text: "How will losses be allocated among members?",
+    { id: "oa-4-2", text: "How will losses be allocated among members?",
       priority: "critical",
       options: ["Pro-rata based on ownership percentage", "Equally among all members", "Allocated to members who approved the deal", "Based on capital account balances"] },
   ]},
-  { name: "Exit & Buyout Provisions", questions: [
-    { text: "Is there a minimum commitment period before a member can exit (e.g., 1-3 years)?",
+  { id: "oa-5", name: "Exit & Buyout Provisions", questions: [
+    { id: "oa-5-0", text: "Is there a minimum commitment period before a member can exit (e.g., 1-3 years)?",
       priority: "critical",
       options: ["No minimum — members can exit anytime", "1-year minimum commitment", "2-year minimum commitment", "3-year minimum commitment", "Cannot exit while active deals are in progress"] },
-    { text: "How is a departing member's interest valued?",
+    { id: "oa-5-1", text: "How is a departing member's interest valued?",
       priority: "critical",
       options: ["Book value of capital account", "Independent third-party appraisal of all LLC assets", "Formula based on capital account plus share of unrealized gains", "Negotiation between departing member and remaining members"] },
-    { text: "Does the group have right of first refusal before a member can sell to an outsider?",
+    { id: "oa-5-2", text: "Does the group have right of first refusal before a member can sell to an outsider?",
       priority: "critical",
       options: ["Yes, 60-day right of first refusal", "Yes, 90-day right of first refusal", "Yes, 30-day right of first refusal", "No — departing member can sell to anyone with group approval"] },
-    { text: "What is the buyout payment timeline?",
+    { id: "oa-5-3", text: "What is the buyout payment timeline?",
       priority: "critical",
       options: ["Lump sum within 90 days", "Installments over 12 months", "Installments over 24 months", "50% upfront, remainder over 12 months", "Negotiated case-by-case"] },
-    { text: "What are the grounds for involuntary removal of a member?",
+    { id: "oa-5-4", text: "What are the grounds for involuntary removal of a member?",
       priority: "critical",
       options: ["Fraud, embezzlement, or criminal conviction related to business", "Any felony conviction", "Consistent failure to fulfill responsibilities after written notice", "All of the above", "All of the above plus personal bankruptcy"] },
-    { text: "What happens to a member's interest if they pass away?",
+    { id: "oa-5-5", text: "What happens to a member's interest if they pass away?",
       priority: "critical",
       options: ["Interest passes to estate/heirs automatically", "Group has mandatory buyout right at fair market value", "Heir inherits economic interest only (no voting rights) unless group approves", "Group has right of first refusal before heirs can keep it", "Life insurance policy funds a mandatory buyout"] },
-    { text: "What happens to a member's interest if they become incapacitated and can no longer participate?",
+    { id: "oa-5-6", text: "What happens to a member's interest if they become incapacitated and can no longer participate?",
       priority: "critical",
       options: ["Power of attorney holder acts on their behalf", "Group has mandatory buyout right at fair market value", "Member retains ownership but loses voting rights", "6-month grace period, then mandatory buyout if no recovery", "Designate a successor representative in advance"] },
-    { text: "What happens to a member's interest if they go through a divorce and their spouse claims a share?",
+    { id: "oa-5-7", text: "What happens to a member's interest if they go through a divorce and their spouse claims a share?",
       priority: "critical",
       options: ["Operating agreement explicitly excludes spouse claims", "Group has mandatory buyout right before spouse receives interest", "Spouse can only receive financial value, not membership rights", "Handle case-by-case with group vote"] },
   ]},
-  { name: "Financing & Debt", questions: [
-    { text: "Is the group open to taking on debt for deals? What types of financing?",
+  { id: "oa-6", name: "Financing & Debt", questions: [
+    { id: "oa-6-0", text: "Is the group open to taking on debt for deals? What types of financing?",
       priority: "critical",
       options: ["Cash only — no debt", "Conventional financing only", "Hard money for flips, conventional for holds", "Leverage preferred — maximize returns with OPM"] },
-    { text: "Will members be required to personally guarantee loans? Is everyone willing?",
+    { id: "oa-6-1", text: "Will members be required to personally guarantee loans? Is everyone willing?",
       priority: "critical",
       options: ["Yes, all members guarantee equally", "Only Managing Member(s) guarantee, with compensation for the risk", "Guarantors rotate based on deal", "No personal guarantees — only non-recourse or asset-based lending"] },
   ]},
-  { name: "Banking & Financial Controls", questions: [
-    { text: "How many signatures are required for large payments, and what's the spending limit before group approval?",
+  { id: "oa-7", name: "Banking & Financial Controls", questions: [
+    { id: "oa-7-0", text: "How many signatures are required for large payments, and what's the spending limit before group approval?",
       priority: "critical",
       options: ["All member signatures required for every transaction", "Two signatures over $5,000; group approval over $5,000", "Two signatures over $10,000; group approval over $10,000", "Managing Member alone up to $10,000; two signatures and group approval above", "Single signature for budgeted items; group approval for all unbudgeted expenses"] },
   ]},
-  { name: "Conflicts of Interest & Outside Deals", questions: [
-    { text: "Can members pursue real estate deals outside of the LLC?",
+  { id: "oa-8", name: "Conflicts of Interest & Outside Deals", questions: [
+    { id: "oa-8-0", text: "Can members pursue real estate deals outside of the LLC?",
       priority: "critical",
       options: ["No — all real estate activity must go through the LLC", "Yes, but only in markets/property types the LLC doesn't operate in", "Yes, but must disclose and offer to the LLC first (right of first offer)", "Yes, with full disclosure but no restrictions"] },
-    { text: "Can a member do business with the LLC (contracting, lending, property management)?",
+    { id: "oa-8-1", text: "Can a member do business with the LLC (contracting, lending, property management)?",
       priority: "critical",
       options: ["No — members cannot be vendors to the LLC", "Yes, at market rate with full written disclosure and majority approval", "Yes, at or below market rate with unanimous approval", "Yes, but must obtain competitive bids to prove fair pricing"] },
   ]},
-  { name: "Real Estate Licenses & Commissions", questions: [
-    { text: "When a licensed member represents the LLC in a transaction, who keeps the commission?",
+  { id: "oa-9", name: "Real Estate Licenses & Commissions", questions: [
+    { id: "oa-9-0", text: "When a licensed member represents the LLC in a transaction, who keeps the commission?",
       priority: "critical",
       options: ["Commission goes to the LLC as revenue", "Licensed member keeps their commission personally", "Split — half to LLC, half to licensed member", "Decided on a deal-by-deal basis"] },
   ]},
-  { name: "Dissolution", questions: [
-    { text: "What vote is required to dissolve the LLC, and how are assets distributed?",
+  { id: "oa-10", name: "Dissolution", questions: [
+    { id: "oa-10-0", text: "What vote is required to dissolve the LLC, and how are assets distributed?",
       priority: "critical",
       options: ["Unanimous vote; pay debts then distribute pro-rata by ownership", "Supermajority (2/3); pay debts, return capital, then split remainder pro-rata", "Supermajority (3/4); liquidate everything and distribute cash pro-rata", "Unanimous; complete active projects first, then pay debts and distribute"] },
   ]},
-  { name: "Dispute Resolution", questions: [
-    { text: "How will the group resolve disputes — mediation, arbitration, or litigation?",
+  { id: "oa-11", name: "Dispute Resolution", questions: [
+    { id: "oa-11-0", text: "How will the group resolve disputes — mediation, arbitration, or litigation?",
       priority: "critical",
       options: ["Mandatory mediation first, then binding arbitration", "Mandatory mediation first, then litigation if unresolved", "Binding arbitration only — no litigation", "No mandatory process — any member can pursue legal action"] },
   ]},
-  { name: "Operating Agreement Administration", questions: [
-    { text: "How often will the Operating Agreement be reviewed, and what vote is required to amend it?",
+  { id: "oa-12", name: "Operating Agreement Administration", questions: [
+    { id: "oa-12-0", text: "How often will the Operating Agreement be reviewed, and what vote is required to amend it?",
       priority: "critical",
       options: ["Annually; unanimous vote to amend", "Every 2 years; supermajority (2/3) to amend", "Only when triggered by a major event; unanimous to amend", "Semi-annually for first 2 years then annually; supermajority (3/4) to amend"] },
   ]},
-  { name: "Confidentiality & Non-Compete", questions: [
-    { text: "After a member leaves, are there non-compete or non-solicitation restrictions?",
+  { id: "oa-13", name: "Confidentiality & Non-Compete", questions: [
+    { id: "oa-13-0", text: "After a member leaves, are there non-compete or non-solicitation restrictions?",
       priority: "critical",
       options: ["12-month non-compete and non-solicitation", "24-month non-compete and non-solicitation", "Non-solicitation only (can't recruit members or take LLC relationships), no non-compete", "No restrictions after exit"] },
   ]},
-  { name: "Tax & Distributions", questions: [
-    { text: "Will the LLC make mandatory tax distributions so members can cover taxes on K-1 income even when cash isn't distributed?",
+  { id: "oa-14", name: "Tax & Distributions", questions: [
+    { id: "oa-14-0", text: "Will the LLC make mandatory tax distributions so members can cover taxes on K-1 income even when cash isn't distributed?",
       priority: "critical",
       options: ["Yes — mandatory quarterly tax distributions based on estimated liability", "Yes — annual tax distribution before K-1s are issued", "No — members are responsible for their own taxes from personal funds", "Tax distributions at the highest marginal rate to cover all members"] },
   ]},
-  { name: "Spousal Consent", questions: [
-    { text: "Should spouses/partners be required to sign an acknowledgment of the Operating Agreement waiving any claim to membership rights?",
+  { id: "oa-15", name: "Spousal Consent", questions: [
+    { id: "oa-15-0", text: "Should spouses/partners be required to sign an acknowledgment of the Operating Agreement waiving any claim to membership rights?",
       priority: "critical",
       options: ["Yes — required before signing the Operating Agreement", "Yes — required within 30 days of signing", "Recommended but not required", "No — unnecessary if divorce provisions are strong enough"] },
   ]},
-  { name: "Intellectual Property & Brand", questions: [
-    { text: "Who owns the Meridian Collective name, logo, website, and social media accounts — and what happens to them if the group dissolves or a member leaves?",
+  { id: "oa-16", name: "Intellectual Property & Brand", questions: [
+    { id: "oa-16-0", text: "Who owns the Meridian Collective name, logo, website, and social media accounts — and what happens to them if the group dissolves or a member leaves?",
       priority: "critical",
       options: ["The LLC owns all IP — departing members have no claim", "The LLC owns all IP — upon dissolution, IP is sold or transferred by majority vote", "Founding members retain equal rights to the brand even after dissolution", "The LLC owns all IP — a departing member cannot use the name or brand in any capacity"] },
   ]},
-  { name: "Deadlock Provisions", questions: [
-    { text: "If the group is deadlocked on a critical decision for 60+ days and can't reach the required vote, what happens?",
+  { id: "oa-17", name: "Deadlock Provisions", questions: [
+    { id: "oa-17-0", text: "If the group is deadlocked on a critical decision for 60+ days and can't reach the required vote, what happens?",
       priority: "critical",
       options: ["Mandatory mediation with a neutral third party", "Any member can trigger a buyout process — deadlocked members must buy or sell", "The decision defaults to the Managing Member's recommendation", "Forced dissolution if deadlock persists beyond 90 days", "Bring in a mutually agreed advisor to cast the deciding vote"] },
   ]},
-  { name: "Fiduciary Duties", questions: [
-    { text: "Do members owe fiduciary duties (duty of loyalty and duty of care) to the LLC and each other?",
+  { id: "oa-18", name: "Fiduciary Duties", questions: [
+    { id: "oa-18-0", text: "Do members owe fiduciary duties (duty of loyalty and duty of care) to the LLC and each other?",
       priority: "critical",
       options: ["Yes — full fiduciary duties as defined by Georgia law", "Yes — but modified to allow outside real estate activity with disclosure", "Yes — duty of care only (no duty of loyalty, allowing outside deals)", "Let the attorney define appropriate fiduciary standards for our structure"] },
   ]},
-  { name: "Insurance Requirements", questions: [
-    { text: "What insurance coverage will the LLC maintain to protect members?",
+  { id: "oa-19", name: "Insurance Requirements", questions: [
+    { id: "oa-19-0", text: "What insurance coverage will the LLC maintain to protect members?",
       priority: "critical",
       options: ["General liability + property insurance on each asset", "General liability + property + umbrella policy ($1M+)", "General liability + property + umbrella + builder's risk for active projects", "Full coverage package — let insurance broker recommend based on our activity"] },
   ]},
-  { name: "Books, Records & Transparency", questions: [
-    { text: "Who maintains the financial books and do members have the right to inspect records at any time?",
+  { id: "oa-20", name: "Books, Records & Transparency", questions: [
+    { id: "oa-20-0", text: "Who maintains the financial books and do members have the right to inspect records at any time?",
       priority: "critical",
       options: ["Professional bookkeeper maintains records; any member can inspect anytime with 48-hour notice", "Managing Member maintains records; quarterly reports to all members, inspection by request", "CPA firm maintains records; monthly reports, open access to all members at all times", "Designated member maintains records; real-time access via shared accounting software for all members"] },
   ]},
-  { name: "Indemnification", questions: [
-    { text: "Will the LLC indemnify (legally protect and cover costs for) members for actions taken in good faith on behalf of the business?",
+  { id: "oa-21", name: "Indemnification", questions: [
+    { id: "oa-21-0", text: "Will the LLC indemnify (legally protect and cover costs for) members for actions taken in good faith on behalf of the business?",
       priority: "critical",
       options: ["Yes — full indemnification for all actions taken in good faith within their authority", "Yes — but only for the Managing Member(s) acting within their defined authority", "Yes — for all members, but not for gross negligence or intentional misconduct", "No indemnification — each member is responsible for their own legal exposure"] },
   ]},
-  { name: "Working Style & Communication", questions: [
-    { text: "How do you handle conflict or disagreement?",
+  { id: "oa-22", name: "Working Style & Communication", questions: [
+    { id: "oa-22-0", text: "How do you handle conflict or disagreement?",
       priority: "critical",
       options: ["Directly — address it head-on", "Directly but privately — pull the person aside", "I need time to process before addressing conflict", "I tend to avoid conflict and hope it resolves", "Through a mediator or neutral third party"] },
-    { text: "Are you comfortable being held accountable by the group if you fall behind on commitments?",
+    { id: "oa-22-1", text: "Are you comfortable being held accountable by the group if you fall behind on commitments?",
       priority: "critical",
       options: ["Yes — hold me accountable, that's what I need", "Yes, but do it privately, not in front of everyone", "Yes, as long as accountability goes both ways", "I'd prefer to self-manage and report on my own progress"] },
   ]},
-  { name: "Financial Transparency", questions: [
-    { text: "Are you comfortable sharing your financial picture (credit score, debts, assets, income) with the group?",
+  { id: "oa-23", name: "Financial Transparency", questions: [
+    { id: "oa-23-0", text: "Are you comfortable sharing your financial picture (credit score, debts, assets, income) with the group?",
       priority: "critical",
       options: ["Yes — full transparency is necessary for trust", "Yes, but only information directly relevant to the LLC", "I'd share with one designated person but not the whole group", "No — my personal finances are private, only share what's needed per deal"] },
-    { text: "What is the maximum amount of personal money you are willing to put at risk in the first year?",
+    { id: "oa-23-1", text: "What is the maximum amount of personal money you are willing to put at risk in the first year?",
       priority: "critical",
       options: ["Up to $5,000", "Up to $10,000", "Up to $25,000", "Up to $50,000", "$50,000+", "I don't have extra capital right now"] },
   ]},
-  { name: "Additional Questions & Concerns", questions: [
-    { text: "Is there anything NOT covered in this survey that you think the operating agreement should address?",
+  { id: "oa-24", name: "Additional Questions & Concerns", questions: [
+    { id: "oa-24-0", text: "Is there anything NOT covered in this survey that you think the operating agreement should address?",
       priority: "critical" },
-    { text: "What is your biggest unanswered question or concern about this partnership?",
+    { id: "oa-24-1", text: "What is your biggest unanswered question or concern about this partnership?",
       priority: "critical" },
-    { text: "Is there anything you want to say to the group that you haven't had the chance to bring up yet?",
+    { id: "oa-24-2", text: "Is there anything you want to say to the group that you haven't had the chance to bring up yet?",
       priority: "important" },
   ]},
 ];
 
+export const oaSurvey: Survey = {
+  id: "operating-agreement",
+  title: "Operating Agreement",
+  description: "Comprehensive survey covering all operating agreement topics — vision, ownership, capital, management, profits, exits, and more.",
+  categories,
+};
+
 // NOTE: Full 270-question archive preserved in questions-full-archive.ts
 
-export const MEMBERS = ["Courtney Mosely", "Odessa Patterson", "Raquel Twine", "Tiffany Stallworth", "Aaliyah Thomas", "Peggee"] as const;
+export const MEMBERS = ["Courtney Mosely", "Aaliyah Thomas", "Raquel Twine", "Tiffany Stallworth", "Peggee"] as const;
 export type Member = typeof MEMBERS[number];

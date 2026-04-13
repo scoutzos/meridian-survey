@@ -14,11 +14,17 @@ export default function NavBar() {
   if (!user || pathname === "/") return null;
 
   const links = [
-    { href: "/survey", label: "Survey", icon: "" },
-    { href: "/results", label: "Results", icon: "" },
-    { href: "/decisions", label: "Decisions", icon: "" },
-    { href: "/hub", label: "Hub", icon: "" },
+    { href: "/surveys", label: "Surveys" },
+    { href: "/decisions", label: "Decisions" },
+    { href: "/hub", label: "Hub" },
   ];
+
+  const isActive = (href: string) => {
+    if (pathname === href) return true;
+    if (pathname.startsWith(href + "/")) return true;
+    if (href === "/surveys" && (pathname.startsWith("/survey/") || pathname.startsWith("/results/"))) return true;
+    return false;
+  };
 
   return (
     <nav className="top-nav-bar" style={{
@@ -28,21 +34,24 @@ export default function NavBar() {
     }}>
       <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
         <span style={{ color: "var(--gold)", fontSize: 18, marginRight: 8 }}>◆</span>
-        {links.map(l => (
-          <button
-            key={l.href}
-            onClick={() => router.push(l.href)}
-            style={{
-              background: pathname === l.href ? "var(--gold)" : "transparent",
-              color: pathname === l.href ? "var(--bg)" : "var(--muted)",
-              border: "none", borderRadius: 20, padding: "6px 14px", fontSize: 13,
-              fontWeight: pathname === l.href ? 600 : 400, cursor: "pointer",
-              transition: "all 0.15s",
-            }}
-          >
-            <span className="nav-icon">{l.icon} </span>{l.label}
-          </button>
-        ))}
+        {links.map(l => {
+          const active = isActive(l.href);
+          return (
+            <button
+              key={l.href}
+              onClick={() => router.push(l.href)}
+              style={{
+                background: active ? "var(--gold)" : "transparent",
+                color: active ? "var(--bg)" : "var(--muted)",
+                border: "none", borderRadius: 20, padding: "6px 14px", fontSize: 13,
+                fontWeight: active ? 600 : 400, cursor: "pointer",
+                transition: "all 0.15s",
+              }}
+            >
+              {l.label}
+            </button>
+          );
+        })}
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
         <span style={{ fontSize: 12, color: "var(--gold)" }}>{user}</span>

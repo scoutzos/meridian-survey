@@ -14,7 +14,7 @@ export default function LoginPage() {
     if (!name) { setError("Please select your name."); return; }
     if (code !== "meridian2026") { setError("Invalid access code."); return; }
     localStorage.setItem("meridian_user", name);
-    router.push("/survey");
+    router.push("/surveys");
   };
 
   return (
@@ -66,7 +66,7 @@ export default function LoginPage() {
 
         <p style={{ color: "var(--muted)", fontSize: 12, marginTop: 32 }}>
           View everyone&apos;s answers →{" "}
-          <a href="/results" style={{ color: "var(--gold)", textDecoration: "none" }}>Results</a>
+          <a href="/surveys" style={{ color: "var(--gold)", textDecoration: "none" }}>Surveys</a>
           {" · "}
           <a href="/decisions" style={{ color: "var(--gold)", textDecoration: "none" }}>Decisions</a>
           {" · "}

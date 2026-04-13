@@ -92,7 +92,8 @@ export default function HubPage() {
   const toggle = (s: string) => setOpenSections(prev => ({ ...prev, [s]: !prev[s] }));
 
   const getMemberCompletion = useCallback((name: string) => {
-    const raw = localStorage.getItem(`meridian_answers_${name}`);
+    // Check new multi-survey key first, fallback to legacy key
+    const raw = localStorage.getItem(`meridian_answers_operating-agreement_${name}`) || localStorage.getItem(`meridian_answers_${name}`);
     if (!raw) return 0;
     const answers = JSON.parse(raw);
     const total = categories.reduce((s, c) => s + c.questions.length, 0);
