@@ -4,6 +4,7 @@ import { readinessSurvey } from "./readiness-survey";
 export interface SurveyQuestion {
   id: string;
   text: string;
+  context?: string;
   options?: string[];
   priority: "critical" | "important" | "recommended";
 }

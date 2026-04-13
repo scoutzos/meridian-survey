@@ -336,12 +336,17 @@ export default function SurveyPage() {
 
             return (
               <div key={q.id}>
-                <label style={{ display: "block", fontSize: 14, fontWeight: 500, marginBottom: 12, lineHeight: 1.5 }}>
+                <label style={{ display: "block", fontSize: 14, fontWeight: 500, marginBottom: q.context ? 6 : 12, lineHeight: 1.5 }}>
                   <span style={{ color: "var(--gold)", marginRight: 8 }}>{displayIdx + 1}.</span>
                   {q.text}
                   {priorityBadge(q.priority)}
                   {hasOptions && <span style={{ fontSize: 11, color: "var(--muted)", marginLeft: 8 }}>(select all that apply)</span>}
                 </label>
+                {q.context && (
+                  <p style={{ fontSize: 12, color: "var(--muted)", lineHeight: 1.6, marginBottom: 12, paddingLeft: 24, borderLeft: "2px solid var(--border)" }}>
+                    {q.context}
+                  </p>
+                )}
 
                 {hasOptions ? (
                   <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>

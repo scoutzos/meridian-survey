@@ -12,16 +12,19 @@ export const readinessSurvey: Survey = {
         {
           id: "rc-1",
           text: "Full legal name (as it appears on your ID)",
+          context: "We need this to file the LLC. The name on the operating agreement has to match your legal ID exactly.",
           priority: "critical",
         },
         {
           id: "rc-2",
           text: "Mailing address",
+          context: "Required for LLC formation paperwork and the registered agent filing. This is where official documents get sent.",
           priority: "critical",
         },
         {
           id: "rc-3",
           text: "Do you have an existing LLC/entity you plan to use? If yes, provide the entity name and state of formation.",
+          context: "We're exploring whether members join as individuals or through their own LLCs. This affects how the operating agreement is structured and how liability flows.",
           priority: "critical",
           options: [
             "Yes — I have an existing LLC (provide details below)",
@@ -32,6 +35,7 @@ export const readinessSurvey: Survey = {
         {
           id: "rc-4",
           text: "Are you committed to actively participating in this partnership? (Weekly meetings, tasks, decision-making — not silent participation)",
+          context: "We need to know who's showing up and doing the work, not just whose name is on the paperwork. The LLC filing depends on knowing exactly who's in.",
           priority: "critical",
           options: [
             "Yes — I'm fully committed and ready to show up every week",
@@ -49,6 +53,7 @@ export const readinessSurvey: Survey = {
         {
           id: "rc-5",
           text: "How much are you contributing toward startup/admin costs? (VAs, call tools, organizational expenses — estimated $300-$500 per person)",
+          context: "Before we can start finding deals, we need to hire VAs and set up call tools. This is the immediate money needed to get the operation running — not the big investment, just the startup fuel.",
           priority: "critical",
           options: [
             "$300",
@@ -61,6 +66,7 @@ export const readinessSurvey: Survey = {
         {
           id: "rc-6",
           text: "How much are you contributing toward the first deal?",
+          context: "This is your investment capital for the first flip or land purchase. Your contribution determines your ownership percentage on that deal, which goes into the operating agreement.",
           priority: "critical",
           options: [
             "Up to $1,000",
@@ -73,6 +79,7 @@ export const readinessSurvey: Survey = {
         {
           id: "rc-7",
           text: "Is your contribution cash, credit, or both? (If credit, how much is available?)",
+          context: "Lenders look at what the group brings to the table. We need to know the full picture — cash on hand plus available credit — so we can plan financing and show lenders we're serious.",
           priority: "critical",
           options: [
             "Cash only",
@@ -83,6 +90,7 @@ export const readinessSurvey: Survey = {
         {
           id: "rc-8",
           text: "Is there anything else you bring to the table? (Industry knowledge, contractor connections, sweat equity, real estate license, etc.)",
+          context: "Not everything is about money. The operating agreement accounts for sweat equity, skills, and connections. If you bring a GC relationship or a real estate license, that has value — say it here so it gets documented.",
           priority: "critical",
         },
       ],
@@ -94,6 +102,7 @@ export const readinessSurvey: Survey = {
         {
           id: "rc-9",
           text: "Do you have your contribution available today, or do you need time? (If you need time, how long?)",
+          context: "We're trying to fund the bank account and start hiring VAs this week. We need to know if you're ready to move now or if you need a timeline, so we can plan around it.",
           priority: "critical",
           options: [
             "Ready now — I can transfer funds this week",
@@ -105,6 +114,7 @@ export const readinessSurvey: Survey = {
         {
           id: "rc-10",
           text: "Are you comfortable with a lender pulling your credit as part of the financing process?",
+          context: "Most hard money and conventional lenders require a credit pull for anyone who owns 25% or more of the LLC. If you have concerns about your credit, we need to know now so we can plan the financing structure accordingly.",
           priority: "critical",
           options: [
             "Yes — no concerns",
