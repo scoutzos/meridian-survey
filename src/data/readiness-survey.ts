@@ -69,22 +69,9 @@ export const readinessSurvey: Survey = {
       name: "What's Your Stake?",
       questions: [
         {
-          id: "rc-5",
-          text: "How much are you contributing toward startup/admin costs? (VAs, call tools, organizational expenses — estimated $300-$500 per person)",
-          context: "Before we can start finding deals, we need to hire VAs and set up call tools. This is the immediate money needed to get the operation running — not the big investment, just the startup fuel.",
-          priority: "critical",
-          options: [
-            "$300",
-            "$400",
-            "$500",
-            "More than $500",
-            "I can't contribute to admin costs right now",
-          ],
-        },
-        {
           id: "rc-6",
-          text: "What is the MOST you'd be willing to invest in a single deal?",
-          context: "This isn't a commitment — it's your ceiling. We need to know everyone's range so we can find deals that fit the group's budget. Your contribution on any deal determines your ownership percentage on that deal, which goes into the operating agreement.",
+          text: "Between cash and credit, what is the MOST you'd be willing to invest in a single deal?",
+          context: "This isn't a commitment — it's your ceiling. We need to know everyone's total buying power so we can find deals that fit the group's budget. Your contribution on any deal determines your ownership percentage, which goes into the operating agreement.",
           priority: "critical",
           options: [
             "Up to $1,000",
@@ -96,19 +83,8 @@ export const readinessSurvey: Survey = {
           ],
         },
         {
-          id: "rc-7",
-          text: "Is your contribution cash, credit, or both?",
-          context: "Lenders look at what the group brings to the table. We need to know the full picture — cash on hand plus available credit — so we can plan financing and show lenders we're serious.",
-          priority: "critical",
-          options: [
-            "Cash only",
-            "Credit only",
-            "Both cash and credit",
-          ],
-        },
-        {
           id: "rc-7b",
-          text: "How much CASH do you have available to contribute?",
+          text: "Of that amount, how much is CASH you have available?",
           context: "This is money you can move into the LLC bank account. Be honest — we're planning real deals around these numbers.",
           priority: "critical",
           options: [
@@ -121,7 +97,7 @@ export const readinessSurvey: Survey = {
         },
         {
           id: "rc-7c",
-          text: "How much available CREDIT do you have? (business credit cards, lines of credit, etc.)",
+          text: "And how much is available CREDIT? (business credit cards, lines of credit, etc.)",
           context: "Available credit can cover materials, tools, or bridge gaps between funding. This isn't about your credit score — it's about how much buying power you can access if a deal needs it.",
           priority: "critical",
           options: [
@@ -130,6 +106,19 @@ export const readinessSurvey: Survey = {
             "$5,000 - $15,000",
             "$15,000 - $30,000",
             "More than $30,000",
+          ],
+        },
+        {
+          id: "rc-5",
+          text: "How much are you contributing toward startup/admin costs? (VAs, call tools, organizational expenses — estimated $300-$500 per person)",
+          context: "Before we can start finding deals, we need to hire VAs and set up call tools. This is the immediate money needed to get the operation running — not the big investment, just the startup fuel.",
+          priority: "critical",
+          options: [
+            "$300",
+            "$400",
+            "$500",
+            "More than $500",
+            "I can't contribute to admin costs right now",
           ],
         },
         {
