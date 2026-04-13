@@ -163,7 +163,13 @@ export default function SurveyPage() {
     return other ? other.slice(7) : "";
   };
 
-  const toggleOption = (qId: string, option: string) => {
+  const toggleOption = (qId: string, option: string, singleSelect?: boolean) => {
+    if (singleSelect) {
+      const current = getSelections(qId);
+      // If already selected, deselect; otherwise select only this one
+      save({ ...answers, [qId]: current.includes(option) ? [] : [option] });
+      return;
+    }
     const current = getSelections(qId);
     const newSelections = current.includes(option)
       ? current.filter(s => s !== option)
@@ -349,7 +355,7 @@ export default function SurveyPage() {
                   <span style={{ color: "var(--gold)", marginRight: 8 }}>{displayIdx + 1}.</span>
                   {q.text}
                   {priorityBadge(q.priority)}
-                  {hasOptions && <span style={{ fontSize: 11, color: "var(--muted)", marginLeft: 8 }}>(select all that apply)</span>}
+                  {hasOptions && !q.singleSelect && <span style={{ fontSize: 11, color: "var(--muted)", marginLeft: 8 }}>(select all that apply)</span>}
                 </label>
                 {q.context && (
                   <p style={{ fontSize: 12, color: "var(--muted)", lineHeight: 1.6, marginBottom: 12, paddingLeft: 24, borderLeft: "2px solid var(--border)" }}>
@@ -374,16 +380,18 @@ export default function SurveyPage() {
                           }}
                         >
                           <input
-                            type="checkbox"
+                            type={q.singleSelect ? "radio" : "checkbox"}
+                            name={q.singleSelect ? q.id : undefined}
                             checked={checked}
-                            onChange={() => toggleOption(q.id, option)}
+                            onChange={() => toggleOption(q.id, option, q.singleSelect)}
                             style={{ accentColor: "var(--gold)", flexShrink: 0 }}
                           />
                           <span>{option}</span>
                         </label>
                       );
                     })}
-                    {/* Other option */}
+                    {/* Other option — hide for single select */}
+                    {!q.singleSelect && (
                     <label
                       style={{
                         display: "flex", alignItems: "center", gap: 10,
@@ -402,7 +410,8 @@ export default function SurveyPage() {
                       />
                       <span>Other</span>
                     </label>
-                    {otherSelected && (
+                    )}
+                    {otherSelected && !q.singleSelect && (
                       <textarea
                         value={otherText}
                         onChange={e => setOtherText(q.id, e.target.value)}

@@ -26,6 +26,7 @@ export const readinessSurvey: Survey = {
           text: "Do you want to join the partnership as an individual or through your own LLC?",
           context: "This matters for the operating agreement. If you join through your LLC, your entity is the legal member — not you personally. That adds a layer of liability protection but requires your LLC to be in good standing. Either way works, we just need to know before we file.",
           priority: "critical",
+          singleSelect: true,
           options: [
             "As an individual — put my name on the operating agreement",
             "Through my LLC — my entity will be the member on the operating agreement",
@@ -58,6 +59,7 @@ export const readinessSurvey: Survey = {
           text: "Are you committed to actively participating in this partnership? (Weekly meetings, tasks, decision-making — not silent participation)",
           context: "We need to know who's showing up and doing the work, not just whose name is on the paperwork. The LLC filing depends on knowing exactly who's in.",
           priority: "critical",
+          singleSelect: true,
           options: [
             "Yes — I'm fully committed and ready to show up every week",
             "Yes — but I may miss occasionally due to work/life",
@@ -100,6 +102,7 @@ export const readinessSurvey: Survey = {
           text: "How much are you contributing toward startup/admin costs? (VAs, call tools, organizational expenses — estimated $300-$500 per person)",
           context: "Before we can start finding deals, we need to hire VAs and set up call tools. This is the immediate money needed to get the operation running — not the big investment, just the startup fuel.",
           priority: "critical",
+          singleSelect: true,
           options: [
             "$300",
             "$400",
@@ -141,6 +144,7 @@ export const readinessSurvey: Survey = {
           text: "When can the rest of your contribution be ready?",
           context: "We need a timeline so we can plan around it. If you said $0 more above, select N/A.",
           priority: "critical",
+          singleSelect: true,
           options: [
             "N/A — I already put in my full amount this week",
             "Within 2 weeks",
@@ -154,6 +158,7 @@ export const readinessSurvey: Survey = {
           text: "Are you comfortable with a lender pulling your credit as part of the financing process?",
           context: "Most hard money and conventional lenders require a credit pull for anyone who owns 25% or more of the LLC. If you have concerns about your credit, we need to know now so we can plan the financing structure accordingly.",
           priority: "critical",
+          singleSelect: true,
           options: [
             "Yes — no concerns",
             "Yes — but I'd like to know when it's happening beforehand",
