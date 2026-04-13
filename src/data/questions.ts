@@ -225,5 +225,5 @@ export const oaSurvey: Survey = {
 
 // NOTE: Full 270-question archive preserved in questions-full-archive.ts
 
-export const MEMBERS = ["Courtney Mosely", "Aaliyah Thomas", "Raquel Twine", "Tiffany Stallworth", "Peggee"] as const;
+export const MEMBERS = ["Courtney Mosely", "Aaliyah Thomas", "Raquel Twine", "Odessa Patterson", "Tiffany Stallworth", "Peggee"] as const;
 export type Member = typeof MEMBERS[number];
