@@ -84,13 +84,39 @@ export const readinessSurvey: Survey = {
         },
         {
           id: "rc-7",
-          text: "Is your contribution cash, credit, or both? (If credit, how much is available?)",
+          text: "Is your contribution cash, credit, or both?",
           context: "Lenders look at what the group brings to the table. We need to know the full picture — cash on hand plus available credit — so we can plan financing and show lenders we're serious.",
           priority: "critical",
           options: [
             "Cash only",
             "Credit only",
             "Both cash and credit",
+          ],
+        },
+        {
+          id: "rc-7b",
+          text: "How much CASH do you have available to contribute?",
+          context: "This is money you can move into the LLC bank account. Be honest — we're planning real deals around these numbers.",
+          priority: "critical",
+          options: [
+            "$0 — I don't have cash to contribute right now",
+            "Under $1,000",
+            "$1,000 - $5,000",
+            "$5,000 - $10,000",
+            "More than $10,000",
+          ],
+        },
+        {
+          id: "rc-7c",
+          text: "How much available CREDIT do you have? (business credit cards, lines of credit, etc.)",
+          context: "Available credit can cover materials, tools, or bridge gaps between funding. This isn't about your credit score — it's about how much buying power you can access if a deal needs it.",
+          priority: "critical",
+          options: [
+            "$0 — I don't have available credit right now",
+            "Under $5,000",
+            "$5,000 - $15,000",
+            "$15,000 - $30,000",
+            "More than $30,000",
           ],
         },
         {
