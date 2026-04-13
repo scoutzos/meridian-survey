@@ -12,7 +12,7 @@ export const readinessSurvey: Survey = {
         {
           id: "rc-1",
           text: "Full legal name (as it appears on your ID)",
-          context: "We need this to file the LLC. Your legal name has to match your ID exactly.",
+          context: "We need this to file the LLC. The name on the operating agreement has to match your legal ID exactly.",
           priority: "critical",
         },
         {
@@ -24,18 +24,18 @@ export const readinessSurvey: Survey = {
         {
           id: "rc-3",
           text: "Do you want to join the partnership as an individual or through your own LLC?",
-          context: "If you join through your LLC, your entity is the legal member — not you personally. That adds a layer of liability protection but requires your LLC to be in good standing. Either way works, we just need to know before we file.",
+          context: "This matters for the operating agreement. If you join through your LLC, your entity is the legal member — not you personally. That adds a layer of liability protection but requires your LLC to be in good standing. Either way works, we just need to know before we file.",
           priority: "critical",
           options: [
-            "As an individual — put my name on the LLC",
-            "Through my LLC — my entity will be the member on the LLC",
+            "As an individual — put my name on the operating agreement",
+            "Through my LLC — my entity will be the member on the operating agreement",
             "I'm not sure yet",
           ],
         },
         {
           id: "rc-3b",
           text: "If joining through your LLC, provide the entity name, state of formation, and your title (e.g., Managing Member).",
-          context: "We need this for the LLC paperwork. If you selected 'as an individual' above, just type N/A.",
+          context: "We need this for the operating agreement. If you selected 'as an individual' above, just type N/A.",
           priority: "critical",
         },
         {
@@ -72,7 +72,7 @@ export const readinessSurvey: Survey = {
         {
           id: "rc-6",
           text: "How much are you contributing toward the first deal?",
-          context: "This is your investment capital for the first flip or land purchase. Your contribution determines your ownership percentage on that deal.",
+          context: "This is your investment capital for the first flip or land purchase. Your contribution determines your ownership percentage on that deal, which goes into the operating agreement.",
           priority: "critical",
           options: [
             "Up to $1,000",
@@ -122,7 +122,7 @@ export const readinessSurvey: Survey = {
         {
           id: "rc-8",
           text: "Is there anything else you bring to the table? (Industry knowledge, contractor connections, sweat equity, real estate license, etc.)",
-          context: "Not everything is about money. If you bring a GC relationship, a real estate license, or specialized skills, that has value — say it here so it gets documented.",
+          context: "Not everything is about money. The operating agreement accounts for sweat equity, skills, and connections. If you bring a GC relationship or a real estate license, that has value — say it here so it gets documented.",
           priority: "critical",
         },
       ],
