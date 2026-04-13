@@ -349,11 +349,19 @@ export default function SurveyPage() {
             const otherSelected = isOtherSelected(q.id);
             const otherText = getOtherText(q.id);
 
+            // Resolve {value} references in question text
+            let questionText = q.text;
+            if (q.referenceQuestionId) {
+              const refVal = answers[q.referenceQuestionId];
+              const displayVal = typeof refVal === "string" && refVal.trim() ? refVal : (Array.isArray(refVal) && refVal.length > 0 ? refVal[0] : "your amount");
+              questionText = questionText.replace("{value}", displayVal);
+            }
+
             return (
               <div key={q.id}>
                 <label style={{ display: "block", fontSize: 14, fontWeight: 500, marginBottom: q.context ? 6 : 12, lineHeight: 1.5 }}>
                   <span style={{ color: "var(--gold)", marginRight: 8 }}>{displayIdx + 1}.</span>
-                  {q.text}
+                  {questionText}
                   {priorityBadge(q.priority)}
                   {hasOptions && !q.singleSelect && <span style={{ fontSize: 11, color: "var(--muted)", marginLeft: 8 }}>(select all that apply)</span>}
                 </label>

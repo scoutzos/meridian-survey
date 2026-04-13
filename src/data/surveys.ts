@@ -9,6 +9,8 @@ export interface SurveyQuestion {
   placeholder?: string;
   inputType?: "currency" | "text";
   singleSelect?: boolean;
+  /** Display another question's answer inline in the question text. Use {value} in the text to place it. */
+  referenceQuestionId?: string;
   priority: "critical" | "important" | "recommended";
   /** Show this question only if the referenced question's answer includes the given value */
   showIf?: { questionId: string; includes: string };
