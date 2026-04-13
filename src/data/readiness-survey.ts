@@ -23,14 +23,20 @@ export const readinessSurvey: Survey = {
         },
         {
           id: "rc-3",
-          text: "Do you have an existing LLC/entity you plan to use? If yes, provide the entity name and state of formation.",
-          context: "We're exploring whether members join as individuals or through their own LLCs. This affects how the operating agreement is structured and how liability flows.",
+          text: "Do you want to join the partnership as an individual or through your own LLC?",
+          context: "This matters for the operating agreement. If you join through your LLC, your entity is the legal member — not you personally. That adds a layer of liability protection but requires your LLC to be in good standing. Either way works, we just need to know so the attorney drafts it correctly.",
           priority: "critical",
           options: [
-            "Yes — I have an existing LLC (provide details below)",
-            "No — I need to create one",
-            "I'm not sure yet",
+            "As an individual — put my name on the operating agreement",
+            "Through my LLC — my entity will be the member",
+            "I'm not sure yet — I need to talk to the attorney first",
           ],
+        },
+        {
+          id: "rc-3b",
+          text: "If joining through your LLC, provide the entity name, state of formation, and your title (e.g., Managing Member).",
+          context: "The attorney needs this for the operating agreement. If you selected 'as an individual' above, just type N/A.",
+          priority: "critical",
         },
         {
           id: "rc-4",
