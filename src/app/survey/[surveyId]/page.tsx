@@ -416,7 +416,7 @@ export default function SurveyPage() {
                   <textarea
                     value={typeof currentAnswer === "string" ? currentAnswer : ""}
                     onChange={e => save({ ...answers, [q.id]: e.target.value })}
-                    placeholder="Type your answer..."
+                    placeholder={q.placeholder || "Type your answer..."}
                     rows={3}
                   />
                 )}

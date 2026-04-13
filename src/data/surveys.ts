@@ -6,6 +6,7 @@ export interface SurveyQuestion {
   text: string;
   context?: string;
   options?: string[];
+  placeholder?: string;
   priority: "critical" | "important" | "recommended";
   /** Show this question only if the referenced question's answer includes the given value */
   showIf?: { questionId: string; includes: string };
