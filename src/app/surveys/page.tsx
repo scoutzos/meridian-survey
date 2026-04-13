@@ -3,27 +3,77 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { getAllSurveys } from "@/data/surveys";
 import { MEMBERS } from "@/data/questions";
+import { supabase } from "@/lib/supabase";
 import { migrateLocalStorage, getStorageKey } from "@/lib/migration";
 
 export default function SurveysPage() {
   const router = useRouter();
   const [user, setUser] = useState<string | null>(null);
+  const [progressMap, setProgressMap] = useState<Record<string, Record<string, number>>>({});
+
+  const surveys = getAllSurveys();
 
   useEffect(() => {
     const u = localStorage.getItem("meridian_user");
     if (!u) { router.push("/"); return; }
     setUser(u);
     migrateLocalStorage(u);
-  }, [router]);
+
+    if (!supabase) return;
+
+    // Fetch all responses to compute progress from Supabase
+    supabase
+      .from("meridian_responses")
+      .select("member_name, survey_id")
+      .then(({ data: rows }) => {
+        if (!rows) return;
+        // Build: { surveyId: { memberName: count } }
+        const map: Record<string, Record<string, number>> = {};
+        for (const row of rows) {
+          const sid = row.survey_id || "operating-agreement";
+          if (!map[sid]) map[sid] = {};
+          map[sid][row.member_name] = (map[sid][row.member_name] || 0) + 1;
+        }
+        setProgressMap(map);
+
+        // Also hydrate localStorage for the current user so it stays in sync
+        for (const survey of surveys) {
+          const count = map[survey.id]?.[u] || 0;
+          if (count > 0) {
+            const storageKey = getStorageKey(survey.id, u);
+            if (!localStorage.getItem(storageKey)) {
+              // Fetch full answers for this survey to populate localStorage
+              supabase!
+                .from("meridian_responses")
+                .select("question_id, answer")
+                .eq("member_name", u)
+                .eq("survey_id", survey.id)
+                .then(({ data: answers }) => {
+                  if (!answers || answers.length === 0) return;
+                  const parsed: Record<string, string[] | string> = {};
+                  for (const a of answers) {
+                    try { parsed[a.question_id] = JSON.parse(a.answer); }
+                    catch { parsed[a.question_id] = a.answer; }
+                  }
+                  localStorage.setItem(storageKey, JSON.stringify(parsed));
+                });
+            }
+          }
+        }
+      });
+  }, [router, surveys]);
 
   if (!user) return null;
-
-  const surveys = getAllSurveys();
 
   function getProgress(surveyId: string, member: string): { answered: number; total: number } {
     const survey = surveys.find(s => s.id === surveyId);
     if (!survey) return { answered: 0, total: 0 };
     const total = survey.categories.reduce((s, c) => s + c.questions.length, 0);
+
+    // Use Supabase data if available, fallback to localStorage
+    const supabaseCount = progressMap[surveyId]?.[member];
+    if (supabaseCount !== undefined) return { answered: supabaseCount, total };
+
     const raw = localStorage.getItem(getStorageKey(surveyId, member));
     if (!raw) return { answered: 0, total };
     try {
@@ -54,7 +104,6 @@ export default function SurveysPage() {
           const myProgress = getProgress(survey.id, user);
           const myPct = totalQ > 0 ? Math.round((myProgress.answered / totalQ) * 100) : 0;
 
-          // Count how many members have started
           const membersStarted = MEMBERS.filter(m => {
             const p = getProgress(survey.id, m);
             return p.answered > 0;
