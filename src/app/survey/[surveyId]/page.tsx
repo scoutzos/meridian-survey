@@ -149,7 +149,6 @@ export default function SurveyPage() {
   }
 
   const categories = survey.categories;
-  const totalQuestions = categories.reduce((s, c) => s + c.questions.length, 0);
 
   const getSelections = (qId: string): string[] => {
     const val = answers[qId];
@@ -186,14 +185,24 @@ export default function SurveyPage() {
     save({ ...answers, [qId]: [...current, `Other: ${text}`] });
   };
 
-  const answeredInCategory = (ci: number) =>
-    categories[ci].questions.filter(q => isAnswered(answers[q.id])).length;
+  const shouldShow = (q: SurveyQuestion): boolean => {
+    if (!q.showIf) return true;
+    const depAnswer = getSelections(q.showIf.questionId);
+    return depAnswer.some(a => a.includes(q.showIf!.includes));
+  };
 
-  const totalAnswered = Object.values(answers).filter(v => isAnswered(v)).length;
-  const overallPct = Math.round((totalAnswered / totalQuestions) * 100);
+  const visibleInCategory = (ci: number) =>
+    categories[ci].questions.filter(q => shouldShow(q));
+
+  const answeredInCategory = (ci: number) =>
+    visibleInCategory(ci).filter(q => isAnswered(answers[q.id])).length;
+
+  const totalVisible = categories.reduce((s, c, ci) => s + visibleInCategory(ci).length, 0);
+  const totalAnswered = categories.reduce((s, c, ci) => s + answeredInCategory(ci), 0);
+  const overallPct = totalVisible > 0 ? Math.round((totalAnswered / totalVisible) * 100) : 0;
 
   const getSortedQuestions = (ci: number) => {
-    const questions = categories[ci].questions.map(q => q);
+    const questions = visibleInCategory(ci);
     questions.sort((a, b) => priorityOrder[a.priority] - priorityOrder[b.priority]);
     return questions;
   };
@@ -243,7 +252,7 @@ export default function SurveyPage() {
         <div style={{ padding: "0 20px 16px" }}>
           <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "var(--muted)", marginBottom: 4 }}>
             <span>Overall Progress</span>
-            <span>{totalAnswered}/{totalQuestions} ({overallPct}%)</span>
+            <span>{totalAnswered}/{totalVisible} ({overallPct}%)</span>
           </div>
           <div style={{ height: 4, background: "var(--border)", borderRadius: 2 }}>
             <div style={{ height: "100%", background: "var(--gold)", borderRadius: 2, width: `${overallPct}%`, transition: "width 0.3s" }} />
@@ -253,7 +262,7 @@ export default function SurveyPage() {
         <nav>
           {categories.map((cat, ci) => {
             const done = answeredInCategory(ci);
-            const total = cat.questions.length;
+            const total = visibleInCategory(ci).length;
             const pct = Math.round((done / total) * 100);
             return (
               <button

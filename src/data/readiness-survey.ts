@@ -34,21 +34,24 @@ export const readinessSurvey: Survey = {
         },
         {
           id: "rc-3b",
-          text: "If joining through your LLC, what is the entity name?",
-          context: "This is the legal name of your LLC as registered with the state. If you selected 'as an individual' above, just type N/A.",
+          text: "What is the entity name of your LLC?",
+          context: "This is the legal name of your LLC as registered with the state.",
           priority: "critical",
+          showIf: { questionId: "rc-3", includes: "Through my LLC" },
         },
         {
           id: "rc-3c",
           text: "What state was your LLC formed in?",
-          context: "We need to know where your entity is registered. If joining as an individual, type N/A.",
+          context: "We need to know where your entity is registered.",
           priority: "critical",
+          showIf: { questionId: "rc-3", includes: "Through my LLC" },
         },
         {
           id: "rc-3d",
           text: "What is your title within your LLC? (e.g., Managing Member, CEO, Owner)",
-          context: "This is the role you hold in your own entity — it goes on the operating agreement next to your LLC's name. If joining as an individual, type N/A.",
+          context: "This is the role you hold in your own entity — it goes on the operating agreement next to your LLC's name.",
           priority: "critical",
+          showIf: { questionId: "rc-3", includes: "Through my LLC" },
         },
         {
           id: "rc-4",

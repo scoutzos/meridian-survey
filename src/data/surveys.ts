@@ -7,6 +7,8 @@ export interface SurveyQuestion {
   context?: string;
   options?: string[];
   priority: "critical" | "important" | "recommended";
+  /** Show this question only if the referenced question's answer includes the given value */
+  showIf?: { questionId: string; includes: string };
 }
 
 export interface SurveyCategory {
