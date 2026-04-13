@@ -34,8 +34,20 @@ export const readinessSurvey: Survey = {
         },
         {
           id: "rc-3b",
-          text: "If joining through your LLC, provide the entity name, state of formation, and your title (e.g., Managing Member).",
-          context: "We need this for the operating agreement. If you selected 'as an individual' above, just type N/A.",
+          text: "If joining through your LLC, what is the entity name?",
+          context: "This is the legal name of your LLC as registered with the state. If you selected 'as an individual' above, just type N/A.",
+          priority: "critical",
+        },
+        {
+          id: "rc-3c",
+          text: "What state was your LLC formed in?",
+          context: "We need to know where your entity is registered. If joining as an individual, type N/A.",
+          priority: "critical",
+        },
+        {
+          id: "rc-3d",
+          text: "What is your title within your LLC? (e.g., Managing Member, CEO, Owner)",
+          context: "This is the role you hold in your own entity — it goes on the operating agreement next to your LLC's name. If joining as an individual, type N/A.",
           priority: "critical",
         },
         {
