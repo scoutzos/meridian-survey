@@ -19,6 +19,7 @@ export interface SurveyQuestion {
 export interface SurveyCategory {
   id: string;
   name: string;
+  description?: string;
   questions: SurveyQuestion[];
 }
 

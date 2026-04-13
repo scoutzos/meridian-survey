@@ -72,6 +72,7 @@ export const readinessSurvey: Survey = {
     {
       id: "rc-stake",
       name: "What's Your Stake?",
+      description: "Your financial contribution — cash or credit — determines your equity percentage on each deal. If credit is used to fund a deal, that credit is paid back first from the deal's proceeds before any profits are split. In other words: credit gets repaid, then everyone gets their share.",
       questions: [
         {
           id: "rc-6",

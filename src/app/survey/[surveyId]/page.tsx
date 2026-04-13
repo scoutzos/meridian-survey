@@ -320,6 +320,15 @@ export default function SurveyPage() {
             Category {activeCategory + 1} of {categories.length}
           </p>
           <h1 style={{ fontSize: 24, fontWeight: 700 }}>{categories[activeCategory].name}</h1>
+          {categories[activeCategory].description && (
+            <div style={{
+              marginTop: 12, padding: "14px 18px", borderRadius: 8,
+              background: "rgba(197,165,114,0.08)", border: "1px solid rgba(197,165,114,0.2)",
+              fontSize: 13, lineHeight: 1.6, color: "var(--muted)",
+            }}>
+              {categories[activeCategory].description}
+            </div>
+          )}
         </div>
 
         {/* Priority filter buttons */}
