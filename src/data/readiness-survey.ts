@@ -133,14 +133,42 @@ export const readinessSurvey: Survey = {
       questions: [
         {
           id: "rc-9",
-          text: "Do you have your contribution available today, or do you need time? (If you need time, how long?)",
-          context: "We're trying to fund the bank account and start hiring VAs this week. We need to know if you're ready to move now or if you need a timeline, so we can plan around it.",
+          text: "How much can you put into the LLC bank account THIS WEEK?",
+          context: "This is what we use to fund VAs, call tools, and get the operation started immediately. We need real numbers so we know what we're working with right now — not promises, just what you can move this week.",
           priority: "critical",
           options: [
-            "Ready now — I can transfer funds this week",
-            "I need 1-2 weeks",
-            "I need about a month",
-            "I need more than a month",
+            "$0 — I can't put anything in this week",
+            "$100 - $300",
+            "$300 - $500",
+            "$500 - $1,000",
+            "$1,000 - $3,000",
+            "More than $3,000",
+          ],
+        },
+        {
+          id: "rc-9b",
+          text: "How much MORE can you contribute if given some time?",
+          context: "This is the rest of your commitment beyond what you can do this week. Maybe you have money coming in, or you need to move things around. We just need to know the total so we can plan the first deal.",
+          priority: "critical",
+          options: [
+            "$0 — what I put in this week is my full amount for now",
+            "Up to $1,000 more",
+            "$1,000 - $5,000 more",
+            "$5,000 - $10,000 more",
+            "More than $10,000 more",
+          ],
+        },
+        {
+          id: "rc-9c",
+          text: "When can the rest of your contribution be ready?",
+          context: "We need a timeline so we can plan around it. If you said $0 more above, select N/A.",
+          priority: "critical",
+          options: [
+            "N/A — I already put in my full amount this week",
+            "Within 2 weeks",
+            "Within 30 days",
+            "Within 60 days",
+            "I'm not sure yet",
           ],
         },
         {
