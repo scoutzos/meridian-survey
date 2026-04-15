@@ -108,12 +108,24 @@ export default function ResultsPage() {
   const parseCurrency = (val: string | string[] | undefined): number => {
     if (!val) return 0;
     const str = typeof val === "string" ? val : Array.isArray(val) ? val[0] : "";
-    const num = parseInt(str.replace(/[^0-9]/g, ""), 10);
+    if (!str) return 0;
+    // Match the first dollar amount in the string — handles both formatted values
+    // like "$10,000" and old range-style option answers like "$5,000 - $10,000"
+    // (takes the lower bound of a range rather than concatenating all digits)
+    const match = str.match(/\$?([\d,]+)/);
+    if (!match) return 0;
+    const num = parseInt(match[1].replace(/,/g, ""), 10);
     return isNaN(num) ? 0 : num;
   };
 
   const formatCurrency = (num: number): string =>
     "$" + num.toLocaleString("en-US");
+
+  // Resolve {value} placeholders in question text for display (results page has no per-member context)
+  const resolveLabel = (text: string, maxLen: number): string => {
+    const resolved = text.replace(/\{value\}/g, "your amount");
+    return resolved.length > maxLen ? resolved.slice(0, maxLen) + "..." : resolved;
+  };
 
   // Find all currency questions in this survey
   const currencyQuestions = categories.flatMap(c =>
@@ -469,7 +481,7 @@ export default function ResultsPage() {
                 }}>
                   <p style={{ fontSize: 28, fontWeight: 800, color: "var(--gold)" }}>{formatCurrency(totals.total)}</p>
                   <p style={{ fontSize: 11, color: "var(--muted)", marginTop: 4, lineHeight: 1.4 }}>
-                    {q.text.length > 50 ? q.text.slice(0, 50) + "..." : q.text}
+                    {resolveLabel(q.text, 50)}
                   </p>
                 </div>
               );
@@ -484,7 +496,7 @@ export default function ResultsPage() {
                   <th style={{ textAlign: "left", padding: "8px 12px", color: "var(--muted)", fontWeight: 500 }}>Member</th>
                   {currencyQuestions.map(q => (
                     <th key={q.id} style={{ textAlign: "right", padding: "8px 12px", color: "var(--muted)", fontWeight: 500, maxWidth: 140 }}>
-                      {q.text.length > 30 ? q.text.slice(0, 30) + "..." : q.text}
+                      {resolveLabel(q.text, 30)}
                     </th>
                   ))}
                 </tr>
