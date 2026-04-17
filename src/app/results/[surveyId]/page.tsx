@@ -527,7 +527,6 @@ export default function ResultsPage() {
                       {resolveLabel(q.text, 30)}
                     </th>
                   ))}
-                  <th style={{ textAlign: "right", padding: "8px 12px", color: "var(--muted)", fontWeight: 500, whiteSpace: "nowrap" }}>Last Active</th>
                 </tr>
               </thead>
               <tbody>
@@ -544,9 +543,6 @@ export default function ResultsPage() {
                           </td>
                         );
                       })}
-                      <td style={{ textAlign: "right", padding: "8px 12px", fontSize: 12, color: "var(--muted)", whiteSpace: "nowrap" }}>
-                        {formatRelativeTime(memberLogins[m])}
-                      </td>
                     </tr>
                   );
                 })}
@@ -560,7 +556,6 @@ export default function ResultsPage() {
                       </td>
                     );
                   })}
-                  <td />
                 </tr>
               </tbody>
             </table>
