@@ -56,7 +56,11 @@ export default function LoginPage() {
       return;
     }
 
-    // Returning user — go straight in
+    // Returning user — update last_login and go straight in
+    await supabase
+      .from("meridian_members")
+      .update({ last_login: new Date().toISOString() })
+      .eq("name", name);
     localStorage.setItem("meridian_user", name);
     router.push("/surveys");
   };
@@ -82,6 +86,11 @@ export default function LoginPage() {
       return;
     }
 
+    // First-time password set — update last_login and go in
+    await supabase
+      .from("meridian_members")
+      .update({ last_login: new Date().toISOString() })
+      .eq("name", name);
     localStorage.setItem("meridian_user", name);
     router.push("/surveys");
   };

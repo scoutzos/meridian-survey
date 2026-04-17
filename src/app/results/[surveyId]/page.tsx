@@ -6,6 +6,20 @@ import { getSurveyById, type SurveyQuestion } from "@/data/surveys";
 import { supabase } from "@/lib/supabase";
 import { insights } from "@/data/insights";
 
+function formatRelativeTime(timestamp: string | null | undefined): string {
+  if (!timestamp) return "Never logged in";
+  const diff = Date.now() - new Date(timestamp).getTime();
+  const minutes = Math.floor(diff / 60000);
+  const hours = Math.floor(diff / 3600000);
+  const days = Math.floor(diff / 86400000);
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return `${minutes}m ago`;
+  if (hours < 24) return `${hours}h ago`;
+  if (days === 1) return "yesterday";
+  if (days < 30) return `${days}d ago`;
+  return new Date(timestamp).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
 const priorityBadge = (p: SurveyQuestion["priority"]) => {
   const config = {
     critical: { label: "Critical", color: "#e55" },
@@ -63,6 +77,7 @@ export default function ResultsPage() {
 
   const [user, setUser] = useState<string | null>(null);
   const [allAnswers, setAllAnswers] = useState<Record<string, Record<string, string[] | string>>>({});
+  const [memberLogins, setMemberLogins] = useState<Record<string, string | null>>({});
   const [activeCategory, setActiveCategory] = useState(0);
   const [showCriticalSummary, setShowCriticalSummary] = useState(false);
   const [showAlignmentSummary, setShowAlignmentSummary] = useState(false);
@@ -86,6 +101,15 @@ export default function ResultsPage() {
           catch { data[row.member_name][row.question_id] = row.answer; }
         }
         setAllAnswers(data);
+      });
+
+    supabase
+      .from("meridian_members")
+      .select("name, last_login")
+      .then(({ data: members }) => {
+        const logins: Record<string, string | null> = {};
+        for (const m of members || []) logins[m.name] = m.last_login;
+        setMemberLogins(logins);
       });
   }, [router, surveyId]);
 
@@ -343,6 +367,7 @@ export default function ResultsPage() {
           {MEMBERS.map(m => {
             const hasResponded = !!allAnswers[m];
             const answerCount = hasResponded ? Object.keys(allAnswers[m]).length : 0;
+            const lastLogin = memberLogins[m];
             return (
               <div key={m} style={{
                 padding: "12px 16px", borderRadius: 8,
@@ -352,8 +377,11 @@ export default function ResultsPage() {
                 <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
                   <span style={{ fontSize: 13, fontWeight: 600 }}>{m}</span>
                 </div>
-                <p style={{ fontSize: 11, color: "var(--muted)" }}>
+                <p style={{ fontSize: 11, color: "var(--muted)", marginBottom: 2 }}>
                   {hasResponded ? `${answerCount}/${totalQ} questions answered` : "Hasn't started yet"}
+                </p>
+                <p style={{ fontSize: 11, color: lastLogin ? "var(--muted)" : "#666" }}>
+                  Last active: <span style={{ color: lastLogin ? "var(--fg)" : "var(--muted)" }}>{formatRelativeTime(lastLogin)}</span>
                 </p>
               </div>
             );
@@ -499,6 +527,7 @@ export default function ResultsPage() {
                       {resolveLabel(q.text, 30)}
                     </th>
                   ))}
+                  <th style={{ textAlign: "right", padding: "8px 12px", color: "var(--muted)", fontWeight: 500, whiteSpace: "nowrap" }}>Last Active</th>
                 </tr>
               </thead>
               <tbody>
@@ -515,6 +544,9 @@ export default function ResultsPage() {
                           </td>
                         );
                       })}
+                      <td style={{ textAlign: "right", padding: "8px 12px", fontSize: 12, color: "var(--muted)", whiteSpace: "nowrap" }}>
+                        {formatRelativeTime(memberLogins[m])}
+                      </td>
                     </tr>
                   );
                 })}
@@ -528,6 +560,7 @@ export default function ResultsPage() {
                       </td>
                     );
                   })}
+                  <td />
                 </tr>
               </tbody>
             </table>
