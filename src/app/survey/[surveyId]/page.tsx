@@ -133,15 +133,41 @@ function Logo05({ c, full }: { c: PaletteColors; full: boolean }) {
 }
 
 function Logo06({ c, full }: { c: PaletteColors; full: boolean }) {
-  const sz = full ? 160 : 76;
+  const sz = full ? 180 : 90;
   return (
-    <svg width={sz} height={sz} viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <circle cx="32" cy="32" r="28" stroke={c.accent} strokeWidth="1.5" />
-      <ellipse cx="32" cy="32" rx="13" ry="28" stroke={c.accent} strokeWidth="0.75" />
-      <line x1="4" y1="32" x2="60" y2="32" stroke={c.accent} strokeWidth="0.75" />
-      <line x1="8" y1="20" x2="56" y2="20" stroke={c.accent} strokeWidth="0.5" />
-      <line x1="8" y1="44" x2="56" y2="44" stroke={c.accent} strokeWidth="0.5" />
-    </svg>
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: full ? 20 : 10 }}>
+      <svg width={sz} height={sz} viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg">
+        {/* Outer circle - globe outline */}
+        <circle cx="60" cy="60" r="50" fill="none" stroke={c.accent} strokeWidth="1.5" />
+        
+        {/* Meridian lines - vertical */}
+        <ellipse cx="60" cy="60" rx="25" ry="50" fill="none" stroke={c.accent} strokeWidth="0.8" />
+        <ellipse cx="60" cy="60" rx="12.5" ry="50" fill="none" stroke={c.accent} strokeWidth="0.6" />
+        
+        {/* Latitude lines - horizontal */}
+        <line x1="10" y1="60" x2="110" y2="60" stroke={c.accent} strokeWidth="0.8" />
+        <ellipse cx="60" cy="60" rx="50" ry="25" fill="none" stroke={c.accent} strokeWidth="0.6" />
+        <ellipse cx="60" cy="60" rx="50" ry="12.5" fill="none" stroke={c.accent} strokeWidth="0.4" />
+        
+        {/* Prime meridian emphasis */}
+        <line x1="60" y1="10" x2="60" y2="110" stroke={c.accent} strokeWidth="1.2" />
+        
+        {/* Apex point at top */}
+        <circle cx="60" cy="20" r="3" fill={c.accent} />
+        
+        {/* Small cardinal markers */}
+        <circle cx="60" cy="10" r="1.5" fill={c.accent} />
+        <circle cx="60" cy="110" r="1.5" fill={c.accent} />
+        <circle cx="10" cy="60" r="1.5" fill={c.accent} />
+        <circle cx="110" cy="60" r="1.5" fill={c.accent} />
+      </svg>
+      {full && (
+        <div style={{ textAlign: "center" }}>
+          <div style={{ fontFamily: "'Fraunces', 'Times New Roman', serif", fontWeight: 300, fontSize: 32, letterSpacing: "0.18em", color: c.fg, lineHeight: 1 }}>Meridian</div>
+          <div style={{ fontFamily: "system-ui, sans-serif", fontSize: 10, letterSpacing: "0.55em", fontWeight: 500, textTransform: "uppercase", color: c.accent, paddingLeft: "0.55em", marginTop: 6 }}>Collective</div>
+        </div>
+      )}
+    </div>
   );
 }
 
