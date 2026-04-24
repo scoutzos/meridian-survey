@@ -1,5 +1,6 @@
 import { oaSurvey } from "./questions";
 import { readinessSurvey } from "./readiness-survey";
+import { brandingSurvey } from "./branding-survey";
 
 export interface SurveyQuestion {
   id: string;
@@ -30,7 +31,7 @@ export interface Survey {
   categories: SurveyCategory[];
 }
 
-const surveys: Survey[] = [oaSurvey, readinessSurvey];
+const surveys: Survey[] = [oaSurvey, readinessSurvey, brandingSurvey];
 
 export function getAllSurveys(): Survey[] {
   return surveys;
