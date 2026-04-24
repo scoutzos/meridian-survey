@@ -249,6 +249,7 @@ export default function SurveyPage() {
   const [activeCategory, setActiveCategory] = useState(0);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [priorityFilter, setPriorityFilter] = useState<PriorityFilter>("all");
+  const [selectedPalette, setSelectedPalette] = useState(DEFAULT_PALETTE);
   const saveToServer = useDebouncedSaveToServer();
 
   useEffect(() => {
@@ -572,6 +573,37 @@ export default function SurveyPage() {
 
                 {hasOptions && q.ranked ? (
                   <div>
+                    {q.id === "brand-logo-rank" && (
+                      <div style={{ marginBottom: 20, padding: "16px", background: "var(--surface)", borderRadius: 8, border: "1px solid var(--border)" }}>
+                        <p style={{ fontSize: 12, color: "var(--muted)", marginBottom: 12, fontWeight: 500, letterSpacing: "0.1em", textTransform: "uppercase" }}>
+                          Preview Color Palette
+                        </p>
+                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                          {Object.entries(PALETTE_DATA).map(([pid, pd]) => {
+                            const isActive = selectedPalette === pid;
+                            return (
+                              <button
+                                key={pid}
+                                onClick={() => setSelectedPalette(pid)}
+                                title={pid}
+                                style={{
+                                  display: "flex", alignItems: "center", gap: 6,
+                                  padding: "6px 12px", borderRadius: 16, fontSize: 11,
+                                  border: `1px solid ${isActive ? "var(--gold)" : "var(--border)"}`,
+                                  background: isActive ? "rgba(197,165,114,0.1)" : "transparent",
+                                  color: isActive ? "var(--gold)" : "var(--fg)",
+                                  cursor: "pointer", transition: "all 0.15s",
+                                  fontWeight: isActive ? 600 : 400,
+                                }}
+                              >
+                                <span style={{ width: 8, height: 8, borderRadius: "50%", background: pd.accent, flexShrink: 0, display: "block" }} />
+                                {pid.replace(/^\d+[A-C]?\s/, "")}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
                     {q.id === "brand-logo-rank" || q.id === "brand-palette-rank" ? (
                       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
                         {q.options!.map((option, oi) => {
@@ -579,7 +611,7 @@ export default function SurveyPage() {
                           const ranked = rank !== -1;
 
                           if (q.id === "brand-logo-rank") {
-                            const thumbColors = PALETTE_DATA[DEFAULT_PALETTE];
+                            const thumbColors = PALETTE_DATA[selectedPalette];
                             return (
                               <div
                                 key={oi}
@@ -591,16 +623,19 @@ export default function SurveyPage() {
                                   transition: "all 0.15s",
                                 }}
                               >
-                                {/* Logo image — click opens full brand guidelines */}
+                                {/* Logo image — click opens logo-specific guidelines */}
                                 <button
                                   type="button"
-                                  onClick={() => window.open("/brand-guidelines", "_blank")}
+                                  onClick={() => {
+                                    const logoNum = option.slice(0, 2);
+                                    window.open(`/brand-guidelines#logo-${logoNum}`, "_blank");
+                                  }}
                                   style={{
                                     display: "flex", alignItems: "center", justifyContent: "center",
                                     width: "100%", height: 150, border: "none", cursor: "pointer",
                                     background: thumbColors.bg, position: "relative", padding: 16,
                                   }}
-                                  title="Click to view full brand guidelines"
+                                  title={`Click to view ${option} guidelines`}
                                 >
                                   <LogoRender logoKey={option} c={thumbColors} full={false} />
                                   <span style={{
