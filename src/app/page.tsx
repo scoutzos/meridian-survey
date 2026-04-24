@@ -4,6 +4,16 @@ import { useRouter } from "next/navigation";
 import { MEMBERS } from "@/data/questions";
 import { supabase } from "@/lib/supabase";
 
+// Last name (or full name for single-name members) used for self-service password reset verification
+const MEMBER_VERIFICATION: Record<string, string> = {
+  "Courtney Mosely": "mosely",
+  "Aaliyah Thomas": "thomas",
+  "Raquel Twine": "twine",
+  "Odessa Patterson": "patterson",
+  "Tiffany Stallworth": "stallworth",
+  "Peggee": "peggee",
+};
+
 export default function LoginPage() {
   const [name, setName] = useState("");
   const [code, setCode] = useState("");
@@ -12,6 +22,10 @@ export default function LoginPage() {
   const [showSetPassword, setShowSetPassword] = useState(false);
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [showForgotPassword, setShowForgotPassword] = useState(false);
+  const [resetName, setResetName] = useState("");
+  const [verificationAnswer, setVerificationAnswer] = useState("");
+  const [resetSuccess, setResetSuccess] = useState(false);
   const router = useRouter();
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -95,6 +109,37 @@ export default function LoginPage() {
     router.push("/surveys");
   };
 
+  const handleForgotPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!resetName) { setError("Please select your name."); return; }
+    if (!verificationAnswer.trim()) { setError("Please enter your last name."); return; }
+
+    const expected = MEMBER_VERIFICATION[resetName];
+    if (!expected || verificationAnswer.trim().toLowerCase() !== expected) {
+      setError("That doesn't match our records. Try again.");
+      return;
+    }
+
+    setLoading(true);
+    setError("");
+
+    if (!supabase) { setError("Database not available."); setLoading(false); return; }
+
+    const { error: updateErr } = await supabase
+      .from("meridian_members")
+      .update({ password: "meridian2026", password_changed: false })
+      .eq("name", resetName);
+
+    if (updateErr) {
+      setError("Could not reset password. Try again.");
+      setLoading(false);
+      return;
+    }
+
+    setLoading(false);
+    setResetSuccess(true);
+  };
+
   const inputStyle = {
     background: "var(--surface)", border: "1px solid var(--border)", color: "var(--fg)",
     borderRadius: 8, padding: "12px 16px", fontSize: 15, width: "100%",
@@ -148,6 +193,92 @@ export default function LoginPage() {
     );
   }
 
+  if (showForgotPassword) {
+    if (resetSuccess) {
+      return (
+        <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+          <div style={{ width: "100%", maxWidth: 420, textAlign: "center" }}>
+            <div style={{ fontSize: 48, marginBottom: 8 }}>◆</div>
+            <h1 style={{ fontSize: 24, fontWeight: 700, marginBottom: 8 }}>Password Reset</h1>
+            <p style={{ color: "var(--muted)", marginBottom: 8, fontSize: 14 }}>
+              Your password has been reset to the default.
+            </p>
+            <p style={{ color: "var(--muted)", marginBottom: 24, fontSize: 13 }}>
+              Sign in as <span style={{ color: "var(--gold)" }}>{resetName}</span> with{" "}
+              <span style={{ color: "var(--gold)", fontFamily: "monospace" }}>meridian2026</span> and you&apos;ll be prompted to set a new personal password.
+            </p>
+            <button
+              onClick={() => { setShowForgotPassword(false); setResetSuccess(false); setResetName(""); setVerificationAnswer(""); setName(resetName); }}
+              style={{
+                background: "var(--gold)", color: "var(--bg)", border: "none",
+                borderRadius: 8, padding: "12px 16px", fontSize: 15, fontWeight: 600,
+                cursor: "pointer",
+              }}
+            >
+              Back to Sign In
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+        <div style={{ width: "100%", maxWidth: 420, textAlign: "center" }}>
+          <div style={{ fontSize: 48, marginBottom: 8 }}>◆</div>
+          <h1 style={{ fontSize: 24, fontWeight: 700, marginBottom: 4 }}>Reset Password</h1>
+          <p style={{ color: "var(--muted)", marginBottom: 24, fontSize: 14 }}>
+            Verify your identity and we&apos;ll reset your password to the default.
+          </p>
+
+          <form onSubmit={handleForgotPassword} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            <select
+              value={resetName}
+              onChange={e => { setResetName(e.target.value); setError(""); }}
+              style={{
+                background: "var(--surface)", border: "1px solid var(--border)", color: resetName ? "var(--fg)" : "var(--muted)",
+                borderRadius: 8, padding: "12px 16px", fontSize: 15, appearance: "none", WebkitAppearance: "none",
+              }}
+            >
+              <option value="">Select your name</option>
+              {MEMBERS.map(m => <option key={m} value={m}>{m}</option>)}
+            </select>
+
+            <input
+              type="text"
+              placeholder="Your last name"
+              value={verificationAnswer}
+              onChange={e => { setVerificationAnswer(e.target.value); setError(""); }}
+              style={inputStyle}
+              autoComplete="off"
+            />
+
+            {error && <p style={{ color: "#e55", fontSize: 13 }}>{error}</p>}
+
+            <button
+              type="submit"
+              disabled={loading}
+              style={{
+                background: "var(--gold)", color: "var(--bg)", border: "none",
+                borderRadius: 8, padding: "12px 16px", fontSize: 15, fontWeight: 600,
+                opacity: loading ? 0.6 : 1, cursor: loading ? "default" : "pointer",
+              }}
+            >
+              {loading ? "Verifying..." : "Reset My Password"}
+            </button>
+          </form>
+
+          <button
+            onClick={() => { setShowForgotPassword(false); setError(""); setResetName(""); setVerificationAnswer(""); }}
+            style={{ background: "none", border: "none", color: "var(--muted)", fontSize: 13, marginTop: 16, cursor: "pointer" }}
+          >
+            ← Back to sign in
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
       <div style={{ width: "100%", maxWidth: 420, textAlign: "center" }}>
@@ -192,7 +323,16 @@ export default function LoginPage() {
           </button>
         </form>
 
-        <p style={{ color: "var(--muted)", fontSize: 12, marginTop: 32 }}>
+        <p style={{ marginTop: 16 }}>
+          <button
+            onClick={() => { setShowForgotPassword(true); setError(""); setResetName(name); }}
+            style={{ background: "none", border: "none", color: "var(--muted)", fontSize: 13, cursor: "pointer" }}
+          >
+            Forgot your password?
+          </button>
+        </p>
+
+        <p style={{ color: "var(--muted)", fontSize: 12, marginTop: 16 }}>
           View everyone&apos;s answers →{" "}
           <a href="/surveys" style={{ color: "var(--gold)", textDecoration: "none" }}>Surveys</a>
           {" · "}
