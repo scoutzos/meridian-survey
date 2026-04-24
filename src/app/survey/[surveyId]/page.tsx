@@ -5,6 +5,71 @@ import { getSurveyById, type SurveyQuestion } from "@/data/surveys";
 import { supabase } from "@/lib/supabase";
 import { migrateLocalStorage, getStorageKey } from "@/lib/migration";
 
+const LOGO_PREVIEWS: Record<string, JSX.Element> = {
+  "01 The Meridian": (
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
+      <svg width="56" height="56" viewBox="0 0 56 56" fill="none">
+        <circle cx="28" cy="28" r="26" stroke="var(--gold)" strokeWidth="1.5" strokeDasharray="4 3"/>
+        <line x1="28" y1="2" x2="28" y2="54" stroke="var(--gold)" strokeWidth="1"/>
+        <line x1="2" y1="28" x2="54" y2="28" stroke="var(--gold)" strokeWidth="1"/>
+        <polygon points="28,16 32,26 28,30 24,26" fill="var(--gold)"/>
+      </svg>
+      <span style={{ fontSize: 8, letterSpacing: 3, color: "var(--gold)", fontWeight: 600, fontFamily: "Georgia, serif" }}>MERIDIAN</span>
+    </div>
+  ),
+  "02 M° The Monogram": (
+    <div style={{ display: "flex", alignItems: "flex-start", lineHeight: 1 }}>
+      <span style={{ fontSize: 54, fontWeight: 800, color: "var(--gold)", fontFamily: "Georgia, serif", lineHeight: 0.9 }}>M</span>
+      <span style={{ fontSize: 22, fontWeight: 400, color: "var(--gold)", marginTop: 2 }}>°</span>
+    </div>
+  ),
+  "03 The Coordinate": (
+    <svg width="64" height="64" viewBox="0 0 64 64" fill="none">
+      <line x1="8" y1="32" x2="56" y2="32" stroke="var(--gold)" strokeWidth="1.5"/>
+      <line x1="32" y1="8" x2="32" y2="56" stroke="var(--gold)" strokeWidth="1.5"/>
+      <circle cx="32" cy="32" r="14" stroke="var(--gold)" strokeWidth="1" strokeDasharray="3 2"/>
+      <circle cx="32" cy="32" r="3.5" fill="var(--gold)"/>
+      <line x1="32" y1="8" x2="36" y2="14" stroke="var(--gold)" strokeWidth="1.5"/>
+      <line x1="32" y1="8" x2="28" y2="14" stroke="var(--gold)" strokeWidth="1.5"/>
+    </svg>
+  ),
+  "04 The Seal": (
+    <svg width="68" height="68" viewBox="0 0 68 68" fill="none">
+      <circle cx="34" cy="34" r="32" stroke="var(--gold)" strokeWidth="1.5"/>
+      <circle cx="34" cy="34" r="26" stroke="var(--gold)" strokeWidth="0.75"/>
+      <text x="34" y="42" textAnchor="middle" fill="var(--gold)" fontSize="28" fontWeight="700" fontFamily="Georgia, serif">M</text>
+      <text x="34" y="57" textAnchor="middle" fill="var(--gold)" fontSize="5.5" letterSpacing="2.5" fontFamily="Georgia, serif">MERIDIAN</text>
+    </svg>
+  ),
+  "05 The Wordmark": (
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 5 }}>
+      <span style={{ fontSize: 20, fontWeight: 800, letterSpacing: 6, color: "var(--gold)", fontFamily: "Georgia, serif" }}>MERIDIAN</span>
+      <div style={{ width: 120, height: 1, background: "var(--gold)" }}/>
+      <span style={{ fontSize: 7, letterSpacing: 4, color: "var(--muted)", fontFamily: "Georgia, serif" }}>COLLECTIVE</span>
+    </div>
+  ),
+  "06 The Globe": (
+    <svg width="64" height="64" viewBox="0 0 64 64" fill="none">
+      <circle cx="32" cy="32" r="28" stroke="var(--gold)" strokeWidth="1.5"/>
+      <ellipse cx="32" cy="32" rx="13" ry="28" stroke="var(--gold)" strokeWidth="0.75"/>
+      <line x1="4" y1="32" x2="60" y2="32" stroke="var(--gold)" strokeWidth="0.75"/>
+      <line x1="8" y1="20" x2="56" y2="20" stroke="var(--gold)" strokeWidth="0.5"/>
+      <line x1="8" y1="44" x2="56" y2="44" stroke="var(--gold)" strokeWidth="0.5"/>
+    </svg>
+  ),
+};
+
+const PALETTE_COLORS: Record<string, string[]> = {
+  "01 Obsidian & Brass":   ["#1C1C1C", "#2A2A2A", "#B5914C", "#D4AA6A", "#F0C880"],
+  "02 Forest & Cognac":    ["#2D4A2D", "#3A5C3A", "#8B3A1A", "#A0522D", "#C4724A"],
+  "03 Midnight & Oxblood": ["#0D1B2A", "#1B2F48", "#5C1010", "#7D2020", "#A03030"],
+  "04 Bone & Terracotta":  ["#E8E0CC", "#F0EDE0", "#C4622D", "#D4714A", "#E08060"],
+  "05 Graphite & Sage":    ["#3A3A3A", "#4A4A4A", "#6B8F71", "#7DA882", "#9DC0A2"],
+  "06A Imperial Gold":     ["#1A1409", "#2D220F", "#B8922A", "#D4AF37", "#F0C040"],
+  "06B Black & Burnished": ["#0D0D0D", "#1A1A1A", "#8C6239", "#A67C52", "#C49A6C"],
+  "06C Navy & Gold":       ["#0A1628", "#1E3A6E", "#112244", "#C9A826", "#D4B944"],
+};
+
 function useDebouncedSaveToServer() {
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const saveToServer = useCallback((surveyId: string, member: string, answers: Record<string, string[] | string>) => {
@@ -382,48 +447,111 @@ export default function SurveyPage() {
                 )}
 
                 {hasOptions && q.ranked ? (
-                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                    {q.options!.map((option, oi) => {
-                      const rank = selections.indexOf(option);
-                      const ranked = rank !== -1;
-                      return (
-                        <button
-                          key={oi}
-                          type="button"
-                          onClick={() => {
-                            if (ranked) {
-                              save({ ...answers, [q.id]: selections.filter(o => o !== option) });
-                            } else {
-                              save({ ...answers, [q.id]: [...selections, option] });
-                            }
-                          }}
-                          style={{
-                            display: "flex", alignItems: "center", gap: 10,
-                            padding: "10px 14px", borderRadius: 8, textAlign: "left",
-                            background: ranked ? "var(--surface2)" : "var(--surface)",
-                            border: ranked ? "1px solid var(--gold)" : "1px solid var(--border)",
-                            cursor: "pointer", fontSize: 13, lineHeight: 1.5,
-                            transition: "all 0.15s", color: "var(--fg)", width: "100%",
-                          }}
-                        >
-                          <span style={{
-                            width: 24, height: 24, borderRadius: "50%", flexShrink: 0,
-                            display: "flex", alignItems: "center", justifyContent: "center",
-                            background: ranked ? "var(--gold)" : "var(--border)",
-                            color: ranked ? "var(--bg)" : "var(--muted)",
-                            fontSize: 11, fontWeight: 700,
-                          }}>
-                            {ranked ? rank + 1 : "·"}
-                          </span>
-                          <span>{option}</span>
-                        </button>
-                      );
-                    })}
+                  <div>
+                    {q.id === "brand-logo-rank" || q.id === "brand-palette-rank" ? (
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                        {q.options!.map((option, oi) => {
+                          const rank = selections.indexOf(option);
+                          const ranked = rank !== -1;
+                          return (
+                            <button
+                              key={oi}
+                              type="button"
+                              onClick={() => {
+                                if (ranked) {
+                                  save({ ...answers, [q.id]: selections.filter(o => o !== option) });
+                                } else {
+                                  save({ ...answers, [q.id]: [...selections, option] });
+                                }
+                              }}
+                              style={{
+                                position: "relative", cursor: "pointer",
+                                background: ranked ? "rgba(197,165,114,0.08)" : "var(--surface)",
+                                border: ranked ? "2px solid var(--gold)" : "1px solid var(--border)",
+                                borderRadius: 10, padding: 0, overflow: "hidden",
+                                transition: "all 0.15s", color: "var(--fg)", textAlign: "left",
+                              }}
+                            >
+                              {q.id === "brand-logo-rank" ? (
+                                <div style={{
+                                  height: 130, display: "flex", alignItems: "center", justifyContent: "center",
+                                  background: "rgba(255,255,255,0.02)", borderBottom: "1px solid var(--border)",
+                                }}>
+                                  {LOGO_PREVIEWS[option] ?? <span style={{ fontSize: 11, color: "var(--muted)" }}>Preview</span>}
+                                </div>
+                              ) : (
+                                <div style={{ display: "flex", height: 64 }}>
+                                  {(PALETTE_COLORS[option] ?? []).map((color, ci) => (
+                                    <div key={ci} style={{ flex: 1, background: color }} />
+                                  ))}
+                                </div>
+                              )}
+                              <div style={{ padding: "10px 12px 12px" }}>
+                                <span style={{ fontSize: 12, fontWeight: 500, lineHeight: 1.4, display: "block" }}>{option}</span>
+                                {q.id === "brand-logo-rank" && (
+                                  <span style={{ fontSize: 10, color: "var(--muted)", letterSpacing: 0.5 }}>placeholder — replace with final art</span>
+                                )}
+                              </div>
+                              <div style={{
+                                position: "absolute", top: 8, right: 8,
+                                width: 28, height: 28, borderRadius: "50%",
+                                background: ranked ? "var(--gold)" : "rgba(255,255,255,0.15)",
+                                color: ranked ? "var(--bg)" : "var(--muted)",
+                                display: "flex", alignItems: "center", justifyContent: "center",
+                                fontSize: ranked ? 13 : 10, fontWeight: 700,
+                                transition: "all 0.15s",
+                              }}>
+                                {ranked ? rank + 1 : "·"}
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                        {q.options!.map((option, oi) => {
+                          const rank = selections.indexOf(option);
+                          const ranked = rank !== -1;
+                          return (
+                            <button
+                              key={oi}
+                              type="button"
+                              onClick={() => {
+                                if (ranked) {
+                                  save({ ...answers, [q.id]: selections.filter(o => o !== option) });
+                                } else {
+                                  save({ ...answers, [q.id]: [...selections, option] });
+                                }
+                              }}
+                              style={{
+                                display: "flex", alignItems: "center", gap: 10,
+                                padding: "10px 14px", borderRadius: 8, textAlign: "left",
+                                background: ranked ? "var(--surface2)" : "var(--surface)",
+                                border: ranked ? "1px solid var(--gold)" : "1px solid var(--border)",
+                                cursor: "pointer", fontSize: 13, lineHeight: 1.5,
+                                transition: "all 0.15s", color: "var(--fg)", width: "100%",
+                              }}
+                            >
+                              <span style={{
+                                width: 24, height: 24, borderRadius: "50%", flexShrink: 0,
+                                display: "flex", alignItems: "center", justifyContent: "center",
+                                background: ranked ? "var(--gold)" : "var(--border)",
+                                color: ranked ? "var(--bg)" : "var(--muted)",
+                                fontSize: 11, fontWeight: 700,
+                              }}>
+                                {ranked ? rank + 1 : "·"}
+                              </span>
+                              <span>{option}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
                     {selections.length > 0 && (
                       <button
                         type="button"
                         onClick={() => save({ ...answers, [q.id]: [] })}
-                        style={{ fontSize: 11, color: "var(--muted)", background: "none", border: "none", cursor: "pointer", textAlign: "left", padding: "4px 0" }}
+                        style={{ fontSize: 11, color: "var(--muted)", background: "none", border: "none", cursor: "pointer", textAlign: "left", padding: "4px 0", marginTop: 8 }}
                       >
                         Clear ranking
                       </button>
