@@ -372,7 +372,8 @@ export default function SurveyPage() {
                   <span style={{ color: "var(--gold)", marginRight: 8 }}>{displayIdx + 1}.</span>
                   {questionText}
                   {priorityBadge(q.priority)}
-                  {hasOptions && !q.singleSelect && <span style={{ fontSize: 11, color: "var(--muted)", marginLeft: 8 }}>(select all that apply)</span>}
+                  {hasOptions && !q.singleSelect && !q.ranked && <span style={{ fontSize: 11, color: "var(--muted)", marginLeft: 8 }}>(select all that apply)</span>}
+                {q.ranked && <span style={{ fontSize: 11, color: "var(--muted)", marginLeft: 8 }}>(rank in order — click to add)</span>}
                 </label>
                 {q.context && (
                   <p style={{ fontSize: 12, color: "var(--muted)", lineHeight: 1.6, marginBottom: 12, paddingLeft: 24, borderLeft: "2px solid var(--border)" }}>
@@ -380,7 +381,55 @@ export default function SurveyPage() {
                   </p>
                 )}
 
-                {hasOptions ? (
+                {hasOptions && q.ranked ? (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                    {q.options!.map((option, oi) => {
+                      const rank = selections.indexOf(option);
+                      const ranked = rank !== -1;
+                      return (
+                        <button
+                          key={oi}
+                          type="button"
+                          onClick={() => {
+                            if (ranked) {
+                              save({ ...answers, [q.id]: selections.filter(o => o !== option) });
+                            } else {
+                              save({ ...answers, [q.id]: [...selections, option] });
+                            }
+                          }}
+                          style={{
+                            display: "flex", alignItems: "center", gap: 10,
+                            padding: "10px 14px", borderRadius: 8, textAlign: "left",
+                            background: ranked ? "var(--surface2)" : "var(--surface)",
+                            border: ranked ? "1px solid var(--gold)" : "1px solid var(--border)",
+                            cursor: "pointer", fontSize: 13, lineHeight: 1.5,
+                            transition: "all 0.15s", color: "var(--fg)", width: "100%",
+                          }}
+                        >
+                          <span style={{
+                            width: 24, height: 24, borderRadius: "50%", flexShrink: 0,
+                            display: "flex", alignItems: "center", justifyContent: "center",
+                            background: ranked ? "var(--gold)" : "var(--border)",
+                            color: ranked ? "var(--bg)" : "var(--muted)",
+                            fontSize: 11, fontWeight: 700,
+                          }}>
+                            {ranked ? rank + 1 : "·"}
+                          </span>
+                          <span>{option}</span>
+                        </button>
+                      );
+                    })}
+                    {selections.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => save({ ...answers, [q.id]: [] })}
+                        style={{ fontSize: 11, color: "var(--muted)", background: "none", border: "none", cursor: "pointer", textAlign: "left", padding: "4px 0" }}
+                      >
+                        Clear ranking
+                      </button>
+                    )}
+                  </div>
+                ) : hasOptions ? (
                   <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                     {q.options!.map((option, oi) => {
                       const checked = selections.includes(option);

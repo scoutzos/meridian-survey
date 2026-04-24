@@ -1,5 +1,6 @@
 import { oaSurvey } from "./questions";
 import { readinessSurvey } from "./readiness-survey";
+import { brandingSurvey } from "./branding-survey";
 
 export interface SurveyQuestion {
   id: string;
@@ -14,6 +15,8 @@ export interface SurveyQuestion {
   priority: "critical" | "important" | "recommended";
   /** Show this question only if the referenced question's answer includes the given value */
   showIf?: { questionId: string; includes: string };
+  /** Ranked ballot — options are ranked in order of preference */
+  ranked?: boolean;
 }
 
 export interface SurveyCategory {
@@ -30,7 +33,7 @@ export interface Survey {
   categories: SurveyCategory[];
 }
 
-const surveys: Survey[] = [oaSurvey, readinessSurvey];
+const surveys: Survey[] = [oaSurvey, readinessSurvey, brandingSurvey];
 
 export function getAllSurveys(): Survey[] {
   return surveys;
