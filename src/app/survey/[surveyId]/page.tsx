@@ -5,70 +5,160 @@ import { getSurveyById, type SurveyQuestion } from "@/data/surveys";
 import { supabase } from "@/lib/supabase";
 import { migrateLocalStorage, getStorageKey } from "@/lib/migration";
 
-const LOGO_PREVIEWS: Record<string, JSX.Element> = {
-  "01 The Meridian": (
-    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
-      <svg width="56" height="56" viewBox="0 0 56 56" fill="none">
-        <circle cx="28" cy="28" r="26" stroke="var(--gold)" strokeWidth="1.5" strokeDasharray="4 3"/>
-        <line x1="28" y1="2" x2="28" y2="54" stroke="var(--gold)" strokeWidth="1"/>
-        <line x1="2" y1="28" x2="54" y2="28" stroke="var(--gold)" strokeWidth="1"/>
-        <polygon points="28,16 32,26 28,30 24,26" fill="var(--gold)"/>
-      </svg>
-      <span style={{ fontSize: 8, letterSpacing: 3, color: "var(--gold)", fontWeight: 600, fontFamily: "Georgia, serif" }}>MERIDIAN</span>
-    </div>
-  ),
-  "02 M° The Monogram": (
-    <div style={{ display: "flex", alignItems: "flex-start", lineHeight: 1 }}>
-      <span style={{ fontSize: 54, fontWeight: 800, color: "var(--gold)", fontFamily: "Georgia, serif", lineHeight: 0.9 }}>M</span>
-      <span style={{ fontSize: 22, fontWeight: 400, color: "var(--gold)", marginTop: 2 }}>°</span>
-    </div>
-  ),
-  "03 The Coordinate": (
-    <svg width="64" height="64" viewBox="0 0 64 64" fill="none">
-      <line x1="8" y1="32" x2="56" y2="32" stroke="var(--gold)" strokeWidth="1.5"/>
-      <line x1="32" y1="8" x2="32" y2="56" stroke="var(--gold)" strokeWidth="1.5"/>
-      <circle cx="32" cy="32" r="14" stroke="var(--gold)" strokeWidth="1" strokeDasharray="3 2"/>
-      <circle cx="32" cy="32" r="3.5" fill="var(--gold)"/>
-      <line x1="32" y1="8" x2="36" y2="14" stroke="var(--gold)" strokeWidth="1.5"/>
-      <line x1="32" y1="8" x2="28" y2="14" stroke="var(--gold)" strokeWidth="1.5"/>
-    </svg>
-  ),
-  "04 The Seal": (
-    <svg width="68" height="68" viewBox="0 0 68 68" fill="none">
-      <circle cx="34" cy="34" r="32" stroke="var(--gold)" strokeWidth="1.5"/>
-      <circle cx="34" cy="34" r="26" stroke="var(--gold)" strokeWidth="0.75"/>
-      <text x="34" y="42" textAnchor="middle" fill="var(--gold)" fontSize="28" fontWeight="700" fontFamily="Georgia, serif">M</text>
-      <text x="34" y="57" textAnchor="middle" fill="var(--gold)" fontSize="5.5" letterSpacing="2.5" fontFamily="Georgia, serif">MERIDIAN</text>
-    </svg>
-  ),
-  "05 The Wordmark": (
-    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 5 }}>
-      <span style={{ fontSize: 20, fontWeight: 800, letterSpacing: 6, color: "var(--gold)", fontFamily: "Georgia, serif" }}>MERIDIAN</span>
-      <div style={{ width: 120, height: 1, background: "var(--gold)" }}/>
-      <span style={{ fontSize: 7, letterSpacing: 4, color: "var(--muted)", fontFamily: "Georgia, serif" }}>COLLECTIVE</span>
-    </div>
-  ),
-  "06 The Globe": (
-    <svg width="64" height="64" viewBox="0 0 64 64" fill="none">
-      <circle cx="32" cy="32" r="28" stroke="var(--gold)" strokeWidth="1.5"/>
-      <ellipse cx="32" cy="32" rx="13" ry="28" stroke="var(--gold)" strokeWidth="0.75"/>
-      <line x1="4" y1="32" x2="60" y2="32" stroke="var(--gold)" strokeWidth="0.75"/>
-      <line x1="8" y1="20" x2="56" y2="20" stroke="var(--gold)" strokeWidth="0.5"/>
-      <line x1="8" y1="44" x2="56" y2="44" stroke="var(--gold)" strokeWidth="0.5"/>
-    </svg>
-  ),
+// =============================================================
+// PALETTE DATA  (exact colors from meridian_collective_palette_options.html)
+// =============================================================
+type PaletteColors = {
+  bg: string;
+  accent: string;
+  accentDeep: string;
+  fg: string;
+  neutral: string;
+  isDark: boolean;
+  swatches: string[];
 };
 
-const PALETTE_COLORS: Record<string, string[]> = {
-  "01 Obsidian & Brass":   ["#1C1C1C", "#2A2A2A", "#B5914C", "#D4AA6A", "#F0C880"],
-  "02 Forest & Cognac":    ["#2D4A2D", "#3A5C3A", "#8B3A1A", "#A0522D", "#C4724A"],
-  "03 Midnight & Oxblood": ["#0D1B2A", "#1B2F48", "#5C1010", "#7D2020", "#A03030"],
-  "04 Bone & Terracotta":  ["#E8E0CC", "#F0EDE0", "#C4622D", "#D4714A", "#E08060"],
-  "05 Graphite & Sage":    ["#3A3A3A", "#4A4A4A", "#6B8F71", "#7DA882", "#9DC0A2"],
-  "06A Imperial Gold":     ["#1A1409", "#2D220F", "#B8922A", "#D4AF37", "#F0C040"],
-  "06B Black & Burnished": ["#0D0D0D", "#1A1A1A", "#8C6239", "#A67C52", "#C49A6C"],
-  "06C Navy & Gold":       ["#0A1628", "#1E3A6E", "#112244", "#C9A826", "#D4B944"],
+const PALETTE_DATA: Record<string, PaletteColors> = {
+  "01 Obsidian & Brass":   { bg: "#0C0F0D", accent: "#B08954", accentDeep: "#8E6B3F", fg: "#F4EFE6", neutral: "#D6D1C4", isDark: true,  swatches: ["#0C0F0D", "#B08954", "#F4EFE6", "#D6D1C4", "#1A1A1A"] },
+  "02 Forest & Cognac":    { bg: "#1C2E24", accent: "#A06A3A", accentDeep: "#7E5229", fg: "#EEE6D4", neutral: "#B8B09A", isDark: true,  swatches: ["#1C2E24", "#A06A3A", "#EEE6D4", "#B8B09A", "#1A1A1A"] },
+  "03 Midnight & Oxblood": { bg: "#0D1B2E", accent: "#7A2935", accentDeep: "#5F1D28", fg: "#EFE7D6", neutral: "#BFB5A1", isDark: true,  swatches: ["#0D1B2E", "#7A2935", "#EFE7D6", "#BFB5A1", "#0A0A0A"] },
+  "04 Bone & Terracotta":  { bg: "#F5EFE3", accent: "#B86B48", accentDeep: "#8E4F32", fg: "#2D2A24", neutral: "#8A9088", isDark: false, swatches: ["#F5EFE3", "#B86B48", "#2D2A24", "#8A9088", "#1A1A1A"] },
+  "05 Graphite & Sage":    { bg: "#2B3130", accent: "#8FA394", accentDeep: "#5E7268", fg: "#F0EDE6", neutral: "#C9C4B8", isDark: true,  swatches: ["#2B3130", "#8FA394", "#F0EDE6", "#C9C4B8", "#1A1A1A"] },
+  "06A Imperial Gold":     { bg: "#1A1409", accent: "#D4AF37", accentDeep: "#B8922A", fg: "#F8F0DC", neutral: "#8C6239", isDark: true,  swatches: ["#1A1409", "#D4AF37", "#F8F0DC", "#8C6239", "#1A1A1A"] },
+  "06B Black & Burnished": { bg: "#0D0D0D", accent: "#A67C52", accentDeep: "#8C6239", fg: "#E8E0D0", neutral: "#6B4C30", isDark: true,  swatches: ["#0D0D0D", "#A67C52", "#E8E0D0", "#6B4C30", "#1A1A1A"] },
+  "06C Navy & Gold":       { bg: "#0A1628", accent: "#C9A826", accentDeep: "#B08920", fg: "#E8E4D8", neutral: "#1E3A6E", isDark: true,  swatches: ["#0A1628", "#C9A826", "#E8E4D8", "#1E3A6E", "#1A1A1A"] },
 };
+
+const DEFAULT_PALETTE = "01 Obsidian & Brass";
+
+// =============================================================
+// LOGO COMPONENTS  (extracted from meridian_collective_logo_options.html)
+// =============================================================
+
+function Logo01({ c, full }: { c: PaletteColors; full: boolean }) {
+  const w = full ? 160 : 80;
+  return (
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: full ? 18 : 10 }}>
+      <svg width={w} height={Math.round(w * 0.35)} viewBox="0 0 200 70" xmlns="http://www.w3.org/2000/svg">
+        <line x1="15" y1="55" x2="185" y2="55" stroke={c.accent} strokeWidth="1" />
+        <line x1="15" y1="48" x2="15" y2="62" stroke={c.accent} strokeWidth="1" />
+        <line x1="185" y1="48" x2="185" y2="62" stroke={c.accent} strokeWidth="1" />
+        <circle cx="100" cy="28" r="4.5" fill={c.accent} />
+        <line x1="100" y1="34" x2="100" y2="55" stroke={c.accent} strokeWidth="0.4" strokeDasharray="1 3" />
+      </svg>
+      <div style={{ textAlign: "center" }}>
+        <div style={{ fontFamily: "'Fraunces', 'Times New Roman', serif", fontWeight: 300, fontSize: full ? 34 : 18, letterSpacing: "0.16em", color: c.fg, lineHeight: 1 }}>Meridian</div>
+        <div style={{ fontFamily: "system-ui, sans-serif", fontSize: full ? 10 : 6, letterSpacing: full ? "0.55em" : "0.4em", fontWeight: 500, textTransform: "uppercase", color: c.accent, paddingLeft: "0.5em", marginTop: full ? 6 : 3 }}>Collective</div>
+      </div>
+    </div>
+  );
+}
+
+function Logo02({ c, full }: { c: PaletteColors; full: boolean }) {
+  return (
+    <div style={{ display: "flex", alignItems: "flex-start" }}>
+      <span style={{ fontFamily: "'Fraunces', 'Times New Roman', serif", fontWeight: 300, fontSize: full ? 130 : 64, lineHeight: 0.9, letterSpacing: "-0.04em", color: c.fg }}>M</span>
+      <span style={{ fontFamily: "'Fraunces', 'Times New Roman', serif", fontSize: full ? 38 : 20, color: c.accent, marginTop: "0.05em", fontWeight: 400 }}>°</span>
+    </div>
+  );
+}
+
+function Logo03({ c, full }: { c: PaletteColors; full: boolean }) {
+  const sz = full ? 150 : 72;
+  return (
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: full ? 20 : 10 }}>
+      <svg width={sz} height={sz} viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+        <circle cx="50" cy="50" r="42" fill="none" stroke={c.accent} strokeWidth="0.8" />
+        <circle cx="50" cy="50" r="32" fill="none" stroke={c.accent} strokeWidth="0.4" opacity="0.5" />
+        <line x1="50" y1="12" x2="50" y2="88" stroke={c.accent} strokeWidth="0.8" />
+        <line x1="12" y1="50" x2="88" y2="50" stroke={c.accent} strokeWidth="0.8" />
+        <circle cx="50" cy="50" r="3" fill={c.accent} />
+        <line x1="50" y1="4" x2="50" y2="9" stroke={c.accent} strokeWidth="0.8" />
+        <line x1="50" y1="91" x2="50" y2="96" stroke={c.accent} strokeWidth="0.8" />
+        <line x1="4" y1="50" x2="9" y2="50" stroke={c.accent} strokeWidth="0.8" />
+        <line x1="91" y1="50" x2="96" y2="50" stroke={c.accent} strokeWidth="0.8" />
+      </svg>
+      <div style={{ textAlign: "center" }}>
+        <div style={{ fontFamily: "'Fraunces', 'Times New Roman', serif", fontWeight: 300, fontSize: full ? 32 : 16, letterSpacing: "0.18em", color: c.fg, lineHeight: 1 }}>Meridian</div>
+        <div style={{ fontFamily: "system-ui, sans-serif", fontSize: full ? 10 : 6, letterSpacing: full ? "0.5em" : "0.35em", fontWeight: 500, textTransform: "uppercase", color: c.accent, paddingLeft: "0.5em", marginTop: full ? 6 : 3 }}>Collective</div>
+      </div>
+    </div>
+  );
+}
+
+function Logo04({ c, full }: { c: PaletteColors; full: boolean }) {
+  const sz = full ? 220 : 110;
+  const uid = `seal-${full ? "f" : "t"}-${c.bg.replace("#", "")}`;
+  return (
+    <svg width={sz} height={sz} viewBox="0 0 240 240" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <path id={`${uid}-top`} d="M 120,120 m -95,0 a 95,95 0 1,1 190,0" />
+        <path id={`${uid}-bot`} d="M 120,120 m -95,0 a 95,95 0 1,0 190,0" />
+      </defs>
+      <circle cx="120" cy="120" r="108" fill="none" stroke={c.accent} strokeWidth="0.6" />
+      <circle cx="120" cy="120" r="98" fill="none" stroke={c.accent} strokeWidth="0.4" opacity="0.4" />
+      <circle cx="120" cy="120" r="68" fill="none" stroke={c.accent} strokeWidth="0.4" opacity="0.4" />
+      <text fontFamily="system-ui, sans-serif" fontSize="8.5" letterSpacing="4" fill={c.fg} fontWeight="500">
+        <textPath href={`#${uid}-top`} startOffset="50%" textAnchor="middle">MERIDIAN · COLLECTIVE</textPath>
+      </text>
+      <text fontFamily="system-ui, sans-serif" fontSize="7.5" letterSpacing="5" fill={c.fg} fontWeight="500" opacity="0.75">
+        <textPath href={`#${uid}-bot`} startOffset="50%" textAnchor="middle">· ATLANTA · EST · MMXXVI ·</textPath>
+      </text>
+      <line x1="40" y1="120" x2="56" y2="120" stroke={c.accent} strokeWidth="0.5" />
+      <line x1="184" y1="120" x2="200" y2="120" stroke={c.accent} strokeWidth="0.5" />
+      <line x1="80" y1="140" x2="160" y2="140" stroke={c.accent} strokeWidth="0.8" />
+      <line x1="80" y1="134" x2="80" y2="146" stroke={c.accent} strokeWidth="0.8" />
+      <line x1="160" y1="134" x2="160" y2="146" stroke={c.accent} strokeWidth="0.8" />
+      <circle cx="120" cy="112" r="3.5" fill={c.accent} />
+      <text x="120" y="102" fontFamily="'Fraunces', serif" fontSize="14" fill={c.fg} textAnchor="middle" fontStyle="italic" fontWeight="300">est.</text>
+    </svg>
+  );
+}
+
+function Logo05({ c, full }: { c: PaletteColors; full: boolean }) {
+  const fontSize = full ? 76 : 38;
+  const hairW = full ? 40 : 22;
+  return (
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center" }}>
+      <div style={{ fontFamily: "'Fraunces', 'Times New Roman', serif", fontWeight: 300, fontSize, letterSpacing: "0.02em", lineHeight: 1, color: c.fg }}>
+        Mer<span style={{ fontStyle: "italic", color: c.accent }}>i</span>dian
+      </div>
+      <div style={{ display: "flex", alignItems: "center", gap: full ? 14 : 8, marginTop: full ? 20 : 10 }}>
+        <span style={{ width: hairW, height: 1, background: c.accent, display: "block", flexShrink: 0 }} />
+        <span style={{ fontFamily: "system-ui, sans-serif", fontSize: full ? 12 : 7, letterSpacing: full ? "0.55em" : "0.4em", fontWeight: 500, textTransform: "uppercase", color: c.accent, paddingLeft: "0.5em", whiteSpace: "nowrap" }}>Collective</span>
+        <span style={{ width: hairW, height: 1, background: c.accent, display: "block", flexShrink: 0 }} />
+      </div>
+    </div>
+  );
+}
+
+function Logo06({ c, full }: { c: PaletteColors; full: boolean }) {
+  const sz = full ? 160 : 76;
+  return (
+    <svg width={sz} height={sz} viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="32" cy="32" r="28" stroke={c.accent} strokeWidth="1.5" />
+      <ellipse cx="32" cy="32" rx="13" ry="28" stroke={c.accent} strokeWidth="0.75" />
+      <line x1="4" y1="32" x2="60" y2="32" stroke={c.accent} strokeWidth="0.75" />
+      <line x1="8" y1="20" x2="56" y2="20" stroke={c.accent} strokeWidth="0.5" />
+      <line x1="8" y1="44" x2="56" y2="44" stroke={c.accent} strokeWidth="0.5" />
+    </svg>
+  );
+}
+
+function LogoRender({ logoKey, c, full }: { logoKey: string; c: PaletteColors; full: boolean }) {
+  if (logoKey.startsWith("01")) return <Logo01 c={c} full={full} />;
+  if (logoKey.startsWith("02")) return <Logo02 c={c} full={full} />;
+  if (logoKey.startsWith("03")) return <Logo03 c={c} full={full} />;
+  if (logoKey.startsWith("04")) return <Logo04 c={c} full={full} />;
+  if (logoKey.startsWith("05")) return <Logo05 c={c} full={full} />;
+  return <Logo06 c={c} full={full} />;
+}
+
+const shortPaletteName = (key: string) => key.replace(/^\d+[A-C]?\s/, "");
+
+// =============================================================
+// HOOKS & HELPERS
+// =============================================================
 
 function useDebouncedSaveToServer() {
   const timerRef = useRef<NodeJS.Timeout | null>(null);
@@ -117,6 +207,10 @@ const priorityOrder = { critical: 0, important: 1, recommended: 2 };
 
 type PriorityFilter = "all" | "critical" | "important" | "recommended";
 
+// =============================================================
+// SURVEY PAGE
+// =============================================================
+
 export default function SurveyPage() {
   const router = useRouter();
   const params = useParams();
@@ -128,7 +222,18 @@ export default function SurveyPage() {
   const [activeCategory, setActiveCategory] = useState(0);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [priorityFilter, setPriorityFilter] = useState<PriorityFilter>("all");
+  const [logoModal, setLogoModal] = useState<{ logoKey: string; paletteId: string } | null>(null);
+  const lastPaletteRef = useRef(DEFAULT_PALETTE);
   const saveToServer = useDebouncedSaveToServer();
+
+  // Lock body scroll when modal is open
+  useEffect(() => {
+    if (logoModal) {
+      const prev = document.body.style.overflow;
+      document.body.style.overflow = "hidden";
+      return () => { document.body.style.overflow = prev; };
+    }
+  }, [logoModal]);
 
   useEffect(() => {
     const u = localStorage.getItem("meridian_user");
@@ -231,7 +336,6 @@ export default function SurveyPage() {
   const toggleOption = (qId: string, option: string, singleSelect?: boolean) => {
     if (singleSelect) {
       const current = getSelections(qId);
-      // If already selected, deselect; otherwise select only this one
       save({ ...answers, [qId]: current.includes(option) ? [] : [option] });
       return;
     }
@@ -293,6 +397,14 @@ export default function SurveyPage() {
     { value: "recommended", label: "Recommended" },
   ];
 
+  const toggleLogoRank = (logoKey: string) => {
+    const current = getSelections("brand-logo-rank");
+    const newRanking = current.includes(logoKey)
+      ? current.filter(o => o !== logoKey)
+      : [...current, logoKey];
+    save({ ...answers, "brand-logo-rank": newRanking });
+  };
+
   return (
     <div style={{ display: "flex", minHeight: "100vh" }}>
       {/* Mobile header */}
@@ -319,7 +431,6 @@ export default function SurveyPage() {
           <p style={{ fontSize: 12, color: "var(--muted)" }}>Logged in as <span style={{ color: "var(--gold)" }}>{user}</span></p>
         </div>
 
-        {/* Overall progress */}
         <div style={{ padding: "0 20px 16px" }}>
           <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "var(--muted)", marginBottom: 4 }}>
             <span>Overall Progress</span>
@@ -373,7 +484,6 @@ export default function SurveyPage() {
         </div>
       </aside>
 
-      {/* Overlay */}
       {sidebarOpen && <div onClick={() => setSidebarOpen(false)} style={{
         position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 35
       }} />}
@@ -396,7 +506,6 @@ export default function SurveyPage() {
           )}
         </div>
 
-        {/* Priority filter buttons */}
         <div style={{ display: "flex", gap: 8, marginBottom: 28, flexWrap: "wrap" }}>
           {filterButtons.map(fb => (
             <button
@@ -423,7 +532,6 @@ export default function SurveyPage() {
             const otherSelected = isOtherSelected(q.id);
             const otherText = getOtherText(q.id);
 
-            // Resolve {value} references in question text
             let questionText = q.text;
             if (q.referenceQuestionId) {
               const refVal = answers[q.referenceQuestionId];
@@ -438,7 +546,7 @@ export default function SurveyPage() {
                   {questionText}
                   {priorityBadge(q.priority)}
                   {hasOptions && !q.singleSelect && !q.ranked && <span style={{ fontSize: 11, color: "var(--muted)", marginLeft: 8 }}>(select all that apply)</span>}
-                {q.ranked && <span style={{ fontSize: 11, color: "var(--muted)", marginLeft: 8 }}>(rank in order — click to add)</span>}
+                  {q.ranked && <span style={{ fontSize: 11, color: "var(--muted)", marginLeft: 8 }}>(rank in order — click to add)</span>}
                 </label>
                 {q.context && (
                   <p style={{ fontSize: 12, color: "var(--muted)", lineHeight: 1.6, marginBottom: 12, paddingLeft: 24, borderLeft: "2px solid var(--border)" }}>
@@ -453,16 +561,82 @@ export default function SurveyPage() {
                         {q.options!.map((option, oi) => {
                           const rank = selections.indexOf(option);
                           const ranked = rank !== -1;
+
+                          if (q.id === "brand-logo-rank") {
+                            const thumbColors = PALETTE_DATA[DEFAULT_PALETTE];
+                            return (
+                              <div
+                                key={oi}
+                                style={{
+                                  position: "relative",
+                                  background: ranked ? "rgba(197,165,114,0.08)" : "var(--surface)",
+                                  border: ranked ? "2px solid var(--gold)" : "1px solid var(--border)",
+                                  borderRadius: 10, overflow: "hidden",
+                                  transition: "all 0.15s",
+                                }}
+                              >
+                                {/* Logo image — click opens full preview modal */}
+                                <button
+                                  type="button"
+                                  onClick={() => setLogoModal({ logoKey: option, paletteId: lastPaletteRef.current })}
+                                  style={{
+                                    display: "flex", alignItems: "center", justifyContent: "center",
+                                    width: "100%", height: 150, border: "none", cursor: "zoom-in",
+                                    background: thumbColors.bg, position: "relative", padding: 16,
+                                  }}
+                                >
+                                  <LogoRender logoKey={option} c={thumbColors} full={false} />
+                                  <span style={{
+                                    position: "absolute", top: 8, left: 8, fontSize: 9,
+                                    color: "rgba(255,255,255,0.25)", letterSpacing: "0.15em",
+                                    textTransform: "uppercase", fontWeight: 500, pointerEvents: "none",
+                                  }}>
+                                    Preview ↗
+                                  </span>
+                                </button>
+
+                                {/* Footer — click to rank */}
+                                <button
+                                  type="button"
+                                  onClick={() => toggleLogoRank(option)}
+                                  style={{
+                                    display: "flex", alignItems: "center", justifyContent: "space-between",
+                                    width: "100%", padding: "10px 12px", background: "transparent",
+                                    border: "none", borderTop: "1px solid var(--border)",
+                                    cursor: "pointer", color: "var(--fg)", textAlign: "left",
+                                  }}
+                                >
+                                  <div>
+                                    <span style={{ fontSize: 9, color: "var(--muted)", display: "block", letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 1 }}>
+                                      {option.slice(0, 2)}
+                                    </span>
+                                    <span style={{ fontSize: 12, fontWeight: 500 }}>{option.slice(3)}</span>
+                                  </div>
+                                  <span style={{
+                                    width: 28, height: 28, borderRadius: "50%", flexShrink: 0,
+                                    background: ranked ? "var(--gold)" : "rgba(255,255,255,0.1)",
+                                    color: ranked ? "var(--bg)" : "var(--muted)",
+                                    display: "flex", alignItems: "center", justifyContent: "center",
+                                    fontSize: ranked ? 13 : 10, fontWeight: 700, transition: "all 0.15s",
+                                  }}>
+                                    {ranked ? rank + 1 : "·"}
+                                  </span>
+                                </button>
+                              </div>
+                            );
+                          }
+
+                          // Palette ranking cards
+                          const swatches = PALETTE_DATA[option]?.swatches ?? [];
                           return (
                             <button
                               key={oi}
                               type="button"
                               onClick={() => {
-                                if (ranked) {
-                                  save({ ...answers, [q.id]: selections.filter(o => o !== option) });
-                                } else {
-                                  save({ ...answers, [q.id]: [...selections, option] });
-                                }
+                                const newRanking = ranked
+                                  ? selections.filter(o => o !== option)
+                                  : [...selections, option];
+                                save({ ...answers, [q.id]: newRanking });
                               }}
                               style={{
                                 position: "relative", cursor: "pointer",
@@ -472,25 +646,13 @@ export default function SurveyPage() {
                                 transition: "all 0.15s", color: "var(--fg)", textAlign: "left",
                               }}
                             >
-                              {q.id === "brand-logo-rank" ? (
-                                <div style={{
-                                  height: 130, display: "flex", alignItems: "center", justifyContent: "center",
-                                  background: "rgba(255,255,255,0.02)", borderBottom: "1px solid var(--border)",
-                                }}>
-                                  {LOGO_PREVIEWS[option] ?? <span style={{ fontSize: 11, color: "var(--muted)" }}>Preview</span>}
-                                </div>
-                              ) : (
-                                <div style={{ display: "flex", height: 64 }}>
-                                  {(PALETTE_COLORS[option] ?? []).map((color, ci) => (
-                                    <div key={ci} style={{ flex: 1, background: color }} />
-                                  ))}
-                                </div>
-                              )}
+                              <div style={{ display: "flex", height: 64 }}>
+                                {swatches.map((color, ci) => (
+                                  <div key={ci} style={{ flex: 1, background: color }} />
+                                ))}
+                              </div>
                               <div style={{ padding: "10px 12px 12px" }}>
                                 <span style={{ fontSize: 12, fontWeight: 500, lineHeight: 1.4, display: "block" }}>{option}</span>
-                                {q.id === "brand-logo-rank" && (
-                                  <span style={{ fontSize: 10, color: "var(--muted)", letterSpacing: 0.5 }}>placeholder — replace with final art</span>
-                                )}
                               </div>
                               <div style={{
                                 position: "absolute", top: 8, right: 8,
@@ -498,8 +660,7 @@ export default function SurveyPage() {
                                 background: ranked ? "var(--gold)" : "rgba(255,255,255,0.15)",
                                 color: ranked ? "var(--bg)" : "var(--muted)",
                                 display: "flex", alignItems: "center", justifyContent: "center",
-                                fontSize: ranked ? 13 : 10, fontWeight: 700,
-                                transition: "all 0.15s",
+                                fontSize: ranked ? 13 : 10, fontWeight: 700, transition: "all 0.15s",
                               }}>
                                 {ranked ? rank + 1 : "·"}
                               </div>
@@ -517,11 +678,10 @@ export default function SurveyPage() {
                               key={oi}
                               type="button"
                               onClick={() => {
-                                if (ranked) {
-                                  save({ ...answers, [q.id]: selections.filter(o => o !== option) });
-                                } else {
-                                  save({ ...answers, [q.id]: [...selections, option] });
-                                }
+                                const newRanking = ranked
+                                  ? selections.filter(o => o !== option)
+                                  : [...selections, option];
+                                save({ ...answers, [q.id]: newRanking });
                               }}
                               style={{
                                 display: "flex", alignItems: "center", gap: 10,
@@ -584,26 +744,25 @@ export default function SurveyPage() {
                         </label>
                       );
                     })}
-                    {/* Other option — hide for single select */}
                     {!q.singleSelect && (
-                    <label
-                      style={{
-                        display: "flex", alignItems: "center", gap: 10,
-                        padding: "10px 14px", borderRadius: 8,
-                        background: otherSelected ? "var(--surface2)" : "var(--surface)",
-                        border: otherSelected ? "1px solid var(--gold)" : "1px solid var(--border)",
-                        cursor: "pointer", fontSize: 13, lineHeight: 1.5,
-                        transition: "all 0.15s",
-                      }}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={otherSelected}
-                        onChange={() => toggleOther(q.id)}
-                        style={{ accentColor: "var(--gold)", flexShrink: 0 }}
-                      />
-                      <span>Other</span>
-                    </label>
+                      <label
+                        style={{
+                          display: "flex", alignItems: "center", gap: 10,
+                          padding: "10px 14px", borderRadius: 8,
+                          background: otherSelected ? "var(--surface2)" : "var(--surface)",
+                          border: otherSelected ? "1px solid var(--gold)" : "1px solid var(--border)",
+                          cursor: "pointer", fontSize: 13, lineHeight: 1.5,
+                          transition: "all 0.15s",
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={otherSelected}
+                          onChange={() => toggleOther(q.id)}
+                          style={{ accentColor: "var(--gold)", flexShrink: 0 }}
+                        />
+                        <span>Other</span>
+                      </label>
                     )}
                     {otherSelected && !q.singleSelect && (
                       <textarea
@@ -687,8 +846,7 @@ export default function SurveyPage() {
               }}
               style={{
                 padding: "10px 24px", borderRadius: 8, border: "none",
-                background: "var(--gold)", color: "var(--bg)", fontSize: 14, fontWeight: 600,
-                cursor: "pointer",
+                background: "var(--gold)", color: "var(--bg)", fontSize: 14, fontWeight: 600, cursor: "pointer",
               }}
             >
               Submit
@@ -698,8 +856,7 @@ export default function SurveyPage() {
               onClick={() => { setActiveCategory(Math.min(categories.length - 1, activeCategory + 1)); setPriorityFilter("all"); window.scrollTo(0, 0); }}
               style={{
                 padding: "10px 24px", borderRadius: 8, border: "none",
-                background: "var(--gold)", color: "var(--bg)", fontSize: 14, fontWeight: 600,
-                cursor: "pointer",
+                background: "var(--gold)", color: "var(--bg)", fontSize: 14, fontWeight: 600, cursor: "pointer",
               }}
             >
               Next →
@@ -707,6 +864,132 @@ export default function SurveyPage() {
           )}
         </div>
       </main>
+
+      {/* ============================================================
+          LOGO PREVIEW MODAL
+      ============================================================ */}
+      {logoModal && (() => {
+        const pal = PALETTE_DATA[logoModal.paletteId] ?? PALETTE_DATA[DEFAULT_PALETTE];
+        const logoSelections = getSelections("brand-logo-rank");
+        const rankIndex = logoSelections.indexOf(logoModal.logoKey);
+        const isRanked = rankIndex !== -1;
+        const panelBg = pal.isDark ? "rgba(0,0,0,0.35)" : "rgba(0,0,0,0.06)";
+        const panelBorder = pal.isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.1)";
+        const mutedText = pal.isDark ? "rgba(255,255,255,0.38)" : "rgba(0,0,0,0.38)";
+        const bodyText = pal.isDark ? "rgba(255,255,255,0.68)" : "rgba(0,0,0,0.65)";
+
+        return (
+          <>
+            <div
+              onClick={() => setLogoModal(null)}
+              style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.82)", zIndex: 200, backdropFilter: "blur(4px)" }}
+            />
+            <div style={{
+              position: "fixed", top: "50%", left: "50%",
+              transform: "translate(-50%, -50%)",
+              zIndex: 201, width: "min(720px, 96vw)", maxHeight: "92vh",
+              display: "flex", flexDirection: "column",
+              background: pal.bg, borderRadius: 16, overflow: "hidden",
+              border: `1px solid ${panelBorder}`,
+              boxShadow: "0 32px 80px rgba(0,0,0,0.6)",
+              transition: "background 0.25s ease",
+            }}>
+              {/* Header */}
+              <div style={{ padding: "16px 24px 0", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div>
+                  <span style={{ fontSize: 10, letterSpacing: "0.22em", textTransform: "uppercase", color: mutedText, fontWeight: 500 }}>
+                    {logoModal.logoKey.slice(0, 2)}
+                  </span>
+                  <span style={{ fontSize: 15, fontWeight: 500, color: pal.fg, marginLeft: 10 }}>
+                    {logoModal.logoKey.slice(3)}
+                  </span>
+                </div>
+                <button
+                  onClick={() => setLogoModal(null)}
+                  style={{ background: "none", border: "none", cursor: "pointer", color: mutedText, fontSize: 22, lineHeight: 1, padding: "4px 8px" }}
+                  aria-label="Close"
+                >
+                  ×
+                </button>
+              </div>
+
+              {/* Logo display */}
+              <div style={{
+                flex: 1, display: "flex", alignItems: "center", justifyContent: "center",
+                padding: "48px 48px 40px", minHeight: 280,
+              }}>
+                <LogoRender logoKey={logoModal.logoKey} c={pal} full={true} />
+              </div>
+
+              {/* Palette switcher */}
+              <div style={{ background: panelBg, borderTop: `1px solid ${panelBorder}`, padding: "18px 24px" }}>
+                <p style={{ fontSize: 10, letterSpacing: "0.2em", textTransform: "uppercase", color: mutedText, marginBottom: 12, fontWeight: 500 }}>
+                  Color Palette — click to preview
+                </p>
+                <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
+                  {Object.entries(PALETTE_DATA).map(([pid, pd]) => {
+                    const isActive = logoModal.paletteId === pid;
+                    return (
+                      <button
+                        key={pid}
+                        onClick={() => {
+                          lastPaletteRef.current = pid;
+                          setLogoModal(prev => prev ? { ...prev, paletteId: pid } : null);
+                        }}
+                        title={pid}
+                        style={{
+                          display: "flex", alignItems: "center", gap: 6,
+                          padding: "5px 11px 5px 7px", borderRadius: 20, fontSize: 11,
+                          border: `1px solid ${isActive ? pal.accent : panelBorder}`,
+                          background: isActive ? pal.accent : "transparent",
+                          color: isActive ? (pal.isDark ? pal.bg : "#fff") : bodyText,
+                          cursor: "pointer", transition: "all 0.15s",
+                          fontWeight: isActive ? 600 : 400,
+                        }}
+                      >
+                        <span style={{ width: 8, height: 8, borderRadius: "50%", background: pd.accent, flexShrink: 0, display: "block" }} />
+                        {shortPaletteName(pid)}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Rank controls */}
+              <div style={{
+                background: panelBg, borderTop: `1px solid ${panelBorder}`,
+                padding: "14px 24px",
+                display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12,
+              }}>
+                <button
+                  type="button"
+                  onClick={() => toggleLogoRank(logoModal.logoKey)}
+                  style={{
+                    padding: "9px 18px", borderRadius: 8, fontSize: 13, fontWeight: 600,
+                    cursor: "pointer", transition: "all 0.15s",
+                    ...(isRanked ? {
+                      background: "transparent",
+                      border: `1px solid ${panelBorder}`,
+                      color: bodyText,
+                    } : {
+                      background: pal.accent,
+                      border: "none",
+                      color: pal.isDark ? pal.bg : "#fff",
+                    }),
+                  }}
+                >
+                  {isRanked ? `Ranked #${rankIndex + 1} — Remove` : "+ Add to My Ranking"}
+                </button>
+                <span style={{ fontSize: 11, color: mutedText }}>
+                  {logoSelections.length > 0
+                    ? `${logoSelections.length} logo${logoSelections.length !== 1 ? "s" : ""} ranked`
+                    : "No logos ranked yet"}
+                </span>
+              </div>
+            </div>
+          </>
+        );
+      })()}
 
       <style>{`
         @media (max-width: 768px) {
