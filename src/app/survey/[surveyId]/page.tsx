@@ -171,6 +171,25 @@ function Logo06({ c, full }: { c: PaletteColors; full: boolean }) {
   );
 }
 
+function Logo07({ c, full }: { c: PaletteColors; full: boolean }) {
+  const sz = full ? 280 : 140;
+  return (
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", background: c.isDark ? "rgba(0,0,0,0.1)" : "rgba(255,255,255,0.8)", borderRadius: 8, padding: 16 }}>
+      <img 
+        src="/logos/meridian-collective-ornate.jpg" 
+        alt="The Meridian Collective - Ornate Logo"
+        style={{ 
+          width: sz, 
+          height: "auto", 
+          maxWidth: "100%",
+          filter: c.isDark ? "brightness(0.9)" : "brightness(1)",
+          opacity: c.isDark ? 0.95 : 1
+        }} 
+      />
+    </div>
+  );
+}
+
 function LogoRender({ logoKey, c, full }: { logoKey: string; c: PaletteColors; full: boolean }) {
   if (logoKey.startsWith("01")) return <Logo01 c={c} full={full} />;
   if (logoKey.startsWith("02")) return <Logo02 c={c} full={full} />;
@@ -178,6 +197,7 @@ function LogoRender({ logoKey, c, full }: { logoKey: string; c: PaletteColors; f
   if (logoKey.startsWith("04")) return <Logo04 c={c} full={full} />;
   if (logoKey.startsWith("05")) return <Logo05 c={c} full={full} />;
   if (logoKey.startsWith("06")) return <Logo06 c={c} full={full} />;
+  if (logoKey.startsWith("07")) return <Logo07 c={c} full={full} />;
   
   // Fallback for any unrecognized logo
   return <div style={{ color: c.fg, fontSize: 14, textAlign: "center" }}>Logo not found</div>;

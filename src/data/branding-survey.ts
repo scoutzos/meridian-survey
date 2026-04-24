@@ -23,6 +23,7 @@ export const brandingSurvey: Survey = {
             "04 The Seal",
             "05 The Wordmark",
             "06 The Globe",
+            "07 The Meridian Collective",
           ],
         },
         {
