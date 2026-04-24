@@ -132,26 +132,15 @@ function Logo05({ c, full }: { c: PaletteColors; full: boolean }) {
   );
 }
 
-function Logo06({ c, full }: { c: PaletteColors; full: boolean }) {
-  const sz = full ? 160 : 76;
-  return (
-    <svg width={sz} height={sz} viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <circle cx="32" cy="32" r="28" stroke={c.accent} strokeWidth="1.5" />
-      <ellipse cx="32" cy="32" rx="13" ry="28" stroke={c.accent} strokeWidth="0.75" />
-      <line x1="4" y1="32" x2="60" y2="32" stroke={c.accent} strokeWidth="0.75" />
-      <line x1="8" y1="20" x2="56" y2="20" stroke={c.accent} strokeWidth="0.5" />
-      <line x1="8" y1="44" x2="56" y2="44" stroke={c.accent} strokeWidth="0.5" />
-    </svg>
-  );
-}
-
 function LogoRender({ logoKey, c, full }: { logoKey: string; c: PaletteColors; full: boolean }) {
   if (logoKey.startsWith("01")) return <Logo01 c={c} full={full} />;
   if (logoKey.startsWith("02")) return <Logo02 c={c} full={full} />;
   if (logoKey.startsWith("03")) return <Logo03 c={c} full={full} />;
   if (logoKey.startsWith("04")) return <Logo04 c={c} full={full} />;
   if (logoKey.startsWith("05")) return <Logo05 c={c} full={full} />;
-  return <Logo06 c={c} full={full} />;
+  
+  // Fallback for any unrecognized logo
+  return <div style={{ color: c.fg, fontSize: 14, textAlign: "center" }}>Logo not found</div>;
 }
 
 const shortPaletteName = (key: string) => key.replace(/^\d+[A-C]?\s/, "");

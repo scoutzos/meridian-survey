@@ -18,11 +18,10 @@ export const brandingSurvey: Survey = {
           ranked: true,
           options: [
             "01 The Meridian",
-            "02 M° The Monogram",
+            "02 M° The Monogram", 
             "03 The Coordinate",
             "04 The Seal",
             "05 The Wordmark",
-            "06 The Globe",
           ],
         },
         {
