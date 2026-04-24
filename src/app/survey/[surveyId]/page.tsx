@@ -157,8 +157,6 @@ function LogoRender({ logoKey, c, full }: { logoKey: string; c: PaletteColors; f
   return <div style={{ color: c.fg, fontSize: 14, textAlign: "center" }}>Logo not found</div>;
 }
 
-const shortPaletteName = (key: string) => key.replace(/^\d+[A-C]?\s/, "");
-
 // =============================================================
 // HOOKS & HELPERS
 // =============================================================
@@ -225,7 +223,6 @@ export default function SurveyPage() {
   const [activeCategory, setActiveCategory] = useState(0);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [priorityFilter, setPriorityFilter] = useState<PriorityFilter>("all");
-  const lastPaletteRef = useRef(DEFAULT_PALETTE);
   const saveToServer = useDebouncedSaveToServer();
 
   useEffect(() => {
