@@ -1,0 +1,611 @@
+BRAND GUIDELINES
+Identity Standards & Visual Language
+
+—
+
+V O L U M E
+
+I
+
+·
+
+♦—
+E D I T I O N
+
+2 0 2 6
+
+S E C T I O N
+
+O N E
+
+WELCOME
+“True north for those who build wealth together.”
+This document is the steward of our visual and verbal identity. It captures who The Meridian Collective
+is, how we present ourselves to the world, and the standards every partner, vendor, and member
+should follow when representing our brand.
+The Meridian Collective is more than a real estate investment company. We are a coalition of
+disciplined, like-minded investors charting a deliberate course toward generational wealth. Every
+meridian on a globe is a line of guidance — a fixed reference that orients travelers wherever they stand.
+Our brand is built on that same promise: clarity, direction, and shared purpose.
+Use these guidelines whenever you create something that carries our name — from a property flyer to a
+closing document, from a social post to a contractor agreement. Consistency is how a young brand earns
+trust quickly. Treat this book as the source of truth.
+
+S E C T I O N
+
+T W O
+
+BRAND ESSENCE
+MISSION
+We acquire, improve, and steward residential real estate across the Atlanta metro to build
+durable wealth for our members and uplift the communities in which we invest.
+
+VISION
+To be the most respected investor-led collective in the Southeast — known for the quality of
+our deals, the integrity of our partnerships, and the discipline of our process.
+
+CORE VALUES
+INTEGRITY
+
+We do what we said we would do, and we say it before we have to.
+
+DISCIPLINE
+
+Structure precedes opportunity. We build the system before we chase
+the deal.
+
+COLLECTIVE
+
+We move at the speed of trust. Every decision honors the group.
+
+STEWARDSHIP
+
+We treat capital, properties, and relationships as things entrusted to us.
+
+LONG VIEW
+
+We measure success in decades, not quarters.
+
+BRAND PROMISE
+
+“Disciplined investing. Honest partnership. Lasting value.”
+
+S E C T I O N
+
+T H R E E
+
+PERSONALITY & VOICE
+IF THE MERIDIAN COLLECTIVE WERE A PERSON
+She is the friend with the spreadsheet. She has read the operating agreement twice. She speaks plainly,
+asks the harder question, and never raises her voice. She is warm in the room and rigorous on the page.
+
+PERSONALITY ATTRIBUTES
+WE ARE
+
+Confident, considered, warm, exact, principled.
+
+WE ARE NOT
+
+Loud, salesy, jargon-heavy, performative, exclusive.
+
+WE SOUND LIKE
+
+A trusted advisor briefing you over coffee — informed, calm, generous
+with context.
+
+WE NEVER SOUND
+LIKE
+
+An infomercial, a hype reel, or a guru’s landing page.
+
+VOICE PRINCIPLES
+
+♦Plain over polished. Say it the way you would say it to a sharp friend who has never bought a
+house.
+♦Specific over sweeping. Replace “significant returns” with “a 14% projected cash-on-cash return.”
+♦Calm over urgent. We do not manufacture scarcity. Good deals get done because the work was
+done.
+♦We over I. Ownership and credit belong to the collective.
+♦Receipts over rhetoric. Every claim is paired with a number, a source, or a story.
+
+SAMPLE COPY
+Headline
+Real estate investing, done together — the right way.
+Member-facing intro
+The Meridian Collective is a member-owned investment company focused on single-family and small
+multifamily properties across metro Atlanta. We acquire selectively, renovate intelligently, and hold
+what makes sense for the long term.
+
+Vendor-facing intro
+
+We are a Georgia LLC managing a growing portfolio of residential investments. We pay on time,
+communicate clearly, and value contractors who do the same. If that sounds like a fit, we would like to
+work with you.
+
+S E C T I O N
+
+F O U R
+
+THE LOGO
+Our mark is the visual signature of the brand. Treat it with care. The logo system has one job: to make
+The Meridian Collective recognizable, credible, and consistent across every surface.
+
+PRIMARY LOGO
+
+The primary logo combines the wordmark with the gilded globe and compass crest. Use this version
+whenever space and reproduction quality allow.
+
+SYMBOLISM
+THE GLOBE
+
+Worldview, scale of ambition, and the meridian lines that name us.
+
+THE COMPASS STAR
+
+True north — our orientation toward principled, long-term decisions.
+
+THE WINGS &
+FLOURISHES
+
+Movement, momentum, and the protective stewardship of capital.
+
+THE GEMSTONE
+
+Concentrated value — the asset at the center of every decision.
+
+GOLD & BRONZE
+
+Heritage, durability, and earned wealth — not flashy, not new money.
+
+CLEAR SPACE
+Always preserve a margin of clear space around the logo equal to the height of the capital “M” in
+MERIDIAN. No text, image, edge, or graphic element should ever intrude on this protected zone.
+
+MINIMUM SIZE
+DIGITAL
+
+Minimum 200 pixels wide for the full crest + wordmark.
+
+PRINT
+
+Minimum 1.5 inches wide. For anything smaller, use the wordmark
+only.
+
+FAVICON / AVATAR
+
+Use the isolated globe + star crest, cropped square.
+
+LOGO MISUSE
+✓
+
+DO
+
+✕
+
+DON’T
+
+Use the logo on backgrounds with strong contrast
+and adequate clear space.
+
+Place the logo on busy photography that
+competes with the gold detail.
+
+Reproduce the logo at full color whenever the
+medium supports it.
+
+Recolor the logo, swap the gold for any other
+hue, or apply gradients.
+
+Scale the logo proportionally from a corner
+handle.
+
+Stretch, skew, rotate, or warp the logo for any
+reason.
+
+Use the wordmark-only version when space is
+constrained.
+
+Recreate the logo by typesetting “The Meridian
+Collective” in a similar font.
+
+Maintain the original aspect ratio in every
+placement.
+
+Add drop shadows, outer glows, bevels, or other
+effects to the mark.
+
+Use approved white-background or
+dark-background variants.
+
+Use a low-resolution screenshot of the logo.
+Always source the master file.
+
+S E C T I O N
+
+F I V E
+
+COLOR PALETTE
+Color is where the brand lives most loudly. Our palette is intentionally restrained — a small number of
+warm, weighted tones that read as established, considered, and confident. Resist the temptation to
+introduce colors outside this system.
+
+PRIMARY PALETTE
+NAME
+
+Imperial Gold
+Hero accent · wordmark
+
+Burnished Amber
+Secondary accent
+
+Heritage Bronze
+Headlines · deep accent
+
+Midnight Walnut
+Body text · base
+
+HEX
+
+RGB
+
+CMYK
+
+#D4A017
+
+212 /
+160 / 23
+
+0 / 25 /
+100 / 17
+
+#B8651E
+
+184 /
+101 / 30
+
+0 / 45 /
+84 / 28
+
+#6B3410
+
+107 / 52 /
+16
+
+0 / 51 /
+85 / 58
+
+#2C1810
+
+44 / 24 /
+16
+
+0 / 45 /
+64 / 83
+
+HEX
+
+RGB
+
+CMYK
+
+#FAF7F0
+
+250 /
+247 / 240
+
+0 / 1 /
+4 / 2
+
+NEUTRAL PALETTE
+NAME
+
+Pearl White
+Primary background
+
+NAME
+
+Champagne Mist
+Soft fill · cards
+
+Pale Gold
+Highlights
+
+Soft Charcoal
+Long-form body copy
+
+HEX
+
+RGB
+
+CMYK
+
+#EDE3CC
+
+237 /
+227 / 204
+
+0 / 4 / 14
+/ 7
+
+#F5E5B8
+
+245 /
+229 / 184
+
+0 / 7 / 25
+/ 4
+
+#3A3530
+
+58 / 53 /
+48
+
+0 / 9 / 17
+/ 77
+
+COLOR APPLICATION RATIO
+Use color in proportion. Lead with neutrals. Let gold be the punctuation, not the paragraph.
+
+♦60% · Pearl White & Champagne Mist. The canvas. Most surface area should breathe.
+♦25% · Midnight Walnut & Soft Charcoal. Type, structure, and weight.
+♦10% · Heritage Bronze. Headings, dividers, and emphasis.
+♦5% · Imperial Gold & Burnished Amber. Hero accents — the moment that makes it ours.
+
+ACCESSIBILITY
+Body copy should always meet WCAG AA contrast (4.5:1) against its background. Midnight Walnut on
+Pearl White is the safest pairing. Imperial Gold should never be used for long-form text — it is a brand
+accent, not a reading color.
+
+S E C T I O N
+
+S I X
+
+TYPOGRAPHY
+Our type system pairs a refined serif with a clean, modern sans — the same instinct as the logo: heritage
+paired with precision.
+
+DISPLAY & HEADLINE
+P R I M A R Y
+
+S E R I F
+
+·
+
+W E B - S A F E
+
+Cambria
+AaBbCcDdEeFf 0123456789
+Use for section titles, pull quotes, and document headers. Set in small caps with extra letter
+spacing for the most regal effect.
+
+Brand alternative for designed assets:
+
+♦Cinzel (Google Fonts) — closest match to the logo's wordmark; use for marketing graphics.
+♦Cormorant Garamond (Google Fonts) — for editorial pieces and long-form prose.
+
+BODY & INTERFACE
+P R I M A R Y
+
+S A N S
+
+·
+
+W E B - S A F E
+
+Calibri
+AaBbCcDdEeFf 0123456789
+Use for body copy, captions, tables, and any UI element. Calibri is universal across Office and
+reads cleanly at every size.
+
+Brand alternative for designed assets:
+
+♦Montserrat (Google Fonts) — for digital marketing and presentation decks.
+♦Lato (Google Fonts) — for long blocks of body copy on the web.
+
+TYPE HIERARCHY
+H1 · SECTION TITLE
+
+Cambria · 22pt · Bold · All Caps · Heritage Bronze
+
+H2 · SUBHEAD
+
+Cambria · 14pt · Bold · All Caps · Midnight Walnut
+
+H3 · INLINE
+HEADING
+
+Calibri · 12pt · Bold · Burnished Amber
+
+EYEBROW · LABEL
+
+Calibri · 9pt · Bold · Tracked · Burnished Amber
+
+BODY
+
+Calibri · 11pt · Regular · Soft Charcoal
+
+PULL QUOTE
+
+Cambria · 16pt · Italic · Centered · Heritage Bronze
+
+CAPTION / LEGAL
+
+Calibri · 9pt · Italic · Soft Charcoal
+
+S E C T I O N
+
+S E V E N
+
+IMAGERY & PHOTOGRAPHY
+Imagery is the second voice of the brand. Choose photography that feels honest, warm, and
+architectural — never staged, never stock-generic.
+
+PHOTOGRAPHY PRINCIPLES
+
+♦Natural light. Golden hour, soft shadows, warm undertones. Avoid harsh flash.
+♦Real properties. Show the homes we actually own, work on, or aspire to. No royalty-free
+Mediterranean villas.
+♦People as humans, not models. When members or partners appear, they look like themselves —
+considered, dressed for the room, unposed.
+♦Atlanta in the frame. Where context helps, let the city show — brick bungalows, oak canopies, the
+skyline at dusk.
+♦Documentary, not aspirational. Before/after construction shots, walkthroughs, signing days. The
+work is the story.
+
+SUBJECT MATTER — YES
+
+♦Single-family homes mid-renovation, with materials and craftsmanship visible.
+♦Architectural details: trim, hardwood, tile, brick, light through windows.
+♦Member portraits in professional but warm settings.
+♦Maps, plans, and documents shot from above on warm wood or stone.
+♦The Atlanta metro skyline and recognizable neighborhood landmarks.
+
+SUBJECT MATTER — NO
+
+♦Stock images of handshakes, glass skyscrapers, or gold bars.
+♦Luxury cars, private jets, or other wealth-display tropes.
+♦Generic “diverse team in conference room” imagery.
+♦Heavy filters, oversaturated HDR, or cool blue color grading.
+
+IMAGE TREATMENT
+When color-grading, lean toward warm shadows and a slight golden cast in highlights. Avoid cool,
+teal-and-orange cinematic grading. Black-and-white is acceptable for portraiture and archival use.
+
+S E C T I O N
+
+E I G H T
+
+APPLICATIONS
+How the brand shows up in the wild. These are starting points, not the only allowable formats — but
+everything we produce should feel like it belongs in this family.
+
+LETTERHEAD
+HEADER
+
+Logo aligned top-left, no larger than 1.25 inches tall. Member or sender
+name set in Calibri 9pt at top-right.
+
+BODY
+
+Calibri 11pt, Soft Charcoal, 1.15 line spacing, 1-inch margins.
+
+FOOTER
+
+Hairline gold rule above. Entity name, mailing address, and website in
+Calibri 8pt, Heritage Bronze.
+
+BUSINESS CARD
+FRONT
+
+Logo centered on Pearl White background. No additional text.
+
+BACK
+
+Midnight Walnut background. Name in Cambria 12pt Bold, Imperial
+Gold. Title and contact in Calibri 8pt, Pearl White.
+
+STOCK
+
+Matte finish, 16pt minimum. Spot foil on the gold elements when
+budget allows.
+
+EMAIL SIGNATURE
+NAME
+
+Cambria 12pt, Bold, Midnight Walnut
+
+TITLE
+
+Calibri 10pt, Italic, Burnished Amber
+
+DIVIDER
+
+Hairline rule, Imperial Gold
+
+ENTITY
+
+THE MERIDIAN COLLECTIVE LLC — Calibri 9pt, Bold, Tracked,
+Heritage Bronze
+
+CONTACT
+
+Phone, email, website in Calibri 9pt, Soft Charcoal
+
+DISCLAIMER
+
+Calibri 7pt, Italic, Soft Charcoal — confidentiality and not-an-offer
+language as advised by counsel
+
+SOCIAL MEDIA
+
+♦Profile image: Isolated globe + compass crest, cropped square on Pearl White.
+♦Cover image: Wordmark on Midnight Walnut with a subtle gold flourish, sized to platform spec.
+♦Post template: Pearl White background, Cambria headline in Heritage Bronze, body in Calibri Soft
+Charcoal, single Imperial Gold accent.
+♦Hashtags: Use sparingly. #MeridianCollective for owned content. Avoid generic real estate
+hashtag clusters.
+
+PROPERTY MARKETING
+
+♦Yard signs & flyers: Logo top-center, property photo dominant, key terms in Calibri Bold. Never
+overlay text on the logo.
+♦Listing description: Lead with three sentences in our voice. No exclamation points. No “WOW!” or
+“Must see!”
+♦Walkthrough videos: Open with the gold compass star, hold for 1 second, then live footage.
+Lower-thirds in Cambria, Heritage Bronze.
+
+S E C T I O N
+
+N I N E
+
+BRAND STEWARDSHIP
+A brand is a promise repeated. These standards only work if every member, partner, and vendor follows
+them. When in doubt, choose the more restrained option — less is almost always more on this brand.
+
+APPROVAL PROCESS
+
+♦Tier 1 · Internal use. Member emails, internal documents, group communications — no approval
+needed if these guidelines are followed.
+♦Tier 2 · External use. Anything that leaves the collective — vendor agreements, marketing
+materials, social posts — reviewed by the designated brand steward before publication.
+♦Tier 3 · Co-branded or paid media. Any use of the logo with another organization’s mark, or any
+paid advertising, requires unanimous member approval and review by counsel.
+
+ASSET LIBRARY
+All approved logo files, color swatches, fonts, and templates are housed in the collective’s shared drive.
+Always pull from the master files. Never recreate, never screenshot.
+LOGO FILES
+
+PNG, SVG, and EPS in primary, white-background, dark-background,
+and crest-only versions.
+
+COLOR SWATCHES
+
+Adobe ASE, Procreate palette, and screenshot reference card.
+
+TEMPLATES
+
+Letterhead, invoice, member memo, social post, and yard sign
+templates.
+
+THIS DOCUMENT
+
+PDF and Word versions, version-controlled and dated.
+
+LIVING DOCUMENT
+These guidelines will evolve as the collective grows. Significant changes — new colors, expanded logo
+system, sub-brands — require member discussion and a new edition of this book. Minor refinements
+may be issued as addenda.
+
+—
+T H E
+
+♦—
+
+M E R I D I A N
+
+C O L L E C T I V E
+
+True north for those who build wealth together.
+
+
