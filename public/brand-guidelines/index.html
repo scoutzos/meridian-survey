@@ -1,0 +1,1631 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Meridian Collective — Brand Guidelines</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,400&family=Geist:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+:root {
+--obsidian: #0C0F0D;
+--ink: #1A1A1A;
+--bone: #F4EFE6;
+--ivory: #FBF8F2;
+--brass: #B08954;
+--brass-deep: #8E6B3F;
+--fog: #D6D1C4;
+--line: #2A2A28;
+--line-soft: rgba(26,26,26,0.12);
+--serif: 'Fraunces', 'Times New Roman', serif;
+--sans: 'Geist', -apple-system, system-ui, sans-serif;
+}
+
+* {
+box-sizing: border-box;
+margin: 0;
+padding: 0;
+}
+
+html {
+scroll-behavior: smooth;
+}
+
+body {
+font-family: var(--sans);
+background: var(--ivory);
+color: var(--ink);
+font-weight: 400;
+line-height: 1.55;
+-webkit-font-smoothing: antialiased;
+font-feature-settings: "ss01", "cv11";
+}
+
+body::before {
+content: '';
+position: fixed;
+inset: 0;
+pointer-events: none;
+opacity: 0.04;
+background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+z-index: 100;
+mix-blend-mode: multiply;
+}
+
+/* Layout */
+.section {
+padding: 120px 48px;
+border-bottom: 1px solid var(--line-soft);
+position: relative;
+}
+
+.section-inner {
+max-width: 1200px;
+margin: 0 auto;
+}
+
+.section-meta {
+display: flex;
+justify-content: space-between;
+align-items: flex-start;
+margin-bottom: 80px;
+font-family: var(--sans);
+font-size: 11px;
+letter-spacing: 0.18em;
+text-transform: uppercase;
+color: var(--ink);
+}
+
+.section-number {
+font-family: var(--serif);
+font-style: italic;
+font-size: 13px;
+color: var(--brass-deep);
+letter-spacing: 0;
+text-transform: none;
+}
+
+/* Typography primitives */
+.display-xl {
+font-family: var(--serif);
+font-weight: 300;
+font-size: clamp(56px, 10vw, 144px);
+line-height: 0.95;
+letter-spacing: -0.03em;
+font-variation-settings: "opsz" 144;
+}
+
+.display-l {
+font-family: var(--serif);
+font-weight: 400;
+font-size: clamp(40px, 5.5vw, 72px);
+line-height: 1.02;
+letter-spacing: -0.02em;
+font-variation-settings: "opsz" 120;
+}
+
+.display-l .it {
+font-style: italic;
+font-weight: 300;
+}
+
+.eyebrow {
+font-family: var(--sans);
+font-size: 11px;
+letter-spacing: 0.22em;
+text-transform: uppercase;
+color: var(--brass-deep);
+font-weight: 500;
+}
+
+.lead {
+font-family: var(--serif);
+font-weight: 300;
+font-size: clamp(20px, 2vw, 26px);
+line-height: 1.45;
+letter-spacing: -0.01em;
+color: var(--ink);
+font-variation-settings: "opsz" 36;
+max-width: 720px;
+}
+
+.body-text {
+font-size: 15px;
+line-height: 1.7;
+color: var(--ink);
+max-width: 640px;
+}
+
+.body-text + .body-text {
+margin-top: 1em;
+}
+
+/* =========== COVER =========== */
+.cover {
+min-height: 100vh;
+background: var(--obsidian);
+color: var(--bone);
+padding: 48px;
+display: flex;
+flex-direction: column;
+position: relative;
+overflow: hidden;
+}
+
+.cover::after {
+content: '';
+position: absolute;
+left: 50%;
+top: 0;
+bottom: 0;
+width: 1px;
+background: linear-gradient(to bottom, transparent, rgba(176,137,84,0.3) 20%, rgba(176,137,84,0.5) 50%, rgba(176,137,84,0.3) 80%, transparent);
+}
+
+.cover-top {
+display: flex;
+justify-content: space-between;
+align-items: center;
+font-size: 11px;
+letter-spacing: 0.22em;
+text-transform: uppercase;
+color: rgba(244,239,230,0.55);
+position: relative;
+z-index: 2;
+}
+
+.cover-top svg {
+color: var(--brass);
+}
+
+.cover-center {
+flex: 1;
+display: flex;
+flex-direction: column;
+justify-content: center;
+align-items: center;
+text-align: center;
+position: relative;
+z-index: 2;
+gap: 40px;
+}
+
+.cover-mark-xl svg {
+width: min(320px, 60vw);
+height: auto;
+color: var(--brass);
+}
+
+.cover-wordmark {
+font-family: var(--serif);
+font-weight: 300;
+font-size: clamp(40px, 7vw, 96px);
+letter-spacing: 0.04em;
+color: var(--bone);
+line-height: 1;
+font-variation-settings: "opsz" 144;
+}
+
+.cover-wordmark .sub {
+display: block;
+font-size: 0.28em;
+letter-spacing: 0.55em;
+margin-top: 1.2em;
+color: var(--brass);
+font-family: var(--sans);
+text-transform: uppercase;
+font-weight: 500;
+padding-left: 0.55em;
+}
+
+.cover-tag {
+font-family: var(--serif);
+font-style: italic;
+font-weight: 300;
+color: rgba(244,239,230,0.7);
+font-size: 17px;
+letter-spacing: 0.01em;
+font-variation-settings: "opsz" 36;
+max-width: 520px;
+}
+
+.cover-bottom {
+display: flex;
+justify-content: space-between;
+align-items: flex-end;
+font-size: 11px;
+letter-spacing: 0.22em;
+text-transform: uppercase;
+color: rgba(244,239,230,0.55);
+position: relative;
+z-index: 2;
+}
+
+.cover-bottom .brass-dot::before {
+content: '';
+display: inline-block;
+width: 4px;
+height: 4px;
+background: var(--brass);
+border-radius: 50%;
+margin-right: 10px;
+vertical-align: middle;
+}
+
+/* =========== ESSENCE =========== */
+.essence {
+background: var(--ivory);
+}
+
+.essence-grid {
+display: grid;
+grid-template-columns: 1fr 1fr;
+gap: 80px;
+align-items: start;
+}
+
+.essence-big {
+font-family: var(--serif);
+font-weight: 300;
+font-size: clamp(32px, 3.8vw, 54px);
+line-height: 1.1;
+letter-spacing: -0.02em;
+font-variation-settings: "opsz" 96;
+}
+
+.essence-big .it {
+font-style: italic;
+color: var(--brass-deep);
+font-weight: 300;
+}
+
+.pillars {
+display: grid;
+grid-template-columns: 1fr;
+gap: 32px;
+border-top: 1px solid var(--line-soft);
+padding-top: 32px;
+}
+
+.pillar {
+display: grid;
+grid-template-columns: 60px 1fr;
+gap: 24px;
+padding-bottom: 32px;
+border-bottom: 1px solid var(--line-soft);
+}
+
+.pillar:last-child {
+border-bottom: none;
+padding-bottom: 0;
+}
+
+.pillar-num {
+font-family: var(--serif);
+font-style: italic;
+font-weight: 300;
+font-size: 28px;
+color: var(--brass-deep);
+line-height: 1;
+}
+
+.pillar-title {
+font-family: var(--serif);
+font-weight: 400;
+font-size: 22px;
+letter-spacing: -0.01em;
+margin-bottom: 10px;
+font-variation-settings: "opsz" 60;
+}
+
+.pillar-body {
+font-size: 14.5px;
+line-height: 1.65;
+color: #3A3A38;
+}
+
+/* =========== MARK =========== */
+.mark-section {
+background: var(--bone);
+}
+
+.mark-grid {
+display: grid;
+grid-template-columns: 1.2fr 1fr;
+gap: 80px;
+align-items: start;
+margin-top: 40px;
+}
+
+.mark-showcase {
+background: var(--ivory);
+border: 1px solid var(--line-soft);
+aspect-ratio: 4/3;
+display: flex;
+align-items: center;
+justify-content: center;
+position: relative;
+}
+
+.mark-showcase.dark {
+background: var(--obsidian);
+}
+
+.mark-showcase .corner {
+position: absolute;
+width: 10px;
+height: 10px;
+border: 1px solid var(--brass-deep);
+opacity: 0.4;
+}
+
+.mark-showcase .corner.tl {
+top: 12px;
+left: 12px;
+border-right: none;
+border-bottom: none;
+}
+
+.mark-showcase .corner.tr {
+top: 12px;
+right: 12px;
+border-left: none;
+border-bottom: none;
+}
+
+.mark-showcase .corner.bl {
+bottom: 12px;
+left: 12px;
+border-right: none;
+border-top: none;
+}
+
+.mark-showcase .corner.br {
+bottom: 12px;
+right: 12px;
+border-left: none;
+border-top: none;
+}
+
+.logo-full {
+display: flex;
+flex-direction: column;
+align-items: center;
+gap: 14px;
+}
+
+.logo-full svg {
+width: 160px;
+height: auto;
+color: var(--obsidian);
+}
+
+.mark-showcase.dark .logo-full svg {
+color: var(--brass);
+}
+
+.logo-full .word {
+font-family: var(--serif);
+font-weight: 300;
+font-size: 26px;
+letter-spacing: 0.15em;
+color: var(--obsidian);
+font-variation-settings: "opsz" 96;
+}
+
+.mark-showcase.dark .logo-full .word {
+color: var(--bone);
+}
+
+.logo-full .word-sub {
+font-family: var(--sans);
+font-size: 9px;
+letter-spacing: 0.55em;
+color: var(--brass-deep);
+font-weight: 500;
+text-transform: uppercase;
+padding-left: 0.55em;
+}
+
+.mark-showcase.dark .logo-full .word-sub {
+color: var(--brass);
+}
+
+.mark-mini {
+display: flex;
+align-items: center;
+gap: 14px;
+}
+
+.mark-mini svg {
+width: 28px;
+height: auto;
+color: var(--obsidian);
+}
+
+.mark-showcase.dark .mark-mini svg {
+color: var(--brass);
+}
+
+.mark-mini .word {
+font-family: var(--serif);
+font-weight: 400;
+font-size: 22px;
+letter-spacing: 0.08em;
+color: var(--obsidian);
+}
+
+.mark-showcase.dark .mark-mini .word {
+color: var(--bone);
+}
+
+.mark-icon svg {
+width: 100px;
+height: auto;
+color: var(--obsidian);
+}
+
+.mark-showcase.dark .mark-icon svg {
+color: var(--brass);
+}
+
+.mark-meta h4 {
+font-family: var(--serif);
+font-weight: 400;
+font-size: 22px;
+margin-bottom: 14px;
+font-variation-settings: "opsz" 60;
+}
+
+.mark-meta-block + .mark-meta-block {
+margin-top: 32px;
+}
+
+.mark-label {
+display: inline-block;
+font-size: 10px;
+letter-spacing: 0.22em;
+text-transform: uppercase;
+color: var(--brass-deep);
+margin-bottom: 12px;
+font-weight: 500;
+}
+
+.mark-grid-row {
+display: grid;
+grid-template-columns: 1fr 1fr 1fr;
+gap: 20px;
+margin-top: 60px;
+}
+
+.mark-tile {
+aspect-ratio: 1/1;
+border: 1px solid var(--line-soft);
+display: flex;
+align-items: center;
+justify-content: center;
+position: relative;
+background: var(--ivory);
+}
+
+.mark-tile.dark {
+background: var(--obsidian);
+}
+
+.mark-tile.brass {
+background: var(--brass);
+}
+
+.tile-caption {
+position: absolute;
+bottom: 12px;
+left: 12px;
+font-size: 9.5px;
+letter-spacing: 0.22em;
+text-transform: uppercase;
+color: var(--brass-deep);
+font-weight: 500;
+}
+
+.mark-tile.dark .tile-caption {
+color: var(--brass);
+}
+
+.mark-tile.brass .tile-caption {
+color: var(--obsidian);
+}
+
+/* =========== PALETTE =========== */
+.palette-section {
+background: var(--ivory);
+}
+
+.palette-grid {
+display: grid;
+grid-template-columns: 2fr 1fr 1fr 1fr 1fr;
+gap: 2px;
+margin-top: 40px;
+height: 380px;
+}
+
+.swatch {
+padding: 24px;
+display: flex;
+flex-direction: column;
+justify-content: space-between;
+position: relative;
+}
+
+.swatch-name {
+font-family: var(--serif);
+font-size: 24px;
+font-weight: 400;
+letter-spacing: -0.01em;
+font-variation-settings: "opsz" 72;
+}
+
+.swatch-meta {
+font-family: var(--sans);
+font-size: 10.5px;
+letter-spacing: 0.14em;
+text-transform: uppercase;
+opacity: 0.7;
+line-height: 1.8;
+}
+
+.swatch.obsidian {
+background: var(--obsidian);
+color: var(--bone);
+}
+
+.swatch.brass {
+background: var(--brass);
+color: var(--obsidian);
+}
+
+.swatch.bone {
+background: var(--bone);
+color: var(--ink);
+border: 1px solid var(--line-soft);
+}
+
+.swatch.fog {
+background: var(--fog);
+color: var(--ink);
+}
+
+.swatch.ink {
+background: var(--ink);
+color: var(--bone);
+}
+
+.palette-usage {
+margin-top: 60px;
+padding-top: 40px;
+border-top: 1px solid var(--line-soft);
+display: grid;
+grid-template-columns: 1fr 1fr 1fr;
+gap: 40px;
+}
+
+.usage-item .bar {
+height: 3px;
+margin-bottom: 16px;
+}
+
+.usage-item h5 {
+font-family: var(--serif);
+font-weight: 400;
+font-size: 18px;
+margin-bottom: 8px;
+}
+
+.usage-item p {
+font-size: 13.5px;
+line-height: 1.65;
+color: #3A3A38;
+}
+
+/* =========== TYPOGRAPHY =========== */
+.type-section {
+background: var(--bone);
+}
+
+.type-main {
+margin-top: 40px;
+padding: 56px 48px;
+background: var(--ivory);
+border: 1px solid var(--line-soft);
+position: relative;
+}
+
+.type-label-top {
+position: absolute;
+top: -1px;
+left: 32px;
+background: var(--bone);
+padding: 0 12px;
+font-size: 10px;
+letter-spacing: 0.22em;
+text-transform: uppercase;
+color: var(--brass-deep);
+font-weight: 500;
+transform: translateY(-50%);
+}
+
+.type-specimen {
+font-family: var(--serif);
+font-size: clamp(80px, 12vw, 180px);
+line-height: 0.9;
+font-weight: 300;
+letter-spacing: -0.03em;
+font-variation-settings: "opsz" 144;
+color: var(--obsidian);
+}
+
+.type-specimen .it {
+font-style: italic;
+color: var(--brass-deep);
+}
+
+.type-glyphs {
+margin-top: 40px;
+padding-top: 32px;
+border-top: 1px solid var(--line-soft);
+display: grid;
+grid-template-columns: 2fr 1fr;
+gap: 40px;
+align-items: end;
+}
+
+.glyph-row {
+font-family: var(--serif);
+font-size: 36px;
+letter-spacing: 0.05em;
+line-height: 1.3;
+}
+
+.glyph-row .r1 {
+font-weight: 300;
+}
+
+.glyph-row .r2 {
+font-weight: 400;
+font-style: italic;
+color: var(--brass-deep);
+}
+
+.type-stack {
+font-family: var(--sans);
+font-size: 11px;
+letter-spacing: 0.2em;
+text-transform: uppercase;
+line-height: 2;
+}
+
+.type-stack b {
+color: var(--brass-deep);
+font-weight: 500;
+}
+
+.type-pair {
+margin-top: 40px;
+display: grid;
+grid-template-columns: 1fr 1fr;
+gap: 2px;
+}
+
+.type-pair-card {
+background: var(--ivory);
+padding: 40px;
+border: 1px solid var(--line-soft);
+}
+
+.type-pair-card h6 {
+font-size: 10px;
+letter-spacing: 0.22em;
+text-transform: uppercase;
+color: var(--brass-deep);
+font-weight: 500;
+margin-bottom: 20px;
+}
+
+.type-pair-card .sample {
+font-family: var(--serif);
+font-size: 44px;
+line-height: 1;
+font-weight: 300;
+letter-spacing: -0.02em;
+margin-bottom: 6px;
+font-variation-settings: "opsz" 96;
+}
+
+.type-pair-card.sans .sample {
+font-family: var(--sans);
+font-size: 38px;
+font-weight: 500;
+letter-spacing: -0.03em;
+}
+
+.type-pair-card .sample-sub {
+font-family: var(--sans);
+font-size: 11px;
+letter-spacing: 0.2em;
+text-transform: uppercase;
+color: #777;
+margin-bottom: 24px;
+}
+
+.type-pair-card .details {
+display: grid;
+grid-template-columns: auto 1fr;
+gap: 8px 24px;
+font-size: 12px;
+letter-spacing: 0.08em;
+text-transform: uppercase;
+color: #555;
+padding-top: 20px;
+border-top: 1px solid var(--line-soft);
+}
+
+.type-pair-card .details b {
+color: var(--ink);
+font-weight: 500;
+}
+
+.scale {
+margin-top: 40px;
+display: grid;
+gap: 20px;
+}
+
+.scale-row {
+display: grid;
+grid-template-columns: 140px 1fr;
+gap: 24px;
+align-items: baseline;
+padding-bottom: 16px;
+border-bottom: 1px solid var(--line-soft);
+}
+
+.scale-row:last-child {
+border-bottom: none;
+}
+
+.scale-meta {
+font-size: 10px;
+letter-spacing: 0.22em;
+text-transform: uppercase;
+color: var(--brass-deep);
+font-weight: 500;
+line-height: 1.4;
+}
+
+.scale-sample {
+color: var(--ink);
+}
+
+.scale-sample.h1 {
+font-family: var(--serif);
+font-size: 48px;
+font-weight: 300;
+letter-spacing: -0.02em;
+line-height: 1;
+font-variation-settings: "opsz" 120;
+}
+
+.scale-sample.h2 {
+font-family: var(--serif);
+font-size: 32px;
+font-weight: 400;
+letter-spacing: -0.01em;
+font-variation-settings: "opsz" 72;
+}
+
+.scale-sample.h3 {
+font-family: var(--sans);
+font-size: 18px;
+font-weight: 500;
+letter-spacing: -0.01em;
+}
+
+.scale-sample.b1 {
+font-family: var(--sans);
+font-size: 16px;
+font-weight: 400;
+line-height: 1.6;
+}
+
+.scale-sample.b2 {
+font-family: var(--sans);
+font-size: 13px;
+font-weight: 400;
+line-height: 1.6;
+color: #555;
+}
+
+.scale-sample.lbl {
+font-family: var(--sans);
+font-size: 11px;
+letter-spacing: 0.22em;
+text-transform: uppercase;
+font-weight: 500;
+color: var(--brass-deep);
+}
+
+/* =========== VOICE =========== */
+.voice-section {
+background: var(--ivory);
+}
+
+.voice-grid {
+display: grid;
+grid-template-columns: 1fr 1.3fr;
+gap: 80px;
+align-items: start;
+}
+
+.voice-attrs {
+display: grid;
+gap: 14px;
+margin-top: 24px;
+}
+
+.voice-attr {
+display: grid;
+grid-template-columns: 1fr auto 1fr;
+gap: 16px;
+padding: 18px 0;
+border-top: 1px solid var(--line-soft);
+align-items: center;
+}
+
+.voice-attr:last-child {
+border-bottom: 1px solid var(--line-soft);
+}
+
+.voice-is {
+font-family: var(--serif);
+font-size: 22px;
+font-weight: 400;
+font-variation-settings: "opsz" 60;
+}
+
+.voice-isnt {
+font-family: var(--serif);
+font-size: 18px;
+font-style: italic;
+font-weight: 300;
+color: #8a8a88;
+text-decoration: line-through;
+text-decoration-color: rgba(176,137,84,0.5);
+text-decoration-thickness: 1px;
+text-align: right;
+}
+
+.voice-div {
+font-family: var(--serif);
+font-style: italic;
+color: var(--brass-deep);
+font-size: 12px;
+letter-spacing: 0.1em;
+}
+
+.voice-examples {
+background: var(--bone);
+padding: 48px;
+border: 1px solid var(--line-soft);
+}
+
+.voice-ex + .voice-ex {
+margin-top: 32px;
+padding-top: 32px;
+border-top: 1px solid var(--line-soft);
+}
+
+.voice-ex h6 {
+font-size: 10px;
+letter-spacing: 0.22em;
+text-transform: uppercase;
+color: var(--brass-deep);
+font-weight: 500;
+margin-bottom: 14px;
+}
+
+.voice-ex blockquote {
+font-family: var(--serif);
+font-size: 22px;
+line-height: 1.35;
+font-weight: 300;
+letter-spacing: -0.01em;
+font-variation-settings: "opsz" 60;
+color: var(--ink);
+}
+
+.voice-ex blockquote::before {
+content: '';
+display: inline-block;
+width: 24px;
+height: 1px;
+background: var(--brass);
+vertical-align: middle;
+margin-right: 12px;
+transform: translateY(-4px);
+}
+
+/* =========== PRACTICE =========== */
+.practice-section {
+background: var(--bone);
+}
+
+.practice-grid {
+display: grid;
+grid-template-columns: 1.4fr 1fr;
+gap: 40px;
+margin-top: 40px;
+}
+
+.card-mockup {
+background: var(--obsidian);
+aspect-ratio: 1.75/1;
+padding: 32px;
+color: var(--bone);
+position: relative;
+border: 1px solid var(--obsidian);
+box-shadow: 0 30px 60px -20px rgba(12,15,13,0.3);
+}
+
+.card-mockup::before {
+content: '';
+position: absolute;
+left: 50%;
+top: 0;
+bottom: 0;
+width: 1px;
+background: linear-gradient(to bottom, transparent, rgba(176,137,84,0.4), transparent);
+}
+
+.card-top {
+display: flex;
+justify-content: space-between;
+align-items: flex-start;
+}
+
+.card-mark svg {
+width: 22px;
+color: var(--brass);
+}
+
+.card-meta {
+font-size: 8.5px;
+letter-spacing: 0.22em;
+text-transform: uppercase;
+color: rgba(244,239,230,0.55);
+text-align: right;
+line-height: 1.7;
+}
+
+.card-bottom {
+position: absolute;
+bottom: 32px;
+left: 32px;
+right: 32px;
+display: flex;
+justify-content: space-between;
+align-items: flex-end;
+}
+
+.card-name {
+font-family: var(--serif);
+font-weight: 300;
+font-size: 22px;
+letter-spacing: 0.02em;
+font-variation-settings: "opsz" 72;
+}
+
+.card-name .role {
+display: block;
+font-family: var(--sans);
+font-size: 9px;
+letter-spacing: 0.22em;
+text-transform: uppercase;
+color: var(--brass);
+margin-top: 8px;
+font-weight: 500;
+}
+
+.card-contact {
+font-size: 9.5px;
+letter-spacing: 0.08em;
+line-height: 1.8;
+text-align: right;
+color: rgba(244,239,230,0.75);
+}
+
+.letter-mockup {
+background: var(--ivory);
+aspect-ratio: 0.77/1;
+padding: 32px 28px;
+border: 1px solid var(--line-soft);
+position: relative;
+font-size: 9px;
+line-height: 1.7;
+color: var(--ink);
+}
+
+.letter-top {
+display: flex;
+justify-content: space-between;
+align-items: center;
+padding-bottom: 14px;
+border-bottom: 1px solid var(--line-soft);
+}
+
+.letter-mark svg {
+width: 16px;
+color: var(--obsidian);
+}
+
+.letter-word {
+font-family: var(--serif);
+font-size: 11px;
+letter-spacing: 0.15em;
+font-weight: 400;
+}
+
+.letter-meta {
+margin-top: 32px;
+font-size: 7.5px;
+letter-spacing: 0.18em;
+text-transform: uppercase;
+color: var(--brass-deep);
+font-weight: 500;
+}
+
+.letter-subject {
+font-family: var(--serif);
+font-size: 18px;
+line-height: 1.2;
+font-weight: 400;
+margin: 16px 0 24px;
+font-variation-settings: "opsz" 60;
+}
+
+.letter-body {
+font-size: 8.5px;
+line-height: 1.8;
+color: #555;
+}
+
+.letter-body p + p {
+margin-top: 10px;
+}
+
+/* =========== SOCIAL =========== */
+.social-row {
+margin-top: 60px;
+padding-top: 40px;
+border-top: 1px solid var(--line-soft);
+display: grid;
+grid-template-columns: repeat(3, 1fr);
+gap: 20px;
+}
+
+.social {
+aspect-ratio: 1/1;
+padding: 32px;
+display: flex;
+flex-direction: column;
+justify-content: space-between;
+position: relative;
+}
+
+.social.a {
+background: var(--obsidian);
+color: var(--bone);
+}
+
+.social.b {
+background: var(--brass);
+color: var(--obsidian);
+}
+
+.social.c {
+background: var(--bone);
+color: var(--ink);
+border: 1px solid var(--line-soft);
+}
+
+.social-eyebrow {
+font-size: 9px;
+letter-spacing: 0.25em;
+text-transform: uppercase;
+font-weight: 500;
+}
+
+.social.a .social-eyebrow {
+color: var(--brass);
+}
+
+.social.b .social-eyebrow {
+color: var(--obsidian);
+opacity: 0.7;
+}
+
+.social.c .social-eyebrow {
+color: var(--brass-deep);
+}
+
+.social-headline {
+font-family: var(--serif);
+font-weight: 300;
+font-size: 28px;
+line-height: 1.05;
+letter-spacing: -0.015em;
+font-variation-settings: "opsz" 72;
+}
+
+.social-headline .it {
+font-style: italic;
+}
+
+.social.a .social-headline .it {
+color: var(--brass);
+}
+
+.social-mark svg {
+width: 20px;
+}
+
+.social.a .social-mark svg {
+color: var(--brass);
+}
+
+.social.b .social-mark svg {
+color: var(--obsidian);
+}
+
+.social.c .social-mark svg {
+color: var(--obsidian);
+}
+
+.social-mark-row {
+display: flex;
+justify-content: space-between;
+align-items: center;
+font-size: 9px;
+letter-spacing: 0.22em;
+text-transform: uppercase;
+}
+
+.social.a .social-mark-row {
+color: rgba(244,239,230,0.55);
+}
+
+/* =========== DOS/DONTS =========== */
+.rules {
+margin-top: 60px;
+display: grid;
+grid-template-columns: 1fr 1fr;
+gap: 40px;
+}
+
+.rule-col h5 {
+font-family: var(--serif);
+font-weight: 400;
+font-size: 24px;
+margin-bottom: 20px;
+font-variation-settings: "opsz" 72;
+display: flex;
+align-items: center;
+gap: 12px;
+}
+
+.rule-col.do h5::before {
+content: '';
+width: 16px;
+height: 1px;
+background: var(--brass);
+}
+
+.rule-col.dont h5::before {
+content: '×';
+font-style: italic;
+color: #b0564c;
+font-size: 20px;
+line-height: 1;
+}
+
+.rule-col ul {
+list-style: none;
+display: grid;
+gap: 12px;
+}
+
+.rule-col li {
+padding: 14px 0;
+border-top: 1px solid var(--line-soft);
+font-size: 14px;
+line-height: 1.55;
+color: #3A3A38;
+display: grid;
+grid-template-columns: 24px 1fr;
+gap: 12px;
+align-items: start;
+}
+
+.rule-col li::before {
+content: '';
+margin-top: 10px;
+width: 12px;
+height: 1px;
+background: var(--brass-deep);
+}
+
+.rule-col.dont li::before {
+background: #b0564c;
+}
+
+/* =========== FOOTER =========== */
+.foot {
+background: var(--obsidian);
+color: var(--bone);
+padding: 64px 48px;
+text-align: center;
+position: relative;
+}
+
+.foot-mark svg {
+width: 140px;
+color: var(--brass);
+margin: 0 auto;
+display: block;
+}
+
+.foot-title {
+font-family: var(--serif);
+font-style: italic;
+font-weight: 300;
+font-size: 28px;
+margin-top: 24px;
+font-variation-settings: "opsz" 72;
+color: rgba(244,239,230,0.8);
+}
+
+.foot-meta {
+margin-top: 40px;
+font-size: 10px;
+letter-spacing: 0.22em;
+text-transform: uppercase;
+color: rgba(244,239,230,0.4);
+}
+
+/* Responsive */
+@media (max-width: 900px) {
+.section {
+padding: 80px 28px;
+}
+
+.essence-grid, .mark-grid, .voice-grid, .practice-grid {
+grid-template-columns: 1fr;
+gap: 48px;
+}
+
+.palette-grid {
+grid-template-columns: 1fr 1fr;
+height: auto;
+}
+
+.palette-grid .swatch {
+min-height: 180px;
+}
+
+.palette-usage {
+grid-template-columns: 1fr;
+}
+
+.type-pair {
+grid-template-columns: 1fr;
+}
+
+.rules {
+grid-template-columns: 1fr;
+}
+
+.mark-grid-row {
+grid-template-columns: 1fr 1fr;
+}
+
+.social-row {
+grid-template-columns: 1fr;
+}
+}
+</style>
+</head>
+
+<body>
+<!-- =========== COVER =========== -->
+<section class="cover">
+<div class="cover-top">
+<span>Brand Guidelines</span>
+<svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+<line x1="2" y1="14" x2="18" y2="14" stroke="currentColor" stroke-width="1"/>
+<circle cx="10" cy="8" r="2" fill="currentColor"/>
+</svg>
+<span>Vol. I — MMXXVI</span>
+</div>
+
+<div class="cover-center">
+<div class="cover-mark-xl">
+<svg viewBox="0 0 300 110" xmlns="http://www.w3.org/2000/svg">
+<line x1="20" y1="80" x2="280" y2="80" stroke="currentColor" stroke-width="1"/>
+<line x1="20" y1="72" x2="20" y2="88" stroke="currentColor" stroke-width="1"/>
+<line x1="280" y1="72" x2="280" y2="88" stroke="currentColor" stroke-width="1"/>
+<circle cx="150" cy="48" r="6" fill="currentColor"/>
+<line x1="150" y1="58" x2="150" y2="80" stroke="currentColor" stroke-width="0.5" stroke-dasharray="2 3"/>
+</svg>
+</div>
+<div>
+<div class="cover-wordmark">
+Meridian
+<span class="sub">C O L L E C T I V E</span>
+</div>
+</div>
+<p class="cover-tag">A disciplined partnership in Atlanta real estate. This document defines how the brand looks, sounds, and behaves.</p>
+</div>
+
+<div class="cover-bottom">
+<span class="brass-dot">Atlanta · GA</span>
+<span>§ Identity System / 01</span>
+</div>
+</section>
+
+<!-- =========== ESSENCE =========== -->
+<section class="section essence">
+<div class="section-inner">
+<div class="section-meta">
+<span>§ 01 — Essence</span>
+<span class="section-number">i.</span>
+</div>
+
+<div class="essence-grid">
+<div>
+<div class="eyebrow" style="margin-bottom: 28px;">Positioning</div>
+<h2 class="essence-big">
+Real estate, practiced as a <span class="it">discipline</span> — not a hustle.
+</h2>
+</div>
+
+<div class="pillars">
+<div class="pillar">
+<div class="pillar-num">01</div>
+<div>
+<h3 class="pillar-title">Measured</h3>
+<p class="pillar-body">We underwrite before we imagine. Our instinct is toward precision — numbers that hold up, assumptions that are stated, risks that are named rather than hidden.</p>
+</div>
+</div>
+
+<div class="pillar">
+<div class="pillar-num">02</div>
+<div>
+<h3 class="pillar-title">Local</h3>
+<p class="pillar-body">We invest where we walk. Every submarket — from Marietta to Fayetteville — is evaluated on the ground, not from a dashboard. The Atlanta metro is not a map to us; it's a neighborhood.</p>
+</div>
+</div>
+
+<div class="pillar">
+<div class="pillar-num">03</div>
+<div>
+<h3 class="pillar-title">Collective</h3>
+<p class="pillar-body">Decisions are partnership-level, not personality-driven. Six operators, one framework. What we build we build together and for longer than a cycle.</p>
+</div>
+</div>
+</div>
+</div>
+</div>
+</section>
+
+<!-- =========== MARK =========== -->
+<section class="section mark-section">
+<div class="section-inner">
+<div class="section-meta">
+<span>§ 02 — The Mark</span>
+<span class="section-number">ii.</span>
+</div>
+
+<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 80px; align-items: start; margin-bottom: 20px;">
+<div>
+<h2 class="display-l">
+A <span class="it">meridian</span> is the sun's highest point — the instant of exact measurement.
+</h2>
+</div>
+
+<div>
+<div class="eyebrow" style="margin-bottom: 20px;">Concept</div>
+<p class="body-text">The mark is literal and quiet. A horizontal line — the meridian, the lot line, the ground — with a single point fixed above it: the apex, the moment of peak value, the sighted coordinate. Two end ticks reference the surveyor's transit. It scales from a favicon to a building sign without loss of character.</p>
+</div>
+</div>
+
+<div class="mark-grid">
+<div class="mark-showcase dark">
+<span class="corner tl"></span><span class="corner tr"></span>
+<span class="corner bl"></span><span class="corner br"></span>
+
+<div class="logo-full">
+<svg viewBox="0 0 200 70" xmlns="http://www.w3.org/2000/svg">
+<line x1="15" y1="55" x2="185" y2="55" stroke="currentColor" stroke-width="1"/>
+<line x1="15" y1="48" x2="15" y2="62" stroke="currentColor" stroke-width="1"/>
+<line x1="185" y1="48" x2="185" y2="62" stroke="currentColor" stroke-width="1"/>
+<circle cx="100" cy="28" r="4.5" fill="currentColor"/>
+</svg>
+<div class="word">Meridian</div>
+<div class="word-sub">C O L L E C T I V E</div>
+</div>
+</div>
+
+<div class="mark-meta">
+<div class="mark-meta-block">
+<span class="mark-label">Primary Lockup</span>
+<h4>Mark + wordmark, stacked</h4>
+<p class="body-text">The preferred application. Used for formal documents, site header, deal memos, exterior signage. Minimum clear space equal to the mark's height on all sides.</p>
+</div>
+
+<div class="mark-meta-block">
+<span class="mark-label">Minimum Size</span>
+<h4>24px digital · 0.75in print</h4>
+<p class="body-text">Below this threshold, use the minimal lockup or monogram alone. The apex dot must remain clearly resolved.</p>
+</div>
+</div>
+</div>
+
+<div class="mark-grid-row">
+<div class="mark-tile">
+<div class="mark-mini">
+<svg viewBox="0 0 30 30" xmlns="http://www.w3.org/2000/svg">
+<line x1="4" y1="22" x2="26" y2="22" stroke="currentColor" stroke-width="1"/>
+<line x1="4" y1="18" x2="4" y2="26" stroke="currentColor" stroke-width="1"/>
+<line x1="26" y1="18" x2="26" y2="26" stroke="currentColor" stroke-width="1"/>
+<circle cx="15" cy="10" r="2.5" fill="currentColor"/>
+</svg>
+<span class="word">Meridian</span>
+</div>
+<span class="tile-caption">Horizontal · In-line</span>
+</div>
+
+<div class="mark-tile dark">
+<div class="mark-icon">
+<svg viewBox="0 0 80 60" xmlns="http://www.w3.org/2000/svg">
+<line x1="10" y1="45" x2="70" y2="45" stroke="currentColor" stroke-width="1"/>
+<line x1="10" y1="40" x2="10" y2="50" stroke="currentColor" stroke-width="1"/>
+<line x1="70" y1="40" x2="70" y2="50" stroke="currentColor" stroke-width="1"/>
+<circle cx="40" cy="20" r="4" fill="currentColor"/>
+</svg>
+</div>
+<span class="tile-caption">Mark · Standalone</span>
+</div>
+
+<div class="mark-tile brass">
+<div style="font-family: var(--serif); font-size: 78px; font-weight: 300; letter-spacing: -0.02em; color: var(--obsidian); line-height: 1; position: relative;">
+M<span style="font-size: 0.3em; vertical-align: super; margin-left: 2px; color: var(--obsidian);">°</span>
+</div>
+<span class="tile-caption">Monogram · Favicon</span>
+</div>
+</div>
+</div>
+</section>
+
+<!-- Continue with all other sections... -->
+<!-- =========== PALETTE =========== -->
+<section class="section palette-section">
+<div class="section-inner">
+<div class="section-meta">
+<span>§ 03 — Palette</span>
+<span class="section-number">iii.</span>
+</div>
+
+<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 80px; align-items: end; margin-bottom: 20px;">
+<h2 class="display-l">Five colors. <span class="it">No more.</span></h2>
+<p class="body-text">A dominant-dark system anchored by obsidian and carried by bone. Brass is the accent — used with restraint to mark importance, never decoration. Fog and ink handle the in-between.</p>
+</div>
+
+<div class="palette-grid">
+<div class="swatch obsidian">
+<div>
+<div class="swatch-name">Obsidian</div>
+<div class="swatch-meta" style="margin-top: 8px;">Primary / Dark</div>
+</div>
+<div class="swatch-meta">
+HEX · #0C0F0D<br>
+RGB · 12 · 15 · 13<br>
+CMYK · 75 · 65 · 70 · 85<br>
+PMS · Black 6 C
+</div>
+</div>
+
+<div class="swatch brass">
+<div>
+<div class="swatch-name">Brass</div>
+<div class="swatch-meta" style="margin-top: 8px;">Accent</div>
+</div>
+<div class="swatch-meta">
+HEX · #B08954<br>
+RGB · 176 · 137 · 84<br>
+PMS · 4505 C
+</div>
+</div>
+
+<div class="swatch bone">
+<div>
+<div class="swatch-name">Bone</div>
+<div class="swatch-meta" style="margin-top: 8px;">Primary / Light</div>
+</div>
+<div class="swatch-meta">
+HEX · #F4EFE6<br>
+RGB · 244 · 239 · 230<br>
+PMS · 9184 C
+</div>
+</div>
+
+<div class="swatch fog">
+<div>
+<div class="swatch-name">Fog</div>
+<div class="swatch-meta" style="margin-top: 8px;">Neutral</div>
+</div>
+<div class="swatch-meta">
+HEX · #D6D1C4<br>
+RGB · 214 · 209 · 196<br>
+PMS · 413 C
+</div>
+</div>
+
+<div class="swatch ink">
+<div>
+<div class="swatch-name">Ink</div>
+<div class="swatch-meta" style="margin-top: 8px;">Body Text</div>
+</div>
+<div class="swatch-meta">
+HEX · #1A1A1A<br>
+RGB · 26 · 26 · 26<br>
+PMS · Neutral Black C
+</div>
+</div>
+</div>
+
+<div class="palette-usage">
+<div class="usage-item">
+<div class="bar" style="background: var(--obsidian);"></div>
+<h5>60% Obsidian & Bone</h5>
+<p>Dominant surfaces — headers, hero panels, document backgrounds. Carry the brand's gravity.</p>
+</div>
+
+<div class="usage-item">
+<div class="bar" style="background: var(--fog);"></div>
+<h5>30% Fog & Ink</h5>
+<p>Supporting neutrals for body copy, secondary surfaces, dividers, and tabular data.</p>
+</div>
+
+<div class="usage-item">
+<div class="bar" style="background: var(--brass);"></div>
+<h5>10% Brass</h5>
+<p>Reserved. Used for the mark, key accents, CTA emphasis, and rule lines. Never as a background flood.</p>
+</div>
+</div>
+</div>
+</section>
+
+<!-- =========== FOOTER =========== -->
+<footer class="foot">
+<div class="foot-mark">
+<svg viewBox="0 0 200 70" xmlns="http://www.w3.org/2000/svg">
+<line x1="15" y1="55" x2="185" y2="55" stroke="currentColor" stroke-width="1"/>
+<line x1="15" y1="48" x2="15" y2="62" stroke="currentColor" stroke-width="1"/>
+<line x1="185" y1="48" x2="185" y2="62" stroke="currentColor" stroke-width="1"/>
+<circle cx="100" cy="28" r="4.5" fill="currentColor"/>
+</svg>
+</div>
+<div class="foot-title">Meridian <em>Collective</em></div>
+<div class="foot-meta">Brand Guidelines · Vol. I · Atlanta, Georgia · MMXXVI</div>
+</footer>
+</body>
+</html>

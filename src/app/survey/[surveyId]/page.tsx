@@ -211,18 +211,8 @@ export default function SurveyPage() {
   const [activeCategory, setActiveCategory] = useState(0);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [priorityFilter, setPriorityFilter] = useState<PriorityFilter>("all");
-  const [logoModal, setLogoModal] = useState<{ logoKey: string; paletteId: string } | null>(null);
   const lastPaletteRef = useRef(DEFAULT_PALETTE);
   const saveToServer = useDebouncedSaveToServer();
-
-  // Lock body scroll when modal is open
-  useEffect(() => {
-    if (logoModal) {
-      const prev = document.body.style.overflow;
-      document.body.style.overflow = "hidden";
-      return () => { document.body.style.overflow = prev; };
-    }
-  }, [logoModal]);
 
   useEffect(() => {
     const u = localStorage.getItem("meridian_user");
@@ -564,15 +554,16 @@ export default function SurveyPage() {
                                   transition: "all 0.15s",
                                 }}
                               >
-                                {/* Logo image — click opens full preview modal */}
+                                {/* Logo image — click opens full brand guidelines */}
                                 <button
                                   type="button"
-                                  onClick={() => setLogoModal({ logoKey: option, paletteId: lastPaletteRef.current })}
+                                  onClick={() => window.open("/brand-guidelines", "_blank")}
                                   style={{
                                     display: "flex", alignItems: "center", justifyContent: "center",
-                                    width: "100%", height: 150, border: "none", cursor: "zoom-in",
+                                    width: "100%", height: 150, border: "none", cursor: "pointer",
                                     background: thumbColors.bg, position: "relative", padding: 16,
                                   }}
+                                  title="Click to view full brand guidelines"
                                 >
                                   <LogoRender logoKey={option} c={thumbColors} full={false} />
                                   <span style={{
@@ -854,131 +845,7 @@ export default function SurveyPage() {
         </div>
       </main>
 
-      {/* ============================================================
-          LOGO PREVIEW MODAL
-      ============================================================ */}
-      {logoModal && (() => {
-        const pal = PALETTE_DATA[logoModal.paletteId] ?? PALETTE_DATA[DEFAULT_PALETTE];
-        const logoSelections = getSelections("brand-logo-rank");
-        const rankIndex = logoSelections.indexOf(logoModal.logoKey);
-        const isRanked = rankIndex !== -1;
-        const panelBg = pal.isDark ? "rgba(0,0,0,0.35)" : "rgba(0,0,0,0.06)";
-        const panelBorder = pal.isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.1)";
-        const mutedText = pal.isDark ? "rgba(255,255,255,0.38)" : "rgba(0,0,0,0.38)";
-        const bodyText = pal.isDark ? "rgba(255,255,255,0.68)" : "rgba(0,0,0,0.65)";
-
-        return (
-          <>
-            <div
-              onClick={() => setLogoModal(null)}
-              style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.82)", zIndex: 200, backdropFilter: "blur(4px)" }}
-            />
-            <div style={{
-              position: "fixed", top: "50%", left: "50%",
-              transform: "translate(-50%, -50%)",
-              zIndex: 201, width: "min(720px, 96vw)", maxHeight: "92vh",
-              display: "flex", flexDirection: "column",
-              background: pal.bg, borderRadius: 16, overflow: "hidden",
-              border: `1px solid ${panelBorder}`,
-              boxShadow: "0 32px 80px rgba(0,0,0,0.6)",
-              transition: "background 0.25s ease",
-            }}>
-              {/* Header */}
-              <div style={{ padding: "16px 24px 0", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <div>
-                  <span style={{ fontSize: 10, letterSpacing: "0.22em", textTransform: "uppercase", color: mutedText, fontWeight: 500 }}>
-                    {logoModal.logoKey.slice(0, 2)}
-                  </span>
-                  <span style={{ fontSize: 15, fontWeight: 500, color: pal.fg, marginLeft: 10 }}>
-                    {logoModal.logoKey.slice(3)}
-                  </span>
-                </div>
-                <button
-                  onClick={() => setLogoModal(null)}
-                  style={{ background: "none", border: "none", cursor: "pointer", color: mutedText, fontSize: 22, lineHeight: 1, padding: "4px 8px" }}
-                  aria-label="Close"
-                >
-                  ×
-                </button>
-              </div>
-
-              {/* Logo display */}
-              <div style={{
-                flex: 1, display: "flex", alignItems: "center", justifyContent: "center",
-                padding: "48px 48px 40px", minHeight: 280,
-              }}>
-                <LogoRender logoKey={logoModal.logoKey} c={pal} full={true} />
-              </div>
-
-              {/* Palette switcher */}
-              <div style={{ background: panelBg, borderTop: `1px solid ${panelBorder}`, padding: "18px 24px" }}>
-                <p style={{ fontSize: 10, letterSpacing: "0.2em", textTransform: "uppercase", color: mutedText, marginBottom: 12, fontWeight: 500 }}>
-                  Color Palette — click to preview
-                </p>
-                <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
-                  {Object.entries(PALETTE_DATA).map(([pid, pd]) => {
-                    const isActive = logoModal.paletteId === pid;
-                    return (
-                      <button
-                        key={pid}
-                        onClick={() => {
-                          lastPaletteRef.current = pid;
-                          setLogoModal(prev => prev ? { ...prev, paletteId: pid } : null);
-                        }}
-                        title={pid}
-                        style={{
-                          display: "flex", alignItems: "center", gap: 6,
-                          padding: "5px 11px 5px 7px", borderRadius: 20, fontSize: 11,
-                          border: `1px solid ${isActive ? pal.accent : panelBorder}`,
-                          background: isActive ? pal.accent : "transparent",
-                          color: isActive ? (pal.isDark ? pal.bg : "#fff") : bodyText,
-                          cursor: "pointer", transition: "all 0.15s",
-                          fontWeight: isActive ? 600 : 400,
-                        }}
-                      >
-                        <span style={{ width: 8, height: 8, borderRadius: "50%", background: pd.accent, flexShrink: 0, display: "block" }} />
-                        {shortPaletteName(pid)}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Rank controls */}
-              <div style={{
-                background: panelBg, borderTop: `1px solid ${panelBorder}`,
-                padding: "14px 24px",
-                display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12,
-              }}>
-                <button
-                  type="button"
-                  onClick={() => toggleLogoRank(logoModal.logoKey)}
-                  style={{
-                    padding: "9px 18px", borderRadius: 8, fontSize: 13, fontWeight: 600,
-                    cursor: "pointer", transition: "all 0.15s",
-                    ...(isRanked ? {
-                      background: "transparent",
-                      border: `1px solid ${panelBorder}`,
-                      color: bodyText,
-                    } : {
-                      background: pal.accent,
-                      border: "none",
-                      color: pal.isDark ? pal.bg : "#fff",
-                    }),
-                  }}
-                >
-                  {isRanked ? `Ranked #${rankIndex + 1} — Remove` : "+ Add to My Ranking"}
-                </button>
-                <span style={{ fontSize: 11, color: mutedText }}>
-                  {logoSelections.length > 0
-                    ? `${logoSelections.length} logo${logoSelections.length !== 1 ? "s" : ""} ranked`
-                    : "No logos ranked yet"}
-                </span>
-              </div>
-            </div>
-          </>
-        );
-      })()}
+      {/* Logo click now opens brand guidelines in new tab */}
 
       <style>{`
         @media (max-width: 768px) {
