@@ -1,6 +1,7 @@
 "use client";
 import { useRouter, usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
+import Logo from "./Logo";
 
 export default function NavBar() {
   const router = useRouter();
@@ -32,8 +33,8 @@ export default function NavBar() {
       background: "var(--bg)", borderBottom: "1px solid var(--border)",
       padding: "0 16px", height: 56, display: "flex", alignItems: "center", justifyContent: "space-between",
     }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-        <span style={{ color: "var(--gold)", fontSize: 18, marginRight: 8 }}>◆</span>
+      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        <Logo width={40} style={{ cursor: "pointer" }} onClick={() => router.push("/hub")} />
         {links.map(l => {
           const active = isActive(l.href);
           return (

@@ -3,6 +3,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { MEMBERS } from "@/data/questions";
 import { supabase } from "@/lib/supabase";
+import Logo from "@/components/Logo";
 
 // Last name (or full name for single-name members) used for self-service password reset verification
 const MEMBER_VERIFICATION: Record<string, string> = {
@@ -149,7 +150,9 @@ export default function LoginPage() {
     return (
       <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
         <div style={{ width: "100%", maxWidth: 420, textAlign: "center" }}>
-          <div style={{ fontSize: 48, marginBottom: 8 }}>◆</div>
+          <div style={{ marginBottom: 16, display: "flex", justifyContent: "center" }}>
+            <Logo width={60} />
+          </div>
           <h1 style={{ fontSize: 24, fontWeight: 700, marginBottom: 4 }}>Set Your Password</h1>
           <p style={{ color: "var(--muted)", marginBottom: 8, fontSize: 14 }}>
             Welcome, <span style={{ color: "var(--gold)" }}>{name}</span>
@@ -198,7 +201,9 @@ export default function LoginPage() {
       return (
         <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
           <div style={{ width: "100%", maxWidth: 420, textAlign: "center" }}>
-            <div style={{ fontSize: 48, marginBottom: 8 }}>◆</div>
+            <div style={{ marginBottom: 16, display: "flex", justifyContent: "center" }}>
+              <Logo width={60} />
+            </div>
             <h1 style={{ fontSize: 24, fontWeight: 700, marginBottom: 8 }}>Password Reset</h1>
             <p style={{ color: "var(--muted)", marginBottom: 8, fontSize: 14 }}>
               Your password has been reset to the default.
@@ -225,7 +230,9 @@ export default function LoginPage() {
     return (
       <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
         <div style={{ width: "100%", maxWidth: 420, textAlign: "center" }}>
-          <div style={{ fontSize: 48, marginBottom: 8 }}>◆</div>
+          <div style={{ marginBottom: 16, display: "flex", justifyContent: "center" }}>
+            <Logo width={60} />
+          </div>
           <h1 style={{ fontSize: 24, fontWeight: 700, marginBottom: 4 }}>Reset Password</h1>
           <p style={{ color: "var(--muted)", marginBottom: 24, fontSize: 14 }}>
             Verify your identity and we&apos;ll reset your password to the default.
@@ -282,8 +289,10 @@ export default function LoginPage() {
   return (
     <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
       <div style={{ width: "100%", maxWidth: 420, textAlign: "center" }}>
-        <div style={{ fontSize: 48, marginBottom: 8 }}>◆</div>
-        <h1 style={{ fontSize: 28, fontWeight: 700, marginBottom: 4, letterSpacing: "-0.5px" }}>Meridian Collective</h1>
+        <div style={{ marginBottom: 16, display: "flex", justifyContent: "center" }}>
+          <Logo width={80} />
+        </div>
+        <h1 style={{ fontSize: 28, fontWeight: 700, marginBottom: 4, letterSpacing: "-0.5px" }}>Partnership Hub</h1>
         <p style={{ color: "var(--muted)", marginBottom: 32, fontSize: 14 }}>Partnership Transparency Hub</p>
 
         <form onSubmit={handleLogin} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
