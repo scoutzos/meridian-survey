@@ -8,8 +8,11 @@ import {
   isAdmin,
   logAudit,
 } from "@/lib/tracker";
+import { fetchMonetaryDecisions, type MonetaryKind } from "@/lib/decisions";
 import { MEMBERS } from "@/data/questions";
 import TrackerShell, { trackerCard, trackerInput, trackerBtn } from "@/components/TrackerShell";
+
+type DecisionMoney = Awaited<ReturnType<typeof fetchMonetaryDecisions>>;
 
 export default function TrackerSettingsPage() {
   const router = useRouter();
@@ -25,6 +28,8 @@ export default function TrackerSettingsPage() {
   const [monthsTracked, setMonthsTracked] = useState(3);
   const [llcNames, setLlcNames] = useState<Record<string, string>>({});
   const [adminFlags, setAdminFlags] = useState<Record<string, boolean>>({});
+  // Confirmed-decision monetary values surfaced as authoritative.
+  const [decisionMoney, setDecisionMoney] = useState<DecisionMoney>({});
 
   useEffect(() => {
     const u = localStorage.getItem("meridian_user");
@@ -37,10 +42,12 @@ export default function TrackerSettingsPage() {
   async function load() {
     if (!supabase) { setLoading(false); return; }
     setLoading(true);
-    const [s, p] = await Promise.all([
+    const [s, p, money] = await Promise.all([
       supabase.from("tracker_settings").select("*").eq("key", "tracker").maybeSingle(),
       supabase.from("tracker_member_profiles").select("*").order("member_name"),
+      fetchMonetaryDecisions(),
     ]);
+    setDecisionMoney(money);
     const settingsRow = (s.data as TrackerSettings | null) ?? null;
     const profileRows = (p.data as MemberProfile[] | null) ?? [];
     setSettings(settingsRow);
@@ -135,11 +142,48 @@ export default function TrackerSettingsPage() {
     );
   }
 
+  const moneyEntries = (Object.entries(decisionMoney) as Array<[
+    MonetaryKind,
+    { value: number; decisionId: string; finalAnswer: string | null; meetingDate: string | null },
+  ]>);
+
   return (
     <TrackerShell
       title="Settings"
       subtitle="LLC start date, tracking horizon, and per-member LLC entity names."
     >
+      {moneyEntries.length > 0 && (
+        <div style={{ ...trackerCard, marginBottom: 16, borderLeft: "4px solid var(--gold)" }}>
+          <h2 style={{ fontSize: 16, fontWeight: 600, marginBottom: 4 }}>OA-derived values</h2>
+          <p style={{ fontSize: 12, color: "var(--muted)", marginBottom: 12 }}>
+            These dollar amounts come from confirmed decisions on the Decisions page and are the authoritative source for the tracker. To change them, edit the corresponding decision (admin) — not the fields below.
+          </p>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {moneyEntries.map(([kind, info]) => (
+              <div key={kind} style={{
+                display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12,
+                padding: "8px 12px", background: "var(--surface2)", borderRadius: 8,
+              }}>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600 }}>{kind.replace(/_/g, " ")}</div>
+                  {info.finalAnswer && (
+                    <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 2 }}>{info.finalAnswer}</div>
+                  )}
+                </div>
+                <div style={{ textAlign: "right" }}>
+                  <div style={{ fontSize: 18, fontWeight: 700, color: "var(--gold)" }}>
+                    ${Number(info.value).toLocaleString()}
+                  </div>
+                  <div style={{ fontSize: 10, color: "var(--muted)" }}>
+                    decision {info.decisionId}{info.meetingDate ? ` · ${info.meetingDate}` : ""}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div style={{ ...trackerCard, marginBottom: 16 }}>
         <h2 style={{ fontSize: 16, fontWeight: 600, marginBottom: 12 }}>LLC formation</h2>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
