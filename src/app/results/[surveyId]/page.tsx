@@ -5,6 +5,7 @@ import { MEMBERS } from "@/data/questions";
 import { getSurveyById, type SurveyQuestion } from "@/data/surveys";
 import { supabase } from "@/lib/supabase";
 import { insights } from "@/data/insights";
+import { snapshotWithVersion } from "@/lib/question-snapshot";
 
 function formatRelativeTime(timestamp: string | null | undefined): string {
   if (!timestamp) return "Never logged in";
@@ -77,6 +78,10 @@ export default function ResultsPage() {
 
   const [user, setUser] = useState<string | null>(null);
   const [allAnswers, setAllAnswers] = useState<Record<string, Record<string, string[] | string>>>({});
+  // Per-question, the set of snapshot_versions members saved with. If any
+  // member's hash != the current question's hash, the question text changed
+  // since they answered.
+  const [savedVersions, setSavedVersions] = useState<Record<string, Set<string>>>({});
   const [memberLogins, setMemberLogins] = useState<Record<string, string | null>>({});
   const [activeCategory, setActiveCategory] = useState(0);
   const [showCriticalSummary, setShowCriticalSummary] = useState(false);
@@ -91,16 +96,21 @@ export default function ResultsPage() {
 
     supabase
       .from("meridian_responses")
-      .select("member_name, question_id, answer")
+      .select("member_name, question_id, answer, snapshot_version")
       .eq("survey_id", surveyId)
       .then(({ data: rows }) => {
         const data: Record<string, Record<string, string[] | string>> = {};
+        const versions: Record<string, Set<string>> = {};
         for (const row of rows || []) {
           if (!data[row.member_name]) data[row.member_name] = {};
           try { data[row.member_name][row.question_id] = JSON.parse(row.answer); }
           catch { data[row.member_name][row.question_id] = row.answer; }
+          if (row.snapshot_version) {
+            (versions[row.question_id] ??= new Set()).add(row.snapshot_version);
+          }
         }
         setAllAnswers(data);
+        setSavedVersions(versions);
       });
 
     supabase
@@ -294,6 +304,12 @@ export default function ResultsPage() {
   const renderQuestion = (q: SurveyQuestion, displayNum: number, showCategory?: string) => {
     const tally = getOptionTally(q.id);
     const alignment = getAlignment(q.id);
+    // Detect version drift: any saved snapshot whose hash differs from the
+    // current question definition's hash means the question text/options
+    // changed after that member answered.
+    const currentVersion = snapshotWithVersion(q).snapshot_version;
+    const saved = savedVersions[q.id];
+    const hasDrift = saved ? Array.from(saved).some(v => v !== currentVersion) : false;
     return (
       <div key={q.id} style={{ background: "var(--surface)", borderRadius: 12, padding: 24 }}>
         {showCategory && (
@@ -302,6 +318,18 @@ export default function ResultsPage() {
         <p style={{ fontWeight: 600, marginBottom: 12, fontSize: 14, lineHeight: 1.5 }}>
           <span style={{ color: "var(--gold)" }}>{displayNum}.</span> {q.text}
           {priorityBadge(q.priority)}
+          {hasDrift && (
+            <span
+              title="The question text or options were edited after some members answered. Their saved snapshot preserves what they actually saw."
+              style={{
+                marginLeft: 8, fontSize: 10, fontWeight: 600, padding: "2px 8px", borderRadius: 4,
+                color: "var(--gold-dim)", background: "rgba(142,107,63,0.10)", border: "1px solid rgba(142,107,63,0.3)",
+                whiteSpace: "nowrap",
+              }}
+            >
+              REVISED SINCE SAVE
+            </span>
+          )}
         </p>
 
         {alignment && (

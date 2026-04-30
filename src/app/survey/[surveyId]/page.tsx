@@ -1,9 +1,10 @@
 "use client";
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { getSurveyById, type SurveyQuestion } from "@/data/surveys";
 import { supabase } from "@/lib/supabase";
 import { migrateLocalStorage, getStorageKey } from "@/lib/migration";
+import { buildAnswerRow, buildQuestionLookup } from "@/lib/question-snapshot";
 
 // =============================================================
 // PALETTE DATA  (exact colors from meridian_collective_palette_options.html)
@@ -209,7 +210,12 @@ function LogoRender({ logoKey, c, full }: { logoKey: string; c: PaletteColors; f
 
 function useDebouncedSaveToServer() {
   const timerRef = useRef<NodeJS.Timeout | null>(null);
-  const saveToServer = useCallback((surveyId: string, member: string, answers: Record<string, string[] | string>) => {
+  const saveToServer = useCallback((
+    surveyId: string,
+    member: string,
+    answers: Record<string, string[] | string>,
+    questions: Record<string, SurveyQuestion>,
+  ) => {
     if (timerRef.current) clearTimeout(timerRef.current);
     timerRef.current = setTimeout(async () => {
       if (!supabase) return;
@@ -220,13 +226,9 @@ function useDebouncedSaveToServer() {
             if (Array.isArray(v)) return v.length > 0;
             return typeof v === "string" && v.trim() !== "";
           })
-          .map(([questionId, answer]) => ({
-            member_name: member,
-            question_id: questionId,
-            survey_id: surveyId,
-            answer: JSON.stringify(answer),
-            updated_at: new Date().toISOString(),
-          }));
+          .map(([questionId, answer]) =>
+            buildAnswerRow({ member, surveyId, questionId, answer, questions }),
+          );
         if (rows.length > 0) {
           await supabase.from("meridian_responses").insert(rows);
         }
@@ -271,6 +273,10 @@ export default function SurveyPage() {
   const [priorityFilter, setPriorityFilter] = useState<PriorityFilter>("all");
   const [selectedPalette, setSelectedPalette] = useState(DEFAULT_PALETTE);
   const saveToServer = useDebouncedSaveToServer();
+  const questionLookup = useMemo(
+    () => (survey ? buildQuestionLookup(survey.categories) : {}),
+    [survey],
+  );
 
   useEffect(() => {
     const u = localStorage.getItem("meridian_user");
@@ -308,18 +314,15 @@ export default function SurveyPage() {
             const parsed = JSON.parse(saved);
             setAnswers(parsed);
             if (Object.keys(parsed).length > 0) {
+              const lookup = survey ? buildQuestionLookup(survey.categories) : {};
               const rows = Object.entries(parsed)
                 .filter(([, v]) => {
                   if (Array.isArray(v)) return (v as string[]).length > 0;
                   return typeof v === "string" && (v as string).trim() !== "";
                 })
-                .map(([qid, answer]) => ({
-                  member_name: u,
-                  question_id: qid,
-                  survey_id: surveyId,
-                  answer: JSON.stringify(answer),
-                  updated_at: new Date().toISOString(),
-                }));
+                .map(([questionId, answer]) =>
+                  buildAnswerRow({ member: u, surveyId, questionId, answer, questions: lookup }),
+                );
               if (rows.length > 0) {
                 supabase!.from("meridian_responses").insert(rows).then(() => {});
               }
@@ -333,8 +336,8 @@ export default function SurveyPage() {
     if (!user) return;
     setAnswers(newAnswers);
     localStorage.setItem(getStorageKey(surveyId, user), JSON.stringify(newAnswers));
-    saveToServer(surveyId, user, newAnswers);
-  }, [user, surveyId, saveToServer]);
+    saveToServer(surveyId, user, newAnswers, questionLookup);
+  }, [user, surveyId, saveToServer, questionLookup]);
 
   const isAnswered = (val: string[] | string | undefined): boolean => {
     if (!val) return false;
@@ -902,13 +905,9 @@ export default function SurveyPage() {
                         if (Array.isArray(v)) return v.length > 0;
                         return typeof v === "string" && v.trim() !== "";
                       })
-                      .map(([questionId, answer]) => ({
-                        member_name: user,
-                        question_id: questionId,
-                        survey_id: surveyId,
-                        answer: JSON.stringify(answer),
-                        updated_at: new Date().toISOString(),
-                      }));
+                      .map(([questionId, answer]) =>
+                        buildAnswerRow({ member: user, surveyId, questionId, answer, questions: questionLookup }),
+                      );
                     if (rows.length > 0) {
                       await supabase.from("meridian_responses").insert(rows);
                     }
