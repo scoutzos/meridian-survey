@@ -3,10 +3,10 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { decisions, DecisionStatus } from "@/data/decisions";
 
-const STATUS_CONFIG: Record<DecisionStatus, { label: string; color: string; bg: string; icon: string }> = {
-  confirmed: { label: "Confirmed", color: "#6B8F7B", bg: "rgba(107,143,123,0.12)", icon: "✅" },
-  tabled: { label: "Tabled", color: "var(--gold)", bg: "rgba(176,137,84,0.12)", icon: "⚠️" },
-  remaining: { label: "Remaining", color: "#888", bg: "rgba(136,136,136,0.08)", icon: "⬜" },
+const STATUS_CONFIG: Record<DecisionStatus, { label: string; color: string; bg: string }> = {
+  confirmed: { label: "Confirmed", color: "#6B8F7B", bg: "rgba(107,143,123,0.12)" },
+  tabled: { label: "Tabled", color: "var(--gold)", bg: "rgba(176,137,84,0.12)" },
+  remaining: { label: "Remaining", color: "#888", bg: "rgba(136,136,136,0.08)" },
 };
 
 export default function DecisionsPage() {
@@ -90,7 +90,7 @@ export default function DecisionsPage() {
             >
               <div style={{ fontSize: 28, fontWeight: 700, color: cfg.color }}>{count}</div>
               <div style={{ fontSize: 12, color: cfg.color, fontWeight: 600, letterSpacing: "0.5px" }}>
-                {cfg.icon} {cfg.label.toUpperCase()}
+                {cfg.label.toUpperCase()}
               </div>
             </button>
           );

@@ -195,7 +195,7 @@ export default function HubPage() {
       </div>
 
       <div style={{ background: "rgba(200,170,50,0.1)", border: "1px solid rgba(200,170,50,0.2)", borderRadius: 8, padding: "10px 14px", fontSize: 12, color: "var(--muted)", marginBottom: 24 }}>
-        📱 Documents uploaded here are stored locally on your device. For shared access across devices, upload to the Google Drive.
+        Documents uploaded here are stored locally on your device. For shared access across devices, upload to the Google Drive.
       </div>
 
       {/* ANNOUNCEMENTS */}

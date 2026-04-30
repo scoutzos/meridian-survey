@@ -321,7 +321,7 @@ export default function ResultsPage() {
               return (
                 <div key={opt} style={{ marginBottom: 4 }}>
                   <span style={{ fontWeight: 600, color: isFull ? "#5a5" : "var(--gold)" }}>
-                    {isFull ? "✓" : "⚡"} {count}/{tally.total} selected
+                    {count}/{tally.total} selected
                   </span>{" "}
                   <span style={{ color: "var(--fg)" }}>{opt}</span>
                 </div>

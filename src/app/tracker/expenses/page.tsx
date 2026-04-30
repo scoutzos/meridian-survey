@@ -261,7 +261,7 @@ export default function ExpensesPage() {
         </div>
         {!date && (
           <div style={{ marginTop: 8, fontSize: 12, color: "var(--gold)" }}>
-            ⚠ No date — this expense will appear under <b>Unclassified</b> until you set one.
+            No date — this expense will appear under <b>Unclassified</b> until you set one.
           </div>
         )}
       </div>

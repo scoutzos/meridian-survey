@@ -150,7 +150,7 @@ export default function TrackerDashboard() {
         >
           <div>
             <div style={{ fontSize: 14, fontWeight: 700, color: "#e55", marginBottom: 4 }}>
-              ⚠ Funding shortfall: {fmtUSD(status.shortfall)}
+              Funding shortfall: {fmtUSD(status.shortfall)}
             </div>
             <div style={{ fontSize: 13, color: "var(--fg)" }}>
               Suggested capital call of <b>{fmtUSD(status.shortfallPerMember, { fractionDigits: 2 })}</b> per member
@@ -186,7 +186,7 @@ export default function TrackerDashboard() {
             fontSize: 13,
           }}
         >
-          ✅ Funding is covered. Deposits + expected calls meet or exceed the {fmtUSD(status.totalFundingNeed)} of total need.
+          Funding is covered. Deposits + expected calls meet or exceed the {fmtUSD(status.totalFundingNeed)} of total need.
         </div>
       )}
 
