@@ -3,14 +3,15 @@ interface LogoProps {
   height?: number;
   className?: string;
   style?: React.CSSProperties;
+  onClick?: () => void;
 }
 
-export default function Logo({ width = 120, height, className, style }: LogoProps) {
+export default function Logo({ width = 120, height, className, style, onClick }: LogoProps) {
   // Maintain aspect ratio: 400x280 = 10:7 ratio
   const calculatedHeight = height || (width * 0.7);
-  
+
   return (
-    <div className={className} style={style}>
+    <div className={className} style={style} onClick={onClick}>
       <svg 
         xmlns="http://www.w3.org/2000/svg" 
         viewBox="0 0 400 280" 

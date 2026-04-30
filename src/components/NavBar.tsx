@@ -17,6 +17,7 @@ export default function NavBar() {
   const links = [
     { href: "/surveys", label: "Surveys" },
     { href: "/decisions", label: "Decisions" },
+    { href: "/tracker", label: "Tracker" },
     { href: "/hub", label: "Hub" },
   ];
 
