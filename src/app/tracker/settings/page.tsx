@@ -214,7 +214,7 @@ export default function TrackerSettingsPage() {
         <button onClick={save} disabled={saving} style={{ ...trackerBtn, opacity: saving ? 0.6 : 1 }}>
           {saving ? "Saving…" : "Save settings"}
         </button>
-        {msg && <span style={{ fontSize: 13, color: msg.startsWith("Error") ? "#e55" : "#6B8F7B" }}>{msg}</span>}
+        {msg && <span style={{ fontSize: 13, color: msg.startsWith("Error") ? "var(--obsidian)" : "var(--gold)" }}>{msg}</span>}
       </div>
     </TrackerShell>
   );

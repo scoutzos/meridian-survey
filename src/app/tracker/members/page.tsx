@@ -153,7 +153,7 @@ export default function MemberTrackerPage() {
                     {fmtUSD(b.capitalRemaining)}
                   </td>
                   <td style={{ ...tdR, fontWeight: 600 }}>{fmtUSD(b.totalOwed)}</td>
-                  <td style={{ ...tdR, fontWeight: 600, color: b.totalRemaining > 0 ? "#e55" : "#6B8F7B" }}>
+                  <td style={{ ...tdR, fontWeight: 600, color: b.totalRemaining > 0 ? "var(--obsidian)" : "var(--gold)" }}>
                     {fmtUSD(b.totalRemaining)}
                   </td>
                 </tr>
@@ -171,7 +171,7 @@ export default function MemberTrackerPage() {
               <td style={tdR}>{fmtUSD(totals.capitalPaid)}</td>
               <td style={tdR}>{fmtUSD(totals.capitalRemaining)}</td>
               <td style={{ ...tdR, fontWeight: 700 }}>{fmtUSD(totals.totalOwed)}</td>
-              <td style={{ ...tdR, fontWeight: 700, color: totals.totalRemaining > 0 ? "#e55" : "#6B8F7B" }}>
+              <td style={{ ...tdR, fontWeight: 700, color: totals.totalRemaining > 0 ? "var(--obsidian)" : "var(--gold)" }}>
                 {fmtUSD(totals.totalRemaining)}
               </td>
             </tr>

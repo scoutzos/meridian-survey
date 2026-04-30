@@ -31,7 +31,7 @@ export default function Logo({ width = 120, height, className, style, onClick }:
           fontSize="140" 
           fontWeight="300" 
           letterSpacing="-5" 
-          fill="#EDE6D6"
+          fill="#1A1A1A"
         >
           M
         </text>
@@ -41,11 +41,11 @@ export default function Logo({ width = 120, height, className, style, onClick }:
           fontFamily="'Cormorant Garamond', 'EB Garamond', Georgia, serif" 
           fontSize="34" 
           fontWeight="400" 
-          fill="#C9A878"
+          fill="#B08954"
         >
           °
         </text>
-        <line x1="64" y1="207" x2="94" y2="207" stroke="#C9A878" strokeWidth="1"/>
+        <line x1="64" y1="207" x2="94" y2="207" stroke="#B08954" strokeWidth="1"/>
         <text 
           x="200" 
           y="211" 
@@ -54,11 +54,11 @@ export default function Logo({ width = 120, height, className, style, onClick }:
           fontSize="10" 
           fontWeight="500" 
           letterSpacing="4.5" 
-          fill="#C9A878"
+          fill="#B08954"
         >
           MERIDIAN COLLECTIVE
         </text>
-        <line x1="306" y1="207" x2="336" y2="207" stroke="#C9A878" strokeWidth="1"/>
+        <line x1="306" y1="207" x2="336" y2="207" stroke="#B08954" strokeWidth="1"/>
       </svg>
     </div>
   );

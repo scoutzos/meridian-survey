@@ -133,7 +133,7 @@ export default function SurveysPage() {
                 <span style={{
                   fontSize: 12, fontWeight: 600, padding: "4px 10px", borderRadius: 12,
                   background: myPct === 100 ? "rgba(90,170,90,0.15)" : myPct > 0 ? "rgba(176,137,84,0.15)" : "var(--surface2)",
-                  color: myPct === 100 ? "#5a5" : myPct > 0 ? "var(--gold)" : "var(--muted)",
+                  color: myPct === 100 ? "var(--gold)" : myPct > 0 ? "var(--gold)" : "var(--muted)",
                   whiteSpace: "nowrap", marginLeft: 16,
                 }}>
                   {myPct === 100 ? "Complete" : myPct > 0 ? `${myPct}%` : "Not started"}
@@ -150,7 +150,7 @@ export default function SurveysPage() {
               <div style={{ height: 4, background: "var(--border)", borderRadius: 2 }}>
                 <div style={{
                   height: "100%", borderRadius: 2, transition: "width 0.3s",
-                  background: myPct === 100 ? "#5a5" : "var(--gold)",
+                  background: myPct === 100 ? "var(--gold)" : "var(--gold)",
                   width: `${myPct}%`,
                 }} />
               </div>

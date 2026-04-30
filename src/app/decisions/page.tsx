@@ -4,9 +4,9 @@ import { useRouter } from "next/navigation";
 import { decisions, DecisionStatus } from "@/data/decisions";
 
 const STATUS_CONFIG: Record<DecisionStatus, { label: string; color: string; bg: string }> = {
-  confirmed: { label: "Confirmed", color: "#6B8F7B", bg: "rgba(107,143,123,0.12)" },
+  confirmed: { label: "Confirmed", color: "var(--gold)", bg: "rgba(176,137,84,0.12)" },
   tabled: { label: "Tabled", color: "var(--gold)", bg: "rgba(176,137,84,0.12)" },
-  remaining: { label: "Remaining", color: "#888", bg: "rgba(136,136,136,0.08)" },
+  remaining: { label: "Remaining", color: "var(--muted)", bg: "rgba(214,209,196,0.08)" },
 };
 
 export default function DecisionsPage() {
@@ -48,13 +48,13 @@ export default function DecisionsPage() {
       <div style={{ background: "var(--surface)", borderRadius: 12, padding: 20, marginBottom: 20, border: "1px solid var(--border)" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 8 }}>
           <span style={{ fontSize: 14, fontWeight: 600 }}>Overall Progress</span>
-          <span style={{ fontSize: 24, fontWeight: 700, color: "#6B8F7B" }}>{pct}%</span>
+          <span style={{ fontSize: 24, fontWeight: 700, color: "var(--gold)" }}>{pct}%</span>
         </div>
         <div style={{ background: "var(--surface2)", borderRadius: 6, height: 10, overflow: "hidden" }}>
           <div style={{
             width: `${pct}%`,
             height: "100%",
-            background: "linear-gradient(90deg, #6B8F7B, var(--gold))",
+            background: "linear-gradient(90deg, var(--gold-dim), var(--gold))",
             borderRadius: 6,
             transition: "width 0.5s ease",
           }} />
@@ -127,7 +127,7 @@ export default function DecisionsPage() {
                   key={d.id}
                   style={{
                     background: "var(--surface)",
-                    border: `1px solid ${d.status === "confirmed" ? "rgba(107,143,123,0.3)" : "var(--border)"}`,
+                    border: `1px solid ${d.status === "confirmed" ? "rgba(176,137,84,0.3)" : "var(--border)"}`,
                     borderLeft: `4px solid ${cfg.color}`,
                     borderRadius: 8,
                     padding: "12px 16px",

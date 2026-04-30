@@ -174,7 +174,7 @@ function Logo06({ c, full }: { c: PaletteColors; full: boolean }) {
 function Logo07({ c, full }: { c: PaletteColors; full: boolean }) {
   const sz = full ? 280 : 140;
   return (
-    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", background: c.isDark ? "rgba(0,0,0,0.1)" : "rgba(255,255,255,0.8)", borderRadius: 8, padding: 16 }}>
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", background: c.isDark ? "rgba(12,15,13,0.1)" : "rgba(255,255,255,0.8)", borderRadius: 8, padding: 16 }}>
       <img 
         src="/logos/meridian-collective-ornate.jpg" 
         alt="The Meridian Collective - Ornate Logo"
@@ -238,9 +238,9 @@ function useDebouncedSaveToServer() {
 
 const priorityBadge = (p: SurveyQuestion["priority"]) => {
   const config = {
-    critical: { label: "Critical", color: "#e55" },
-    important: { label: "Important", color: "#da5" },
-    recommended: { label: "Recommended", color: "#5a5" },
+    critical: { label: "Critical", color: "var(--obsidian)" },
+    important: { label: "Important", color: "var(--gold-dim)" },
+    recommended: { label: "Recommended", color: "var(--gold)" },
   };
   const c = config[p];
   return (
@@ -497,12 +497,12 @@ export default function SurveyPage() {
               >
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   <span style={{ flex: 1, marginRight: 8 }}>{cat.name}</span>
-                  <span style={{ fontSize: 11, color: pct === 100 ? "#5a5" : "var(--muted)", whiteSpace: "nowrap" }}>
+                  <span style={{ fontSize: 11, color: pct === 100 ? "var(--gold)" : "var(--muted)", whiteSpace: "nowrap" }}>
                     {done}/{total}
                   </span>
                 </div>
                 <div style={{ height: 2, background: "var(--border)", borderRadius: 1, marginTop: 4 }}>
-                  <div style={{ height: "100%", background: pct === 100 ? "#5a5" : "var(--gold)", borderRadius: 1, width: `${pct}%`, transition: "width 0.3s" }} />
+                  <div style={{ height: "100%", background: pct === 100 ? "var(--gold)" : "var(--gold)", borderRadius: 1, width: `${pct}%`, transition: "width 0.3s" }} />
                 </div>
               </button>
             );
@@ -522,7 +522,7 @@ export default function SurveyPage() {
       </aside>
 
       {sidebarOpen && <div onClick={() => setSidebarOpen(false)} style={{
-        position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 35
+        position: "fixed", inset: 0, background: "rgba(12,15,13,0.5)", zIndex: 35
       }} />}
 
       {/* Main content */}

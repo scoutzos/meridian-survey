@@ -22,9 +22,9 @@ function formatRelativeTime(timestamp: string | null | undefined): string {
 
 const priorityBadge = (p: SurveyQuestion["priority"]) => {
   const config = {
-    critical: { label: "Critical", color: "#e55" },
-    important: { label: "Important", color: "#da5" },
-    recommended: { label: "Recommended", color: "#5a5" },
+    critical: { label: "Critical", color: "var(--obsidian)" },
+    important: { label: "Important", color: "var(--gold-dim)" },
+    recommended: { label: "Recommended", color: "var(--gold)" },
   };
   const c = config[p];
   return (
@@ -43,9 +43,9 @@ interface AlignmentInfo {
 }
 
 function getAlignmentColor(pct: number): string {
-  if (pct >= 80) return "#6B8F7B";
+  if (pct >= 80) return "var(--gold)";
   if (pct >= 50) return "var(--gold)";
-  return "#8F6B6B";
+  return "var(--gold-dim)";
 }
 
 function getAlignmentLabel(pct: number): string {
@@ -247,42 +247,42 @@ export default function ResultsPage() {
     if (!insight) return null;
 
     const consensusColors: Record<string, string> = {
-      strong: "#6B8F7B",
+      strong: "var(--gold)",
       partial: "var(--gold)",
-      disagreement: "#8F6B6B",
-      open: "#7B8FA0",
+      disagreement: "var(--gold-dim)",
+      open: "var(--muted)",
     };
-    const color = consensusColors[insight.consensus] || "#7B8FA0";
+    const color = consensusColors[insight.consensus] || "var(--muted)";
 
     return (
       <div style={{
         marginTop: 16,
-        background: "linear-gradient(135deg, rgba(99,102,241,0.06), rgba(139,92,246,0.06))",
-        border: "1px solid rgba(99,102,241,0.2)",
+        background: "linear-gradient(135deg, rgba(176,137,84,0.06), rgba(142,107,63,0.06))",
+        border: "1px solid rgba(176,137,84,0.2)",
         borderRadius: 10,
         padding: "16px 20px",
         fontSize: 13,
         lineHeight: 1.6,
       }}>
-        <p style={{ fontWeight: 600, color: "#a78bfa", marginBottom: 12, fontSize: 14 }}>AI Insight</p>
+        <p style={{ fontWeight: 600, color: "var(--gold)", marginBottom: 12, fontSize: 14 }}>AI Insight</p>
         <div style={{ marginBottom: 8 }}>
-          <span style={{ fontWeight: 600, color: "#c4b5fd" }}>Consensus: </span>
+          <span style={{ fontWeight: 600, color: "var(--gold-dim)" }}>Consensus: </span>
           <span style={{ display: "inline-block", padding: "2px 10px", borderRadius: 10, background: `${color}22`, color, fontSize: 12, fontWeight: 600 }}>{insight.consensusLabel}</span>
         </div>
         <div style={{ marginBottom: 8 }}>
-          <span style={{ fontWeight: 600, color: "#c4b5fd" }}>Recommendation: </span>
+          <span style={{ fontWeight: 600, color: "var(--gold-dim)" }}>Recommendation: </span>
           <span style={{ color: "var(--fg)" }}>{insight.rec}</span>
         </div>
         <div style={{ marginBottom: 8 }}>
-          <span style={{ fontWeight: 600, color: "#c4b5fd" }}>Why it matters: </span>
+          <span style={{ fontWeight: 600, color: "var(--gold-dim)" }}>Why it matters: </span>
           <span style={{ color: "var(--fg)" }}>{insight.why}</span>
         </div>
         <div style={{ marginBottom: 10 }}>
-          <span style={{ fontWeight: 600, color: "#c4b5fd" }}>Watch out: </span>
+          <span style={{ fontWeight: 600, color: "var(--gold-dim)" }}>Watch out: </span>
           <span style={{ color: "var(--fg)" }}>{insight.watch}</span>
         </div>
         <div style={{
-          padding: "8px 12px", background: "rgba(0,0,0,0.15)", borderRadius: 6,
+          padding: "8px 12px", background: "rgba(12,15,13,0.15)", borderRadius: 6,
           borderLeft: "3px solid #6366f1", fontStyle: "italic", color: "var(--muted)", fontSize: 12,
         }}>
           Suggested OA language: &ldquo;{insight.lang}&rdquo;
@@ -313,14 +313,14 @@ export default function ResultsPage() {
 
         {tally && tally.sharedOptions.length > 0 && (
           <div style={{
-            background: "rgba(200,170,50,0.12)", border: "1px solid rgba(200,170,50,0.25)",
+            background: "rgba(176,137,84,0.12)", border: "1px solid rgba(176,137,84,0.25)",
             borderRadius: 8, padding: "10px 14px", marginBottom: 16, fontSize: 12,
           }}>
             {tally.sharedOptions.map(([opt, count]) => {
               const isFull = count === tally.total;
               return (
                 <div key={opt} style={{ marginBottom: 4 }}>
-                  <span style={{ fontWeight: 600, color: isFull ? "#5a5" : "var(--gold)" }}>
+                  <span style={{ fontWeight: 600, color: isFull ? "var(--gold)" : "var(--gold)" }}>
                     {count}/{tally.total} selected
                   </span>{" "}
                   <span style={{ color: "var(--fg)" }}>{opt}</span>
@@ -371,8 +371,8 @@ export default function ResultsPage() {
             return (
               <div key={m} style={{
                 padding: "12px 16px", borderRadius: 8,
-                background: hasResponded ? "rgba(107,143,123,0.12)" : "var(--surface2)",
-                border: `1px solid ${hasResponded ? "rgba(107,143,123,0.3)" : "var(--border)"}`,
+                background: hasResponded ? "rgba(176,137,84,0.12)" : "var(--surface2)",
+                border: `1px solid ${hasResponded ? "rgba(176,137,84,0.3)" : "var(--border)"}`,
               }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
                   <span style={{ fontSize: 13, fontWeight: 600 }}>{m}</span>
@@ -414,11 +414,11 @@ export default function ResultsPage() {
               <p style={{ fontSize: 11, color: getAlignmentColor(overallAlignment), fontWeight: 600 }}>{getAlignmentLabel(overallAlignment)}</p>
             </div>
             <div style={{ background: "var(--surface2)", borderRadius: 12, padding: "20px 28px", flex: "1 1 150px", textAlign: "center" }}>
-              <p style={{ fontSize: 36, fontWeight: 800, color: "#6B8F7B" }}>{unanimousItems.length}</p>
+              <p style={{ fontSize: 36, fontWeight: 800, color: "var(--gold)" }}>{unanimousItems.length}</p>
               <p style={{ fontSize: 12, color: "var(--muted)", marginTop: 4 }}>Unanimous Agreement</p>
             </div>
             <div style={{ background: "var(--surface2)", borderRadius: 12, padding: "20px 28px", flex: "1 1 150px", textAlign: "center" }}>
-              <p style={{ fontSize: 36, fontWeight: 800, color: disagreementItems.length > 0 ? "var(--gold)" : "#6B8F7B" }}>{disagreementItems.length}</p>
+              <p style={{ fontSize: 36, fontWeight: 800, color: disagreementItems.length > 0 ? "var(--gold)" : "var(--gold)" }}>{disagreementItems.length}</p>
               <p style={{ fontSize: 12, color: "var(--muted)", marginTop: 4 }}>Need Discussion</p>
             </div>
           </div>
@@ -436,7 +436,7 @@ export default function ResultsPage() {
                   <p style={{ fontSize: 10, color: "var(--gold)", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 8 }}>{a.catName}</p>
                   {a.alignment.breakdown.map(({ option, count }) => (
                     <div key={option} style={{ fontSize: 12, color: "var(--muted)", marginBottom: 2 }}>
-                      <span style={{ fontWeight: 600, color: count === a.alignment.total ? "#6B8F7B" : "var(--fg)" }}>{count}/{a.alignment.total}</span> -- {option}
+                      <span style={{ fontWeight: 600, color: count === a.alignment.total ? "var(--gold)" : "var(--fg)" }}>{count}/{a.alignment.total}</span> -- {option}
                     </div>
                   ))}
                 </div>
@@ -446,12 +446,12 @@ export default function ResultsPage() {
 
           {unanimousItems.length > 0 && (
             <div>
-              <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 12, color: "#6B8F7B" }}>Where You All Agree ({unanimousItems.length})</h3>
+              <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 12, color: "var(--gold)" }}>Where You All Agree ({unanimousItems.length})</h3>
               {unanimousItems.map((a, i) => (
                 <div key={i} style={{ marginBottom: 8, padding: "10px 14px", background: "var(--surface2)", borderRadius: 8, borderLeft: "3px solid #6B8F7B" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                     <p style={{ fontSize: 12, lineHeight: 1.4, flex: 1, marginRight: 12 }}>{a.q.text.length > 90 ? a.q.text.slice(0, 90) + "..." : a.q.text}</p>
-                    <span style={{ fontSize: 12, fontWeight: 600, color: "#6B8F7B" }}>Unanimous</span>
+                    <span style={{ fontSize: 12, fontWeight: 600, color: "var(--gold)" }}>Unanimous</span>
                   </div>
                   <p style={{ fontSize: 10, color: "var(--muted)", marginTop: 4 }}>{a.catName} -- {a.alignment.topOption.length > 60 ? a.alignment.topOption.slice(0, 60) + "..." : a.alignment.topOption}</p>
                 </div>
@@ -579,8 +579,8 @@ export default function ResultsPage() {
           onClick={() => { setShowCriticalSummary(true); setShowAlignmentSummary(false); }}
           style={{
             padding: "8px 18px", borderRadius: 8, fontSize: 13, border: "1px solid var(--border)",
-            background: showCriticalSummary ? "#e55" : "transparent",
-            color: showCriticalSummary ? "#fff" : "var(--muted)",
+            background: showCriticalSummary ? "var(--obsidian)" : "transparent",
+            color: showCriticalSummary ? "var(--surface)" : "var(--muted)",
             fontWeight: showCriticalSummary ? 600 : 400, cursor: "pointer",
           }}
         >
@@ -590,8 +590,8 @@ export default function ResultsPage() {
           onClick={() => { setShowAlignmentSummary(true); setShowCriticalSummary(false); }}
           style={{
             padding: "8px 18px", borderRadius: 8, fontSize: 13, border: "1px solid var(--border)",
-            background: showAlignmentSummary ? "#6B8F7B" : "transparent",
-            color: showAlignmentSummary ? "#fff" : "var(--muted)",
+            background: showAlignmentSummary ? "var(--gold)" : "transparent",
+            color: showAlignmentSummary ? "var(--surface)" : "var(--muted)",
             fontWeight: showAlignmentSummary ? 600 : 400, cursor: "pointer",
           }}
         >

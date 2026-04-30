@@ -135,9 +135,9 @@ export default function TrackerDashboard() {
       {status.shortfall > 0 ? (
         <div
           style={{
-            background: "rgba(229,85,85,0.10)",
-            border: "1px solid rgba(229,85,85,0.4)",
-            borderLeft: "4px solid #e55",
+            background: "rgba(12,15,13,0.10)",
+            border: "1px solid rgba(12,15,13,0.4)",
+            borderLeft: "4px solid var(--obsidian)",
             borderRadius: 12,
             padding: "16px 20px",
             marginBottom: 16,
@@ -149,7 +149,7 @@ export default function TrackerDashboard() {
           }}
         >
           <div>
-            <div style={{ fontSize: 14, fontWeight: 700, color: "#e55", marginBottom: 4 }}>
+            <div style={{ fontSize: 14, fontWeight: 700, color: "var(--obsidian)", marginBottom: 4 }}>
               Funding shortfall: {fmtUSD(status.shortfall)}
             </div>
             <div style={{ fontSize: 13, color: "var(--fg)" }}>
@@ -165,8 +165,8 @@ export default function TrackerDashboard() {
             disabled={creatingCall || !!suggestedCalls.length}
             style={{
               ...trackerBtn,
-              background: "#e55",
-              color: "#fff",
+              background: "var(--obsidian)",
+              color: "var(--surface)",
               opacity: creatingCall || suggestedCalls.length ? 0.6 : 1,
               cursor: creatingCall || suggestedCalls.length ? "not-allowed" : "pointer",
             }}
@@ -177,9 +177,9 @@ export default function TrackerDashboard() {
       ) : (
         <div
           style={{
-            background: "rgba(107,143,123,0.10)",
-            border: "1px solid rgba(107,143,123,0.4)",
-            borderLeft: "4px solid #6B8F7B",
+            background: "rgba(176,137,84,0.10)",
+            border: "1px solid rgba(176,137,84,0.4)",
+            borderLeft: "4px solid var(--gold)",
             borderRadius: 12,
             padding: "12px 18px",
             marginBottom: 16,
@@ -193,9 +193,9 @@ export default function TrackerDashboard() {
       {/* Stat row */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 16 }}>
         <Stat label="Total expenses" value={fmtUSD(status.totalExpenses)} />
-        <Stat label="Total deposits" value={fmtUSD(status.totalDeposits)} accent="#6B8F7B" />
+        <Stat label="Total deposits" value={fmtUSD(status.totalDeposits)} accent="var(--gold)" />
         <Stat label="Open capital calls" value={fmtUSD(status.openCapitalCalls)} />
-        <Stat label="Bank balance (est.)" value={fmtUSD(bankBalance)} accent={bankBalance >= 0 ? "#6B8F7B" : "#e55"} />
+        <Stat label="Bank balance (est.)" value={fmtUSD(bankBalance)} accent={bankBalance >= 0 ? "var(--gold)" : "var(--obsidian)"} />
       </div>
 
       {/* Targets row */}

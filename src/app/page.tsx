@@ -177,7 +177,7 @@ export default function LoginPage() {
               style={inputStyle}
             />
 
-            {error && <p style={{ color: "#e55", fontSize: 13 }}>{error}</p>}
+            {error && <p style={{ color: "var(--obsidian)", fontSize: 13 }}>{error}</p>}
 
             <button
               type="submit"
@@ -260,7 +260,7 @@ export default function LoginPage() {
               autoComplete="off"
             />
 
-            {error && <p style={{ color: "#e55", fontSize: 13 }}>{error}</p>}
+            {error && <p style={{ color: "var(--obsidian)", fontSize: 13 }}>{error}</p>}
 
             <button
               type="submit"
@@ -316,7 +316,7 @@ export default function LoginPage() {
             style={inputStyle}
           />
 
-          {error && <p style={{ color: "#e55", fontSize: 13 }}>{error}</p>}
+          {error && <p style={{ color: "var(--obsidian)", fontSize: 13 }}>{error}</p>}
 
           <button
             type="submit"

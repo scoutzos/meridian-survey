@@ -21,11 +21,11 @@ import TrackerShell, {
 } from "@/components/TrackerShell";
 
 const MONTH_BUCKET_COLOR: Record<string, string> = {
-  "Unclassified": "#e55",
-  "Pre-formation": "#888",
+  "Unclassified": "var(--obsidian)",
+  "Pre-formation": "var(--muted)",
   "M1": "var(--gold)",
   "M2": "var(--gold-dim)",
-  "M3": "#8c764f",
+  "M3": "var(--gold-dim)",
 };
 
 const PAID_BY_LABELS = ["TBD", "LLC Bank"] as const;
@@ -365,7 +365,7 @@ export default function ExpensesPage() {
               }
               return (
                 <tr key={e.id} style={{ borderTop: "1px solid var(--border)" }}>
-                  <td style={td}>{e.expense_date ?? <span style={{ color: "#e55" }}>—</span>}</td>
+                  <td style={td}>{e.expense_date ?? <span style={{ color: "var(--obsidian)" }}>—</span>}</td>
                   <td style={td}><span style={bucketBadge(bucket)}>{bucket}</span></td>
                   <td style={td}>{e.category}</td>
                   <td style={td}>{e.description}</td>
@@ -397,17 +397,17 @@ export default function ExpensesPage() {
 const th: React.CSSProperties = { padding: "10px 12px", fontSize: 11, fontWeight: 600, color: "var(--muted)", letterSpacing: "0.5px", textTransform: "uppercase" };
 const td: React.CSSProperties = { padding: "10px 12px", verticalAlign: "middle" };
 const iconBtn: React.CSSProperties = { background: "transparent", border: "1px solid var(--border)", color: "var(--muted)", borderRadius: 4, padding: "3px 8px", fontSize: 11, cursor: "pointer" };
-const iconBtnDanger: React.CSSProperties = { ...iconBtn, color: "#e55", borderColor: "rgba(229,85,85,0.3)" };
+const iconBtnDanger: React.CSSProperties = { ...iconBtn, color: "var(--obsidian)", borderColor: "rgba(12,15,13,0.3)" };
 
 function bucketBadge(bucket: string): React.CSSProperties {
-  const color = MONTH_BUCKET_COLOR[bucket] ?? "#888";
+  const color = MONTH_BUCKET_COLOR[bucket] ?? "var(--muted)";
   return {
     display: "inline-block",
     fontSize: 11,
     fontWeight: 600,
     padding: "2px 8px",
     borderRadius: 4,
-    background: bucket === "Unclassified" ? "rgba(229,85,85,0.12)" : "var(--surface2)",
+    background: bucket === "Unclassified" ? "rgba(12,15,13,0.12)" : "var(--surface2)",
     color,
     border: `1px solid ${color}33`,
   };

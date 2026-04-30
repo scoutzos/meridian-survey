@@ -194,7 +194,7 @@ export default function HubPage() {
         <p style={{ color: "var(--muted)", fontSize: 13 }}>Meridian Collective — Transparency & Collaboration</p>
       </div>
 
-      <div style={{ background: "rgba(200,170,50,0.1)", border: "1px solid rgba(200,170,50,0.2)", borderRadius: 8, padding: "10px 14px", fontSize: 12, color: "var(--muted)", marginBottom: 24 }}>
+      <div style={{ background: "rgba(176,137,84,0.1)", border: "1px solid rgba(176,137,84,0.2)", borderRadius: 8, padding: "10px 14px", fontSize: 12, color: "var(--muted)", marginBottom: 24 }}>
         Documents uploaded here are stored locally on your device. For shared access across devices, upload to the Google Drive.
       </div>
 
@@ -300,13 +300,13 @@ export default function HubPage() {
                 <div key={m} style={{ background: "var(--surface2)", borderRadius: 8, padding: "14px 16px", marginBottom: 8, borderLeft: isMe ? "3px solid var(--gold)" : "3px solid transparent" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
                     <span style={{ fontSize: 14, fontWeight: 600, color: isMe ? "var(--gold)" : "var(--fg)" }}>{m} {isMe && "(you)"}</span>
-                    <span style={{ fontSize: 11, color: completion === 100 ? "#5a5" : "var(--muted)" }}>Survey: {completion}%</span>
+                    <span style={{ fontSize: 11, color: completion === 100 ? "var(--gold)" : "var(--muted)" }}>Survey: {completion}%</span>
                   </div>
                   {p?.role && <p style={{ fontSize: 12, color: "var(--muted)", marginBottom: 2 }}>Role: {p.role}</p>}
                   {p?.contact && <p style={{ fontSize: 12, color: "var(--muted)", marginBottom: 2 }}>Contact: {p.contact}</p>}
                   {p?.lastActive && <p style={{ fontSize: 11, color: "var(--border)" }}>Last active: {formatDate(p.lastActive)}</p>}
                   <div style={{ height: 3, background: "var(--border)", borderRadius: 2, marginTop: 8 }}>
-                    <div style={{ height: "100%", background: completion === 100 ? "#5a5" : "var(--gold)", borderRadius: 2, width: `${completion}%`, transition: "width 0.3s" }} />
+                    <div style={{ height: "100%", background: completion === 100 ? "var(--gold)" : "var(--gold)", borderRadius: 2, width: `${completion}%`, transition: "width 0.3s" }} />
                   </div>
                   {isMe && !editingProfile && (
                     <button style={{ ...smallBtnStyle, marginTop: 8, background: "transparent", color: "var(--gold)", border: "1px solid var(--border)" }} onClick={() => setEditingProfile(true)}>
