@@ -1,14 +1,22 @@
 "use client";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { MEMBERS, categories } from "@/data/questions";
+import {
+  type Transcript,
+  fetchTranscripts,
+  searchTranscripts,
+  uploadTranscript,
+  deleteTranscript,
+  transcriptDownloadUrl,
+  snippetsAround,
+} from "@/lib/transcripts";
 
-// Shared localStorage keys
+// Shared localStorage keys (legacy — transcripts moved to DB).
 const KEYS = {
   announcements: "meridian_shared_announcements",
   decisions: "meridian_shared_decisions",
   documents: "meridian_shared_documents",
-  transcripts: "meridian_shared_transcripts",
   links: "meridian_shared_links",
   profiles: "meridian_shared_profiles",
 };
@@ -16,7 +24,6 @@ const KEYS = {
 interface Announcement { id: string; author: string; text: string; date: string; }
 interface Decision { id: string; author: string; description: string; date: string; present: string[]; outcome: string; }
 interface Document { id: string; author: string; filename: string; category: string; date: string; data: string; mimeType: string; }
-interface Transcript { id: string; author: string; title: string; date: string; data?: string; mimeType?: string; }
 interface SharedLink { id: string; author: string; url: string; title: string; category: string; date: string; }
 interface MemberProfile { name: string; role: string; contact: string; lastActive: string; }
 
@@ -50,6 +57,11 @@ export default function HubPage() {
   const [decisions, setDecisions] = useState<Decision[]>([]);
   const [documents, setDocuments] = useState<Document[]>([]);
   const [transcripts, setTranscripts] = useState<Transcript[]>([]);
+  const [transcriptQuery, setTranscriptQuery] = useState("");
+  const [transcriptDebounced, setTranscriptDebounced] = useState("");
+  const [transcriptUploading, setTranscriptUploading] = useState(false);
+  const [expandedTranscriptId, setExpandedTranscriptId] = useState<number | null>(null);
+  const transcriptSearchTimer = useRef<NodeJS.Timeout | null>(null);
   const [links, setLinks] = useState<SharedLink[]>([]);
   const [profiles, setProfiles] = useState<Record<string, MemberProfile>>({});
 
@@ -72,14 +84,7 @@ export default function HubPage() {
     setLinks(getShared(KEYS.links));
     setProfiles(JSON.parse(localStorage.getItem(KEYS.profiles) || "{}"));
 
-    const t = getShared<Transcript>(KEYS.transcripts);
-    if (t.length === 0) {
-      const seed: Transcript[] = [{ id: "seed1", author: "System", title: "March 17, 2026 — First Group Meeting with Courtney", date: "2026-03-17T20:00:00", }];
-      setShared(KEYS.transcripts, seed);
-      setTranscripts(seed);
-    } else {
-      setTranscripts(t);
-    }
+    void fetchTranscripts().then(setTranscripts);
 
     // Update last active
     const p = JSON.parse(localStorage.getItem(KEYS.profiles) || "{}");
@@ -90,6 +95,23 @@ export default function HubPage() {
   }, [router]);
 
   const toggle = (s: string) => setOpenSections(prev => ({ ...prev, [s]: !prev[s] }));
+
+  // Debounce transcript-search input (250ms) so we don't hammer the DB on
+  // every keystroke. Empty query reverts to the default chronological list.
+  useEffect(() => {
+    if (transcriptSearchTimer.current) clearTimeout(transcriptSearchTimer.current);
+    transcriptSearchTimer.current = setTimeout(() => setTranscriptDebounced(transcriptQuery), 250);
+    return () => { if (transcriptSearchTimer.current) clearTimeout(transcriptSearchTimer.current); };
+  }, [transcriptQuery]);
+
+  useEffect(() => {
+    void (async () => {
+      const next = transcriptDebounced.trim()
+        ? await searchTranscripts(transcriptDebounced)
+        : await fetchTranscripts();
+      setTranscripts(next);
+    })();
+  }, [transcriptDebounced]);
 
   const getMemberCompletion = useCallback((name: string) => {
     // Check new multi-survey key first, fallback to legacy key
@@ -132,32 +154,73 @@ export default function HubPage() {
     setNewLink({ url: "", title: "", category: "Other" });
   };
 
-  const handleFileUpload = (type: "document" | "transcript") => {
+  const handleFileUpload = () => {
     const input = window.document.createElement("input");
     input.type = "file";
-    if (type === "transcript") input.accept = ".txt,.pdf,.doc,.docx";
     input.onchange = (e) => {
       const file = (e.target as HTMLInputElement).files?.[0];
       if (!file || !user) return;
       const reader = new FileReader();
       reader.onload = () => {
         const data = reader.result as string;
-        if (type === "document") {
-          const item: Document = { id: genId(), author: user, filename: file.name, category: docCategory, date: new Date().toISOString(), data, mimeType: file.type };
-          const updated = [item, ...documents];
-          setShared(KEYS.documents, updated);
-          setDocuments(updated);
-        } else {
-          const title = prompt("Enter a title for this transcript:", file.name) || file.name;
-          const item: Transcript = { id: genId(), author: user, title, date: new Date().toISOString(), data, mimeType: file.type };
-          const updated = [item, ...transcripts];
-          setShared(KEYS.transcripts, updated);
-          setTranscripts(updated);
-        }
+        const item: Document = { id: genId(), author: user, filename: file.name, category: docCategory, date: new Date().toISOString(), data, mimeType: file.type };
+        const updated = [item, ...documents];
+        setShared(KEYS.documents, updated);
+        setDocuments(updated);
       };
       reader.readAsDataURL(file);
     };
     input.click();
+  };
+
+  // Transcript upload — DB-backed, with plain-text body extraction for .txt
+  // (PDF/DOCX would need client-side parsing; for now those upload as
+  // body-empty rows that still link to the original file in Supabase Storage).
+  const handleTranscriptUpload = () => {
+    if (!user) return;
+    const input = window.document.createElement("input");
+    input.type = "file";
+    input.accept = ".txt,.pdf,.doc,.docx,text/plain,application/pdf";
+    input.onchange = async (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (!file || !user) return;
+      const title = prompt("Title for this transcript:", file.name.replace(/\.[^.]+$/, "")) || file.name;
+      const occurredStr = prompt("Date this meeting occurred (YYYY-MM-DD), or leave blank:") || "";
+      const occurredAt = occurredStr.trim() ? new Date(occurredStr.trim()).toISOString() : null;
+      setTranscriptUploading(true);
+      const result = await uploadTranscript({ file, title, occurredAt, uploader: user });
+      setTranscriptUploading(false);
+      if (result.error) { alert(`Upload failed: ${result.error}`); return; }
+      if (!result.fileStored) {
+        // Body still saved; just couldn't push the original file. Common cause:
+        // Storage bucket "transcripts" doesn't exist yet — alert once so the
+        // admin can create it in the Supabase dashboard.
+        console.warn("Transcript body saved but original file wasn't stored.");
+      }
+      // Refresh — search query (if any) is preserved.
+      const next = transcriptDebounced.trim()
+        ? await searchTranscripts(transcriptDebounced)
+        : await fetchTranscripts();
+      setTranscripts(next);
+    };
+    input.click();
+  };
+
+  const handleTranscriptDelete = async (id: number) => {
+    if (!user) return;
+    if (!confirm("Delete this transcript?")) return;
+    const { error } = await deleteTranscript(id, user);
+    if (error) { alert(error); return; }
+    setTranscripts(prev => prev.filter(t => t.id !== id));
+  };
+
+  const handleTranscriptDownload = async (t: Transcript) => {
+    const url = await transcriptDownloadUrl(t);
+    if (!url) {
+      alert("Original file isn't available — only the extracted text is stored for this transcript.");
+      return;
+    }
+    window.open(url, "_blank");
   };
 
   const downloadFile = (data: string, filename: string) => {
@@ -232,21 +295,88 @@ export default function HubPage() {
         </div>
         {openSections.transcripts && (
           <div style={sectionBody}>
-            <button style={{ ...smallBtnStyle, marginBottom: 16 }} onClick={() => handleFileUpload("transcript")}>Upload Transcript</button>
-            {transcripts.length === 0 && <p style={{ color: "var(--muted)", fontSize: 13 }}>No transcripts uploaded yet.</p>}
-            {transcripts.map(t => (
-              <div key={t.id} style={{ background: "var(--surface2)", borderRadius: 8, padding: "12px 16px", marginBottom: 8, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <div>
-                  <p style={{ fontSize: 14, fontWeight: 500 }}>{t.title}</p>
-                  <p style={{ fontSize: 11, color: "var(--muted)" }}>{formatDate(t.date)} · {t.author}</p>
+            <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
+              <input
+                type="text"
+                value={transcriptQuery}
+                onChange={e => setTranscriptQuery(e.target.value)}
+                placeholder='Search transcripts (e.g. "voting threshold", "spousal consent")'
+                style={{ ...inputStyle, flex: 1, minWidth: 240 }}
+              />
+              <button
+                style={{ ...smallBtnStyle, opacity: transcriptUploading ? 0.6 : 1 }}
+                disabled={transcriptUploading}
+                onClick={handleTranscriptUpload}
+              >
+                {transcriptUploading ? "Uploading…" : "Upload Transcript"}
+              </button>
+            </div>
+            <p style={{ fontSize: 11, color: "var(--muted)", marginBottom: 16 }}>
+              Upload .txt for full-text search. Other formats (.pdf, .docx) save as files only — search them by title.
+            </p>
+
+            {transcripts.length === 0 && (
+              <p style={{ color: "var(--muted)", fontSize: 13 }}>
+                {transcriptDebounced.trim() ? "No matches." : "No transcripts uploaded yet."}
+              </p>
+            )}
+
+            {transcripts.map(t => {
+              const expanded = expandedTranscriptId === t.id;
+              const matchSnippets = transcriptDebounced.trim() && t.body
+                ? snippetsAround(t.body, transcriptDebounced)
+                : [];
+              return (
+                <div key={t.id} style={{
+                  background: "var(--surface2)", borderRadius: 8,
+                  padding: "12px 16px", marginBottom: 8,
+                  border: expanded ? "1px solid var(--gold)" : "1px solid transparent",
+                }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
+                    <div style={{ flex: 1, cursor: t.body ? "pointer" : "default" }}
+                         onClick={() => t.body && setExpandedTranscriptId(expanded ? null : t.id)}>
+                      <p style={{ fontSize: 14, fontWeight: 500 }}>{t.title}</p>
+                      <p style={{ fontSize: 11, color: "var(--muted)" }}>
+                        {t.occurred_at ? formatDate(t.occurred_at) : "no date"}
+                        {t.uploaded_by && ` · ${t.uploaded_by}`}
+                        {t.body && ` · ${t.body.length.toLocaleString()} chars`}
+                        {t.storage_path && " · file attached"}
+                      </p>
+                    </div>
+                    <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+                      {t.storage_path && (
+                        <button style={{ ...smallBtnStyle, background: "var(--surface)", color: "var(--gold)", border: "1px solid var(--border)" }}
+                                onClick={() => handleTranscriptDownload(t)}>
+                          ↓ File
+                        </button>
+                      )}
+                      <button style={{ ...smallBtnStyle, background: "var(--surface)", color: "var(--gold-dim)", border: "1px solid rgba(142,107,63,0.3)" }}
+                              onClick={() => handleTranscriptDelete(t.id)}>
+                        Delete
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Search-result snippets when a query is active. */}
+                  {matchSnippets.length > 0 && !expanded && (
+                    <div style={{ marginTop: 8, padding: "8px 12px", background: "var(--surface)", borderRadius: 6 }}>
+                      {matchSnippets.map((s, i) => (
+                        <p key={i} style={{ fontSize: 12, color: "var(--fg)", marginBottom: 4, lineHeight: 1.5 }}>{s}</p>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Full body when expanded. */}
+                  {expanded && t.body && (
+                    <div style={{ marginTop: 12, padding: "12px 14px", background: "var(--surface)", borderRadius: 6, maxHeight: 480, overflowY: "auto" }}>
+                      <pre style={{ fontSize: 12, color: "var(--fg)", whiteSpace: "pre-wrap", fontFamily: "inherit", lineHeight: 1.55 }}>
+                        {t.body}
+                      </pre>
+                    </div>
+                  )}
                 </div>
-                {t.data && (
-                  <button style={{ ...smallBtnStyle, background: "var(--surface)", color: "var(--gold)", border: "1px solid var(--border)" }} onClick={() => downloadFile(t.data!, t.title)}>
-                    ↓
-                  </button>
-                )}
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
@@ -263,7 +393,7 @@ export default function HubPage() {
               <select style={{ ...inputStyle, width: "auto", flex: "0 0 auto" }} value={docCategory} onChange={e => setDocCategory(e.target.value)}>
                 {DOC_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
               </select>
-              <button style={smallBtnStyle} onClick={() => handleFileUpload("document")}>Upload Document</button>
+              <button style={smallBtnStyle} onClick={() => handleFileUpload()}>Upload Document</button>
             </div>
             {documents.length === 0 && <p style={{ color: "var(--muted)", fontSize: 13 }}>No documents uploaded yet.</p>}
             {documents.map(d => (
