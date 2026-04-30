@@ -22,7 +22,7 @@ import TrackerShell, {
 
 const TYPE_COLOR: Record<ContributionType, string> = {
   initial_contribution: "#6B8F7B",
-  monthly_dues: "#C5A572",
+  monthly_dues: "var(--gold)",
   capital_call: "#a87bbf",
 };
 

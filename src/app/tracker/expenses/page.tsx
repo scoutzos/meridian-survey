@@ -23,8 +23,8 @@ import TrackerShell, {
 const MONTH_BUCKET_COLOR: Record<string, string> = {
   "Unclassified": "#e55",
   "Pre-formation": "#888",
-  "M1": "#C5A572",
-  "M2": "#a38a5c",
+  "M1": "var(--gold)",
+  "M2": "var(--gold-dim)",
   "M3": "#8c764f",
 };
 
@@ -260,7 +260,7 @@ export default function ExpensesPage() {
           <button onClick={addExpense} style={trackerBtn}>Add</button>
         </div>
         {!date && (
-          <div style={{ marginTop: 8, fontSize: 12, color: "#C5A572" }}>
+          <div style={{ marginTop: 8, fontSize: 12, color: "var(--gold)" }}>
             ⚠ No date — this expense will appear under <b>Unclassified</b> until you set one.
           </div>
         )}

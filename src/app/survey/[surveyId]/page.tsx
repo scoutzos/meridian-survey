@@ -535,7 +535,7 @@ export default function SurveyPage() {
           {categories[activeCategory].description && (
             <div style={{
               marginTop: 12, padding: "14px 18px", borderRadius: 8,
-              background: "rgba(197,165,114,0.08)", border: "1px solid rgba(197,165,114,0.2)",
+              background: "rgba(176,137,84,0.08)", border: "1px solid rgba(176,137,84,0.2)",
               fontSize: 13, lineHeight: 1.6, color: "var(--muted)",
             }}>
               {categories[activeCategory].description}
@@ -610,7 +610,7 @@ export default function SurveyPage() {
                                   display: "flex", alignItems: "center", gap: 6,
                                   padding: "6px 12px", borderRadius: 16, fontSize: 11,
                                   border: `1px solid ${isActive ? "var(--gold)" : "var(--border)"}`,
-                                  background: isActive ? "rgba(197,165,114,0.1)" : "transparent",
+                                  background: isActive ? "rgba(176,137,84,0.1)" : "transparent",
                                   color: isActive ? "var(--gold)" : "var(--fg)",
                                   cursor: "pointer", transition: "all 0.15s",
                                   fontWeight: isActive ? 600 : 400,
@@ -637,7 +637,7 @@ export default function SurveyPage() {
                                 key={oi}
                                 style={{
                                   position: "relative",
-                                  background: ranked ? "rgba(197,165,114,0.08)" : "var(--surface)",
+                                  background: ranked ? "rgba(176,137,84,0.08)" : "var(--surface)",
                                   border: ranked ? "2px solid var(--gold)" : "1px solid var(--border)",
                                   borderRadius: 10, overflow: "hidden",
                                   transition: "all 0.15s",
@@ -712,7 +712,7 @@ export default function SurveyPage() {
                               }}
                               style={{
                                 position: "relative", cursor: "pointer",
-                                background: ranked ? "rgba(197,165,114,0.08)" : "var(--surface)",
+                                background: ranked ? "rgba(176,137,84,0.08)" : "var(--surface)",
                                 border: ranked ? "2px solid var(--gold)" : "1px solid var(--border)",
                                 borderRadius: 10, padding: 0, overflow: "hidden",
                                 transition: "all 0.15s", color: "var(--fg)", textAlign: "left",

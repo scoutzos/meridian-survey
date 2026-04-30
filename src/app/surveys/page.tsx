@@ -132,7 +132,7 @@ export default function SurveysPage() {
                 </div>
                 <span style={{
                   fontSize: 12, fontWeight: 600, padding: "4px 10px", borderRadius: 12,
-                  background: myPct === 100 ? "rgba(90,170,90,0.15)" : myPct > 0 ? "rgba(197,165,114,0.15)" : "var(--surface2)",
+                  background: myPct === 100 ? "rgba(90,170,90,0.15)" : myPct > 0 ? "rgba(176,137,84,0.15)" : "var(--surface2)",
                   color: myPct === 100 ? "#5a5" : myPct > 0 ? "var(--gold)" : "var(--muted)",
                   whiteSpace: "nowrap", marginLeft: 16,
                 }}>

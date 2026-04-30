@@ -130,7 +130,7 @@ export default function MemberTrackerPage() {
                   key={b.memberName}
                   style={{
                     borderTop: "1px solid var(--border)",
-                    background: youAreThis ? "rgba(197,165,114,0.06)" : undefined,
+                    background: youAreThis ? "rgba(176,137,84,0.06)" : undefined,
                   }}
                 >
                   <td style={{ ...td, fontWeight: youAreThis ? 600 : 500 }}>
@@ -139,17 +139,17 @@ export default function MemberTrackerPage() {
                   </td>
                   <td style={tdR}>{fmtUSD(b.initialTarget)}</td>
                   <td style={tdR}>{fmtUSD(b.initialPaid)}</td>
-                  <td style={{ ...tdR, color: b.initialRemaining > 0 ? "#C5A572" : "var(--muted)" }}>
+                  <td style={{ ...tdR, color: b.initialRemaining > 0 ? "var(--gold)" : "var(--muted)" }}>
                     {fmtUSD(b.initialRemaining)}
                   </td>
                   <td style={tdR}>{fmtUSD(b.monthlyTarget)}</td>
                   <td style={tdR}>{fmtUSD(b.monthlyPaid)}</td>
-                  <td style={{ ...tdR, color: b.monthlyRemaining > 0 ? "#C5A572" : "var(--muted)" }}>
+                  <td style={{ ...tdR, color: b.monthlyRemaining > 0 ? "var(--gold)" : "var(--muted)" }}>
                     {fmtUSD(b.monthlyRemaining)}
                   </td>
                   <td style={tdR}>{fmtUSD(b.capitalCalled, { fractionDigits: b.capitalCalled % 1 ? 2 : 0 })}</td>
                   <td style={tdR}>{fmtUSD(b.capitalPaid)}</td>
-                  <td style={{ ...tdR, color: b.capitalRemaining > 0 ? "#C5A572" : "var(--muted)" }}>
+                  <td style={{ ...tdR, color: b.capitalRemaining > 0 ? "var(--gold)" : "var(--muted)" }}>
                     {fmtUSD(b.capitalRemaining)}
                   </td>
                   <td style={{ ...tdR, fontWeight: 600 }}>{fmtUSD(b.totalOwed)}</td>

@@ -227,7 +227,7 @@ export default function TrackerDashboard() {
           {behindMembers.map(b => (
             <div key={b.memberName} style={alertItem}>
               <span>{b.llcName}</span>
-              <span style={{ color: "#C5A572" }}>{fmtUSD(b.totalRemaining)} remaining</span>
+              <span style={{ color: "var(--gold)" }}>{fmtUSD(b.totalRemaining)} remaining</span>
             </div>
           ))}
           {behindMembers.length > 0 && (
@@ -240,10 +240,10 @@ export default function TrackerDashboard() {
 
       {/* Suggested calls callout */}
       {suggestedCalls.length > 0 && (
-        <div style={{ ...trackerCard, marginBottom: 16, borderLeft: "4px solid #C5A572" }}>
+        <div style={{ ...trackerCard, marginBottom: 16, borderLeft: "4px solid var(--gold)" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <div>
-              <div style={{ fontSize: 14, fontWeight: 600, color: "#C5A572" }}>
+              <div style={{ fontSize: 14, fontWeight: 600, color: "var(--gold)" }}>
                 {suggestedCalls.length} suggested capital call{suggestedCalls.length === 1 ? "" : "s"} awaiting approval
               </div>
               <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 4 }}>

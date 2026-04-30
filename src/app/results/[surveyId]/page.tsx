@@ -44,7 +44,7 @@ interface AlignmentInfo {
 
 function getAlignmentColor(pct: number): string {
   if (pct >= 80) return "#6B8F7B";
-  if (pct >= 50) return "#C5A572";
+  if (pct >= 50) return "var(--gold)";
   return "#8F6B6B";
 }
 
@@ -248,7 +248,7 @@ export default function ResultsPage() {
 
     const consensusColors: Record<string, string> = {
       strong: "#6B8F7B",
-      partial: "#C5A572",
+      partial: "var(--gold)",
       disagreement: "#8F6B6B",
       open: "#7B8FA0",
     };
@@ -418,17 +418,17 @@ export default function ResultsPage() {
               <p style={{ fontSize: 12, color: "var(--muted)", marginTop: 4 }}>Unanimous Agreement</p>
             </div>
             <div style={{ background: "var(--surface2)", borderRadius: 12, padding: "20px 28px", flex: "1 1 150px", textAlign: "center" }}>
-              <p style={{ fontSize: 36, fontWeight: 800, color: disagreementItems.length > 0 ? "#C5A572" : "#6B8F7B" }}>{disagreementItems.length}</p>
+              <p style={{ fontSize: 36, fontWeight: 800, color: disagreementItems.length > 0 ? "var(--gold)" : "#6B8F7B" }}>{disagreementItems.length}</p>
               <p style={{ fontSize: 12, color: "var(--muted)", marginTop: 4 }}>Need Discussion</p>
             </div>
           </div>
 
           {disagreementItems.length > 0 && (
             <div style={{ marginBottom: 28 }}>
-              <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 12, color: "#C5A572" }}>Where You Differ -- Discuss These</h3>
+              <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 12, color: "var(--gold)" }}>Where You Differ -- Discuss These</h3>
               <p style={{ fontSize: 12, color: "var(--muted)", marginBottom: 16 }}>Members chose different answers on these questions. These need a conversation.</p>
               {disagreementItems.map((a, i) => (
-                <div key={i} style={{ marginBottom: 12, padding: "14px 18px", background: "var(--surface2)", borderRadius: 8, borderLeft: "3px solid #C5A572" }}>
+                <div key={i} style={{ marginBottom: 12, padding: "14px 18px", background: "var(--surface2)", borderRadius: 8, borderLeft: "3px solid var(--gold)" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
                     <p style={{ fontSize: 13, lineHeight: 1.5, flex: 1, marginRight: 12, fontWeight: 500 }}>{a.q.text}</p>
                     <span style={{ fontSize: 14, fontWeight: 700, color: getAlignmentColor(a.alignment.percentage), whiteSpace: "nowrap" }}>{Math.round(a.alignment.percentage)}%</span>

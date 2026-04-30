@@ -1,12 +1,14 @@
 :root {
-  --bg: #1a1a1a;
-  --fg: #FCFCFA;
-  --gold: #C5A572;
-  --gold-dim: #a38a5c;
-  --surface: #242424;
-  --surface2: #2e2e2e;
-  --border: #3a3a3a;
-  --muted: #888;
+  /* Meridian Collective — official brand palette (Brand Summary, Vol. I). */
+  --bg: #F4EFE6;        /* Bone     — page background */
+  --fg: #1A1A1A;        /* Ink      — primary text */
+  --gold: #B08954;      /* Brass    — primary accent */
+  --gold-dim: #8E6B3F;  /* Brass-deep — derived hover / dim accent */
+  --surface: #FFFFFF;   /* white card on Bone for contrast */
+  --surface2: #FBF8F2;  /* derived off-white for nested surfaces */
+  --border: #D6D1C4;    /* Fog      — dividers */
+  --muted: #6B6B68;     /* derived mid-grey for secondary text */
+  --obsidian: #0C0F0D;  /* Obsidian — reserved for dark mark contexts */
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }

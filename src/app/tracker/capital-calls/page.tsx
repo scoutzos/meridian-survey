@@ -22,7 +22,7 @@ import TrackerShell, {
 } from "@/components/TrackerShell";
 
 const STATUS_STYLE: Record<CapitalCallStatus, { color: string; bg: string }> = {
-  suggested: { color: "#C5A572", bg: "rgba(197,165,114,0.12)" },
+  suggested: { color: "var(--gold)", bg: "rgba(176,137,84,0.12)" },
   open:      { color: "#6B8F7B", bg: "rgba(107,143,123,0.12)" },
   closed:    { color: "#888",    bg: "rgba(136,136,136,0.10)" },
   cancelled: { color: "#888",    bg: "rgba(136,136,136,0.06)" },

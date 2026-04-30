@@ -5,7 +5,7 @@ import { decisions, DecisionStatus } from "@/data/decisions";
 
 const STATUS_CONFIG: Record<DecisionStatus, { label: string; color: string; bg: string; icon: string }> = {
   confirmed: { label: "Confirmed", color: "#6B8F7B", bg: "rgba(107,143,123,0.12)", icon: "✅" },
-  tabled: { label: "Tabled", color: "#C5A572", bg: "rgba(197,165,114,0.12)", icon: "⚠️" },
+  tabled: { label: "Tabled", color: "var(--gold)", bg: "rgba(176,137,84,0.12)", icon: "⚠️" },
   remaining: { label: "Remaining", color: "#888", bg: "rgba(136,136,136,0.08)", icon: "⬜" },
 };
 
@@ -54,7 +54,7 @@ export default function DecisionsPage() {
           <div style={{
             width: `${pct}%`,
             height: "100%",
-            background: "linear-gradient(90deg, #6B8F7B, #C5A572)",
+            background: "linear-gradient(90deg, #6B8F7B, var(--gold))",
             borderRadius: 6,
             transition: "width 0.5s ease",
           }} />
