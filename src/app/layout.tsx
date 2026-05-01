@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import NavBarWrapper from "@/components/NavBar";
 import BottomNav from "@/components/BottomNav";
@@ -6,6 +6,13 @@ import BottomNav from "@/components/BottomNav";
 export const metadata: Metadata = {
   title: "Meridian Collective LLC — Partnership Hub",
   description: "Partnership transparency hub for Meridian Collective LLC",
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 5,
+  viewportFit: "cover",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

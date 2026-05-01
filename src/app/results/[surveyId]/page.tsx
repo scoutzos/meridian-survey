@@ -60,12 +60,15 @@ function AlignmentBar({ percentage, size = "normal" }: { percentage: number; siz
   const label = getAlignmentLabel(percentage);
   const h = size === "large" ? 12 : 8;
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: size === "large" ? 280 : 200 }}>
-      <div style={{ flex: 1, background: "var(--surface2)", borderRadius: h / 2, height: h, overflow: "hidden" }}>
+    <div style={{
+      display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap",
+      width: "100%", maxWidth: size === "large" ? 480 : 360,
+    }}>
+      <div style={{ flex: "1 1 140px", minWidth: 120, background: "var(--surface2)", borderRadius: h / 2, height: h, overflow: "hidden" }}>
         <div style={{ width: `${percentage}%`, height: "100%", background: color, borderRadius: h / 2, transition: "width 0.3s" }} />
       </div>
-      <span style={{ fontSize: size === "large" ? 20 : 14, fontWeight: 700, color, minWidth: 48, textAlign: "right" }}>{Math.round(percentage)}%</span>
-      <span style={{ fontSize: 11, color, fontWeight: 500, minWidth: 100 }}>{label}</span>
+      <span style={{ fontSize: size === "large" ? 20 : 14, fontWeight: 700, color, minWidth: 44, textAlign: "right" }}>{Math.round(percentage)}%</span>
+      <span style={{ fontSize: 11, color, fontWeight: 500, whiteSpace: "nowrap" }}>{label}</span>
     </div>
   );
 }
@@ -311,7 +314,7 @@ export default function ResultsPage() {
     const saved = savedVersions[q.id];
     const hasDrift = saved ? Array.from(saved).some(v => v !== currentVersion) : false;
     return (
-      <div key={q.id} style={{ background: "var(--surface)", borderRadius: 12, padding: 24 }}>
+      <div key={q.id} className="results-card" style={{ background: "var(--surface)", borderRadius: 12, padding: 24 }}>
         {showCategory && (
           <p style={{ fontSize: 11, color: "var(--gold)", textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>{showCategory}</p>
         )}
@@ -389,9 +392,9 @@ export default function ResultsPage() {
   const renderAlignmentSummary = () => {
     const totalQ = categories.reduce((s, c) => s + c.questions.length, 0);
     const responseTracker = (
-      <div style={{ background: "var(--surface)", borderRadius: 12, padding: 24, marginBottom: 24 }}>
+      <div className="results-card" style={{ background: "var(--surface)", borderRadius: 12, padding: 24, marginBottom: 24 }}>
         <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 16 }}>Response Tracker</h3>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: 12 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: 12 }}>
           {MEMBERS.map(m => {
             const hasResponded = !!allAnswers[m];
             const answerCount = hasResponded ? Object.keys(allAnswers[m]).length : 0;
@@ -421,7 +424,7 @@ export default function ResultsPage() {
     if (!hasEnoughData) return (
       <div>
         {responseTracker}
-        <div style={{ background: "var(--surface)", borderRadius: 12, padding: 32, textAlign: "center", marginBottom: 32 }}>
+        <div className="results-card" style={{ background: "var(--surface)", borderRadius: 12, padding: 32, textAlign: "center", marginBottom: 32 }}>
           <p style={{ fontSize: 16, fontWeight: 600, marginBottom: 8 }}>Waiting for More Responses</p>
           <p style={{ color: "var(--muted)", fontSize: 13, maxWidth: 400, margin: "0 auto" }}>
             Alignment scores require at least 2 members to compare. {membersWithData.length === 1 ? `Only ${membersWithData[0]} has responded so far.` : "No one has responded yet."}
@@ -433,20 +436,20 @@ export default function ResultsPage() {
     return (
       <div>
         {responseTracker}
-        <div style={{ background: "var(--surface)", borderRadius: 12, padding: 32, marginBottom: 32 }}>
+        <div className="results-card" style={{ background: "var(--surface)", borderRadius: 12, padding: 32, marginBottom: 32 }}>
           <h2 style={{ fontSize: 20, fontWeight: 700, marginBottom: 24 }}>Alignment Summary</h2>
-          <div style={{ display: "flex", gap: 24, flexWrap: "wrap", marginBottom: 28 }}>
-            <div style={{ background: "var(--surface2)", borderRadius: 12, padding: "20px 28px", flex: "1 1 200px", textAlign: "center" }}>
-              <p style={{ fontSize: 36, fontWeight: 800, color: getAlignmentColor(overallAlignment) }}>{Math.round(overallAlignment)}%</p>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 16, marginBottom: 28 }}>
+            <div style={{ background: "var(--surface2)", borderRadius: 12, padding: "20px 20px", textAlign: "center" }}>
+              <p style={{ fontSize: 32, fontWeight: 800, color: getAlignmentColor(overallAlignment) }}>{Math.round(overallAlignment)}%</p>
               <p style={{ fontSize: 12, color: "var(--muted)", marginTop: 4 }}>Overall Alignment</p>
               <p style={{ fontSize: 11, color: getAlignmentColor(overallAlignment), fontWeight: 600 }}>{getAlignmentLabel(overallAlignment)}</p>
             </div>
-            <div style={{ background: "var(--surface2)", borderRadius: 12, padding: "20px 28px", flex: "1 1 150px", textAlign: "center" }}>
-              <p style={{ fontSize: 36, fontWeight: 800, color: "var(--gold)" }}>{unanimousItems.length}</p>
+            <div style={{ background: "var(--surface2)", borderRadius: 12, padding: "20px 20px", textAlign: "center" }}>
+              <p style={{ fontSize: 32, fontWeight: 800, color: "var(--gold)" }}>{unanimousItems.length}</p>
               <p style={{ fontSize: 12, color: "var(--muted)", marginTop: 4 }}>Unanimous Agreement</p>
             </div>
-            <div style={{ background: "var(--surface2)", borderRadius: 12, padding: "20px 28px", flex: "1 1 150px", textAlign: "center" }}>
-              <p style={{ fontSize: 36, fontWeight: 800, color: disagreementItems.length > 0 ? "var(--gold)" : "var(--gold)" }}>{disagreementItems.length}</p>
+            <div style={{ background: "var(--surface2)", borderRadius: 12, padding: "20px 20px", textAlign: "center" }}>
+              <p style={{ fontSize: 32, fontWeight: 800, color: disagreementItems.length > 0 ? "var(--gold)" : "var(--gold)" }}>{disagreementItems.length}</p>
               <p style={{ fontSize: 12, color: "var(--muted)", marginTop: 4 }}>Need Discussion</p>
             </div>
           </div>
@@ -456,9 +459,9 @@ export default function ResultsPage() {
               <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 12, color: "var(--gold)" }}>Where You Differ -- Discuss These</h3>
               <p style={{ fontSize: 12, color: "var(--muted)", marginBottom: 16 }}>Members chose different answers on these questions. These need a conversation.</p>
               {disagreementItems.map((a, i) => (
-                <div key={i} style={{ marginBottom: 12, padding: "14px 18px", background: "var(--surface2)", borderRadius: 8, borderLeft: "3px solid var(--gold)" }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
-                    <p style={{ fontSize: 13, lineHeight: 1.5, flex: 1, marginRight: 12, fontWeight: 500 }}>{a.q.text}</p>
+                <div key={i} style={{ marginBottom: 12, padding: "14px 16px", background: "var(--surface2)", borderRadius: 8, borderLeft: "3px solid var(--gold)" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8, gap: 8, flexWrap: "wrap" }}>
+                    <p style={{ fontSize: 13, lineHeight: 1.5, flex: "1 1 200px", minWidth: 0, fontWeight: 500, wordBreak: "break-word" }}>{a.q.text}</p>
                     <span style={{ fontSize: 14, fontWeight: 700, color: getAlignmentColor(a.alignment.percentage), whiteSpace: "nowrap" }}>{Math.round(a.alignment.percentage)}%</span>
                   </div>
                   <p style={{ fontSize: 10, color: "var(--gold)", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 8 }}>{a.catName}</p>
@@ -477,9 +480,9 @@ export default function ResultsPage() {
               <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 12, color: "var(--gold)" }}>Where You All Agree ({unanimousItems.length})</h3>
               {unanimousItems.map((a, i) => (
                 <div key={i} style={{ marginBottom: 8, padding: "10px 14px", background: "var(--surface2)", borderRadius: 8, borderLeft: "3px solid #6B8F7B" }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <p style={{ fontSize: 12, lineHeight: 1.4, flex: 1, marginRight: 12 }}>{a.q.text.length > 90 ? a.q.text.slice(0, 90) + "..." : a.q.text}</p>
-                    <span style={{ fontSize: 12, fontWeight: 600, color: "var(--gold)" }}>Unanimous</span>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                    <p style={{ fontSize: 12, lineHeight: 1.4, flex: "1 1 200px", minWidth: 0, wordBreak: "break-word" }}>{a.q.text.length > 90 ? a.q.text.slice(0, 90) + "..." : a.q.text}</p>
+                    <span style={{ fontSize: 12, fontWeight: 600, color: "var(--gold)", whiteSpace: "nowrap" }}>Unanimous</span>
                   </div>
                   <p style={{ fontSize: 10, color: "var(--muted)", marginTop: 4 }}>{a.catName} -- {a.alignment.topOption.length > 60 ? a.alignment.topOption.slice(0, 60) + "..." : a.alignment.topOption}</p>
                 </div>
@@ -492,16 +495,16 @@ export default function ResultsPage() {
   };
 
   return (
-    <div style={{ padding: "72px 20px 80px", maxWidth: 1200, margin: "0 auto" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 32 }}>
-        <div>
+    <div className="results-page" style={{ padding: "72px 20px 80px", maxWidth: 1200, margin: "0 auto" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 32, gap: 12, flexWrap: "wrap" }}>
+        <div style={{ flex: "1 1 240px", minWidth: 0 }}>
           <p style={{ fontSize: 12, color: "var(--gold)", textTransform: "uppercase", letterSpacing: 1, marginBottom: 4 }}>{survey.title}</p>
           <h1 style={{ fontSize: 24, fontWeight: 700 }}>Survey Results</h1>
           <p style={{ color: "var(--muted)", fontSize: 13 }}>{membersWithData.length} of {MEMBERS.length} members have responded</p>
         </div>
         <button onClick={() => router.push(`/survey/${surveyId}`)} style={{
-          padding: "8px 16px", borderRadius: 8, border: "1px solid var(--border)",
-          background: "transparent", color: "var(--gold)", fontSize: 13, cursor: "pointer",
+          padding: "10px 16px", minHeight: 44, borderRadius: 8, border: "1px solid var(--border)",
+          background: "transparent", color: "var(--gold)", fontSize: 13, cursor: "pointer", flexShrink: 0,
         }}>
           Take Survey
         </button>
@@ -511,11 +514,12 @@ export default function ResultsPage() {
         <div style={{
           background: `linear-gradient(135deg, ${getAlignmentColor(overallAlignment)}22, transparent)`,
           border: `1px solid ${getAlignmentColor(overallAlignment)}44`,
-          borderRadius: 12, padding: "16px 24px", marginBottom: 24,
+          borderRadius: 12, padding: "16px 20px", marginBottom: 24,
           display: "flex", alignItems: "center", justifyContent: "space-between",
+          gap: 12, flexWrap: "wrap",
         }}>
-          <div>
-            <p style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>Total Group Alignment</p>
+          <div style={{ flex: "1 1 280px", minWidth: 0 }}>
+            <p style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>Total Group Alignment</p>
             <AlignmentBar percentage={overallAlignment} size="large" />
           </div>
           <p style={{ fontSize: 12, color: "var(--muted)" }}>{allAlignments.length} questions answered</p>
@@ -524,11 +528,11 @@ export default function ResultsPage() {
 
       {/* Capital Summary for currency questions */}
       {currencyQuestions.length > 0 && membersWithData.length > 0 && (
-        <div style={{
+        <div className="capital-summary" style={{
           background: "var(--surface)", borderRadius: 12, padding: 24, marginBottom: 24,
         }}>
           <h3 style={{ fontSize: 16, fontWeight: 700, marginBottom: 20 }}>Capital Summary</h3>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 16, marginBottom: 20 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: 12, marginBottom: 20 }}>
             {currencyQuestions.map(q => {
               const totals = getCurrencyTotals(q.id);
               return (
@@ -591,11 +595,11 @@ export default function ResultsPage() {
         </div>
       )}
 
-      <div style={{ display: "flex", gap: 12, marginBottom: 24, flexWrap: "wrap" }}>
+      <div style={{ display: "flex", gap: 8, marginBottom: 24, flexWrap: "wrap" }}>
         <button
           onClick={() => { setShowCriticalSummary(false); setShowAlignmentSummary(false); }}
           style={{
-            padding: "8px 18px", borderRadius: 8, fontSize: 13, border: "1px solid var(--border)",
+            padding: "10px 16px", minHeight: 44, borderRadius: 8, fontSize: 13, border: "1px solid var(--border)",
             background: !showCriticalSummary && !showAlignmentSummary ? "var(--gold)" : "transparent",
             color: !showCriticalSummary && !showAlignmentSummary ? "var(--bg)" : "var(--muted)",
             fontWeight: !showCriticalSummary && !showAlignmentSummary ? 600 : 400, cursor: "pointer",
@@ -606,18 +610,18 @@ export default function ResultsPage() {
         <button
           onClick={() => { setShowCriticalSummary(true); setShowAlignmentSummary(false); }}
           style={{
-            padding: "8px 18px", borderRadius: 8, fontSize: 13, border: "1px solid var(--border)",
+            padding: "10px 16px", minHeight: 44, borderRadius: 8, fontSize: 13, border: "1px solid var(--border)",
             background: showCriticalSummary ? "var(--obsidian)" : "transparent",
             color: showCriticalSummary ? "var(--surface)" : "var(--muted)",
             fontWeight: showCriticalSummary ? 600 : 400, cursor: "pointer",
           }}
         >
-          Critical Questions ({criticalQuestions.length})
+          Critical ({criticalQuestions.length})
         </button>
         <button
           onClick={() => { setShowAlignmentSummary(true); setShowCriticalSummary(false); }}
           style={{
-            padding: "8px 18px", borderRadius: 8, fontSize: 13, border: "1px solid var(--border)",
+            padding: "10px 16px", minHeight: 44, borderRadius: 8, fontSize: 13, border: "1px solid var(--border)",
             background: showAlignmentSummary ? "var(--gold)" : "transparent",
             color: showAlignmentSummary ? "var(--surface)" : "var(--muted)",
             fontWeight: showAlignmentSummary ? 600 : 400, cursor: "pointer",
@@ -645,10 +649,10 @@ export default function ResultsPage() {
               const catAlign = getCategoryAlignment(ci);
               return (
                 <button key={ci} onClick={() => setActiveCategory(ci)} style={{
-                  padding: "6px 14px", borderRadius: 20, fontSize: 12, border: "1px solid var(--border)",
+                  padding: "10px 16px", minHeight: 40, borderRadius: 20, fontSize: 13, border: "1px solid var(--border)",
                   background: ci === activeCategory ? "var(--gold)" : "transparent",
                   color: ci === activeCategory ? "var(--bg)" : "var(--muted)",
-                  fontWeight: ci === activeCategory ? 600 : 400,
+                  fontWeight: ci === activeCategory ? 600 : 400, cursor: "pointer",
                 }}>
                   {cat.name} {catAlign > 0 && <span style={{ color: getAlignmentColor(catAlign), fontWeight: 700, marginLeft: 4 }}>{Math.round(catAlign)}%</span>}
                 </button>
@@ -675,6 +679,16 @@ export default function ResultsPage() {
           </div>
         </>
       )}
+      <style>{`
+        @media (max-width: 768px) {
+          .results-page { padding: 72px 16px 80px !important; }
+          .results-card { padding: 16px !important; }
+          .capital-summary { padding: 16px !important; }
+        }
+        @media (max-width: 480px) {
+          .results-page { padding: 68px 12px 72px !important; }
+        }
+      `}</style>
     </div>
   );
 }

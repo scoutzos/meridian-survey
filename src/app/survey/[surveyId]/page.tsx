@@ -451,20 +451,21 @@ export default function SurveyPage() {
       <div style={{
         display: "none", position: "fixed", top: 0, left: 0, right: 0, zIndex: 50,
         background: "var(--bg)", borderBottom: "1px solid var(--border)", padding: "12px 16px",
-        alignItems: "center", justifyContent: "space-between",
+        alignItems: "center", justifyContent: "space-between", gap: 8,
       }} className="mobile-header">
         <button onClick={() => setSidebarOpen(!sidebarOpen)} style={{
-          background: "none", border: "none", color: "var(--fg)", fontSize: 20
-        }}>☰</button>
-        <span style={{ fontSize: 14, fontWeight: 600 }}>{survey.title}</span>
-        <span style={{ fontSize: 12, color: "var(--gold)" }}>{overallPct}%</span>
+          background: "none", border: "none", color: "var(--fg)", fontSize: 24,
+          minWidth: 44, minHeight: 44, padding: 0, flexShrink: 0,
+        }} aria-label="Toggle menu">☰</button>
+        <span style={{ fontSize: 14, fontWeight: 600, flex: 1, textAlign: "center", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{survey.title}</span>
+        <span style={{ fontSize: 12, color: "var(--gold)", minWidth: 44, textAlign: "right", flexShrink: 0 }}>{overallPct}%</span>
       </div>
 
       {/* Sidebar */}
       <aside style={{
         width: 280, minWidth: 280, background: "var(--surface)", borderRight: "1px solid var(--border)",
         padding: "76px 0 20px", overflowY: "auto", height: "100vh", position: "sticky", top: 0,
-        ...(sidebarOpen ? { position: "fixed", zIndex: 40, left: 0, top: 0 } : {}),
+        ...(sidebarOpen ? { position: "fixed", zIndex: 40, left: 0, top: 0, maxWidth: "85vw" } : {}),
       }} className="sidebar">
         <div style={{ padding: "0 20px 20px" }}>
           <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>◆ {survey.title}</h2>
@@ -491,7 +492,8 @@ export default function SurveyPage() {
                 key={ci}
                 onClick={() => { setActiveCategory(ci); setSidebarOpen(false); setPriorityFilter("all"); }}
                 style={{
-                  display: "block", width: "100%", textAlign: "left", padding: "10px 20px",
+                  display: "block", width: "100%", textAlign: "left", padding: "12px 20px",
+                  minHeight: 48,
                   background: ci === activeCategory ? "var(--surface2)" : "transparent",
                   border: "none", borderLeft: ci === activeCategory ? "3px solid var(--gold)" : "3px solid transparent",
                   color: ci === activeCategory ? "var(--fg)" : "var(--muted)",
@@ -514,11 +516,11 @@ export default function SurveyPage() {
 
         <div style={{ padding: "20px", display: "flex", flexDirection: "column", gap: 8 }}>
           <button onClick={() => router.push(`/results/${surveyId}`)}
-            style={{ background: "var(--surface2)", border: "1px solid var(--border)", color: "var(--gold)", fontSize: 12, padding: "8px 12px", borderRadius: 6, cursor: "pointer" }}>
+            style={{ background: "var(--surface2)", border: "1px solid var(--border)", color: "var(--gold)", fontSize: 13, padding: "12px 16px", minHeight: 44, borderRadius: 6, cursor: "pointer" }}>
             View Results
           </button>
           <button onClick={() => router.push("/surveys")}
-            style={{ background: "var(--surface2)", border: "1px solid var(--border)", color: "var(--gold)", fontSize: 12, padding: "8px 12px", borderRadius: 6, cursor: "pointer" }}>
+            style={{ background: "var(--surface2)", border: "1px solid var(--border)", color: "var(--gold)", fontSize: 13, padding: "12px 16px", minHeight: 44, borderRadius: 6, cursor: "pointer" }}>
             All Surveys
           </button>
         </div>
@@ -529,7 +531,7 @@ export default function SurveyPage() {
       }} />}
 
       {/* Main content */}
-      <main style={{ flex: 1, padding: "80px 40px 80px", maxWidth: 800 }} className="main-content">
+      <main style={{ flex: 1, padding: "80px 40px 80px", maxWidth: 800 }} className="survey-main">
         <div style={{ marginBottom: 24 }}>
           <p style={{ fontSize: 12, color: "var(--gold)", marginBottom: 4, textTransform: "uppercase", letterSpacing: 1 }}>
             Category {activeCategory + 1} of {categories.length}
@@ -552,7 +554,8 @@ export default function SurveyPage() {
               key={fb.value}
               onClick={() => setPriorityFilter(fb.value)}
               style={{
-                padding: "6px 14px", borderRadius: 20, fontSize: 12, border: "1px solid var(--border)",
+                padding: "10px 16px", borderRadius: 20, fontSize: 13, border: "1px solid var(--border)",
+                minHeight: 40,
                 background: priorityFilter === fb.value ? "var(--gold)" : "transparent",
                 color: priorityFilter === fb.value ? "var(--bg)" : "var(--muted)",
                 fontWeight: priorityFilter === fb.value ? 600 : 400,
@@ -611,7 +614,8 @@ export default function SurveyPage() {
                                 title={pid}
                                 style={{
                                   display: "flex", alignItems: "center", gap: 6,
-                                  padding: "6px 12px", borderRadius: 16, fontSize: 11,
+                                  padding: "8px 14px", borderRadius: 16, fontSize: 12,
+                                  minHeight: 36,
                                   border: `1px solid ${isActive ? "var(--gold)" : "var(--border)"}`,
                                   background: isActive ? "rgba(176,137,84,0.1)" : "transparent",
                                   color: isActive ? "var(--gold)" : "var(--fg)",
@@ -628,7 +632,7 @@ export default function SurveyPage() {
                       </div>
                     )}
                     {q.id === "brand-logo-rank" || q.id === "brand-palette-rank" ? (
-                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 12 }}>
                         {q.options!.map((option, oi) => {
                           const rank = selections.indexOf(option);
                           const ranked = rank !== -1;
@@ -760,10 +764,10 @@ export default function SurveyPage() {
                               }}
                               style={{
                                 display: "flex", alignItems: "center", gap: 10,
-                                padding: "10px 14px", borderRadius: 8, textAlign: "left",
+                                padding: "12px 14px", minHeight: 48, borderRadius: 8, textAlign: "left",
                                 background: ranked ? "var(--surface2)" : "var(--surface)",
                                 border: ranked ? "1px solid var(--gold)" : "1px solid var(--border)",
-                                cursor: "pointer", fontSize: 13, lineHeight: 1.5,
+                                cursor: "pointer", fontSize: 14, lineHeight: 1.5,
                                 transition: "all 0.15s", color: "var(--fg)", width: "100%",
                               }}
                             >
@@ -801,10 +805,10 @@ export default function SurveyPage() {
                           key={oi}
                           style={{
                             display: "flex", alignItems: "center", gap: 10,
-                            padding: "10px 14px", borderRadius: 8,
+                            padding: "12px 14px", minHeight: 48, borderRadius: 8,
                             background: checked ? "var(--surface2)" : "var(--surface)",
                             border: checked ? "1px solid var(--gold)" : "1px solid var(--border)",
-                            cursor: "pointer", fontSize: 13, lineHeight: 1.5,
+                            cursor: "pointer", fontSize: 14, lineHeight: 1.5,
                             transition: "all 0.15s",
                           }}
                         >
@@ -813,7 +817,7 @@ export default function SurveyPage() {
                             name={q.singleSelect ? q.id : undefined}
                             checked={checked}
                             onChange={() => toggleOption(q.id, option, q.singleSelect)}
-                            style={{ accentColor: "var(--gold)", flexShrink: 0 }}
+                            style={{ accentColor: "var(--gold)", flexShrink: 0, width: 18, height: 18 }}
                           />
                           <span>{option}</span>
                         </label>
@@ -823,10 +827,10 @@ export default function SurveyPage() {
                       <label
                         style={{
                           display: "flex", alignItems: "center", gap: 10,
-                          padding: "10px 14px", borderRadius: 8,
+                          padding: "12px 14px", minHeight: 48, borderRadius: 8,
                           background: otherSelected ? "var(--surface2)" : "var(--surface)",
                           border: otherSelected ? "1px solid var(--gold)" : "1px solid var(--border)",
-                          cursor: "pointer", fontSize: 13, lineHeight: 1.5,
+                          cursor: "pointer", fontSize: 14, lineHeight: 1.5,
                           transition: "all 0.15s",
                         }}
                       >
@@ -834,7 +838,7 @@ export default function SurveyPage() {
                           type="checkbox"
                           checked={otherSelected}
                           onChange={() => toggleOther(q.id)}
-                          style={{ accentColor: "var(--gold)", flexShrink: 0 }}
+                          style={{ accentColor: "var(--gold)", flexShrink: 0, width: 18, height: 18 }}
                         />
                         <span>Other</span>
                       </label>
@@ -881,14 +885,14 @@ export default function SurveyPage() {
         </div>
 
         {/* Nav buttons */}
-        <div style={{ display: "flex", justifyContent: "space-between", marginTop: 40, gap: 16 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", marginTop: 40, gap: 12, flexWrap: "wrap" }}>
           <button
             onClick={() => { setActiveCategory(Math.max(0, activeCategory - 1)); setPriorityFilter("all"); window.scrollTo(0, 0); }}
             disabled={activeCategory === 0}
             style={{
-              padding: "10px 24px", borderRadius: 8, border: "1px solid var(--border)",
+              padding: "12px 20px", minHeight: 48, borderRadius: 8, border: "1px solid var(--border)",
               background: "transparent", color: activeCategory === 0 ? "var(--border)" : "var(--fg)",
-              fontSize: 14,
+              fontSize: 14, flex: "1 1 140px",
             }}
           >
             ← Previous
@@ -916,8 +920,9 @@ export default function SurveyPage() {
                 router.push(`/results/${surveyId}`);
               }}
               style={{
-                padding: "10px 24px", borderRadius: 8, border: "none",
+                padding: "12px 20px", minHeight: 48, borderRadius: 8, border: "none",
                 background: "var(--gold)", color: "var(--bg)", fontSize: 14, fontWeight: 600, cursor: "pointer",
+                flex: "1 1 140px",
               }}
             >
               Submit
@@ -926,8 +931,9 @@ export default function SurveyPage() {
             <button
               onClick={() => { setActiveCategory(Math.min(categories.length - 1, activeCategory + 1)); setPriorityFilter("all"); window.scrollTo(0, 0); }}
               style={{
-                padding: "10px 24px", borderRadius: 8, border: "none",
+                padding: "12px 20px", minHeight: 48, borderRadius: 8, border: "none",
                 background: "var(--gold)", color: "var(--bg)", fontSize: 14, fontWeight: 600, cursor: "pointer",
+                flex: "1 1 140px",
               }}
             >
               Next →
@@ -941,8 +947,11 @@ export default function SurveyPage() {
       <style>{`
         @media (max-width: 768px) {
           .mobile-header { display: flex !important; }
-          .sidebar { display: ${sidebarOpen ? "block" : "none"}; width: 280px; }
-          .main-content { padding: 80px 16px 40px !important; }
+          .sidebar { display: ${sidebarOpen ? "block" : "none"}; width: min(85vw, 280px) !important; min-width: 0 !important; }
+          .survey-main { padding: 76px 16px 40px !important; max-width: 100% !important; }
+        }
+        @media (max-width: 480px) {
+          .survey-main { padding: 72px 12px 32px !important; }
         }
       `}</style>
     </div>

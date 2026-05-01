@@ -143,7 +143,8 @@ export default function LoginPage() {
 
   const inputStyle = {
     background: "var(--surface)", border: "1px solid var(--border)", color: "var(--fg)",
-    borderRadius: 8, padding: "12px 16px", fontSize: 15, width: "100%",
+    borderRadius: 8, padding: "14px 16px", fontSize: 16, width: "100%",
+    minHeight: 48,
   };
 
   if (showSetPassword) {
@@ -184,7 +185,8 @@ export default function LoginPage() {
               disabled={loading}
               style={{
                 background: "var(--gold)", color: "var(--bg)", border: "none",
-                borderRadius: 8, padding: "12px 16px", fontSize: 15, fontWeight: 600,
+                borderRadius: 8, padding: "14px 16px", fontSize: 16, fontWeight: 600,
+                minHeight: 48,
                 opacity: loading ? 0.6 : 1, cursor: loading ? "default" : "pointer",
               }}
             >
@@ -216,8 +218,8 @@ export default function LoginPage() {
               onClick={() => { setShowForgotPassword(false); setResetSuccess(false); setResetName(""); setVerificationAnswer(""); setName(resetName); }}
               style={{
                 background: "var(--gold)", color: "var(--bg)", border: "none",
-                borderRadius: 8, padding: "12px 16px", fontSize: 15, fontWeight: 600,
-                cursor: "pointer",
+                borderRadius: 8, padding: "14px 16px", fontSize: 16, fontWeight: 600,
+                minHeight: 48, cursor: "pointer",
               }}
             >
               Back to Sign In
@@ -244,7 +246,7 @@ export default function LoginPage() {
               onChange={e => { setResetName(e.target.value); setError(""); }}
               style={{
                 background: "var(--surface)", border: "1px solid var(--border)", color: resetName ? "var(--fg)" : "var(--muted)",
-                borderRadius: 8, padding: "12px 16px", fontSize: 15, appearance: "none", WebkitAppearance: "none",
+                borderRadius: 8, padding: "14px 16px", fontSize: 16, minHeight: 48, appearance: "none", WebkitAppearance: "none",
               }}
             >
               <option value="">Select your name</option>
@@ -267,7 +269,8 @@ export default function LoginPage() {
               disabled={loading}
               style={{
                 background: "var(--gold)", color: "var(--bg)", border: "none",
-                borderRadius: 8, padding: "12px 16px", fontSize: 15, fontWeight: 600,
+                borderRadius: 8, padding: "14px 16px", fontSize: 16, fontWeight: 600,
+                minHeight: 48,
                 opacity: loading ? 0.6 : 1, cursor: loading ? "default" : "pointer",
               }}
             >
@@ -277,7 +280,7 @@ export default function LoginPage() {
 
           <button
             onClick={() => { setShowForgotPassword(false); setError(""); setResetName(""); setVerificationAnswer(""); }}
-            style={{ background: "none", border: "none", color: "var(--muted)", fontSize: 13, marginTop: 16, cursor: "pointer" }}
+            style={{ background: "none", border: "none", color: "var(--muted)", fontSize: 14, marginTop: 16, padding: "10px 16px", cursor: "pointer" }}
           >
             ← Back to sign in
           </button>
@@ -301,7 +304,7 @@ export default function LoginPage() {
             onChange={e => { setName(e.target.value); setError(""); }}
             style={{
               background: "var(--surface)", border: "1px solid var(--border)", color: name ? "var(--fg)" : "var(--muted)",
-              borderRadius: 8, padding: "12px 16px", fontSize: 15, appearance: "none", WebkitAppearance: "none",
+              borderRadius: 8, padding: "14px 16px", fontSize: 16, minHeight: 48, appearance: "none", WebkitAppearance: "none",
             }}
           >
             <option value="">Select your name</option>
@@ -323,7 +326,8 @@ export default function LoginPage() {
             disabled={loading}
             style={{
               background: "var(--gold)", color: "var(--bg)", border: "none",
-              borderRadius: 8, padding: "12px 16px", fontSize: 15, fontWeight: 600,
+              borderRadius: 8, padding: "14px 16px", fontSize: 16, fontWeight: 600,
+              minHeight: 48,
               opacity: loading ? 0.6 : 1, cursor: loading ? "default" : "pointer",
               transition: "opacity 0.2s",
             }}
@@ -335,7 +339,7 @@ export default function LoginPage() {
         <p style={{ marginTop: 16 }}>
           <button
             onClick={() => { setShowForgotPassword(true); setError(""); setResetName(name); }}
-            style={{ background: "none", border: "none", color: "var(--muted)", fontSize: 13, cursor: "pointer" }}
+            style={{ background: "none", border: "none", color: "var(--muted)", fontSize: 14, padding: "10px 16px", cursor: "pointer" }}
           >
             Forgot your password?
           </button>
