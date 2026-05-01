@@ -40,7 +40,7 @@ export default function LoginPage() {
       // Fallback if no Supabase — use old hardcoded code
       if (code !== "meridian2026") { setError("Invalid password."); setLoading(false); return; }
       localStorage.setItem("meridian_user", name);
-      router.push("/surveys");
+      router.push("/dashboard");
       return;
     }
 
@@ -77,7 +77,7 @@ export default function LoginPage() {
       .update({ last_login: new Date().toISOString() })
       .eq("name", name);
     localStorage.setItem("meridian_user", name);
-    router.push("/surveys");
+    router.push("/dashboard");
   };
 
   const handleSetPassword = async (e: React.FormEvent) => {
@@ -107,7 +107,7 @@ export default function LoginPage() {
       .update({ last_login: new Date().toISOString() })
       .eq("name", name);
     localStorage.setItem("meridian_user", name);
-    router.push("/surveys");
+    router.push("/dashboard");
   };
 
   const handleForgotPassword = async (e: React.FormEvent) => {

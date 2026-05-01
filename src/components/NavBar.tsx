@@ -15,6 +15,7 @@ export default function NavBar() {
   if (!user || pathname === "/") return null;
 
   const links = [
+    { href: "/dashboard", label: "Home" },
     { href: "/surveys", label: "Surveys" },
     { href: "/decisions", label: "Decisions" },
     { href: "/tracker", label: "Tracker" },
@@ -37,7 +38,7 @@ export default function NavBar() {
       display: "flex", alignItems: "center", justifyContent: "space-between",
     }}>
       <div style={{ display: "flex", alignItems: "center", gap: 28 }}>
-        <Logo width={42} onDark style={{ cursor: "pointer" }} onClick={() => router.push("/hub")} />
+        <Logo width={42} onDark style={{ cursor: "pointer" }} onClick={() => router.push("/dashboard")} />
         <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
           {links.map(l => {
             const active = isActive(l.href);

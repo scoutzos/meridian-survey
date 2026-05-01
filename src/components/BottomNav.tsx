@@ -3,6 +3,7 @@ import { useRouter, usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 
 const links = [
+  { href: "/dashboard", label: "Home" },
   { href: "/surveys", label: "Surveys" },
   { href: "/decisions", label: "Decisions" },
   { href: "/tracker", label: "Tracker" },
