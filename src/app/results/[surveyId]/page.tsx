@@ -394,24 +394,24 @@ export default function ResultsPage() {
     const responseTracker = (
       <div className="results-card" style={{ background: "var(--surface)", borderRadius: 12, padding: 24, marginBottom: 24 }}>
         <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 16 }}>Response Tracker</h3>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: 12 }}>
+        <div className="response-tracker-grid" style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12 }}>
           {MEMBERS.map(m => {
             const hasResponded = !!allAnswers[m];
             const answerCount = hasResponded ? Object.keys(allAnswers[m]).length : 0;
             const lastLogin = memberLogins[m];
             return (
-              <div key={m} style={{
-                padding: "12px 16px", borderRadius: 8,
+              <div key={m} className="response-tracker-card" style={{
+                padding: "14px 16px", borderRadius: 8, minHeight: 88, overflowWrap: "anywhere",
                 background: hasResponded ? "rgba(201,168,120,0.12)" : "var(--surface2)",
                 border: `1px solid ${hasResponded ? "rgba(201,168,120,0.3)" : "var(--border)"}`,
               }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                <div style={{ marginBottom: 4 }}>
                   <span style={{ fontSize: 13, fontWeight: 600 }}>{m}</span>
                 </div>
-                <p style={{ fontSize: 11, color: "var(--muted)", marginBottom: 2 }}>
+                <p style={{ fontSize: 11, color: "var(--muted)", marginBottom: 2, lineHeight: 1.5 }}>
                   {hasResponded ? `${answerCount}/${totalQ} questions answered` : "Hasn't started yet"}
                 </p>
-                <p style={{ fontSize: 11, color: lastLogin ? "var(--muted)" : "#666" }}>
+                <p style={{ fontSize: 11, color: lastLogin ? "var(--muted)" : "#666", lineHeight: 1.5 }}>
                   Last active: <span style={{ color: lastLogin ? "var(--fg)" : "var(--muted)" }}>{formatRelativeTime(lastLogin)}</span>
                 </p>
               </div>
@@ -669,10 +669,17 @@ export default function ResultsPage() {
         </>
       )}
       <style>{`
+        @media (max-width: 960px) {
+          .response-tracker-grid { grid-template-columns: repeat(2, 1fr) !important; }
+        }
         @media (max-width: 768px) {
           .results-page { padding: 72px 16px 80px !important; }
           .results-card { padding: 16px !important; }
           .capital-summary { padding: 16px !important; }
+        }
+        @media (max-width: 600px) {
+          .response-tracker-grid { grid-template-columns: 1fr !important; gap: 10px !important; }
+          .response-tracker-card { padding: 14px !important; }
         }
         @media (max-width: 480px) {
           .results-page { padding: 68px 12px 72px !important; }
