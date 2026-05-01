@@ -15,11 +15,15 @@ export default function NavBar() {
   if (!user || pathname === "/") return null;
 
   const links = [
-    { href: "/dashboard", label: "Home" },
-    { href: "/surveys", label: "Surveys" },
-    { href: "/decisions", label: "Decisions" },
-    { href: "/tracker", label: "Tracker" },
-    { href: "/hub", label: "Hub" },
+    { href: "/dashboard",  label: "Home" },
+    { href: "/surveys",    label: "Surveys" },
+    { href: "/actions",    label: "Actions" },
+    { href: "/meetings",   label: "Meetings" },
+    { href: "/members",    label: "Members" },
+    { href: "/documents",  label: "Docs" },
+    { href: "/decisions",  label: "Decisions" },
+    { href: "/tracker",    label: "Tracker" },
+    { href: "/hub",        label: "Hub" },
   ];
 
   const isActive = (href: string) => {
@@ -36,10 +40,14 @@ export default function NavBar() {
       borderBottom: "1px solid rgba(201,168,120,0.25)",
       padding: "0 20px", height: 60,
       display: "flex", alignItems: "center", justifyContent: "space-between",
+      gap: 16,
     }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 28 }}>
-        <Logo width={42} onDark style={{ cursor: "pointer" }} onClick={() => router.push("/dashboard")} />
-        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 24, flex: 1, minWidth: 0 }}>
+        <Logo width={42} onDark style={{ cursor: "pointer", flexShrink: 0 }} onClick={() => router.push("/dashboard")} />
+        <div style={{
+          display: "flex", alignItems: "center", gap: 2, overflowX: "auto",
+          scrollbarWidth: "none",
+        }}>
           {links.map(l => {
             const active = isActive(l.href);
             return (
@@ -50,7 +58,7 @@ export default function NavBar() {
                   background: "transparent",
                   color: active ? "var(--brass)" : "var(--fog)",
                   border: "none",
-                  padding: "8px 14px",
+                  padding: "8px 12px",
                   fontSize: 11,
                   fontFamily: "var(--font-body)",
                   fontWeight: active ? 600 : 500,
@@ -59,6 +67,8 @@ export default function NavBar() {
                   cursor: "pointer",
                   transition: "color 0.15s",
                   borderBottom: active ? "1px solid var(--brass)" : "1px solid transparent",
+                  whiteSpace: "nowrap",
+                  flexShrink: 0,
                 }}
               >
                 {l.label}
@@ -67,7 +77,7 @@ export default function NavBar() {
           })}
         </div>
       </div>
-      <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 16, flexShrink: 0 }}>
         <span style={{
           fontFamily: "var(--font-body)",
           fontSize: 11,
