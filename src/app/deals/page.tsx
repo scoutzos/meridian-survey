@@ -4,15 +4,21 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   calculateDealAnalysis,
+  buildDealAgreementMemo,
   createDeal,
   fetchDealChecklist,
+  fetchDealAgreement,
   fetchDeals,
   fetchDealVotes,
   generateDueDiligenceChecklist,
   updateChecklistItemStatus,
+  upsertDealAgreement,
   upsertDealVote,
   type ChecklistStatus,
   type Deal,
+  type DealAgreement,
+  type DealAgreementInput,
+  type DealAgreementStatus,
   type DealDueDiligenceItem,
   type DealInput,
   type DealPropertyType,
@@ -58,6 +64,14 @@ const CHECKLIST_STATUSES: Array<{ value: ChecklistStatus; label: string }> = [
   { value: "not-applicable", label: "N/A" },
 ];
 
+const AGREEMENT_STATUSES: Array<{ value: DealAgreementStatus; label: string }> = [
+  { value: "draft", label: "Draft" },
+  { value: "ready-for-review", label: "Ready for Review" },
+  { value: "approved", label: "Approved" },
+  { value: "signed", label: "Signed" },
+  { value: "superseded", label: "Superseded" },
+];
+
 const EMPTY_DRAFT: DealInput & { linksText: string } = {
   title: "",
   source: "Land portal",
@@ -78,6 +92,24 @@ const EMPTY_DRAFT: DealInput & { linksText: string } = {
   notes: "",
   linksText: "",
 };
+
+const emptyAgreementDraft = (dealId = ""): DealAgreementInput => ({
+  deal_id: dealId,
+  status: "draft",
+  offer_authority: null,
+  earnest_money: null,
+  diligence_budget: null,
+  capital_needed: null,
+  capital_commitments: "",
+  credit_guarantees: "",
+  member_roles: "",
+  economics: "",
+  overrun_rule: "",
+  exit_plan: "",
+  approval_threshold: "Majority approval unless the deal requires debt over $25,000, personal guarantees, outside equity participants, acquisition of real property, or another major decision under the Operating Agreement.",
+  go_no_go_deadline: "",
+  notes: "",
+});
 
 function toNumber(value: string): number | null {
   if (!value.trim()) return null;
@@ -109,11 +141,14 @@ export default function DealsPage() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [checklist, setChecklist] = useState<DealDueDiligenceItem[]>([]);
   const [votes, setVotes] = useState<DealVote[]>([]);
+  const [agreement, setAgreement] = useState<DealAgreement | null>(null);
+  const [agreementDraft, setAgreementDraft] = useState<DealAgreementInput>(emptyAgreementDraft());
   const [loading, setLoading] = useState(true);
   const [showNew, setShowNew] = useState(false);
   const [saving, setSaving] = useState(false);
   const [converting, setConverting] = useState(false);
   const [memoSaving, setMemoSaving] = useState(false);
+  const [agreementSaving, setAgreementSaving] = useState(false);
   const [voteNote, setVoteNote] = useState("");
   const [draft, setDraft] = useState(EMPTY_DRAFT);
 
@@ -138,10 +173,16 @@ export default function DealsPage() {
     if (!selected) {
       setChecklist([]);
       setVotes([]);
+      setAgreement(null);
+      setAgreementDraft(emptyAgreementDraft());
       return;
     }
     void fetchDealChecklist(selected.id).then(setChecklist);
     void fetchDealVotes(selected.id).then(setVotes);
+    void fetchDealAgreement(selected.id).then(row => {
+      setAgreement(row);
+      setAgreementDraft(row ?? emptyAgreementDraft(selected.id));
+    });
   }, [selected]);
 
   const liveInput: DealInput = useMemo(() => ({
@@ -266,6 +307,32 @@ export default function DealsPage() {
       "Next Decision",
       "Confirm whether Meridian should pass, request more information, counter, or authorize an offer.",
     ].join("\n");
+  };
+
+  const handleSaveAgreement = async () => {
+    if (!selected) return;
+    setAgreementSaving(true);
+    const { data, error } = await upsertDealAgreement({ ...agreementDraft, deal_id: selected.id }, user);
+    setAgreementSaving(false);
+    if (error) { alert(error); return; }
+    setAgreement(data);
+    if (data) setAgreementDraft(data);
+  };
+
+  const handleSaveAgreementMemo = async () => {
+    if (!selected) return;
+    setMemoSaving(true);
+    const body = buildDealAgreementMemo(selected, agreementDraft, votes);
+    const { error } = await saveGeneratedMemo({
+      title: `${selected.title} Deal Approval Memo`,
+      body,
+      deal_id: selected.id.startsWith("local-") ? null : selected.id,
+      memo_type: "deal-agreement",
+    }, user);
+    setMemoSaving(false);
+    if (error) { alert(error); return; }
+    await navigator.clipboard?.writeText(body).catch(() => undefined);
+    alert("Deal Approval Memo saved. I also copied the memo text when browser permissions allowed it.");
   };
 
   const handleSaveMemo = async () => {
@@ -535,6 +602,68 @@ export default function DealsPage() {
               </section>
 
               <section style={panel}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap", marginBottom: 12 }}>
+                  <div>
+                    <h2 style={sectionTitle}>Deal agreement</h2>
+                    <p style={{ fontSize: 13, color: "var(--muted)", maxWidth: 760 }}>
+                      This is the deal-level agreement that supplements the Meridian operating agreement. It defines who is putting in what, who is taking risk, and how this specific deal pays out before Meridian commits money or signs documents.
+                    </p>
+                  </div>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                    <button onClick={handleSaveAgreement} disabled={agreementSaving} style={{ ...primaryButton, opacity: agreementSaving ? 0.6 : 1 }}>
+                      {agreementSaving ? "Saving..." : "Save Terms"}
+                    </button>
+                    <button onClick={handleSaveAgreementMemo} disabled={memoSaving} style={{ ...secondaryButton, opacity: memoSaving ? 0.6 : 1 }}>
+                      {memoSaving ? "Saving..." : "Save Agreement Memo"}
+                    </button>
+                  </div>
+                </div>
+                <div style={{ background: "var(--bone)", border: "1px solid var(--fog)", borderRadius: 8, padding: 10, marginBottom: 12 }}>
+                  <p style={{ fontSize: 12, color: "var(--ink)", opacity: 0.72 }}>
+                    Operating Agreement rule: equal Meridian membership stays separate from deal-level economics. A deal should not move past approval until this memo defines capital, credit, guarantees, roles, economics, overruns, and exit plan.
+                  </p>
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 10, marginBottom: 12 }} className="agreement-number-grid">
+                  <div>
+                    <label style={label}>Status</label>
+                    <select value={agreementDraft.status} onChange={e => setAgreementDraft({ ...agreementDraft, status: e.target.value as DealAgreementStatus })}>
+                      {AGREEMENT_STATUSES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
+                    </select>
+                  </div>
+                  <NumberField label="Offer authority" value={agreementDraft.offer_authority} onChange={v => setAgreementDraft({ ...agreementDraft, offer_authority: v })} />
+                  <NumberField label="Earnest money" value={agreementDraft.earnest_money} onChange={v => setAgreementDraft({ ...agreementDraft, earnest_money: v })} />
+                  <NumberField label="Diligence budget" value={agreementDraft.diligence_budget} onChange={v => setAgreementDraft({ ...agreementDraft, diligence_budget: v })} />
+                  <NumberField label="Capital needed" value={agreementDraft.capital_needed} onChange={v => setAgreementDraft({ ...agreementDraft, capital_needed: v })} />
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }} className="two-col">
+                  <AgreementTextarea label="Capital commitments" value={agreementDraft.capital_commitments} onChange={capital_commitments => setAgreementDraft({ ...agreementDraft, capital_commitments })} placeholder="Courtney: $5,000 cash; Aaliyah: $2,500 cash + credit; optional members..." />
+                  <AgreementTextarea label="Credit / guarantees" value={agreementDraft.credit_guarantees} onChange={credit_guarantees => setAgreementDraft({ ...agreementDraft, credit_guarantees })} placeholder="Who signs, guarantee premium, lender conditions, max exposure..." />
+                  <AgreementTextarea label="Roles" value={agreementDraft.member_roles} onChange={member_roles => setAgreementDraft({ ...agreementDraft, member_roles })} placeholder="Lead negotiator, diligence owner, project manager, finance owner..." />
+                  <AgreementTextarea label="Economics" value={agreementDraft.economics} onChange={economics => setAgreementDraft({ ...agreementDraft, economics })} placeholder="Return of capital, preferred return, profit split, commissions, fees..." />
+                  <AgreementTextarea label="Overruns / additional capital" value={agreementDraft.overrun_rule} onChange={overrun_rule => setAgreementDraft({ ...agreementDraft, overrun_rule })} placeholder="What happens if budget increases or another capital call is needed?" />
+                  <AgreementTextarea label="Exit plan" value={agreementDraft.exit_plan} onChange={exit_plan => setAgreementDraft({ ...agreementDraft, exit_plan })} placeholder="Wholesale, sell after entitlement, build, refinance, hold, pass criteria..." />
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 12 }} className="two-col">
+                  <div>
+                    <label style={label}>Approval threshold</label>
+                    <textarea rows={3} value={agreementDraft.approval_threshold ?? ""} onChange={e => setAgreementDraft({ ...agreementDraft, approval_threshold: e.target.value })} />
+                  </div>
+                  <div>
+                    <label style={label}>Go / no-go deadline</label>
+                    <input value={agreementDraft.go_no_go_deadline ?? ""} onChange={e => setAgreementDraft({ ...agreementDraft, go_no_go_deadline: e.target.value })} placeholder="e.g. 2026-05-15 or end of diligence period" />
+                    <label style={{ ...label, marginTop: 10 }}>Notes</label>
+                    <input value={agreementDraft.notes ?? ""} onChange={e => setAgreementDraft({ ...agreementDraft, notes: e.target.value })} placeholder="Attorney, lender, or group notes" />
+                  </div>
+                </div>
+                {agreement && (
+                  <p style={{ fontSize: 11, color: "var(--muted)", marginTop: 10 }}>
+                    Last saved by {agreement.updated_by || agreement.created_by || "unknown"} · {formatDate(agreement.updated_at)}
+                  </p>
+                )}
+              </section>
+
+              <section style={panel}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12, flexWrap: "wrap", marginBottom: 12 }}>
                   <div>
                     <h2 style={sectionTitle}>Rapid decision</h2>
@@ -621,6 +750,7 @@ export default function DealsPage() {
           .two-col,
           .three-col,
           .number-grid,
+          .agreement-number-grid,
           .checklist-row {
             grid-template-columns: 1fr !important;
           }
@@ -639,6 +769,20 @@ function NumberField({ label: labelText, value, onChange }: { label: string; val
         value={value ?? ""}
         onChange={e => onChange(toNumber(e.target.value))}
         placeholder="0"
+      />
+    </div>
+  );
+}
+
+function AgreementTextarea({ label: labelText, value, onChange, placeholder }: { label: string; value?: string | null; onChange: (value: string) => void; placeholder: string }) {
+  return (
+    <div>
+      <label style={label}>{labelText}</label>
+      <textarea
+        rows={4}
+        value={value ?? ""}
+        onChange={e => onChange(e.target.value)}
+        placeholder={placeholder}
       />
     </div>
   );

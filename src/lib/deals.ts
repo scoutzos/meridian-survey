@@ -5,6 +5,7 @@ export type DealStatus = "lead" | "under-review" | "offer-made" | "under-contrac
 export type DealUrgency = "routine" | "time-sensitive" | "hot";
 export type ChecklistStatus = "open" | "in-review" | "cleared" | "blocked" | "not-applicable";
 export type DealVoteOption = "pass" | "needs-more-info" | "schedule-call" | "make-offer" | "counter" | "urgent-review";
+export type DealAgreementStatus = "draft" | "ready-for-review" | "approved" | "signed" | "superseded";
 
 export interface DealInput {
   title: string;
@@ -81,9 +82,38 @@ export interface DealVote {
   updated_at: string;
 }
 
+export interface DealAgreementInput {
+  deal_id: string;
+  status: DealAgreementStatus;
+  offer_authority?: number | null;
+  earnest_money?: number | null;
+  diligence_budget?: number | null;
+  capital_needed?: number | null;
+  capital_commitments?: string | null;
+  credit_guarantees?: string | null;
+  member_roles?: string | null;
+  economics?: string | null;
+  overrun_rule?: string | null;
+  exit_plan?: string | null;
+  approval_threshold?: string | null;
+  go_no_go_deadline?: string | null;
+  notes?: string | null;
+}
+
+export interface DealAgreement extends DealAgreementInput {
+  id: string;
+  created_at: string;
+  created_by: string | null;
+  updated_at: string;
+  updated_by: string | null;
+  approved_at: string | null;
+  approved_by: string | null;
+}
+
 const LOCAL_DEALS = "meridian_deals_local";
 const LOCAL_CHECKLIST = "meridian_deal_checklist_local";
 const LOCAL_VOTES = "meridian_deal_votes_local";
+const LOCAL_AGREEMENTS = "meridian_deal_agreements_local";
 
 function money(n: number | null | undefined): string {
   if (typeof n !== "number" || !isFinite(n)) return "—";
@@ -264,6 +294,19 @@ export async function fetchDealVotes(dealId: string): Promise<DealVote[]> {
   return data as DealVote[];
 }
 
+export async function fetchDealAgreement(dealId: string): Promise<DealAgreement | null> {
+  if (!supabase) return localGet<DealAgreement[]>(LOCAL_AGREEMENTS, []).find(a => a.deal_id === dealId) ?? null;
+  const { data, error } = await supabase
+    .from("meridian_deal_agreements")
+    .select("*")
+    .eq("deal_id", dealId)
+    .order("updated_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error || !data) return null;
+  return data as DealAgreement;
+}
+
 export async function createDeal(input: DealInput, actor: string): Promise<{ data: Deal | null; error: string | null }> {
   const analysis = calculateDealAnalysis(input);
   const links = (input.links ?? []).map(l => l.trim()).filter(Boolean);
@@ -348,4 +391,105 @@ export async function upsertDealVote(
     updated_at: now,
   }, { onConflict: "deal_id,member_name" });
   return { error: error?.message ?? null };
+}
+
+export async function upsertDealAgreement(
+  input: DealAgreementInput,
+  actor: string,
+): Promise<{ data: DealAgreement | null; error: string | null }> {
+  const now = new Date().toISOString();
+  const row = {
+    ...input,
+    offer_authority: num(input.offer_authority),
+    earnest_money: num(input.earnest_money),
+    diligence_budget: num(input.diligence_budget),
+    capital_needed: num(input.capital_needed),
+    capital_commitments: input.capital_commitments?.trim() || null,
+    credit_guarantees: input.credit_guarantees?.trim() || null,
+    member_roles: input.member_roles?.trim() || null,
+    economics: input.economics?.trim() || null,
+    overrun_rule: input.overrun_rule?.trim() || null,
+    exit_plan: input.exit_plan?.trim() || null,
+    approval_threshold: input.approval_threshold?.trim() || null,
+    go_no_go_deadline: input.go_no_go_deadline?.trim() || null,
+    notes: input.notes?.trim() || null,
+    updated_at: now,
+    updated_by: actor,
+    approved_at: input.status === "approved" || input.status === "signed" ? now : null,
+    approved_by: input.status === "approved" || input.status === "signed" ? actor : null,
+  };
+
+  if (!supabase) {
+    const rows = localGet<DealAgreement[]>(LOCAL_AGREEMENTS, []);
+    const existing = rows.find(a => a.deal_id === input.deal_id);
+    const nextAgreement: DealAgreement = existing
+      ? { ...existing, ...row }
+      : {
+          ...row,
+          id: `agreement-${Date.now()}`,
+          created_at: now,
+          created_by: actor,
+        };
+    localSet(LOCAL_AGREEMENTS, existing ? rows.map(a => a.id === existing.id ? nextAgreement : a) : [nextAgreement, ...rows]);
+    return { data: nextAgreement, error: null };
+  }
+
+  const existing = await fetchDealAgreement(input.deal_id);
+  const query = existing
+    ? supabase.from("meridian_deal_agreements").update(row).eq("id", existing.id).select().single()
+    : supabase.from("meridian_deal_agreements").insert({ ...row, created_by: actor }).select().single();
+  const { data, error } = await query;
+  return { data: data as DealAgreement | null, error: error?.message ?? null };
+}
+
+export function buildDealAgreementMemo(deal: Deal, agreement: DealAgreementInput | DealAgreement | null, votes: DealVote[]): string {
+  const a = agreement;
+  const voteLines = votes.length
+    ? votes.map(v => `- ${v.member_name}: ${v.vote}${v.note ? ` — ${v.note}` : ""}`).join("\n")
+    : "- No member votes recorded yet.";
+  return [
+    "MERIDIAN COLLECTIVE",
+    "Deal Approval Memo / Deal Participation Agreement",
+    "",
+    "Purpose",
+    "This memo supplements the Meridian Collective Operating Agreement for this specific deal only. Equal company membership does not require equal deal economics; this memo controls the deal-level capital, risk, roles, and economics approved for this opportunity.",
+    "",
+    `Deal: ${deal.title}`,
+    `Location: ${deal.address || deal.parcel_id || "Pending"}`,
+    `Strategy: ${deal.strategy}`,
+    `Status: ${a?.status ?? "draft"}`,
+    "",
+    "Offer & Budget Authority",
+    `- Offer authority: ${money(a?.offer_authority)}`,
+    `- Earnest money: ${money(a?.earnest_money)}`,
+    `- Due diligence budget: ${money(a?.diligence_budget)}`,
+    `- Capital needed: ${money(a?.capital_needed)}`,
+    `- Go/no-go deadline: ${a?.go_no_go_deadline || "Pending"}`,
+    "",
+    "Capital, Credit & Guarantees",
+    a?.capital_commitments || "Pending member-by-member capital commitments.",
+    "",
+    a?.credit_guarantees || "Pending credit, guarantee, or lender exposure terms.",
+    "",
+    "Roles & Responsibilities",
+    a?.member_roles || "Pending member role assignments.",
+    "",
+    "Deal Economics",
+    a?.economics || "Pending profit/loss split, preferred return, fees, commissions, and waterfall terms.",
+    "",
+    "Overruns / Additional Capital",
+    a?.overrun_rule || "Pending rule for overruns, capital calls, member loans, and opt-in/opt-out rights.",
+    "",
+    "Exit Plan",
+    a?.exit_plan || "Pending sale, hold, assignment, refinance, or pass criteria.",
+    "",
+    "Approval Rule",
+    a?.approval_threshold || "Majority approval unless debt, guarantees, outside equity, acquisition, or OA-defined major decisions require supermajority/unanimous consent.",
+    "",
+    "Member Votes",
+    voteLines,
+    "",
+    "Notes",
+    a?.notes || "None.",
+  ].join("\n");
 }
