@@ -133,20 +133,47 @@ export default function DashboardPage() {
     }
 
     // Pull responses, last_login, and earliest response (for member-since)
+    console.log("[dashboard] Logged-in user (meridian_user):", JSON.stringify(u));
     Promise.all([
       supabase.from("meridian_responses").select("member_name, survey_id, created_at"),
-      supabase.from("meridian_members").select("name, last_login").eq("name", u).single(),
+      supabase.from("meridian_members").select("name, last_login").eq("name", u).maybeSingle(),
     ]).then(([respRes, memberRes]) => {
+      if (respRes.error) {
+        console.error("[dashboard] meridian_responses query error:", respRes.error);
+      }
+      const rows = respRes.data || [];
+      console.log(`[dashboard] meridian_responses returned ${rows.length} rows`);
+      if (rows.length > 0) {
+        console.log("[dashboard] distinct member_name values in DB:",
+          Array.from(new Set(rows.map(r => r.member_name))));
+        console.log("[dashboard] distinct survey_id values in DB:",
+          Array.from(new Set(rows.map(r => r.survey_id || "operating-agreement"))));
+      }
+
+      // Match member_name case-insensitively + trimmed against the canonical
+      // MEMBERS list. Any historic row saved with stray whitespace, mixed
+      // case, or first-name-only spelling still resolves to the canonical
+      // entry — without this, every card silently zeroed for the affected
+      // user even though their answers were sitting in the table.
+      const normalize = (raw: string | null | undefined): string => {
+        const trimmed = (raw ?? "").trim();
+        const match = MEMBERS.find(m => m.toLowerCase() === trimmed.toLowerCase());
+        return match ?? trimmed;
+      };
+
       const counts: Record<string, Record<string, number>> = {};
       let earliest: string | null = null;
-      for (const row of respRes.data || []) {
+      for (const row of rows) {
         const sid = row.survey_id || "operating-agreement";
+        const canonical = normalize(row.member_name);
         if (!counts[sid]) counts[sid] = {};
-        counts[sid][row.member_name] = (counts[sid][row.member_name] || 0) + 1;
-        if (row.member_name === u && row.created_at) {
+        counts[sid][canonical] = (counts[sid][canonical] || 0) + 1;
+        if (canonical === u && row.created_at) {
           if (!earliest || row.created_at < earliest) earliest = row.created_at;
         }
       }
+      console.log(`[dashboard] count for "${u}" by survey:`,
+        Object.fromEntries(surveys.map(s => [s.id, counts[s.id]?.[u] ?? 0])));
 
       const ll = memberRes.data?.last_login || null;
       setLastLogin(ll);
@@ -165,12 +192,14 @@ export default function DashboardPage() {
 
   const statusStyle = (status: SurveyProgress["status"]) => {
     if (status === "Completed") {
-      return { background: brass, color: obsidian };
+      // Solid brass pill on a light card pops without overpowering it.
+      return { background: brass, color: obsidian, border: `1px solid ${brass}` };
     }
     if (status === "In Progress") {
-      return { background: "transparent", color: brass, border: `1px solid ${brass}` };
+      return { background: bone, color: "var(--gold-dim)", border: `1px solid ${brass}` };
     }
-    return { background: "transparent", color: ink, border: `1px solid ${fog}` };
+    // Not Started — quiet brass-on-bone with a Fog border.
+    return { background: bone, color: "var(--gold-dim)", border: `1px solid ${fog}` };
   };
 
   return (
@@ -276,13 +305,15 @@ export default function DashboardPage() {
                 <article
                   key={p.surveyId}
                   style={{
-                    background: obsidian,
-                    color: bone,
+                    background: bone,
+                    color: ink,
+                    border: `1px solid ${fog}`,
                     borderRadius: 16,
                     padding: 24,
                     display: "flex",
                     flexDirection: "column",
                     gap: 16,
+                    boxShadow: "0 1px 2px rgba(20,17,13,0.04)",
                   }}
                 >
                   <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start" }}>
@@ -292,7 +323,7 @@ export default function DashboardPage() {
                         fontSize: 24,
                         fontWeight: 500,
                         lineHeight: 1.15,
-                        color: bone,
+                        color: obsidian,
                       }}
                     >
                       {p.title}
@@ -313,16 +344,20 @@ export default function DashboardPage() {
                     </span>
                   </div>
 
-                  <p style={{ color: fog, fontSize: 13, lineHeight: 1.5, opacity: 0.85 }}>
+                  <p style={{ color: ink, fontSize: 14, lineHeight: 1.55, opacity: 0.78 }}>
                     {p.description}
                   </p>
 
                   <div>
-                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6, fontSize: 12, color: fog }}>
+                    <div style={{
+                      display: "flex", justifyContent: "space-between",
+                      marginBottom: 8, fontSize: 12, color: ink, opacity: 0.72,
+                      fontWeight: 500,
+                    }}>
                       <span>{p.answered} / {p.total} answered</span>
                       <span>{pct}%</span>
                     </div>
-                    <div style={{ height: 4, background: "rgba(214,205,183,0.2)", borderRadius: 2, overflow: "hidden" }}>
+                    <div style={{ height: 6, background: fog, borderRadius: 3, overflow: "hidden" }}>
                       <div
                         style={{
                           height: "100%",
