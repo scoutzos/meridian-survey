@@ -135,8 +135,8 @@ export default function TrackerDashboard() {
       {status.shortfall > 0 ? (
         <div
           style={{
-            background: "rgba(12,15,13,0.10)",
-            border: "1px solid rgba(12,15,13,0.4)",
+            background: "rgba(20,17,13,0.10)",
+            border: "1px solid rgba(20,17,13,0.4)",
             borderLeft: "4px solid var(--obsidian)",
             borderRadius: 12,
             padding: "16px 20px",
@@ -177,8 +177,8 @@ export default function TrackerDashboard() {
       ) : (
         <div
           style={{
-            background: "rgba(176,137,84,0.10)",
-            border: "1px solid rgba(176,137,84,0.4)",
+            background: "rgba(201,168,120,0.10)",
+            border: "1px solid rgba(201,168,120,0.4)",
             borderLeft: "4px solid var(--gold)",
             borderRadius: 12,
             padding: "12px 18px",

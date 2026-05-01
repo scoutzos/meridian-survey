@@ -12,8 +12,8 @@ import { supabase } from "@/lib/supabase";
 import { isAdmin, type MemberProfile } from "@/lib/tracker";
 
 const STATUS_CONFIG: Record<DecisionStatus, { label: string; color: string; bg: string }> = {
-  confirmed: { label: "Confirmed", color: "var(--gold)",   bg: "rgba(176,137,84,0.12)" },
-  tabled:    { label: "Tabled",    color: "var(--gold)",   bg: "rgba(176,137,84,0.12)" },
+  confirmed: { label: "Confirmed", color: "var(--gold)",   bg: "rgba(201,168,120,0.12)" },
+  tabled:    { label: "Tabled",    color: "var(--gold)",   bg: "rgba(201,168,120,0.12)" },
   remaining: { label: "Remaining", color: "var(--muted)",  bg: "rgba(214,209,196,0.08)" },
 };
 
@@ -196,7 +196,7 @@ export default function DecisionsPage() {
                   onClick={() => { if (admin && !isEditing && row) startEdit(row); }}
                   style={{
                     background: "var(--surface)",
-                    border: `1px solid ${d.status === "confirmed" ? "rgba(176,137,84,0.3)" : "var(--border)"}`,
+                    border: `1px solid ${d.status === "confirmed" ? "rgba(201,168,120,0.3)" : "var(--border)"}`,
                     borderLeft: `4px solid ${cfg.color}`,
                     borderRadius: 8,
                     padding: "12px 16px",

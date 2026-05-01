@@ -175,7 +175,7 @@ function Logo06({ c, full }: { c: PaletteColors; full: boolean }) {
 function Logo07({ c, full }: { c: PaletteColors; full: boolean }) {
   const sz = full ? 280 : 140;
   return (
-    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", background: c.isDark ? "rgba(12,15,13,0.1)" : "rgba(255,255,255,0.8)", borderRadius: 8, padding: 16 }}>
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", background: c.isDark ? "rgba(20,17,13,0.1)" : "rgba(255,255,255,0.8)", borderRadius: 8, padding: 16 }}>
       <img 
         src="/logos/meridian-collective-ornate.jpg" 
         alt="The Meridian Collective - Ornate Logo"
@@ -446,39 +446,52 @@ export default function SurveyPage() {
   };
 
   return (
-    <div style={{ display: "flex", minHeight: "100vh" }}>
+    <div style={{ display: "flex", minHeight: "100vh", background: "var(--bone)" }}>
       {/* Mobile header */}
       <div style={{
         display: "none", position: "fixed", top: 0, left: 0, right: 0, zIndex: 50,
-        background: "var(--bg)", borderBottom: "1px solid var(--border)", padding: "12px 16px",
+        background: "var(--obsidian)", borderBottom: "1px solid rgba(201,168,120,0.25)", padding: "12px 16px",
         alignItems: "center", justifyContent: "space-between", gap: 8,
       }} className="mobile-header">
         <button onClick={() => setSidebarOpen(!sidebarOpen)} style={{
-          background: "none", border: "none", color: "var(--fg)", fontSize: 24,
+          background: "none", border: "none", color: "var(--bone)", fontSize: 22,
           minWidth: 44, minHeight: 44, padding: 0, flexShrink: 0,
         }} aria-label="Toggle menu">☰</button>
-        <span style={{ fontSize: 14, fontWeight: 600, flex: 1, textAlign: "center", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{survey.title}</span>
-        <span style={{ fontSize: 12, color: "var(--gold)", minWidth: 44, textAlign: "right", flexShrink: 0 }}>{overallPct}%</span>
+        <span style={{
+          fontFamily: "var(--font-display)", fontSize: 18, fontWeight: 400, color: "var(--bone)",
+          letterSpacing: "-0.01em", flex: 1, textAlign: "center",
+          overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+        }}>{survey.title}</span>
+        <span style={{ fontSize: 12, color: "var(--brass)", fontWeight: 500, minWidth: 44, textAlign: "right", flexShrink: 0 }}>{overallPct}%</span>
       </div>
 
-      {/* Sidebar */}
+      {/* Sidebar — Obsidian field */}
       <aside style={{
-        width: 280, minWidth: 280, background: "var(--surface)", borderRight: "1px solid var(--border)",
+        width: 280, minWidth: 280, background: "var(--obsidian)", color: "var(--bone)",
+        borderRight: "1px solid rgba(201,168,120,0.18)",
         padding: "76px 0 20px", overflowY: "auto", height: "100vh", position: "sticky", top: 0,
         ...(sidebarOpen ? { position: "fixed", zIndex: 40, left: 0, top: 0, maxWidth: "85vw" } : {}),
       }} className="sidebar">
-        <div style={{ padding: "0 20px 20px" }}>
-          <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>◆ {survey.title}</h2>
-          <p style={{ fontSize: 12, color: "var(--muted)" }}>Logged in as <span style={{ color: "var(--gold)" }}>{user}</span></p>
+        <div style={{ padding: "0 24px 22px" }}>
+          <p style={{ fontFamily: "var(--font-body)", fontSize: 10, letterSpacing: "0.22em", textTransform: "uppercase", color: "var(--brass)", fontWeight: 500, marginBottom: 8 }}>
+            Survey
+          </p>
+          <h2 style={{
+            fontFamily: "var(--font-display)", fontSize: 24, fontWeight: 400,
+            letterSpacing: "-0.015em", lineHeight: 1.1, color: "var(--bone)", marginBottom: 8,
+          }}>{survey.title}</h2>
+          <p style={{ fontSize: 12, color: "var(--fog)" }}>
+            Logged in as <span style={{ color: "var(--brass)" }}>{user}</span>
+          </p>
         </div>
 
-        <div style={{ padding: "0 20px 16px" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "var(--muted)", marginBottom: 4 }}>
-            <span>Overall Progress</span>
-            <span>{totalAnswered}/{totalVisible} ({overallPct}%)</span>
+        <div style={{ padding: "0 24px 18px" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, letterSpacing: "0.18em", textTransform: "uppercase", color: "var(--fog)", marginBottom: 6 }}>
+            <span>Progress</span>
+            <span>{totalAnswered}/{totalVisible} · {overallPct}%</span>
           </div>
-          <div style={{ height: 4, background: "var(--border)", borderRadius: 2 }}>
-            <div style={{ height: "100%", background: "var(--gold)", borderRadius: 2, width: `${overallPct}%`, transition: "width 0.3s" }} />
+          <div style={{ height: 2, background: "rgba(214,205,183,0.2)" }}>
+            <div style={{ height: "100%", background: "var(--brass)", width: `${overallPct}%`, transition: "width 0.3s" }} />
           </div>
         </div>
 
@@ -486,62 +499,73 @@ export default function SurveyPage() {
           {categories.map((cat, ci) => {
             const done = answeredInCategory(ci);
             const total = visibleInCategory(ci).length;
-            const pct = Math.round((done / total) * 100);
+            const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+            const active = ci === activeCategory;
             return (
               <button
                 key={ci}
                 onClick={() => { setActiveCategory(ci); setSidebarOpen(false); setPriorityFilter("all"); }}
                 style={{
-                  display: "block", width: "100%", textAlign: "left", padding: "12px 20px",
+                  display: "block", width: "100%", textAlign: "left", padding: "12px 24px",
                   minHeight: 48,
-                  background: ci === activeCategory ? "var(--surface2)" : "transparent",
-                  border: "none", borderLeft: ci === activeCategory ? "3px solid var(--gold)" : "3px solid transparent",
-                  color: ci === activeCategory ? "var(--fg)" : "var(--muted)",
-                  fontSize: 13, transition: "all 0.15s",
+                  background: active ? "rgba(201,168,120,0.08)" : "transparent",
+                  border: "none", borderLeft: active ? "2px solid var(--brass)" : "2px solid transparent",
+                  color: active ? "var(--bone)" : "var(--fog)",
+                  fontSize: 13, fontFamily: "var(--font-body)", transition: "all 0.15s",
                 }}
               >
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <span style={{ flex: 1, marginRight: 8 }}>{cat.name}</span>
-                  <span style={{ fontSize: 11, color: pct === 100 ? "var(--gold)" : "var(--muted)", whiteSpace: "nowrap" }}>
+                  <span style={{ flex: 1, marginRight: 8, fontWeight: active ? 500 : 400 }}>{cat.name}</span>
+                  <span style={{ fontSize: 11, color: pct === 100 ? "var(--brass)" : "var(--fog)", whiteSpace: "nowrap" }}>
                     {done}/{total}
                   </span>
                 </div>
-                <div style={{ height: 2, background: "var(--border)", borderRadius: 1, marginTop: 4 }}>
-                  <div style={{ height: "100%", background: pct === 100 ? "var(--gold)" : "var(--gold)", borderRadius: 1, width: `${pct}%`, transition: "width 0.3s" }} />
+                <div style={{ height: 1, background: "rgba(214,205,183,0.15)", marginTop: 6 }}>
+                  <div style={{ height: "100%", background: "var(--brass)", width: `${pct}%`, transition: "width 0.3s" }} />
                 </div>
               </button>
             );
           })}
         </nav>
 
-        <div style={{ padding: "20px", display: "flex", flexDirection: "column", gap: 8 }}>
+        <div style={{ padding: "24px", display: "flex", flexDirection: "column", gap: 8 }}>
           <button onClick={() => router.push(`/results/${surveyId}`)}
-            style={{ background: "var(--surface2)", border: "1px solid var(--border)", color: "var(--gold)", fontSize: 13, padding: "12px 16px", minHeight: 44, borderRadius: 6, cursor: "pointer" }}>
+            style={{
+              background: "transparent", border: "1px solid rgba(201,168,120,0.4)",
+              color: "var(--brass)", fontSize: 11, fontWeight: 500, letterSpacing: "0.18em", textTransform: "uppercase",
+              padding: "12px 14px", minHeight: 44, borderRadius: 4, cursor: "pointer", fontFamily: "var(--font-body)",
+            }}>
             View Results
           </button>
           <button onClick={() => router.push("/surveys")}
-            style={{ background: "var(--surface2)", border: "1px solid var(--border)", color: "var(--gold)", fontSize: 13, padding: "12px 16px", minHeight: 44, borderRadius: 6, cursor: "pointer" }}>
+            style={{
+              background: "transparent", border: "1px solid rgba(214,205,183,0.25)",
+              color: "var(--fog)", fontSize: 11, fontWeight: 500, letterSpacing: "0.18em", textTransform: "uppercase",
+              padding: "12px 14px", minHeight: 44, borderRadius: 4, cursor: "pointer", fontFamily: "var(--font-body)",
+            }}>
             All Surveys
           </button>
         </div>
       </aside>
 
       {sidebarOpen && <div onClick={() => setSidebarOpen(false)} style={{
-        position: "fixed", inset: 0, background: "rgba(12,15,13,0.5)", zIndex: 35
+        position: "fixed", inset: 0, background: "rgba(20,17,13,0.6)", zIndex: 35
       }} />}
 
       {/* Main content */}
-      <main style={{ flex: 1, padding: "80px 40px 80px", maxWidth: 800 }} className="survey-main">
-        <div style={{ marginBottom: 24 }}>
-          <p style={{ fontSize: 12, color: "var(--gold)", marginBottom: 4, textTransform: "uppercase", letterSpacing: 1 }}>
+      <main style={{ flex: 1, padding: "80px 40px 80px", maxWidth: 820, background: "var(--bone)" }} className="survey-main main-content">
+        <div style={{ marginBottom: 28 }}>
+          <p style={{ fontFamily: "var(--font-body)", fontSize: 11, fontWeight: 500, color: "var(--brass)", marginBottom: 10, textTransform: "uppercase", letterSpacing: "0.22em" }}>
             Category {activeCategory + 1} of {categories.length}
           </p>
-          <h1 style={{ fontSize: 24, fontWeight: 700 }}>{categories[activeCategory].name}</h1>
+          <h1 style={{ fontFamily: "var(--font-display)", fontSize: 40, fontWeight: 400, letterSpacing: "-0.025em", lineHeight: 1.05, color: "var(--ink)" }}>
+            {categories[activeCategory].name}
+          </h1>
           {categories[activeCategory].description && (
             <div style={{
-              marginTop: 12, padding: "14px 18px", borderRadius: 8,
-              background: "rgba(176,137,84,0.08)", border: "1px solid rgba(176,137,84,0.2)",
-              fontSize: 13, lineHeight: 1.6, color: "var(--muted)",
+              marginTop: 16, padding: "16px 20px", borderRadius: 4,
+              background: "var(--surface)", borderLeft: "2px solid var(--brass)",
+              fontSize: 14, lineHeight: 1.65, color: "var(--ink)",
             }}>
               {categories[activeCategory].description}
             </div>
@@ -617,7 +641,7 @@ export default function SurveyPage() {
                                   padding: "8px 14px", borderRadius: 16, fontSize: 12,
                                   minHeight: 36,
                                   border: `1px solid ${isActive ? "var(--gold)" : "var(--border)"}`,
-                                  background: isActive ? "rgba(176,137,84,0.1)" : "transparent",
+                                  background: isActive ? "rgba(201,168,120,0.1)" : "transparent",
                                   color: isActive ? "var(--gold)" : "var(--fg)",
                                   cursor: "pointer", transition: "all 0.15s",
                                   fontWeight: isActive ? 600 : 400,
@@ -644,7 +668,7 @@ export default function SurveyPage() {
                                 key={oi}
                                 style={{
                                   position: "relative",
-                                  background: ranked ? "rgba(176,137,84,0.08)" : "var(--surface)",
+                                  background: ranked ? "rgba(201,168,120,0.08)" : "var(--surface)",
                                   border: ranked ? "2px solid var(--gold)" : "1px solid var(--border)",
                                   borderRadius: 10, overflow: "hidden",
                                   transition: "all 0.15s",
@@ -719,7 +743,7 @@ export default function SurveyPage() {
                               }}
                               style={{
                                 position: "relative", cursor: "pointer",
-                                background: ranked ? "rgba(176,137,84,0.08)" : "var(--surface)",
+                                background: ranked ? "rgba(201,168,120,0.08)" : "var(--surface)",
                                 border: ranked ? "2px solid var(--gold)" : "1px solid var(--border)",
                                 borderRadius: 10, padding: 0, overflow: "hidden",
                                 transition: "all 0.15s", color: "var(--fg)", textAlign: "left",
@@ -885,14 +909,16 @@ export default function SurveyPage() {
         </div>
 
         {/* Nav buttons */}
-        <div style={{ display: "flex", justifyContent: "space-between", marginTop: 40, gap: 12, flexWrap: "wrap" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", marginTop: 48, gap: 12, paddingTop: 24, borderTop: "1px solid var(--fog)", flexWrap: "wrap" }}>
           <button
             onClick={() => { setActiveCategory(Math.max(0, activeCategory - 1)); setPriorityFilter("all"); window.scrollTo(0, 0); }}
             disabled={activeCategory === 0}
             style={{
-              padding: "12px 20px", minHeight: 48, borderRadius: 8, border: "1px solid var(--border)",
-              background: "transparent", color: activeCategory === 0 ? "var(--border)" : "var(--fg)",
-              fontSize: 14, flex: "1 1 140px",
+              padding: "14px 22px", minHeight: 48, borderRadius: 4,
+              border: `1px solid ${activeCategory === 0 ? "var(--fog)" : "var(--ink)"}`,
+              background: "transparent", color: activeCategory === 0 ? "var(--fog)" : "var(--ink)",
+              fontSize: 11, fontFamily: "var(--font-body)", fontWeight: 500, letterSpacing: "0.18em", textTransform: "uppercase",
+              cursor: activeCategory === 0 ? "default" : "pointer", flex: "1 1 140px",
             }}
           >
             ← Previous
@@ -920,9 +946,10 @@ export default function SurveyPage() {
                 router.push(`/results/${surveyId}`);
               }}
               style={{
-                padding: "12px 20px", minHeight: 48, borderRadius: 8, border: "none",
-                background: "var(--gold)", color: "var(--bg)", fontSize: 14, fontWeight: 600, cursor: "pointer",
-                flex: "1 1 140px",
+                padding: "14px 26px", minHeight: 48, borderRadius: 4, border: "none",
+                background: "var(--brass)", color: "var(--obsidian)",
+                fontSize: 11, fontFamily: "var(--font-body)", fontWeight: 600, letterSpacing: "0.18em", textTransform: "uppercase",
+                cursor: "pointer", flex: "1 1 140px",
               }}
             >
               Submit
@@ -931,9 +958,10 @@ export default function SurveyPage() {
             <button
               onClick={() => { setActiveCategory(Math.min(categories.length - 1, activeCategory + 1)); setPriorityFilter("all"); window.scrollTo(0, 0); }}
               style={{
-                padding: "12px 20px", minHeight: 48, borderRadius: 8, border: "none",
-                background: "var(--gold)", color: "var(--bg)", fontSize: 14, fontWeight: 600, cursor: "pointer",
-                flex: "1 1 140px",
+                padding: "14px 26px", minHeight: 48, borderRadius: 4, border: "none",
+                background: "var(--brass)", color: "var(--obsidian)",
+                fontSize: 11, fontFamily: "var(--font-body)", fontWeight: 600, letterSpacing: "0.18em", textTransform: "uppercase",
+                cursor: "pointer", flex: "1 1 140px",
               }}
             >
               Next →

@@ -397,7 +397,7 @@ export default function ExpensesPage() {
 const th: React.CSSProperties = { padding: "10px 12px", fontSize: 11, fontWeight: 600, color: "var(--muted)", letterSpacing: "0.5px", textTransform: "uppercase" };
 const td: React.CSSProperties = { padding: "10px 12px", verticalAlign: "middle" };
 const iconBtn: React.CSSProperties = { background: "transparent", border: "1px solid var(--border)", color: "var(--muted)", borderRadius: 4, padding: "3px 8px", fontSize: 11, cursor: "pointer" };
-const iconBtnDanger: React.CSSProperties = { ...iconBtn, color: "var(--obsidian)", borderColor: "rgba(12,15,13,0.3)" };
+const iconBtnDanger: React.CSSProperties = { ...iconBtn, color: "var(--obsidian)", borderColor: "rgba(20,17,13,0.3)" };
 
 function bucketBadge(bucket: string): React.CSSProperties {
   const color = MONTH_BUCKET_COLOR[bucket] ?? "var(--muted)";
@@ -407,7 +407,7 @@ function bucketBadge(bucket: string): React.CSSProperties {
     fontWeight: 600,
     padding: "2px 8px",
     borderRadius: 4,
-    background: bucket === "Unclassified" ? "rgba(12,15,13,0.12)" : "var(--surface2)",
+    background: bucket === "Unclassified" ? "rgba(20,17,13,0.12)" : "var(--surface2)",
     color,
     border: `1px solid ${color}33`,
   };

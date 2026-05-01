@@ -270,8 +270,8 @@ export default function ResultsPage() {
     return (
       <div style={{
         marginTop: 16,
-        background: "linear-gradient(135deg, rgba(176,137,84,0.06), rgba(142,107,63,0.06))",
-        border: "1px solid rgba(176,137,84,0.2)",
+        background: "linear-gradient(135deg, rgba(201,168,120,0.06), rgba(142,107,63,0.06))",
+        border: "1px solid rgba(201,168,120,0.2)",
         borderRadius: 10,
         padding: "16px 20px",
         fontSize: 13,
@@ -295,7 +295,7 @@ export default function ResultsPage() {
           <span style={{ color: "var(--fg)" }}>{insight.watch}</span>
         </div>
         <div style={{
-          padding: "8px 12px", background: "rgba(12,15,13,0.15)", borderRadius: 6,
+          padding: "8px 12px", background: "rgba(20,17,13,0.15)", borderRadius: 6,
           borderLeft: "3px solid #6366f1", fontStyle: "italic", color: "var(--muted)", fontSize: 12,
         }}>
           Suggested OA language: &ldquo;{insight.lang}&rdquo;
@@ -344,7 +344,7 @@ export default function ResultsPage() {
 
         {tally && tally.sharedOptions.length > 0 && (
           <div style={{
-            background: "rgba(176,137,84,0.12)", border: "1px solid rgba(176,137,84,0.25)",
+            background: "rgba(201,168,120,0.12)", border: "1px solid rgba(201,168,120,0.25)",
             borderRadius: 8, padding: "10px 14px", marginBottom: 16, fontSize: 12,
           }}>
             {tally.sharedOptions.map(([opt, count]) => {
@@ -402,8 +402,8 @@ export default function ResultsPage() {
             return (
               <div key={m} style={{
                 padding: "12px 16px", borderRadius: 8,
-                background: hasResponded ? "rgba(176,137,84,0.12)" : "var(--surface2)",
-                border: `1px solid ${hasResponded ? "rgba(176,137,84,0.3)" : "var(--border)"}`,
+                background: hasResponded ? "rgba(201,168,120,0.12)" : "var(--surface2)",
+                border: `1px solid ${hasResponded ? "rgba(201,168,120,0.3)" : "var(--border)"}`,
               }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
                   <span style={{ fontSize: 13, fontWeight: 600 }}>{m}</span>
@@ -436,11 +436,11 @@ export default function ResultsPage() {
     return (
       <div>
         {responseTracker}
-        <div className="results-card" style={{ background: "var(--surface)", borderRadius: 12, padding: 32, marginBottom: 32 }}>
-          <h2 style={{ fontSize: 20, fontWeight: 700, marginBottom: 24 }}>Alignment Summary</h2>
+        <div className="results-card" style={{ background: "var(--surface)", borderRadius: 8, padding: 32, marginBottom: 32, border: "1px solid var(--fog)" }}>
+          <h2 style={{ fontFamily: "var(--font-display)", fontSize: 32, fontWeight: 400, letterSpacing: "-0.015em", lineHeight: 1.1, marginBottom: 24, color: "var(--ink)" }}>Alignment Summary</h2>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 16, marginBottom: 28 }}>
-            <div style={{ background: "var(--surface2)", borderRadius: 12, padding: "20px 20px", textAlign: "center" }}>
-              <p style={{ fontSize: 32, fontWeight: 800, color: getAlignmentColor(overallAlignment) }}>{Math.round(overallAlignment)}%</p>
+            <div style={{ background: "var(--surface2)", borderRadius: 8, padding: "20px 20px", textAlign: "center" }}>
+              <p style={{ fontSize: 36, fontWeight: 800, color: getAlignmentColor(overallAlignment) }}>{Math.round(overallAlignment)}%</p>
               <p style={{ fontSize: 12, color: "var(--muted)", marginTop: 4 }}>Overall Alignment</p>
               <p style={{ fontSize: 11, color: getAlignmentColor(overallAlignment), fontWeight: 600 }}>{getAlignmentLabel(overallAlignment)}</p>
             </div>
@@ -496,15 +496,17 @@ export default function ResultsPage() {
 
   return (
     <div className="results-page" style={{ padding: "72px 20px 80px", maxWidth: 1200, margin: "0 auto" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 32, gap: 12, flexWrap: "wrap" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 36, gap: 12, flexWrap: "wrap" }}>
         <div style={{ flex: "1 1 240px", minWidth: 0 }}>
-          <p style={{ fontSize: 12, color: "var(--gold)", textTransform: "uppercase", letterSpacing: 1, marginBottom: 4 }}>{survey.title}</p>
-          <h1 style={{ fontSize: 24, fontWeight: 700 }}>Survey Results</h1>
-          <p style={{ color: "var(--muted)", fontSize: 13 }}>{membersWithData.length} of {MEMBERS.length} members have responded</p>
+          <p style={{ fontFamily: "var(--font-body)", fontSize: 11, fontWeight: 500, color: "var(--brass)", textTransform: "uppercase", letterSpacing: "0.22em", marginBottom: 10 }}>{survey.title}</p>
+          <h1 style={{ fontFamily: "var(--font-display)", fontSize: 44, fontWeight: 400, letterSpacing: "-0.025em", lineHeight: 1.05, color: "var(--ink)", marginBottom: 8 }}>Survey Results</h1>
+          <p style={{ color: "var(--muted)", fontSize: 14 }}>{membersWithData.length} of {MEMBERS.length} members have responded</p>
         </div>
         <button onClick={() => router.push(`/survey/${surveyId}`)} style={{
-          padding: "10px 16px", minHeight: 44, borderRadius: 8, border: "1px solid var(--border)",
-          background: "transparent", color: "var(--gold)", fontSize: 13, cursor: "pointer", flexShrink: 0,
+          padding: "12px 20px", minHeight: 44, borderRadius: 4, border: "1px solid var(--ink)",
+          background: "transparent", color: "var(--ink)",
+          fontSize: 11, fontFamily: "var(--font-body)", fontWeight: 500, letterSpacing: "0.18em", textTransform: "uppercase",
+          cursor: "pointer", flexShrink: 0,
         }}>
           Take Survey
         </button>
@@ -595,40 +597,27 @@ export default function ResultsPage() {
         </div>
       )}
 
-      <div style={{ display: "flex", gap: 8, marginBottom: 24, flexWrap: "wrap" }}>
-        <button
-          onClick={() => { setShowCriticalSummary(false); setShowAlignmentSummary(false); }}
-          style={{
-            padding: "10px 16px", minHeight: 44, borderRadius: 8, fontSize: 13, border: "1px solid var(--border)",
-            background: !showCriticalSummary && !showAlignmentSummary ? "var(--gold)" : "transparent",
-            color: !showCriticalSummary && !showAlignmentSummary ? "var(--bg)" : "var(--muted)",
-            fontWeight: !showCriticalSummary && !showAlignmentSummary ? 600 : 400, cursor: "pointer",
-          }}
-        >
-          By Category
-        </button>
-        <button
-          onClick={() => { setShowCriticalSummary(true); setShowAlignmentSummary(false); }}
-          style={{
-            padding: "10px 16px", minHeight: 44, borderRadius: 8, fontSize: 13, border: "1px solid var(--border)",
-            background: showCriticalSummary ? "var(--obsidian)" : "transparent",
-            color: showCriticalSummary ? "var(--surface)" : "var(--muted)",
-            fontWeight: showCriticalSummary ? 600 : 400, cursor: "pointer",
-          }}
-        >
-          Critical ({criticalQuestions.length})
-        </button>
-        <button
-          onClick={() => { setShowAlignmentSummary(true); setShowCriticalSummary(false); }}
-          style={{
-            padding: "10px 16px", minHeight: 44, borderRadius: 8, fontSize: 13, border: "1px solid var(--border)",
-            background: showAlignmentSummary ? "var(--gold)" : "transparent",
-            color: showAlignmentSummary ? "var(--surface)" : "var(--muted)",
-            fontWeight: showAlignmentSummary ? 600 : 400, cursor: "pointer",
-          }}
-        >
-          Alignment Summary
-        </button>
+      <div style={{ display: "flex", gap: 8, marginBottom: 28, flexWrap: "wrap" }}>
+        {[
+          { active: !showCriticalSummary && !showAlignmentSummary, label: "By Category", onClick: () => { setShowCriticalSummary(false); setShowAlignmentSummary(false); } },
+          { active: showCriticalSummary, label: `Critical (${criticalQuestions.length})`, onClick: () => { setShowCriticalSummary(true); setShowAlignmentSummary(false); } },
+          { active: showAlignmentSummary, label: "Alignment Summary", onClick: () => { setShowAlignmentSummary(true); setShowCriticalSummary(false); } },
+        ].map((tab, i) => (
+          <button
+            key={i}
+            onClick={tab.onClick}
+            style={{
+              padding: "12px 18px", minHeight: 44, borderRadius: 4,
+              fontSize: 11, fontFamily: "var(--font-body)", fontWeight: 500, letterSpacing: "0.18em", textTransform: "uppercase",
+              border: tab.active ? "1px solid var(--brass)" : "1px solid var(--fog)",
+              background: tab.active ? "var(--brass)" : "transparent",
+              color: tab.active ? "var(--obsidian)" : "var(--muted)",
+              cursor: "pointer", transition: "all 0.15s",
+            }}
+          >
+            {tab.label}
+          </button>
+        ))}
       </div>
 
       {showAlignmentSummary ? (

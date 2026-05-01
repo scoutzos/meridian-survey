@@ -22,8 +22,8 @@ import TrackerShell, {
 } from "@/components/TrackerShell";
 
 const STATUS_STYLE: Record<CapitalCallStatus, { color: string; bg: string }> = {
-  suggested: { color: "var(--gold)", bg: "rgba(176,137,84,0.12)" },
-  open:      { color: "var(--gold)", bg: "rgba(176,137,84,0.12)" },
+  suggested: { color: "var(--gold)", bg: "rgba(201,168,120,0.12)" },
+  open:      { color: "var(--gold)", bg: "rgba(201,168,120,0.12)" },
   closed:    { color: "var(--muted)",    bg: "rgba(214,209,196,0.10)" },
   cancelled: { color: "var(--muted)",    bg: "rgba(214,209,196,0.06)" },
 };
@@ -221,7 +221,7 @@ export default function CapitalCallsPage() {
                     {(c.status === "closed" || c.status === "cancelled") && (
                       <button onClick={() => setStatus(c, "open")} style={trackerBtnSubtle}>Re-open</button>
                     )}
-                    <button onClick={() => remove(c)} style={{ ...trackerBtnSubtle, color: "var(--obsidian)", borderColor: "rgba(12,15,13,0.3)" }}>
+                    <button onClick={() => remove(c)} style={{ ...trackerBtnSubtle, color: "var(--obsidian)", borderColor: "rgba(20,17,13,0.3)" }}>
                       Delete
                     </button>
                   </div>

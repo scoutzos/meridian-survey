@@ -130,7 +130,7 @@ export default function MemberTrackerPage() {
                   key={b.memberName}
                   style={{
                     borderTop: "1px solid var(--border)",
-                    background: youAreThis ? "rgba(176,137,84,0.06)" : undefined,
+                    background: youAreThis ? "rgba(201,168,120,0.06)" : undefined,
                   }}
                 >
                   <td style={{ ...td, fontWeight: youAreThis ? 600 : 500 }}>

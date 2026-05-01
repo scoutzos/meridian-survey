@@ -272,4 +272,4 @@ export default function ContributionsPage() {
 
 const th: React.CSSProperties = { padding: "10px 12px", fontSize: 11, fontWeight: 600, color: "var(--muted)", letterSpacing: "0.5px", textTransform: "uppercase" };
 const td: React.CSSProperties = { padding: "10px 12px", verticalAlign: "middle" };
-const iconBtnDanger: React.CSSProperties = { background: "transparent", border: "1px solid rgba(12,15,13,0.3)", color: "var(--obsidian)", borderRadius: 4, padding: "3px 8px", fontSize: 11, cursor: "pointer" };
+const iconBtnDanger: React.CSSProperties = { background: "transparent", border: "1px solid rgba(20,17,13,0.3)", color: "var(--obsidian)", borderRadius: 4, padding: "3px 8px", fontSize: 11, cursor: "pointer" };

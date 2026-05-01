@@ -31,35 +31,58 @@ export default function NavBar() {
   return (
     <nav className="top-nav-bar" style={{
       position: "fixed", top: 0, left: 0, right: 0, zIndex: 100,
-      background: "var(--bg)", borderBottom: "1px solid var(--border)",
-      padding: "0 16px", height: 56, display: "flex", alignItems: "center", justifyContent: "space-between",
+      background: "var(--obsidian)",
+      borderBottom: "1px solid rgba(201,168,120,0.25)",
+      padding: "0 20px", height: 60,
+      display: "flex", alignItems: "center", justifyContent: "space-between",
     }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-        <Logo width={40} style={{ cursor: "pointer" }} onClick={() => router.push("/hub")} />
-        {links.map(l => {
-          const active = isActive(l.href);
-          return (
-            <button
-              key={l.href}
-              onClick={() => router.push(l.href)}
-              style={{
-                background: active ? "var(--gold)" : "transparent",
-                color: active ? "var(--bg)" : "var(--muted)",
-                border: "none", borderRadius: 20, padding: "6px 14px", fontSize: 13,
-                fontWeight: active ? 600 : 400, cursor: "pointer",
-                transition: "all 0.15s",
-              }}
-            >
-              {l.label}
-            </button>
-          );
-        })}
+      <div style={{ display: "flex", alignItems: "center", gap: 28 }}>
+        <Logo width={42} onDark style={{ cursor: "pointer" }} onClick={() => router.push("/hub")} />
+        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+          {links.map(l => {
+            const active = isActive(l.href);
+            return (
+              <button
+                key={l.href}
+                onClick={() => router.push(l.href)}
+                style={{
+                  background: "transparent",
+                  color: active ? "var(--brass)" : "var(--fog)",
+                  border: "none",
+                  padding: "8px 14px",
+                  fontSize: 11,
+                  fontFamily: "var(--font-body)",
+                  fontWeight: active ? 600 : 500,
+                  letterSpacing: "0.18em",
+                  textTransform: "uppercase",
+                  cursor: "pointer",
+                  transition: "color 0.15s",
+                  borderBottom: active ? "1px solid var(--brass)" : "1px solid transparent",
+                }}
+              >
+                {l.label}
+              </button>
+            );
+          })}
+        </div>
       </div>
-      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-        <span style={{ fontSize: 12, color: "var(--gold)" }}>{user}</span>
+      <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+        <span style={{
+          fontFamily: "var(--font-body)",
+          fontSize: 11,
+          color: "var(--brass)",
+          letterSpacing: "0.18em",
+          textTransform: "uppercase",
+          fontWeight: 500,
+        }}>{user}</span>
         <button
           onClick={() => { localStorage.removeItem("meridian_user"); router.push("/"); }}
-          style={{ background: "none", border: "none", color: "var(--muted)", fontSize: 11, cursor: "pointer", textDecoration: "underline" }}
+          style={{
+            background: "none", border: "none",
+            color: "var(--fog)",
+            fontSize: 10, letterSpacing: "0.18em", textTransform: "uppercase", fontWeight: 500,
+            cursor: "pointer", fontFamily: "var(--font-body)",
+          }}
         >
           Sign out
         </button>
