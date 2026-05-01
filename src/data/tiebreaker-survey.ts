@@ -1,0 +1,271 @@
+import type { Survey } from "./surveys";
+
+export const tiebreakerSurvey: Survey = {
+  id: "tiebreaker-decisions",
+  title: "Tiebreaker Decisions",
+  description: "Finalize the 19 open operating agreement provisions. Your vote determines the final terms.",
+  categories: [
+    {
+      id: "tb-capital-tax",
+      name: "Capital & Tax",
+      description: "Initial contributions, distributions, tax handling, and Year-1 risk caps.",
+      questions: [
+        {
+          id: "tb-q1",
+          text: "Initial capital contribution amount",
+          context: "Section 4.1 — DECISION REQUIRED. How much each Member contributes up front and on what timeline.",
+          priority: "critical",
+          singleSelect: true,
+          options: [
+            "Fixed $5,000 per Member within 30 days",
+            "Variable amounts based on capacity",
+            "Hybrid — $5,000 minimum with optional additional up to $10K earning preferred return",
+          ],
+        },
+        {
+          id: "tb-q5",
+          text: "Tax distribution timing",
+          context: "Section 6.6 — DECISION REQUIRED. Whether and how the LLC distributes cash to cover Members' tax liabilities on K-1 income.",
+          priority: "critical",
+          singleSelect: true,
+          options: [
+            "Annual tax distribution before K-1s issued",
+            "Quarterly estimated tax distributions",
+            "No mandatory tax distributions — Members manage own estimates",
+          ],
+        },
+        {
+          id: "tb-q6",
+          text: "Partnership Representative designation",
+          context: "Section 7.2 — DECISION REQUIRED. Who represents the LLC before the IRS in partnership-level audits.",
+          priority: "critical",
+          singleSelect: true,
+          options: [
+            "One Co-Managing Member designated",
+            "Rotate annually among Co-Managing Members",
+            "Hire external CPA/tax attorney",
+          ],
+        },
+        {
+          id: "tb-q19",
+          text: "Year-1 maximum capital at risk",
+          context: "Section 24.2 — DECISION REQUIRED. The ceiling on per-Member capital exposure during the first year.",
+          priority: "critical",
+          singleSelect: true,
+          options: [
+            "$5,000 cap",
+            "$10,000 cap",
+            "$5,000 base with optional up to $10,000 earning preferred return",
+          ],
+        },
+      ],
+    },
+    {
+      id: "tb-governance",
+      name: "Governance & Voting",
+      description: "Voting model, thresholds, and signature authority.",
+      questions: [
+        {
+          id: "tb-q2",
+          text: "Voting model",
+          context: "Section 5.3 — DECISION REQUIRED. How votes are counted across Members.",
+          priority: "critical",
+          singleSelect: true,
+          options: [
+            "One Member, one vote on all matters",
+            "One vote for ops, weighted by capital for financial decisions over $25K",
+            "One vote per Member with neutral mediator for ties",
+          ],
+        },
+        {
+          id: "tb-q3",
+          text: "Vote thresholds",
+          context: "Section 5.4 — DECISION REQUIRED. The thresholds required for different categories of decisions.",
+          priority: "critical",
+          singleSelect: true,
+          options: [
+            "Tiered — majority for ops, supermajority for major, unanimous for amendments/dissolution",
+            "Simple majority for everything except amendments/dissolution (unanimous)",
+          ],
+        },
+        {
+          id: "tb-q4",
+          text: "Signature authority",
+          context: "Section 5.5 — DECISION REQUIRED. Who is authorized to sign on bank accounts and contracts.",
+          priority: "critical",
+          singleSelect: true,
+          options: [
+            "Three Co-Managing Members as signatories with threshold tiers",
+            "All six Members as signatories with same thresholds",
+            "Two of three Co-MMs as primary, third as backup",
+          ],
+        },
+      ],
+    },
+    {
+      id: "tb-transitions",
+      name: "Member Transitions",
+      description: "Transfers, death, incapacitation, and disability buy-sell coverage.",
+      questions: [
+        {
+          id: "tb-q7",
+          text: "Right of first refusal timeframe",
+          context: "Section 8.4 — DECISION REQUIRED. How long the LLC has to match an outside offer for a Member's interest.",
+          priority: "critical",
+          singleSelect: true,
+          options: [
+            "30 days",
+            "60 days",
+            "90 days",
+          ],
+        },
+        {
+          id: "tb-q8",
+          text: "Death of Member — treatment of interest",
+          context: "Section 8.7 — DECISION REQUIRED. What happens to a deceased Member's economic and voting rights.",
+          priority: "critical",
+          singleSelect: true,
+          options: [
+            "Estate automatically inherits full membership (voting + economic)",
+            "Mandatory buyout by remaining Members at FMV",
+            "Heir receives economic rights only, no voting",
+          ],
+        },
+        {
+          id: "tb-q9",
+          text: "Voting scope during incapacitation grace period",
+          context: "Section 8.8a — DECISION REQUIRED. What an incapacitated Member's Designated Representative is allowed to vote on.",
+          priority: "critical",
+          singleSelect: true,
+          options: [
+            "Designated Representative can vote on all matters",
+            "Representative votes on operations only, not major decisions",
+            "No voting during grace period — matters requiring that vote are tabled",
+          ],
+        },
+        {
+          id: "tb-q10",
+          text: "Disability buy-sell insurance",
+          context: "Section 8.8b — DECISION REQUIRED. How the LLC funds buyouts triggered by long-term disability.",
+          priority: "critical",
+          singleSelect: true,
+          options: [
+            "Company purchases disability buy-sell policy",
+            "Each Member obtains own coverage",
+            "No insurance — handle case by case",
+          ],
+        },
+      ],
+    },
+    {
+      id: "tb-conflicts-ops",
+      name: "Conflicts & Operations",
+      description: "Member-vendor transactions, commissions, bookkeeping, and spousal consent.",
+      questions: [
+        {
+          id: "tb-q11",
+          text: "Standard for Member-vendor transactions",
+          context: "Section 11.2 — DECISION REQUIRED. How the LLC governs deals where a Member is also the vendor.",
+          priority: "critical",
+          singleSelect: true,
+          options: [
+            "At or below market rate with unanimous approval",
+            "Must obtain competitive bids, approved by majority excluding interested Member",
+            "Permitted at market rate with full disclosure and recusal of interested Member",
+          ],
+        },
+        {
+          id: "tb-q12",
+          text: "Real estate commission handling",
+          context: "Section 12.1 — DECISION REQUIRED. Where commission earned on LLC transactions ends up.",
+          priority: "critical",
+          singleSelect: true,
+          options: [
+            "All commissions flow to the LLC",
+            "Decided deal-by-deal",
+            "Licensed Member keeps personal commission but credits LLC for lead generation",
+          ],
+        },
+        {
+          id: "tb-q13",
+          text: "Bookkeeping function",
+          context: "Section 13.1 — DECISION REQUIRED. Who keeps the books and how Members access them.",
+          priority: "critical",
+          singleSelect: true,
+          options: [
+            "Professional bookkeeper with 48-hour notice inspection rights",
+            "Designated Member handles with shared accounting software",
+            "Professional bookkeeper with real-time shared software access for all Members",
+          ],
+        },
+        {
+          id: "tb-q14",
+          text: "Spousal consent at signing",
+          context: "Section 18.1 — DECISION REQUIRED. Whether spouses must sign an acknowledgment waiving claims to membership rights.",
+          priority: "critical",
+          singleSelect: true,
+          options: [
+            "Required for all married Members",
+            "Recommended but not required",
+            "Required for entity Members owned by married individuals only",
+          ],
+        },
+        {
+          id: "tb-q15",
+          text: "Fiduciary standard",
+          context: "Section 19.1 — DECISION REQUIRED. The duties Members owe to the LLC and to each other.",
+          priority: "critical",
+          singleSelect: true,
+          options: [
+            "Duty of care only",
+            "Full fiduciary framework (care + loyalty + good faith)",
+            "Standard framework with loyalty modified to allow outside RE activity with disclosure",
+          ],
+        },
+      ],
+    },
+    {
+      id: "tb-dissolution-amendments",
+      name: "Disputes, Dissolution & Amendments",
+      description: "Deadlock resolution, dissolution thresholds, and how the OA can be changed.",
+      questions: [
+        {
+          id: "tb-q16",
+          text: "Deadlock resolution mechanism",
+          context: "Section 20.2 — DECISION REQUIRED. The process when Members cannot reach the required vote on a critical decision.",
+          priority: "critical",
+          singleSelect: true,
+          options: [
+            "Mandatory mediation only — Members must still reach vote threshold",
+            "Advisor with deciding-vote authority",
+            "Sequential — cooling off, mediation, advisor recommendation (non-binding), then dissolution if unresolved after 120 days",
+          ],
+        },
+        {
+          id: "tb-q17",
+          text: "Vote threshold for voluntary dissolution",
+          context: "Section 21.2 — DECISION REQUIRED. How many of the six Members must agree to wind down the LLC.",
+          priority: "critical",
+          singleSelect: true,
+          options: [
+            "Unanimous (6 of 6)",
+            "Near-unanimous (5 of 6)",
+            "Supermajority (4 of 6)",
+          ],
+        },
+        {
+          id: "tb-q18",
+          text: "Amendment process",
+          context: "Section 22.1 — DECISION REQUIRED. How and when the operating agreement itself can be revised.",
+          priority: "critical",
+          singleSelect: true,
+          options: [
+            "Event-triggered only, unanimous consent",
+            "Semi-annual reviews with supermajority approval",
+            "Hybrid — scheduled reviews, supermajority for standard provisions, unanimous for core provisions",
+          ],
+        },
+      ],
+    },
+  ],
+};

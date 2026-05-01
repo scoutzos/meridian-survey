@@ -42,11 +42,22 @@ create table if not exists tracker_member_profiles (
 insert into tracker_member_profiles (member_name, llc_name, is_admin) values
   ('Courtney Mosely',     'Mosely Legacy Partners LLC',   true),
   ('Aaliyah Thomas',      'ALT Management LLC',           true),
-  ('Raquel Twine',        'Hybrid Haven Group LLC',       true),
+  ('Raquel Twine',        'Wincrest LLC',                 true),
   ('Odessa Patterson',    'Olmdrsv LLC',                  false),
-  ('Tiffany Stallworth',  'Wincrest LLC',                 false),
+  ('Tiffany Stallworth',  'Hybrid Haven Group LLC',       false),
   ('Peggee',              'Liberus King Enterprise LLC',  false)
 on conflict (member_name) do nothing;
+
+-- Apply LLC name corrections per the working draft operating agreement.
+-- Earlier drafts had Raquel "not established" and Tiffany "undecided"; both are
+-- now confirmed. Idempotent: only updates rows whose LLC name still matches an
+-- earlier draft so admin edits via the Settings page are preserved.
+update tracker_member_profiles set llc_name = 'Wincrest LLC'
+  where member_name = 'Raquel Twine'
+    and llc_name in ('Not established yet', 'Hybrid Haven Group LLC', 'TBD', 'Raquel Twine');
+update tracker_member_profiles set llc_name = 'Hybrid Haven Group LLC'
+  where member_name = 'Tiffany Stallworth'
+    and llc_name in ('Undecided', 'Wincrest LLC', 'TBD', 'Tiffany Stallworth');
 
 -- ---------- tracker_capital_calls -------------------------------------------
 create table if not exists tracker_capital_calls (
