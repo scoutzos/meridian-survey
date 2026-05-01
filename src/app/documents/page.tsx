@@ -136,7 +136,7 @@ export default function DocumentsPage() {
                 <p style={{ fontSize: 11, color: "var(--brass)", fontWeight: 600, marginTop: 8, letterSpacing: "0.18em", textTransform: "uppercase" }}>
                   {d.href
                     ? (d.external ? "Open in new tab ↗" : "Open →")
-                    : "Pending publication"}
+                    : "Coming soon"}
                 </p>
               </div>
             </article>

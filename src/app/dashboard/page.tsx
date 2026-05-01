@@ -12,6 +12,19 @@ import {
   type ActionItem,
 } from "@/lib/action-items";
 import { fetchNextMeeting, type NextMeeting } from "@/lib/meetings";
+import { fetchDeals, type Deal } from "@/lib/deals";
+import { fetchProjects, type Project } from "@/lib/projects";
+import {
+  fetchNotifications,
+  markNotificationRead,
+  type Notification,
+} from "@/lib/operations";
+import {
+  fetchCalendarEvents,
+  fetchReimbursements,
+  type CalendarEvent,
+  type Reimbursement,
+} from "@/lib/governance";
 
 type SurveyProgress = {
   surveyId: string;
@@ -78,6 +91,11 @@ export default function DashboardPage() {
   const [progress, setProgress] = useState<SurveyProgress[]>([]);
   const [actionItems, setActionItems] = useState<ActionItem[]>([]);
   const [nextMeeting, setNextMeeting] = useState<NextMeeting | null>(null);
+  const [deals, setDeals] = useState<Deal[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>([]);
+  const [reimbursements, setReimbursements] = useState<Reimbursement[]>([]);
   const [loaded, setLoaded] = useState(false);
 
   const surveys = useMemo(() => getAllSurveys(), []);
@@ -123,6 +141,16 @@ export default function DashboardPage() {
         } catch { /* ignore */ }
       }
       buildProgressFromCounts(counts);
+      void Promise.all([fetchActionItems(), fetchNextMeeting(), fetchDeals(), fetchProjects(), fetchNotifications(u), fetchCalendarEvents(), fetchReimbursements()])
+        .then(([items, meeting, dealRows, projectRows, notices, eventRows, reimbursementRows]) => {
+          setActionItems(items);
+          setNextMeeting(meeting);
+          setDeals(dealRows);
+          setProjects(projectRows);
+          setNotifications(notices);
+          setCalendarEvents(eventRows);
+          setReimbursements(reimbursementRows);
+        });
       return;
     }
 
@@ -130,7 +158,12 @@ export default function DashboardPage() {
       supabase.from("meridian_responses").select("member_name, survey_id"),
       fetchActionItems(),
       fetchNextMeeting(),
-    ]).then(([respRes, items, meeting]) => {
+      fetchDeals(),
+      fetchProjects(),
+      fetchNotifications(u),
+      fetchCalendarEvents(),
+      fetchReimbursements(),
+    ]).then(([respRes, items, meeting, dealRows, projectRows, notices, eventRows, reimbursementRows]) => {
       const rows = respRes.data || [];
       const counts: Record<string, Record<string, number>> = {};
       for (const row of rows) {
@@ -142,6 +175,11 @@ export default function DashboardPage() {
       buildProgressFromCounts(counts);
       setActionItems(items);
       setNextMeeting(meeting);
+      setDeals(dealRows);
+      setProjects(projectRows);
+      setNotifications(notices);
+      setCalendarEvents(eventRows);
+      setReimbursements(reimbursementRows);
     });
   }, [router, surveys]);
 
@@ -154,6 +192,15 @@ export default function DashboardPage() {
   const myItems = actionItems
     .filter(i => i.status !== "done" && isOwnedBy(i, user))
     .slice(0, 5);
+  const hotDeals = deals.filter(d => d.urgency === "hot" || d.analysis?.recommendation === "Strong Review").slice(0, 3);
+  const activeProjects = projects.filter(p => !["sold", "passed"].includes(p.status)).slice(0, 3);
+  const upcomingEvents = calendarEvents.slice(0, 3);
+  const pendingReimbursements = reimbursements.filter(r => r.status === "submitted" || r.status === "approved");
+
+  const dismissNotice = async (notice: Notification) => {
+    await markNotificationRead(notice.id);
+    setNotifications(prev => prev.filter(n => n.id !== notice.id));
+  };
 
   const handleMarkDone = async (item: ActionItem) => {
     const { error } = await updateActionItemStatus(item.id, "done", user);
@@ -188,6 +235,173 @@ export default function DashboardPage() {
             Your operating hub for the collective.
           </p>
         </header>
+
+        {/* OPERATING BRIEF */}
+        <section style={{ marginBottom: 28 }}>
+          <SectionHeader
+            title="Operating brief"
+            subtitle="Deals, projects, and decisions that need attention."
+            cta={{ label: "Deal desk", onClick: () => router.push("/deals") }}
+          />
+          <p style={{
+            display: "inline-flex",
+            border: `1px solid ${fog}`,
+            borderRadius: 999,
+            padding: "4px 9px",
+            color: "var(--muted)",
+            fontSize: 10,
+            fontWeight: 700,
+            letterSpacing: "0.12em",
+            textTransform: "uppercase",
+            marginBottom: 14,
+          }}>
+            Email + SMS alerts coming soon
+          </p>
+          {notifications.length > 0 && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 14 }}>
+              {notifications.slice(0, 3).map(notice => (
+                <div key={notice.id} style={{
+                  background: notice.priority === "urgent" ? "rgba(20,17,13,0.10)" : "rgba(176,137,84,0.12)",
+                  border: `1px solid ${notice.priority === "urgent" ? obsidian : brass}`,
+                  borderRadius: 10,
+                  padding: "12px 14px",
+                  display: "flex",
+                  justifyContent: "space-between",
+                  gap: 12,
+                  alignItems: "flex-start",
+                }}>
+                  <button
+                    onClick={() => notice.href && router.push(notice.href)}
+                    style={{ background: "transparent", border: "none", textAlign: "left", cursor: notice.href ? "pointer" : "default", flex: 1 }}
+                  >
+                    <p style={{ fontSize: 13, fontWeight: 700, color: obsidian }}>{notice.title}</p>
+                    {notice.body && <p style={{ fontSize: 12, color: ink, opacity: 0.7 }}>{notice.body}</p>}
+                  </button>
+                  <button onClick={() => dismissNotice(notice)} style={{ background: "transparent", border: "none", color: brass, fontSize: 11, fontWeight: 700, letterSpacing: "0.12em", textTransform: "uppercase", cursor: "pointer" }}>
+                    Clear
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }} className="dash-second-row">
+            <article style={{
+              background: "var(--surface)",
+              border: `1px solid ${fog}`,
+              borderRadius: 12,
+              padding: "16px 18px",
+            }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12, marginBottom: 12 }}>
+                <h2 style={{ fontFamily: DISPLAY_FONT, fontSize: 24, fontWeight: 500, color: obsidian }}>Deal alerts</h2>
+                <span style={{ fontSize: 11, color: "var(--muted)" }}>{deals.length} total</span>
+              </div>
+              {hotDeals.length === 0 ? (
+                <p style={{ fontSize: 13, color: ink, opacity: 0.62 }}>No hot or strong-review deals yet.</p>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  {hotDeals.map(deal => (
+                    <button
+                      key={deal.id}
+                      onClick={() => router.push("/deals")}
+                      style={{
+                        background: "var(--bone)",
+                        border: `1px solid ${deal.urgency === "hot" ? brass : fog}`,
+                        borderRadius: 8,
+                        padding: 12,
+                        textAlign: "left",
+                        cursor: "pointer",
+                      }}
+                    >
+                      <p style={{ fontSize: 14, fontWeight: 700, color: obsidian }}>{deal.title}</p>
+                      <p style={{ fontSize: 12, color: ink, opacity: 0.66 }}>
+                        {deal.analysis?.recommendation ?? "Needs Review"} · {deal.address || deal.parcel_id || "Location pending"}
+                      </p>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </article>
+
+            <article style={{
+              background: "var(--surface)",
+              border: `1px solid ${fog}`,
+              borderRadius: 12,
+              padding: "16px 18px",
+            }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12, marginBottom: 12 }}>
+                <h2 style={{ fontFamily: DISPLAY_FONT, fontSize: 24, fontWeight: 500, color: obsidian }}>Projects</h2>
+                <button onClick={() => router.push("/projects")} style={{ background: "transparent", border: "none", color: brass, fontSize: 11, fontWeight: 700, letterSpacing: "0.16em", textTransform: "uppercase", cursor: "pointer" }}>
+                  View
+                </button>
+              </div>
+              {activeProjects.length === 0 ? (
+                <p style={{ fontSize: 13, color: ink, opacity: 0.62 }}>No active projects yet. Convert an approved deal to create one.</p>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  {activeProjects.map(project => (
+                    <button
+                      key={project.id}
+                      onClick={() => router.push("/projects")}
+                      style={{
+                        background: "var(--bone)",
+                        border: `1px solid ${fog}`,
+                        borderRadius: 8,
+                        padding: 12,
+                        textAlign: "left",
+                        cursor: "pointer",
+                      }}
+                    >
+                      <p style={{ fontSize: 14, fontWeight: 700, color: obsidian }}>{project.name}</p>
+                      <p style={{ fontSize: 12, color: ink, opacity: 0.66 }}>
+                        {project.status.replace(/-/g, " ")} · {project.next_step || "Next step pending"}
+                      </p>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </article>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginTop: 16 }} className="dash-second-row">
+            <article style={{ background: "var(--surface)", border: `1px solid ${fog}`, borderRadius: 12, padding: "16px 18px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12, marginBottom: 12 }}>
+                <h2 style={{ fontFamily: DISPLAY_FONT, fontSize: 24, fontWeight: 500, color: obsidian }}>Calendar</h2>
+                <button onClick={() => router.push("/operations")} style={{ background: "transparent", border: "none", color: brass, fontSize: 11, fontWeight: 700, letterSpacing: "0.16em", textTransform: "uppercase", cursor: "pointer" }}>
+                  Ops
+                </button>
+              </div>
+              {upcomingEvents.length === 0 ? (
+                <p style={{ fontSize: 13, color: ink, opacity: 0.62 }}>No upcoming operating events logged.</p>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  {upcomingEvents.map(event => (
+                    <button key={event.id} onClick={() => router.push("/operations")} style={{ background: "var(--bone)", border: `1px solid ${fog}`, borderRadius: 8, padding: 12, textAlign: "left", cursor: "pointer" }}>
+                      <p style={{ fontSize: 14, fontWeight: 700, color: obsidian }}>{event.title}</p>
+                      <p style={{ fontSize: 12, color: ink, opacity: 0.66 }}>{formatDueDate(event.event_date) ?? event.event_date} · {event.event_type}</p>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </article>
+            <article style={{ background: "var(--surface)", border: `1px solid ${fog}`, borderRadius: 12, padding: "16px 18px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12, marginBottom: 12 }}>
+                <h2 style={{ fontFamily: DISPLAY_FONT, fontSize: 24, fontWeight: 500, color: obsidian }}>Finance queue</h2>
+                <span style={{ fontSize: 11, color: "var(--muted)" }}>{pendingReimbursements.length} pending</span>
+              </div>
+              {pendingReimbursements.length === 0 ? (
+                <p style={{ fontSize: 13, color: ink, opacity: 0.62 }}>No pending reimbursements.</p>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  {pendingReimbursements.slice(0, 3).map(item => (
+                    <button key={item.id} onClick={() => router.push("/operations")} style={{ background: "var(--bone)", border: `1px solid ${fog}`, borderRadius: 8, padding: 12, textAlign: "left", cursor: "pointer" }}>
+                      <p style={{ fontSize: 14, fontWeight: 700, color: obsidian }}>{item.member_name} · {Number(item.amount).toLocaleString(undefined, { style: "currency", currency: "USD", maximumFractionDigits: 0 })}</p>
+                      <p style={{ fontSize: 12, color: ink, opacity: 0.66 }}>{item.status} · {item.vendor || item.category}</p>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </article>
+          </div>
+        </section>
 
         {/* ACTION ITEMS — top of fold, the most important thing */}
         <section style={{ marginBottom: 28 }}>

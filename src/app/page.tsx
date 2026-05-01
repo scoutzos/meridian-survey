@@ -363,6 +363,20 @@ export default function LoginPage() {
         <p style={{ ...subheadingStyle, marginBottom: 28 }}>
           Sign in to continue your work with the Collective.
         </p>
+        <p style={{
+          display: "inline-flex",
+          border: "1px solid var(--fog)",
+          borderRadius: 999,
+          padding: "4px 9px",
+          color: "var(--muted)",
+          fontSize: 10,
+          fontWeight: 600,
+          letterSpacing: "0.12em",
+          textTransform: "uppercase",
+          marginBottom: 16,
+        }}>
+          Role-based auth coming soon
+        </p>
 
         <form onSubmit={handleLogin} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
           <select
