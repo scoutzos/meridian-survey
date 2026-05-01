@@ -53,9 +53,20 @@ function formatDate(iso: string | null): string {
   return d.toLocaleDateString(undefined, { month: "long", year: "numeric" });
 }
 
+// Canonicalize a member name (trim + match against MEMBERS case-insensitively).
+// Used on BOTH sides of the count lookup — DB rows AND the localStorage value —
+// so that a stale localStorage entry like "courtney" or "Courtney Mosely "
+// still resolves to the canonical "Courtney Mosely" the counts are keyed on.
+function canonicalMember(raw: string | null | undefined): string {
+  const trimmed = (raw ?? "").trim();
+  const match = MEMBERS.find(m => m.toLowerCase() === trimmed.toLowerCase());
+  return match ?? trimmed;
+}
+
 export default function DashboardPage() {
   const router = useRouter();
   const [user, setUser] = useState<string | null>(null);
+  const [rawUser, setRawUser] = useState<string | null>(null);
   const [lastLogin, setLastLogin] = useState<string | null>(null);
   const [progress, setProgress] = useState<SurveyProgress[]>([]);
   const [stats, setStats] = useState<QuickStats>({
@@ -64,15 +75,18 @@ export default function DashboardPage() {
     groupCompletionPct: 0,
   });
   const [loaded, setLoaded] = useState(false);
+  const [rowsFetched, setRowsFetched] = useState<number | null>(null);
 
   const surveys = getAllSurveys();
 
   useEffect(() => {
-    const u = localStorage.getItem("meridian_user");
-    if (!u) {
+    const raw = localStorage.getItem("meridian_user");
+    if (!raw) {
       router.push("/");
       return;
     }
+    const u = canonicalMember(raw);
+    setRawUser(raw);
     setUser(u);
     migrateLocalStorage(u);
 
@@ -115,10 +129,10 @@ export default function DashboardPage() {
       const counts: Record<string, Record<string, number>> = {};
       for (const s of surveys) {
         counts[s.id] = {};
-        const raw = localStorage.getItem(getStorageKey(s.id, u));
-        if (!raw) continue;
+        const cached = localStorage.getItem(getStorageKey(s.id, u));
+        if (!cached) continue;
         try {
-          const data = JSON.parse(raw) as Record<string, unknown>;
+          const data = JSON.parse(cached) as Record<string, unknown>;
           const answered = Object.values(data).filter(v => {
             if (Array.isArray(v)) return v.length > 0;
             return typeof v === "string" && v.trim() !== "";
@@ -150,29 +164,19 @@ export default function DashboardPage() {
           Array.from(new Set(rows.map(r => r.survey_id || "operating-agreement"))));
       }
 
-      // Match member_name case-insensitively + trimmed against the canonical
-      // MEMBERS list. Any historic row saved with stray whitespace, mixed
-      // case, or first-name-only spelling still resolves to the canonical
-      // entry — without this, every card silently zeroed for the affected
-      // user even though their answers were sitting in the table.
-      const normalize = (raw: string | null | undefined): string => {
-        const trimmed = (raw ?? "").trim();
-        const match = MEMBERS.find(m => m.toLowerCase() === trimmed.toLowerCase());
-        return match ?? trimmed;
-      };
-
       const counts: Record<string, Record<string, number>> = {};
       let earliest: string | null = null;
       for (const row of rows) {
         const sid = row.survey_id || "operating-agreement";
-        const canonical = normalize(row.member_name);
+        const canonical = canonicalMember(row.member_name);
         if (!counts[sid]) counts[sid] = {};
         counts[sid][canonical] = (counts[sid][canonical] || 0) + 1;
         if (canonical === u && row.created_at) {
           if (!earliest || row.created_at < earliest) earliest = row.created_at;
         }
       }
-      console.log(`[dashboard] count for "${u}" by survey:`,
+      setRowsFetched(rows.length);
+      console.log(`[dashboard] count for "${u}" (raw "${raw}") by survey:`,
         Object.fromEntries(surveys.map(s => [s.id, counts[s.id]?.[u] ?? 0])));
 
       const ll = memberRes.data?.last_login || null;
@@ -214,6 +218,32 @@ export default function DashboardPage() {
       className="dashboard-root"
     >
       <div style={{ maxWidth: 1080, margin: "0 auto" }}>
+        {/* TEMP DEBUG STRIP — remove once dashboard counts confirmed in prod */}
+        <div
+          style={{
+            background: "#fff7d6",
+            border: "1px solid #d6c98a",
+            color: "#3a2f10",
+            borderRadius: 8,
+            padding: "8px 12px",
+            marginBottom: 16,
+            fontSize: 12,
+            fontFamily: "monospace",
+            lineHeight: 1.5,
+          }}
+        >
+          <strong>debug:</strong>{" "}
+          raw localStorage user = <code>{JSON.stringify(rawUser)}</code>{" · "}
+          canonical = <code>{JSON.stringify(user)}</code>{" · "}
+          rows fetched = <code>{rowsFetched ?? "—"}</code>{" · "}
+          per-survey for me ={" "}
+          <code>
+            {JSON.stringify(
+              Object.fromEntries(progress.map(p => [p.surveyId, `${p.answered}/${p.total}`])),
+            )}
+          </code>
+        </div>
+
         {/* Welcome header */}
         <header style={{ marginBottom: 32 }}>
           <p
