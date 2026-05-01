@@ -8,6 +8,8 @@ export interface MeetingNote {
   agenda: string | null;
   notes: string | null;
   attendees: string[];
+  transcript: string | null;
+  transcript_filename: string | null;
   created_at: string;
   created_by: string | null;
   updated_at: string;
@@ -59,19 +61,28 @@ export async function fetchMeetingNotes(): Promise<MeetingNote[]> {
 }
 
 export async function createMeetingNote(
-  patch: { meeting_date: string; agenda?: string | null; notes?: string | null; attendees?: string[] },
+  patch: {
+    meeting_date: string;
+    agenda?: string | null;
+    notes?: string | null;
+    attendees?: string[];
+    transcript?: string | null;
+    transcript_filename?: string | null;
+  },
   actor: string,
-): Promise<{ error: string | null }> {
-  if (!supabase) return { error: "Supabase not configured" };
-  const { error } = await supabase.from("meeting_notes").insert({
+): Promise<{ data: MeetingNote | null; error: string | null }> {
+  if (!supabase) return { data: null, error: "Supabase not configured" };
+  const { data, error } = await supabase.from("meeting_notes").insert({
     meeting_date: patch.meeting_date,
     agenda: patch.agenda?.trim() || null,
     notes: patch.notes?.trim() || null,
     attendees: patch.attendees ?? [],
+    transcript: patch.transcript?.trim() || null,
+    transcript_filename: patch.transcript_filename?.trim() || null,
     created_by: actor,
     updated_by: actor,
-  });
-  return { error: error?.message ?? null };
+  }).select().single();
+  return { data: (data as MeetingNote) ?? null, error: error?.message ?? null };
 }
 
 export async function deleteMeetingNote(id: string, actor: string): Promise<{ error: string | null }> {

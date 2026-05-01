@@ -1,9 +1,10 @@
 "use client";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { MEMBERS } from "@/data/questions";
 import { supabase } from "@/lib/supabase";
 import { isAdmin, type MemberProfile } from "@/lib/tracker";
+import { createActionItem } from "@/lib/action-items";
 import {
   createMeetingNote,
   deleteMeetingNote,
@@ -15,6 +16,17 @@ import {
 } from "@/lib/meetings";
 
 const DISPLAY_FONT = "var(--font-display)";
+
+type ExtractedActionItem = { title: string; assignedTo: string | null; dueDate: string | null };
+type ExtractionResult = {
+  summary: string;
+  decisions: string[];
+  actionItems: ExtractedActionItem[];
+  source?: string;
+  note?: string;
+};
+
+const ACCEPTED_TYPES = ".txt,.vtt,.srt,.docx";
 
 function formatLong(iso: string | null): string {
   if (!iso) return "—";
@@ -38,6 +50,16 @@ export default function MeetingsPage() {
   const [newNote, setNewNote] = useState({
     meeting_date: "", agenda: "", notes: "", attendees: [] as string[],
   });
+
+  // Transcript / extraction state.
+  const [transcriptText, setTranscriptText] = useState<string>("");
+  const [transcriptFilename, setTranscriptFilename] = useState<string>("");
+  const [parsingFile, setParsingFile] = useState(false);
+  const [extracting, setExtracting] = useState(false);
+  const [extraction, setExtraction] = useState<ExtractionResult | null>(null);
+  const [confirmedItems, setConfirmedItems] = useState<Set<number>>(new Set());
+  const [dragOver, setDragOver] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const reload = useCallback(async () => {
     setLoading(true);
@@ -66,6 +88,14 @@ export default function MeetingsPage() {
   if (!user) return null;
   const admin = isAdmin(profiles, user);
 
+  const resetNewNoteForm = () => {
+    setNewNote({ meeting_date: "", agenda: "", notes: "", attendees: [] });
+    setTranscriptText("");
+    setTranscriptFilename("");
+    setExtraction(null);
+    setConfirmedItems(new Set());
+  };
+
   const saveNext = async () => {
     const { error } = await updateNextMeeting({
       meeting_date: nextDraft.meeting_date || null,
@@ -79,14 +109,30 @@ export default function MeetingsPage() {
 
   const saveNote = async () => {
     if (!newNote.meeting_date) { alert("Pick a meeting date."); return; }
-    const { error } = await createMeetingNote({
+    const { data, error } = await createMeetingNote({
       meeting_date: newNote.meeting_date,
       agenda: newNote.agenda,
       notes: newNote.notes,
       attendees: newNote.attendees,
+      transcript: transcriptText || null,
+      transcript_filename: transcriptFilename || null,
     }, user);
     if (error) { alert(error); return; }
-    setNewNote({ meeting_date: "", agenda: "", notes: "", attendees: [] });
+
+    // Create any confirmed action items from the extraction.
+    if (extraction && data) {
+      const toCreate = extraction.actionItems.filter((_, i) => confirmedItems.has(i));
+      for (const item of toCreate) {
+        await createActionItem({
+          title: item.title,
+          description: `From meeting on ${formatLong(newNote.meeting_date)}.`,
+          assigned_to: item.assignedTo,
+          due_date: item.dueDate,
+        }, user);
+      }
+    }
+
+    resetNewNoteForm();
     setShowNewNote(false);
     void reload();
   };
@@ -103,6 +149,82 @@ export default function MeetingsPage() {
       ...prev,
       attendees: prev.attendees.includes(m) ? prev.attendees.filter(a => a !== m) : [...prev.attendees, m],
     }));
+  };
+
+  const handleFile = async (file: File) => {
+    setParsingFile(true);
+    setExtraction(null);
+    setConfirmedItems(new Set());
+    try {
+      const lower = file.name.toLowerCase();
+      if (lower.endsWith(".docx")) {
+        const text = await extractDocxText(file);
+        setTranscriptText(text);
+      } else {
+        // .txt, .vtt, .srt — all plain text.
+        const text = await file.text();
+        setTranscriptText(text);
+      }
+      setTranscriptFilename(file.name);
+    } catch (err) {
+      alert(`Could not read file: ${err instanceof Error ? err.message : "unknown error"}`);
+    } finally {
+      setParsingFile(false);
+    }
+  };
+
+  const onFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0];
+    if (f) void handleFile(f);
+    e.target.value = "";
+  };
+
+  const onDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setDragOver(false);
+    const f = e.dataTransfer.files?.[0];
+    if (f) void handleFile(f);
+  };
+
+  const runExtraction = async () => {
+    if (!transcriptText.trim()) { alert("Upload a transcript first."); return; }
+    setExtracting(true);
+    setExtraction(null);
+    try {
+      const res = await fetch("/api/extract-meeting", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ transcript: transcriptText, members: MEMBERS }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        alert(data.error || "Extraction failed");
+        return;
+      }
+      const result = data as ExtractionResult;
+      setExtraction(result);
+      // All action items confirmed by default.
+      setConfirmedItems(new Set(result.actionItems.map((_, i) => i)));
+      // Auto-fill notes field with summary + decisions.
+      const noteParts: string[] = [];
+      if (result.summary) noteParts.push(result.summary);
+      if (result.decisions.length > 0) {
+        noteParts.push("\nDecisions:\n" + result.decisions.map(d => `• ${d}`).join("\n"));
+      }
+      if (noteParts.length > 0) setNewNote(prev => ({ ...prev, notes: noteParts.join("\n") }));
+    } catch (err) {
+      alert(`Extraction failed: ${err instanceof Error ? err.message : "unknown"}`);
+    } finally {
+      setExtracting(false);
+    }
+  };
+
+  const toggleConfirm = (idx: number) => {
+    setConfirmedItems(prev => {
+      const next = new Set(prev);
+      if (next.has(idx)) next.delete(idx); else next.add(idx);
+      return next;
+    });
   };
 
   return (
@@ -205,7 +327,10 @@ export default function MeetingsPage() {
           </h2>
           {admin && (
             <button
-              onClick={() => setShowNewNote(s => !s)}
+              onClick={() => {
+                if (showNewNote) resetNewNoteForm();
+                setShowNewNote(s => !s);
+              }}
               style={{
                 background: showNewNote ? "transparent" : "var(--brass)",
                 color: showNewNote ? "var(--brass)" : "var(--obsidian)",
@@ -222,7 +347,7 @@ export default function MeetingsPage() {
         {showNewNote && admin && (
           <div style={{
             background: "var(--surface)", border: "1px solid var(--fog)", borderRadius: 12,
-            padding: 18, marginBottom: 20, display: "flex", flexDirection: "column", gap: 10,
+            padding: 18, marginBottom: 20, display: "flex", flexDirection: "column", gap: 12,
           }}>
             <div>
               <label style={labelStyle}>Date</label>
@@ -232,6 +357,125 @@ export default function MeetingsPage() {
                 onChange={e => setNewNote({ ...newNote, meeting_date: e.target.value })}
               />
             </div>
+
+            {/* Transcript upload zone */}
+            <div>
+              <label style={labelStyle}>Transcript (optional)</label>
+              <div
+                onClick={() => fileInputRef.current?.click()}
+                onDragOver={e => { e.preventDefault(); setDragOver(true); }}
+                onDragLeave={() => setDragOver(false)}
+                onDrop={onDrop}
+                style={{
+                  background: "var(--bone)",
+                  border: `1px ${dragOver ? "solid" : "dashed"} ${dragOver ? "var(--brass)" : "var(--fog)"}`,
+                  borderRadius: 10,
+                  padding: "20px 16px",
+                  textAlign: "center",
+                  cursor: "pointer",
+                  transition: "border-color 0.2s, background 0.2s",
+                }}
+              >
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept={ACCEPTED_TYPES}
+                  onChange={onFileInputChange}
+                  style={{ display: "none" }}
+                />
+                {parsingFile ? (
+                  <p style={{ fontSize: 13, color: "var(--ink)", opacity: 0.75 }}>Reading file…</p>
+                ) : transcriptFilename ? (
+                  <div>
+                    <p style={{ fontSize: 13, color: "var(--obsidian)", fontWeight: 600 }}>
+                      {transcriptFilename}
+                    </p>
+                    <p style={{ fontSize: 11, color: "var(--ink)", opacity: 0.6, marginTop: 4 }}>
+                      {transcriptText.length.toLocaleString()} characters · click to replace
+                    </p>
+                  </div>
+                ) : (
+                  <div>
+                    <p style={{ fontFamily: DISPLAY_FONT, fontSize: 18, color: "var(--obsidian)", marginBottom: 4 }}>
+                      Drop a transcript file here
+                    </p>
+                    <p style={{ fontSize: 12, color: "var(--ink)", opacity: 0.65 }}>
+                      .txt · .vtt · .srt · .docx — or click to upload
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {transcriptText && (
+                <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
+                  <button
+                    onClick={runExtraction}
+                    disabled={extracting}
+                    style={{ ...primaryBtn, opacity: extracting ? 0.6 : 1 }}
+                  >
+                    {extracting ? "Analyzing transcript…" : "Extract notes & actions"}
+                  </button>
+                  <button
+                    onClick={() => { setTranscriptText(""); setTranscriptFilename(""); setExtraction(null); setConfirmedItems(new Set()); }}
+                    style={subtleBtn}
+                  >
+                    Remove file
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {extraction && (
+              <div style={{
+                background: "var(--bone)", border: "1px solid var(--fog)", borderRadius: 10,
+                padding: 14, display: "flex", flexDirection: "column", gap: 12,
+              }}>
+                <p style={{ fontSize: 10, letterSpacing: 1.5, textTransform: "uppercase", color: "var(--brass)", fontWeight: 600 }}>
+                  AI extraction {extraction.source ? `· ${extraction.source}` : ""}
+                </p>
+                {extraction.note && (
+                  <p style={{ fontSize: 12, color: "var(--muted)", fontStyle: "italic" }}>
+                    {extraction.note}
+                  </p>
+                )}
+                {extraction.actionItems.length > 0 ? (
+                  <div>
+                    <p style={{ fontSize: 12, fontWeight: 600, color: "var(--obsidian)", marginBottom: 8 }}>
+                      Confirm action items to create ({confirmedItems.size}/{extraction.actionItems.length})
+                    </p>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                      {extraction.actionItems.map((item, i) => (
+                        <label
+                          key={i}
+                          style={{
+                            display: "flex", alignItems: "flex-start", gap: 10,
+                            padding: "8px 10px", background: "var(--surface)",
+                            border: "1px solid var(--fog)", borderRadius: 8, cursor: "pointer",
+                          }}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={confirmedItems.has(i)}
+                            onChange={() => toggleConfirm(i)}
+                            style={{ width: 16, height: 16, marginTop: 2, accentColor: "var(--brass)" }}
+                          />
+                          <div style={{ flex: 1 }}>
+                            <p style={{ fontSize: 13, color: "var(--ink)" }}>{item.title}</p>
+                            <p style={{ fontSize: 11, color: "var(--muted)", marginTop: 2 }}>
+                              {item.assignedTo ? item.assignedTo : "Unassigned"}
+                              {item.dueDate ? ` · due ${item.dueDate}` : ""}
+                            </p>
+                          </div>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <p style={{ fontSize: 12, color: "var(--muted)" }}>No action items detected.</p>
+                )}
+              </div>
+            )}
+
             <textarea
               rows={2}
               placeholder="Agenda"
@@ -239,8 +483,8 @@ export default function MeetingsPage() {
               onChange={e => setNewNote({ ...newNote, agenda: e.target.value })}
             />
             <textarea
-              rows={5}
-              placeholder="Notes"
+              rows={6}
+              placeholder="Notes (auto-filled from transcript when extracted)"
               value={newNote.notes}
               onChange={e => setNewNote({ ...newNote, notes: e.target.value })}
             />
@@ -329,6 +573,11 @@ export default function MeetingsPage() {
                   <pre style={preStyle}>{n.notes}</pre>
                 </div>
               )}
+              {n.transcript_filename && (
+                <p style={{ fontSize: 11, color: "var(--muted)", fontStyle: "italic" }}>
+                  Transcript on file: {n.transcript_filename}
+                </p>
+              )}
             </article>
           ))}
         </div>
@@ -342,6 +591,84 @@ export default function MeetingsPage() {
       `}</style>
     </div>
   );
+}
+
+// .docx is a zip with word/document.xml inside. Pull text content directly in
+// the browser so we don't need a server round-trip just to read the file.
+async function extractDocxText(file: File): Promise<string> {
+  const buf = await file.arrayBuffer();
+  const xml = await readDocxXml(new Uint8Array(buf));
+  if (!xml) return "";
+  // Grab all <w:t>…</w:t> runs and join them with spaces. Paragraph breaks
+  // come from <w:p> separators — convert those to newlines first.
+  const withBreaks = xml
+    .replace(/<\/w:p>/g, "\n")
+    .replace(/<w:br\s*\/?>/g, "\n");
+  const matches = withBreaks.match(/<w:t[^>]*>([\s\S]*?)<\/w:t>/g) ?? [];
+  const text = matches
+    .map(m => m.replace(/<[^>]+>/g, ""))
+    .join(" ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'");
+  // The paragraph newlines we injected earlier got swallowed by the join;
+  // re-derive them by looking at the original XML for paragraph boundaries.
+  const paragraphs = xml.split(/<\/w:p>/).map(chunk => {
+    const ms = chunk.match(/<w:t[^>]*>([\s\S]*?)<\/w:t>/g) ?? [];
+    return ms.map(m => m.replace(/<[^>]+>/g, "")).join("");
+  });
+  const joined = paragraphs.join("\n").trim();
+  return joined || text;
+}
+
+// Read the document.xml entry from a .docx (zip) without pulling in jszip.
+// Implements just enough of the zip central-directory parser to find the file
+// and inflate it via DecompressionStream.
+async function readDocxXml(bytes: Uint8Array): Promise<string | null> {
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  // End of central directory record signature: 0x06054b50.
+  let eocdOffset = -1;
+  for (let i = bytes.length - 22; i >= Math.max(0, bytes.length - 65557); i--) {
+    if (view.getUint32(i, true) === 0x06054b50) { eocdOffset = i; break; }
+  }
+  if (eocdOffset < 0) return null;
+  const totalEntries = view.getUint16(eocdOffset + 10, true);
+  const cdSize = view.getUint32(eocdOffset + 12, true);
+  const cdOffset = view.getUint32(eocdOffset + 16, true);
+
+  const decoder = new TextDecoder();
+  let p = cdOffset;
+  for (let i = 0; i < totalEntries; i++) {
+    if (view.getUint32(p, true) !== 0x02014b50) break;
+    const compMethod = view.getUint16(p + 10, true);
+    const compSize = view.getUint32(p + 20, true);
+    const nameLen = view.getUint16(p + 28, true);
+    const extraLen = view.getUint16(p + 30, true);
+    const commentLen = view.getUint16(p + 32, true);
+    const localOffset = view.getUint32(p + 42, true);
+    const name = decoder.decode(bytes.subarray(p + 46, p + 46 + nameLen));
+    p += 46 + nameLen + extraLen + commentLen;
+    if (name === "word/document.xml") {
+      // Local file header: 30 bytes + name + extra.
+      const lhNameLen = view.getUint16(localOffset + 26, true);
+      const lhExtraLen = view.getUint16(localOffset + 28, true);
+      const dataStart = localOffset + 30 + lhNameLen + lhExtraLen;
+      const data = bytes.subarray(dataStart, dataStart + compSize);
+      if (compMethod === 0) return decoder.decode(data);
+      if (compMethod === 8) {
+        // raw deflate — DecompressionStream("deflate-raw") is widely supported.
+        const buf = data.slice().buffer;
+        const stream = new Blob([buf]).stream().pipeThrough(new DecompressionStream("deflate-raw"));
+        const out = await new Response(stream).arrayBuffer();
+        return decoder.decode(new Uint8Array(out));
+      }
+      return null;
+    }
+    if (cdSize && p - cdOffset >= cdSize) break;
+  }
+  return null;
 }
 
 const labelStyle: React.CSSProperties = {
