@@ -11,27 +11,19 @@ import {
   transcriptDownloadUrl,
   snippetsAround,
 } from "@/lib/transcripts";
-
-// Shared localStorage keys (legacy — transcripts moved to DB).
-const KEYS = {
-  announcements: "meridian_shared_announcements",
-  decisions: "meridian_shared_decisions",
-  documents: "meridian_shared_documents",
-  links: "meridian_shared_links",
-  profiles: "meridian_shared_profiles",
-};
-
-interface Announcement { id: string; author: string; text: string; date: string; }
-interface Decision { id: string; author: string; description: string; date: string; present: string[]; outcome: string; }
-interface Document { id: string; author: string; filename: string; category: string; date: string; data: string; mimeType: string; }
-interface SharedLink { id: string; author: string; url: string; title: string; category: string; date: string; }
-interface MemberProfile { name: string; role: string; contact: string; lastActive: string; }
-
-function getShared<T>(key: string): T[] {
-  try { return JSON.parse(localStorage.getItem(key) || "[]"); } catch { return []; }
-}
-function setShared<T>(key: string, data: T[]) { localStorage.setItem(key, JSON.stringify(data)); }
-function genId() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
+import {
+  fetchHubData,
+  saveAnnouncement,
+  saveDecision,
+  saveHubDocument,
+  saveSharedLink,
+  upsertHubProfile,
+  type Announcement,
+  type Decision,
+  type HubDocument,
+  type MemberProfile,
+  type SharedLink,
+} from "@/lib/hub";
 
 const DOC_CATEGORIES = ["Legal", "Financial", "Research", "Meeting Notes", "Other"];
 const LINK_CATEGORIES = ["Mentorship", "Legal", "Financial", "Education", "Networking", "Tools", "Other"];
@@ -55,7 +47,7 @@ export default function HubPage() {
   // State
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [decisions, setDecisions] = useState<Decision[]>([]);
-  const [documents, setDocuments] = useState<Document[]>([]);
+  const [documents, setDocuments] = useState<HubDocument[]>([]);
   const [transcripts, setTranscripts] = useState<Transcript[]>([]);
   const [transcriptQuery, setTranscriptQuery] = useState("");
   const [transcriptDebounced, setTranscriptDebounced] = useState("");
@@ -78,20 +70,21 @@ export default function HubPage() {
     const u = localStorage.getItem("meridian_user");
     if (!u) { router.push("/"); return; }
     setUser(u);
-    setAnnouncements(getShared(KEYS.announcements));
-    setDecisions(getShared(KEYS.decisions));
-    setDocuments(getShared(KEYS.documents));
-    setLinks(getShared(KEYS.links));
-    setProfiles(JSON.parse(localStorage.getItem(KEYS.profiles) || "{}"));
+    void (async () => {
+      const [hub, transcriptRows] = await Promise.all([fetchHubData(), fetchTranscripts()]);
+      setAnnouncements(hub.announcements);
+      setDecisions(hub.decisions);
+      setDocuments(hub.documents);
+      setLinks(hub.links);
+      setProfiles(hub.profiles);
+      setTranscripts(transcriptRows);
 
-    void fetchTranscripts().then(setTranscripts);
-
-    // Update last active
-    const p = JSON.parse(localStorage.getItem(KEYS.profiles) || "{}");
-    p[u] = { ...(p[u] || { name: u, role: "", contact: "" }), name: u, lastActive: new Date().toISOString() };
-    localStorage.setItem(KEYS.profiles, JSON.stringify(p));
-    setProfiles(p);
-    if (p[u]) setProfileEdit({ role: p[u].role || "", contact: p[u].contact || "" });
+      const existing = hub.profiles[u] || { name: u, role: "", contact: "", lastActive: "" };
+      const profile = { ...existing, name: u, lastActive: new Date().toISOString() };
+      await upsertHubProfile(profile);
+      setProfiles(prev => ({ ...prev, [u]: profile }));
+      setProfileEdit({ role: profile.role || "", contact: profile.contact || "" });
+    })();
   }, [router]);
 
   const toggle = (s: string) => setOpenSections(prev => ({ ...prev, [s]: !prev[s] }));
@@ -127,30 +120,27 @@ export default function HubPage() {
   }, []);
 
   // Handlers
-  const addAnnouncement = () => {
+  const addAnnouncement = async () => {
     if (!newAnnouncement.trim() || !user) return;
-    const item: Announcement = { id: genId(), author: user, text: newAnnouncement.trim(), date: new Date().toISOString() };
-    const updated = [item, ...announcements];
-    setShared(KEYS.announcements, updated);
-    setAnnouncements(updated);
+    const { data, error } = await saveAnnouncement(user, newAnnouncement.trim());
+    if (error) { alert(error); return; }
+    if (data) setAnnouncements(prev => [data, ...prev]);
     setNewAnnouncement("");
   };
 
-  const addDecision = () => {
+  const addDecision = async () => {
     if (!newDecision.description.trim() || !user) return;
-    const item: Decision = { id: genId(), author: user, ...newDecision, date: new Date().toISOString() };
-    const updated = [item, ...decisions];
-    setShared(KEYS.decisions, updated);
-    setDecisions(updated);
+    const { data, error } = await saveDecision(user, newDecision);
+    if (error) { alert(error); return; }
+    if (data) setDecisions(prev => [data, ...prev]);
     setNewDecision({ description: "", present: [], outcome: "" });
   };
 
-  const addLink = () => {
+  const addLink = async () => {
     if (!newLink.url.trim() || !newLink.title.trim() || !user) return;
-    const item: SharedLink = { id: genId(), author: user, ...newLink, date: new Date().toISOString() };
-    const updated = [item, ...links];
-    setShared(KEYS.links, updated);
-    setLinks(updated);
+    const { data, error } = await saveSharedLink(user, newLink);
+    if (error) { alert(error); return; }
+    if (data) setLinks(prev => [data, ...prev]);
     setNewLink({ url: "", title: "", category: "Other" });
   };
 
@@ -161,12 +151,11 @@ export default function HubPage() {
       const file = (e.target as HTMLInputElement).files?.[0];
       if (!file || !user) return;
       const reader = new FileReader();
-      reader.onload = () => {
+      reader.onload = async () => {
         const data = reader.result as string;
-        const item: Document = { id: genId(), author: user, filename: file.name, category: docCategory, date: new Date().toISOString(), data, mimeType: file.type };
-        const updated = [item, ...documents];
-        setShared(KEYS.documents, updated);
-        setDocuments(updated);
+        const { data: doc, error } = await saveHubDocument(user, { filename: file.name, category: docCategory, data, mimeType: file.type });
+        if (error) { alert(error); return; }
+        if (doc) setDocuments(prev => [doc, ...prev]);
       };
       reader.readAsDataURL(file);
     };
@@ -230,12 +219,12 @@ export default function HubPage() {
     a.click();
   };
 
-  const saveProfile = () => {
+  const saveProfile = async () => {
     if (!user) return;
-    const p = { ...profiles };
-    p[user] = { ...(p[user] || {}), name: user, role: profileEdit.role, contact: profileEdit.contact, lastActive: new Date().toISOString() };
-    localStorage.setItem(KEYS.profiles, JSON.stringify(p));
-    setProfiles(p);
+    const profile = { ...(profiles[user] || {}), name: user, role: profileEdit.role, contact: profileEdit.contact, lastActive: new Date().toISOString() };
+    const { data, error } = await upsertHubProfile(profile);
+    if (error) { alert(error); return; }
+    setProfiles(prev => ({ ...prev, [user]: data ?? profile }));
     setEditingProfile(false);
   };
 
@@ -258,7 +247,7 @@ export default function HubPage() {
       </div>
 
       <div style={{ background: "rgba(201,168,120,0.1)", border: "1px solid rgba(201,168,120,0.2)", borderRadius: 8, padding: "10px 14px", fontSize: 12, color: "var(--muted)", marginBottom: 24 }}>
-        Documents uploaded here are stored locally on your device. For shared access across devices, upload to the Google Drive.
+        Hub announcements, decisions, links, profiles, and document entries are shared through Supabase. For large legal files, keep Google Drive as the source of record until full document storage is wired.
       </div>
 
       {/* ANNOUNCEMENTS */}

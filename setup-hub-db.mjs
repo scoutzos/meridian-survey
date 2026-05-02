@@ -13,7 +13,12 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
 const SUPABASE_URL = 'https://gpjqyygnpysregifgxkr.supabase.co';
-const SERVICE_ROLE = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdwanF5eWducHlzcmVnaWZneGtyIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2NDAyMjg2OCwiZXhwIjoyMDc5NTk4ODY4fQ.T3u7fSonfY1wfsdCzuGUpODwjqnvrEZdtuoom4Vh1hU';
+const SERVICE_ROLE = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+if (!SERVICE_ROLE) {
+  console.error('Missing SUPABASE_SERVICE_ROLE_KEY environment variable.');
+  process.exit(1);
+}
 
 const here = dirname(fileURLToPath(import.meta.url));
 const sql = readFileSync(join(here, 'migrations', '005_hub_tables.sql'), 'utf8');

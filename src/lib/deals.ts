@@ -435,10 +435,11 @@ export async function upsertDealAgreement(
   }
 
   const existing = await fetchDealAgreement(input.deal_id);
-  const query = existing
-    ? supabase.from("meridian_deal_agreements").update(row).eq("id", existing.id).select().single()
-    : supabase.from("meridian_deal_agreements").insert({ ...row, created_by: actor }).select().single();
-  const { data, error } = await query;
+  const { data, error } = await supabase.from("meridian_deal_agreements").upsert({
+    ...(existing ? { id: existing.id } : {}),
+    ...row,
+    created_by: existing?.created_by ?? actor,
+  }, { onConflict: "deal_id" }).select().single();
   return { data: data as DealAgreement | null, error: error?.message ?? null };
 }
 

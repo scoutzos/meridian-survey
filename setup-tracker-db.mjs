@@ -3,8 +3,7 @@
 //
 // Usage: node setup-tracker-db.mjs
 //
-// Requires SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY in env (or hard-code below
-// to match setup-db.mjs). The Supabase JS client cannot run arbitrary DDL, so
+// Requires SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY in env. The Supabase JS client cannot run arbitrary DDL, so
 // this script prints the SQL and the URL of the Supabase SQL editor — paste it
 // there to apply. (If you have psql + the DB password, you can also pipe it
 // directly: psql "$SUPABASE_DB_URL" -f migrations/001_tracker_schema.sql)

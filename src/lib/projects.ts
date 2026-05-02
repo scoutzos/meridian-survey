@@ -6,6 +6,7 @@ export type ProjectStatus = "planning" | "due-diligence" | "under-contract" | "c
 export interface Project {
   id: string;
   deal_id: string | null;
+  source_key: string | null;
   name: string;
   property_type: string;
   strategy: string;
@@ -85,12 +86,14 @@ export async function fetchProjectTimeline(projectId: string): Promise<ProjectTi
 }
 
 export async function createProjectFromDeal(deal: Deal, actor: string): Promise<{ data: Project | null; error: string | null }> {
-  const existing = (await fetchProjects()).find(p => p.deal_id === deal.id);
+  const sourceKey = deal.id.startsWith("local-") ? deal.id : null;
+  const existing = (await fetchProjects()).find(p => p.deal_id === deal.id || p.source_key === sourceKey);
   if (existing) return { data: existing, error: null };
 
   const budget = (deal.repair_estimate ?? 0) || null;
   const row = {
     deal_id: deal.id.startsWith("local-") ? null : deal.id,
+    source_key: sourceKey,
     name: deal.title,
     property_type: deal.property_type,
     strategy: deal.strategy,
@@ -137,7 +140,16 @@ export async function createProjectFromDeal(deal: Deal, actor: string): Promise<
   }
 
   const { data, error } = await supabase.from("meridian_projects").insert(row).select().single();
-  if (error || !data) return { data: null, error: error?.message ?? "Project create failed" };
+  if (error || !data) {
+    const { data: existingProject } = await supabase
+      .from("meridian_projects")
+      .select("*")
+      .eq("deal_id", deal.id)
+      .is("deleted_at", null)
+      .maybeSingle();
+    if (existingProject) return { data: toProject(existingProject as Record<string, unknown>), error: null };
+    return { data: null, error: error?.message ?? "Project create failed" };
+  }
   const project = toProject(data as Record<string, unknown>);
   await supabase.from("meridian_project_timeline_events").insert({
     project_id: project.id,
@@ -154,4 +166,3 @@ export async function createProjectFromDeal(deal: Deal, actor: string): Promise<
   }).eq("id", deal.id);
   return { data: project, error: null };
 }
-
