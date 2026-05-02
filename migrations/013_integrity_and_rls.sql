@@ -6,21 +6,28 @@
 -- Supabase Auth-based policies before production use.
 -- =============================================================================
 
--- One current deal agreement per deal.
-create unique index if not exists meridian_deal_agreements_one_per_deal_idx
-  on meridian_deal_agreements(deal_id);
+do $$
+begin
+  -- One current deal agreement per deal. Only apply after migration 011 exists.
+  if to_regclass('meridian_deal_agreements') is not null then
+    create unique index if not exists meridian_deal_agreements_one_per_deal_idx
+      on meridian_deal_agreements(deal_id);
+  end if;
 
-alter table if exists meridian_projects
-  add column if not exists source_key text;
+  -- One active project per source deal. Only apply after migration 008 exists.
+  if to_regclass('meridian_projects') is not null then
+    alter table meridian_projects
+      add column if not exists source_key text;
 
--- One active project per source deal.
-create unique index if not exists meridian_projects_one_active_per_deal_idx
-  on meridian_projects(deal_id)
-  where deal_id is not null and deleted_at is null;
+    create unique index if not exists meridian_projects_one_active_per_deal_idx
+      on meridian_projects(deal_id)
+      where deal_id is not null and deleted_at is null;
 
-create unique index if not exists meridian_projects_one_active_per_source_key_idx
-  on meridian_projects(source_key)
-  where source_key is not null and deleted_at is null;
+    create unique index if not exists meridian_projects_one_active_per_source_key_idx
+      on meridian_projects(source_key)
+      where source_key is not null and deleted_at is null;
+  end if;
+end $$;
 
 -- Enable RLS on Meridian-owned tables. Prototype policies intentionally allow
 -- the anon app client while the login system is still custom/client-side.
@@ -80,5 +87,10 @@ begin
   end loop;
 end $$;
 
-comment on policy "meridian_members prototype anon read" on meridian_members is
-  'Temporary prototype policy. Replace with Supabase Auth/RLS before production.';
+do $$
+begin
+  if to_regclass('meridian_members') is not null then
+    comment on policy "meridian_members prototype anon read" on meridian_members is
+      'Temporary prototype policy. Replace with Supabase Auth/RLS before production.';
+  end if;
+end $$;
