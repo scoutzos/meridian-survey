@@ -849,6 +849,66 @@ export default function ExpensePlanningPage() {
                 </div>
               </div>
 
+              <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(280px, 0.8fr)", gap: 12, marginTop: 14 }}>
+                <div style={{ padding: 12, borderRadius: 8, background: "var(--surface2)", border: "1px solid var(--border)" }}>
+                  <h4 style={{ fontSize: 12, fontWeight: 800, marginBottom: 10 }}>Proposal details</h4>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, marginBottom: 10 }}>
+                    <Detail label="Cost type" value={proposal.expense_kind === "hourly" ? "Hourly" : "Fixed"} />
+                    <Detail label="Cadence" value={proposal.cadence === "one_time" ? "One-time" : proposal.cadence} />
+                    <Detail label="Duration" value={proposal.cadence === "one_time" ? "One-time" : `${proposal.duration_months} month${proposal.duration_months === 1 ? "" : "s"}`} />
+                    <Detail label="Start date" value={proposal.start_month || "Not set"} />
+                    <Detail label="Member cap" value={`${fmtUSD(Number(proposal.member_cap))}/mo`} />
+                    <Detail label="Budgeted" value={proposal.is_budgeted ? "Yes" : "No"} />
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
+                    {proposal.expense_kind === "hourly" && (
+                      <>
+                        <Detail label="Hourly rate" value={fmtUSD(Number(proposal.hourly_rate ?? 0), { fractionDigits: 2 })} />
+                        <Detail label="Hours / month" value={String(Number(proposal.hours_per_month ?? 0))} />
+                      </>
+                    )}
+                    <Detail label="Up-front" value={fmtUSD(Number(proposal.upfront_amount))} />
+                    <Detail label={proposal.cadence === "quarterly" ? "Quarterly cost" : proposal.cadence === "one_time" ? "One-time cost" : "Monthly cost"} value={fmtUSD(Number(proposal.cadence === "one_time" ? proposal.one_time_amount : proposal.monthly_amount))} />
+                  </div>
+                  <div style={{ marginTop: 10 }}>
+                    <div style={{ color: "var(--muted)", fontSize: 11, marginBottom: 4 }}>Proposal notes</div>
+                    <div style={{ color: proposal.notes ? "var(--fg)" : "var(--muted)", fontSize: 13, lineHeight: 1.45, whiteSpace: "pre-wrap" }}>
+                      {proposal.notes || "No proposal notes entered."}
+                    </div>
+                  </div>
+                </div>
+
+                <div style={{ padding: 12, borderRadius: 8, background: "var(--surface2)", border: "1px solid var(--border)" }}>
+                  <h4 style={{ fontSize: 12, fontWeight: 800, marginBottom: 10 }}>Cost breakdown</h4>
+                  <div style={{ display: "grid", gap: 8 }}>
+                    <ResultRow label="Gross first month" value={fmtUSD(grossFirstMonthAmount)} />
+                    <ResultRow label="Budget changes" value={`${proposalBudgetChangeFirst >= 0 ? "+" : "-"}${fmtUSD(Math.abs(proposalBudgetChangeFirst))}`} tone={proposalBudgetChangeFirst <= 0 ? "good" : "warn"} />
+                    <ResultRow label="Net first month" value={fmtUSD(firstMonthAmount)} strong />
+                    <ResultRow label="First month / member" value={fmtUSD(firstMonthPerMember, { fractionDigits: 2 })} strong />
+                    <ResultRow label="Ongoing / member" value={fmtUSD(ongoingPerMemberForProposal, { fractionDigits: 2 })} />
+                  </div>
+                </div>
+              </div>
+
+              {proposalOffsets.length > 0 && (
+                <div style={{ marginTop: 12, padding: 12, borderRadius: 8, background: "var(--surface2)", border: "1px solid var(--border)" }}>
+                  <h4 style={{ fontSize: 12, fontWeight: 800, marginBottom: 10 }}>Budget-change details</h4>
+                  <div style={{ display: "grid", gap: 8 }}>
+                    {proposalOffsets.map(o => (
+                      <div key={`detail-${o.id}`} style={{ display: "grid", gridTemplateColumns: "110px 1fr 120px 100px minmax(180px, 1fr)", gap: 8, alignItems: "center", fontSize: 12 }}>
+                        <Badge text={budgetChangeVerb(o.offset_kind)} tone={o.offset_kind === "increase" ? "warn" : "good"} />
+                        <strong>{o.title}</strong>
+                        <span style={{ color: o.offset_kind === "increase" ? "var(--obsidian)" : "var(--gold)", fontWeight: 700 }}>
+                          {budgetChangeSign(o.offset_kind) > 0 ? "+" : "-"}{fmtUSD(Number(o.amount))}
+                        </span>
+                        <span style={{ color: "var(--muted)" }}>{o.cadence}</span>
+                        <span style={{ color: o.notes ? "var(--fg)" : "var(--muted)" }}>{o.notes || "No note"}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, marginTop: 14 }}>
                 <MiniStat label="Approvals" value={`${approved}/${proposal.required_approvals}`} />
                 <MiniStat label="Reject" value={String(rejected)} />
@@ -952,6 +1012,15 @@ function MiniStat({ label, value }: { label: string; value: string }) {
     <div style={{ padding: 10, borderRadius: 8, background: "var(--surface2)", border: "1px solid var(--border)" }}>
       <div style={{ color: "var(--muted)", fontSize: 11, marginBottom: 3 }}>{label}</div>
       <div style={{ fontWeight: 700 }}>{value}</div>
+    </div>
+  );
+}
+
+function Detail({ label, value }: { label: string; value: string }) {
+  return (
+    <div style={{ padding: 8, borderRadius: 7, background: "rgba(255,255,255,0.24)", border: "1px solid var(--border)" }}>
+      <div style={{ color: "var(--muted)", fontSize: 10, marginBottom: 3 }}>{label}</div>
+      <div style={{ fontSize: 12, fontWeight: 700 }}>{value}</div>
     </div>
   );
 }
