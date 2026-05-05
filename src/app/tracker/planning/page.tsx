@@ -5,9 +5,12 @@ import { supabase } from "@/lib/supabase";
 import {
   Expense,
   EXPENSE_CATEGORIES,
+  CapitalCall,
+  Contribution,
   MEMBER_COUNT,
   MemberProfile,
   TrackerSettings,
+  computeFundingStatus,
   fmtUSD,
   isAdmin,
   logAudit,
@@ -26,7 +29,7 @@ type ProposalStatus = "draft" | "review" | "approved" | "rejected" | "converted"
 type ExpenseKind = "fixed" | "hourly";
 type Cadence = "monthly" | "quarterly" | "one_time";
 type VoteDecision = "approve" | "reject" | "abstain";
-type OffsetKind = "reduce" | "remove";
+type OffsetKind = "increase" | "reduce" | "remove";
 type ProposalFilter = "needs_my_vote" | "review" | "approved" | "converted" | "rejected" | "all";
 
 interface ExpenseProposal {
@@ -172,6 +175,16 @@ function monthlyEquivalentAmount(cadence: Cadence, amount: number): number {
   return 0;
 }
 
+function budgetChangeSign(kind: OffsetKind): 1 | -1 {
+  return kind === "increase" ? 1 : -1;
+}
+
+function budgetChangeVerb(kind: OffsetKind): string {
+  if (kind === "increase") return "Increase";
+  if (kind === "remove") return "Remove";
+  return "Reduce";
+}
+
 export default function ExpensePlanningPage() {
   const router = useRouter();
   const [user, setUser] = useState<string | null>(null);
@@ -200,7 +213,7 @@ export default function ExpensePlanningPage() {
   const [isBudgeted, setIsBudgeted] = useState(false);
   const [notes, setNotes] = useState("");
   const [offsetTitle, setOffsetTitle] = useState("");
-  const [offsetKind, setOffsetKind] = useState<OffsetKind>("reduce");
+  const [offsetKind, setOffsetKind] = useState<OffsetKind>("increase");
   const [offsetCadence, setOffsetCadence] = useState<Cadence>("monthly");
   const [offsetAmount, setOffsetAmount] = useState("");
   const [offsetSourceId, setOffsetSourceId] = useState("");
@@ -272,10 +285,10 @@ export default function ExpensePlanningPage() {
   const oneTimeAmount = cadence === "one_time" ? proposedImpact : 0;
   const grossFirstMonthImpact = (cadence === "one_time" ? oneTimeAmount : monthlyAmount) + upfrontCost;
   const grossOngoingMonthlyImpact = monthlyEquivalentAmount(cadence, monthlyAmount);
-  const offsetFirstMonthImpact = offsetDrafts.reduce((sum, o) => sum + firstPeriodAmount(o.cadence, Number(o.amount)), 0);
-  const offsetOngoingMonthlyImpact = offsetDrafts.reduce((sum, o) => sum + monthlyEquivalentAmount(o.cadence, Number(o.amount)), 0);
-  const firstMonthImpact = Math.max(0, grossFirstMonthImpact - offsetFirstMonthImpact);
-  const ongoingMonthlyImpact = Math.max(0, grossOngoingMonthlyImpact - offsetOngoingMonthlyImpact);
+  const budgetChangeFirstMonthImpact = offsetDrafts.reduce((sum, o) => sum + (budgetChangeSign(o.offset_kind) * firstPeriodAmount(o.cadence, Number(o.amount))), 0);
+  const budgetChangeOngoingMonthlyImpact = offsetDrafts.reduce((sum, o) => sum + (budgetChangeSign(o.offset_kind) * monthlyEquivalentAmount(o.cadence, Number(o.amount))), 0);
+  const firstMonthImpact = grossFirstMonthImpact + budgetChangeFirstMonthImpact;
+  const ongoingMonthlyImpact = grossOngoingMonthlyImpact + budgetChangeOngoingMonthlyImpact;
   const newMonthlyTotal = currentMonthly.amount + firstMonthImpact;
   const ongoingMonthlyTotal = currentMonthly.amount + ongoingMonthlyImpact;
   const newPerMember = MEMBER_COUNT > 0 ? newMonthlyTotal / MEMBER_COUNT : 0;
@@ -288,7 +301,7 @@ export default function ExpensePlanningPage() {
   function addOffsetDraft() {
     const amount = toNumber(offsetAmount);
     const linked = expenses.find(e => String(e.id) === offsetSourceId);
-    const draftTitle = offsetTitle.trim() || linked?.description || (offsetKind === "remove" ? "Remove expense" : "Reduce expense");
+    const draftTitle = offsetTitle.trim() || linked?.description || `${budgetChangeVerb(offsetKind)} expense`;
     if (amount <= 0 || !draftTitle) return;
     setOffsetDrafts(prev => [
       ...prev,
@@ -460,6 +473,7 @@ export default function ExpensePlanningPage() {
 
     const { data, error } = await supabase.from("tracker_expenses").insert(rows).select();
     if (error) { alert(error.message); return; }
+    const createdExpenses = (data as Expense[] | null) ?? [];
     const first = (data as Expense[] | null)?.[0];
     const { error: updateError } = await supabase
       .from("tracker_expense_proposals")
@@ -471,13 +485,54 @@ export default function ExpensePlanningPage() {
       })
       .eq("id", proposal.id);
     if (updateError) { alert(updateError.message); return; }
+    const [expenseRes, contributionRes, callRes] = await Promise.all([
+      supabase.from("tracker_expenses").select("*").is("deleted_at", null),
+      supabase.from("tracker_contributions").select("*").is("deleted_at", null),
+      supabase.from("tracker_capital_calls").select("*").is("deleted_at", null),
+    ]);
+    const fundingStatus = computeFundingStatus(
+      (expenseRes.data as Expense[] | null) ?? [],
+      (contributionRes.data as Contribution[] | null) ?? [],
+      (callRes.data as CapitalCall[] | null) ?? [],
+    );
+    let suggestedCall = null;
+    const existingCalls = (callRes.data as CapitalCall[] | null) ?? [];
+    const alreadySuggested = existingCalls
+      .some(c => !c.deleted_at && c.status === "suggested");
+    if (fundingStatus.shortfall > 0 && !alreadySuggested) {
+      const { data: callData, error: callError } = await supabase
+        .from("tracker_capital_calls")
+        .insert({
+          date_called: new Date().toISOString().slice(0, 10),
+          reason: `Auto-suggested after approved proposal "${proposal.title}": cover funding shortfall of ${fmtUSD(fundingStatus.shortfall)}`,
+          total_amount: Number(fundingStatus.shortfall.toFixed(2)),
+          per_member_amount: MEMBER_COUNT > 0 ? Number((fundingStatus.shortfall / MEMBER_COUNT).toFixed(2)) : 0,
+          status: "suggested",
+          auto_suggested: true,
+          created_by: user,
+          updated_by: user,
+        })
+        .select()
+        .single();
+      if (callError) { alert(callError.message); return; }
+      suggestedCall = callData;
+    }
     await logAudit({
       actor: user,
       table_name: "tracker_expense_proposals",
       row_id: proposal.id,
       action: "update",
-      diff: { convertedExpenses: data },
+      diff: { convertedExpenses: createdExpenses, suggestedCapitalCall: suggestedCall },
     });
+    if (suggestedCall) {
+      await logAudit({
+        actor: user,
+        table_name: "tracker_capital_calls",
+        row_id: String((suggestedCall as { id: number }).id),
+        action: "create",
+        diff: { after: suggestedCall, source: "proposal-conversion", proposalId: proposal.id },
+      });
+    }
     void load();
   }
 
@@ -599,7 +654,7 @@ export default function ExpensePlanningPage() {
           </Field>
 
           <div style={{ marginTop: 16, paddingTop: 14, borderTop: "1px solid var(--border)" }}>
-            <h3 style={{ fontSize: 13, fontWeight: 700, marginBottom: 10 }}>Offsets / budget changes</h3>
+            <h3 style={{ fontSize: 13, fontWeight: 700, marginBottom: 10 }}>Budget changes</h3>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 120px", gap: 10, marginBottom: 10 }}>
               <Field label="Link existing expense">
                 <select value={offsetSourceId} onChange={e => {
@@ -620,6 +675,7 @@ export default function ExpensePlanningPage() {
               </Field>
               <Field label="Action">
                 <select value={offsetKind} onChange={e => setOffsetKind(e.target.value as OffsetKind)} style={trackerInput}>
+                  <option value="increase">Increase</option>
                   <option value="reduce">Reduce</option>
                   <option value="remove">Remove</option>
                 </select>
@@ -649,11 +705,11 @@ export default function ExpensePlanningPage() {
                 {offsetDrafts.map((o, i) => (
                   <div key={`${o.title}-${i}`} style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", padding: 10, borderRadius: 8, background: "var(--surface2)", border: "1px solid var(--border)" }}>
                     <div>
-                      <div style={{ fontSize: 12, fontWeight: 700 }}>{o.offset_kind === "remove" ? "Remove" : "Reduce"}: {o.title}</div>
+                      <div style={{ fontSize: 12, fontWeight: 700 }}>{budgetChangeVerb(o.offset_kind)}: {o.title}</div>
                       <div style={{ color: "var(--muted)", fontSize: 11 }}>{o.cadence} - {o.notes || "No note"}</div>
                     </div>
                     <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                      <strong>-{fmtUSD(Number(o.amount))}</strong>
+                      <strong>{budgetChangeSign(o.offset_kind) > 0 ? "+" : "-"}{fmtUSD(Number(o.amount))}</strong>
                       <button onClick={() => setOffsetDrafts(prev => prev.filter((_, idx) => idx !== i))} style={{ ...trackerBtnSubtle, padding: "5px 8px", fontSize: 11 }}>Remove</button>
                     </div>
                   </div>
@@ -671,12 +727,12 @@ export default function ExpensePlanningPage() {
           <h2 style={{ fontSize: 14, fontWeight: 700, marginBottom: 12 }}>Live decision math</h2>
           <div style={{ display: "grid", gap: 10 }}>
             <ResultRow label="Gross proposed cost" value={fmtUSD(grossFirstMonthImpact)} />
-            <ResultRow label="First-month offsets" value={`-${fmtUSD(offsetFirstMonthImpact)}`} tone="good" />
+            <ResultRow label="First-month budget changes" value={`${budgetChangeFirstMonthImpact >= 0 ? "+" : "-"}${fmtUSD(Math.abs(budgetChangeFirstMonthImpact))}`} tone={budgetChangeFirstMonthImpact <= 0 ? "good" : "warn"} />
             <ResultRow label="Net proposed cost" value={fmtUSD(firstMonthImpact)} strong />
             <ResultRow label="First-month total" value={fmtUSD(newMonthlyTotal)} />
             <ResultRow label="First-month member portion" value={fmtUSD(newPerMember, { fractionDigits: 2 })} strong />
             <ResultRow label={overUnder >= 0 ? "First month under cap by" : "First month over cap by"} value={fmtUSD(Math.abs(overUnder), { fractionDigits: 2 })} tone={overUnder >= 0 ? "good" : "warn"} />
-            <ResultRow label="Ongoing offsets" value={`-${fmtUSD(offsetOngoingMonthlyImpact)}`} tone="good" />
+            <ResultRow label="Ongoing budget changes" value={`${budgetChangeOngoingMonthlyImpact >= 0 ? "+" : "-"}${fmtUSD(Math.abs(budgetChangeOngoingMonthlyImpact))}`} tone={budgetChangeOngoingMonthlyImpact <= 0 ? "good" : "warn"} />
             <ResultRow label="Ongoing monthly total" value={fmtUSD(ongoingMonthlyTotal)} />
             <ResultRow label="Ongoing member portion" value={fmtUSD(ongoingPerMember, { fractionDigits: 2 })} strong />
             <ResultRow label={ongoingOverUnder >= 0 ? "Ongoing under cap by" : "Ongoing over cap by"} value={fmtUSD(Math.abs(ongoingOverUnder), { fractionDigits: 2 })} tone={ongoingOverUnder >= 0 ? "good" : "warn"} />
@@ -743,10 +799,10 @@ export default function ExpensePlanningPage() {
             ? Number(proposal.monthly_amount)
             : 0;
           const grossFirstMonthAmount = recurringFirstPayment + Number(proposal.one_time_amount) + Number(proposal.upfront_amount);
-          const proposalOffsetFirst = proposalOffsets.reduce((sum, o) => sum + firstPeriodAmount(o.cadence, Number(o.amount)), 0);
-          const proposalOffsetOngoing = proposalOffsets.reduce((sum, o) => sum + monthlyEquivalentAmount(o.cadence, Number(o.amount)), 0);
-          const firstMonthAmount = Math.max(0, grossFirstMonthAmount - proposalOffsetFirst);
-          const netOngoingMonthlyAmount = Math.max(0, ongoingMonthlyAmount - proposalOffsetOngoing);
+          const proposalBudgetChangeFirst = proposalOffsets.reduce((sum, o) => sum + (budgetChangeSign(o.offset_kind) * firstPeriodAmount(o.cadence, Number(o.amount))), 0);
+          const proposalBudgetChangeOngoing = proposalOffsets.reduce((sum, o) => sum + (budgetChangeSign(o.offset_kind) * monthlyEquivalentAmount(o.cadence, Number(o.amount))), 0);
+          const firstMonthAmount = grossFirstMonthAmount + proposalBudgetChangeFirst;
+          const netOngoingMonthlyAmount = ongoingMonthlyAmount + proposalBudgetChangeOngoing;
           const firstMonthTotal = currentMonthly.amount + firstMonthAmount;
           const ongoingTotal = currentMonthly.amount + netOngoingMonthlyAmount;
           const firstMonthPerMember = MEMBER_COUNT > 0 ? firstMonthTotal / MEMBER_COUNT : 0;
@@ -768,9 +824,9 @@ export default function ExpensePlanningPage() {
                     <div style={{ display: "grid", gap: 6, marginTop: 10 }}>
                       {proposalOffsets.map(o => (
                         <div key={o.id} style={{ display: "inline-flex", width: "fit-content", gap: 8, alignItems: "center", padding: "5px 8px", borderRadius: 999, background: "var(--surface2)", border: "1px solid var(--border)", fontSize: 11 }}>
-                          <strong>{o.offset_kind === "remove" ? "Remove" : "Reduce"}</strong>
+                          <strong>{budgetChangeVerb(o.offset_kind)}</strong>
                           <span>{o.title}</span>
-                          <span style={{ color: "var(--gold)" }}>-{fmtUSD(Number(o.amount))}</span>
+                          <span style={{ color: o.offset_kind === "increase" ? "var(--obsidian)" : "var(--gold)" }}>{budgetChangeSign(o.offset_kind) > 0 ? "+" : "-"}{fmtUSD(Number(o.amount))}</span>
                           <span style={{ color: "var(--muted)" }}>{o.cadence}</span>
                         </div>
                       ))}
@@ -780,8 +836,8 @@ export default function ExpensePlanningPage() {
                 <div style={{ textAlign: "right", minWidth: 180 }}>
                   <div style={{ fontSize: 20, fontWeight: 700 }}>{fmtUSD(firstMonthAmount)}</div>
                   {proposalOffsets.length > 0 && (
-                    <div style={{ color: "var(--gold)", fontSize: 12 }}>
-                      net of {fmtUSD(proposalOffsetFirst)} offsets
+                    <div style={{ color: proposalBudgetChangeFirst <= 0 ? "var(--gold)" : "var(--obsidian)", fontSize: 12 }}>
+                      {proposalBudgetChangeFirst >= 0 ? "+" : "-"}{fmtUSD(Math.abs(proposalBudgetChangeFirst))} budget changes
                     </div>
                   )}
                   <div style={{ color: "var(--muted)", fontSize: 12 }}>
@@ -852,7 +908,7 @@ export default function ExpensePlanningPage() {
                       </button>
                       {proposalOffsets.length > 0 && (
                         <span style={{ color: "var(--muted)", fontSize: 11, maxWidth: 320 }}>
-                          Offsets are approved as part of the package; update or remove the existing expense rows separately.
+                          Budget changes are approved as part of the package; update existing expense rows separately.
                         </span>
                       )}
                     </>

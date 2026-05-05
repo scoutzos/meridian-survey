@@ -6,7 +6,7 @@ create table if not exists tracker_expense_proposal_offsets (
   source_expense_id bigint references tracker_expenses(id) on delete set null,
   title             text not null,
   offset_kind       text not null default 'reduce'
-                      check (offset_kind in ('reduce','remove')),
+                      check (offset_kind in ('increase','reduce','remove')),
   cadence           text not null default 'monthly'
                       check (cadence in ('monthly','quarterly','one_time')),
   amount            numeric(12,2) not null default 0 check (amount >= 0),
