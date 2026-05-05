@@ -48,6 +48,11 @@ const COLORS = {
 
 const QUICK_LINKS: Array<{ title: string; href: string; eyebrow: string; external?: boolean }> = [
   {
+    title: "Money & Expenses",
+    eyebrow: "Planning + Tracker",
+    href: "/tracker/planning",
+  },
+  {
     title: "Operating Agreement Draft",
     eyebrow: "Working Document",
     href: "/decisions",

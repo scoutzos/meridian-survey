@@ -4,19 +4,19 @@ import { useEffect, useState } from "react";
 
 const PRIMARY = [
   { href: "/dashboard",  label: "Home" },
+  { href: "/tracker",    label: "Money" },
   { href: "/deals",      label: "Deals" },
   { href: "/projects",   label: "Projects" },
-  { href: "/actions",    label: "Actions" },
 ];
 
 const MORE = [
+  { href: "/actions",    label: "Actions" },
   { href: "/operations", label: "Operations" },
   { href: "/meetings",   label: "Meetings" },
   { href: "/surveys",    label: "Surveys" },
   { href: "/members",    label: "Members" },
   { href: "/documents",  label: "Documents" },
   { href: "/decisions",  label: "Decisions" },
-  { href: "/tracker",    label: "Tracker" },
   { href: "/hub",        label: "Hub" },
 ];
 

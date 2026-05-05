@@ -16,6 +16,7 @@ export default function NavBar() {
 
   const links = [
     { href: "/dashboard",  label: "Home" },
+    { href: "/tracker",    label: "Money" },
     { href: "/deals",      label: "Deals" },
     { href: "/projects",   label: "Projects" },
     { href: "/operations", label: "Ops" },
@@ -25,7 +26,6 @@ export default function NavBar() {
     { href: "/members",    label: "Members" },
     { href: "/documents",  label: "Docs" },
     { href: "/decisions",  label: "Decisions" },
-    { href: "/tracker",    label: "Tracker" },
     { href: "/hub",        label: "Hub" },
   ];
 
