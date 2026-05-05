@@ -201,6 +201,7 @@ export default function DashboardPage() {
   const activeProjects = projects.filter(p => !["sold", "passed"].includes(p.status)).slice(0, 3);
   const upcomingEvents = calendarEvents.slice(0, 3);
   const pendingReimbursements = reimbursements.filter(r => r.status === "submitted" || r.status === "approved");
+  const pendingProposalVotes = notifications.filter(n => n.notification_type === "expense_proposal_vote");
 
   const dismissNotice = async (notice: Notification) => {
     await markNotificationRead(notice.id);
@@ -288,6 +289,39 @@ export default function DashboardPage() {
                 </div>
               ))}
             </div>
+          )}
+          {pendingProposalVotes.length > 0 && (
+            <button
+              onClick={() => router.push("/tracker/planning")}
+              style={{
+                width: "100%",
+                background: "rgba(20,17,13,0.08)",
+                border: `1px solid ${obsidian}`,
+                borderLeft: `4px solid ${obsidian}`,
+                borderRadius: 12,
+                padding: "14px 16px",
+                marginBottom: 14,
+                textAlign: "left",
+                cursor: "pointer",
+                display: "flex",
+                justifyContent: "space-between",
+                gap: 12,
+                alignItems: "center",
+              }}
+            >
+              <div>
+                <p style={{ fontSize: 13, letterSpacing: 1.5, textTransform: "uppercase", color: brass, fontWeight: 700, marginBottom: 4 }}>
+                  Votes needed
+                </p>
+                <p style={{ fontSize: 17, fontWeight: 800, color: obsidian }}>
+                  {pendingProposalVotes.length} expense proposal{pendingProposalVotes.length === 1 ? "" : "s"} need your sign-off
+                </p>
+                <p style={{ fontSize: 12, color: ink, opacity: 0.7 }}>
+                  Review the proposal math, budget changes, notes, and approval record.
+                </p>
+              </div>
+              <span style={{ color: brass, fontSize: 22 }}>→</span>
+            </button>
           )}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }} className="dash-second-row">
             <article style={{

@@ -17,6 +17,8 @@ import {
   monthBucket,
 } from "@/lib/tracker";
 import { MEMBERS } from "@/data/questions";
+import { createActionItem } from "@/lib/action-items";
+import { createNotification } from "@/lib/operations";
 import TrackerShell, {
   trackerBtn,
   trackerBtnGhost,
@@ -154,6 +156,12 @@ function formatDateTime(iso: string | null): string {
   } catch {
     return iso;
   }
+}
+
+function addDays(days: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() + days);
+  return d.toISOString().slice(0, 10);
 }
 
 function nextProposalStatus(proposal: ExpenseProposal, proposalVotes: ProposalVote[]): ProposalStatus {
@@ -372,6 +380,22 @@ export default function ExpensePlanningPage() {
       action: "create",
       diff: { after: data, offsets: offsetDrafts },
     });
+    await Promise.all(MEMBERS.map(member => createNotification({
+      title: `Expense proposal needs your vote: ${proposal.title}`,
+      body: `${fmtUSD(firstMonthImpact)} net first-month impact. Approval required: ${proposal.required_approvals} of ${MEMBER_COUNT}.`,
+      priority: "high",
+      assigned_to: member,
+      href: `/tracker/planning?proposal=${proposal.id}`,
+      source_table: "tracker_expense_proposals",
+      source_id: proposal.id,
+      notification_type: "expense_proposal_vote",
+    }, user)));
+    await Promise.all(MEMBERS.map(member => createActionItem({
+      title: `Review expense proposal: ${proposal.title}`,
+      description: `Review and vote on the expense proposal in Money -> Planning. Net first-month impact: ${fmtUSD(firstMonthImpact)}.`,
+      assigned_to: member,
+      due_date: addDays(2),
+    }, user)));
     setNotes("");
     setOffsetDrafts([]);
     void load();
@@ -406,6 +430,20 @@ export default function ExpensePlanningPage() {
         .from("tracker_expense_proposals")
         .update({ status: nextStatus, updated_at: new Date().toISOString(), updated_by: user })
         .eq("id", proposal.id);
+      if (nextStatus === "approved" || nextStatus === "rejected") {
+        await Promise.all(MEMBERS.map(member => createNotification({
+          title: `Expense proposal ${nextStatus}: ${proposal.title}`,
+          body: nextStatus === "approved"
+            ? "The proposal reached the required approvals and is ready for admin conversion."
+            : "The proposal can no longer reach the required approval threshold.",
+          priority: nextStatus === "approved" ? "high" : "normal",
+          assigned_to: member,
+          href: `/tracker/planning?proposal=${proposal.id}`,
+          source_table: "tracker_expense_proposals",
+          source_id: proposal.id,
+          notification_type: `expense_proposal_${nextStatus}`,
+        }, user)));
+      }
     }
     await logAudit({
       actor: user,
@@ -533,6 +571,18 @@ export default function ExpensePlanningPage() {
         diff: { after: suggestedCall, source: "proposal-conversion", proposalId: proposal.id },
       });
     }
+    await Promise.all(MEMBERS.map(member => createNotification({
+      title: `Approved expense proposal converted: ${proposal.title}`,
+      body: suggestedCall
+        ? "Expense rows were created and a suggested capital call was opened for review."
+        : "Expense rows were created in the tracker.",
+      priority: suggestedCall ? "high" : "normal",
+      assigned_to: member,
+      href: suggestedCall ? "/tracker/capital-calls" : `/tracker/planning?proposal=${proposal.id}`,
+      source_table: "tracker_expense_proposals",
+      source_id: proposal.id,
+      notification_type: "expense_proposal_converted",
+    }, user)));
     void load();
   }
 
