@@ -529,7 +529,8 @@ export default function ExpensePlanningPage() {
         <Stat label="Room before cap" value={fmtUSD(availableRoom)} tone={availableRoom >= 0 ? "good" : "warn"} />
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1.15fr) minmax(320px, 0.85fr)", gap: 16, alignItems: "start", marginBottom: 16 }}>
+      <div style={{ display: "flex", flexDirection: "column" }}>
+      <div style={{ order: 2, display: "grid", gridTemplateColumns: "minmax(0, 1.15fr) minmax(320px, 0.85fr)", gap: 16, alignItems: "start", marginBottom: 16 }}>
         <div style={trackerCard}>
           <h2 style={{ fontSize: 14, fontWeight: 700, marginBottom: 12 }}>Build proposal</h2>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 150px", gap: 10, marginBottom: 10 }}>
@@ -866,6 +867,7 @@ export default function ExpensePlanningPage() {
             No proposals in this view.
           </div>
         )}
+      </div>
       </div>
     </TrackerShell>
   );
