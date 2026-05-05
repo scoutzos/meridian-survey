@@ -56,6 +56,7 @@ const TABS = [
   { href: "/tracker",                label: "Dashboard" },
   { href: "/tracker/members",        label: "Members" },
   { href: "/tracker/expenses",       label: "Expenses" },
+  { href: "/tracker/planning",       label: "Planning" },
   { href: "/tracker/contributions",  label: "Contributions" },
   { href: "/tracker/capital-calls",  label: "Capital Calls" },
   { href: "/tracker/settings",       label: "Settings" },

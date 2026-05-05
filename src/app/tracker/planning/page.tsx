@@ -1,0 +1,621 @@
+"use client";
+import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import { supabase } from "@/lib/supabase";
+import {
+  Expense,
+  EXPENSE_CATEGORIES,
+  MEMBER_COUNT,
+  MemberProfile,
+  TrackerSettings,
+  fmtUSD,
+  isAdmin,
+  logAudit,
+  monthBucket,
+} from "@/lib/tracker";
+import { MEMBERS } from "@/data/questions";
+import TrackerShell, {
+  trackerBtn,
+  trackerBtnGhost,
+  trackerBtnSubtle,
+  trackerCard,
+  trackerInput,
+} from "@/components/TrackerShell";
+
+type ProposalStatus = "draft" | "review" | "approved" | "rejected" | "converted";
+type ExpenseKind = "fixed" | "hourly";
+type Cadence = "monthly" | "one_time";
+type VoteDecision = "approve" | "reject" | "abstain";
+
+interface ExpenseProposal {
+  id: string;
+  title: string;
+  category: string;
+  expense_kind: ExpenseKind;
+  cadence: Cadence;
+  hourly_rate: number | null;
+  hours_per_month: number | null;
+  upfront_amount: number;
+  monthly_amount: number;
+  one_time_amount: number;
+  member_cap: number;
+  is_budgeted: boolean;
+  start_month: string | null;
+  duration_months: number;
+  notes: string | null;
+  status: ProposalStatus;
+  approval_rule: string;
+  minimum_oa_approvals: number;
+  required_approvals: number;
+  converted_expense_id: number | null;
+  created_at: string;
+  created_by: string | null;
+  updated_at: string;
+  updated_by: string | null;
+  deleted_at: string | null;
+}
+
+interface ProposalVote {
+  id: string;
+  proposal_id: string;
+  member_name: string;
+  decision: VoteDecision;
+  note: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+const DEFAULT_MEMBER_CAP = 250;
+
+function toNumber(value: string): number {
+  const parsed = Number(value.replace(/[$,]/g, ""));
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
+}
+
+function monthSort(bucket: string): number {
+  if (bucket === "Pre-formation" || bucket === "Unclassified") return -1;
+  const n = Number(bucket.replace("M", ""));
+  return Number.isFinite(n) ? n : -1;
+}
+
+function addMonths(iso: string, months: number): string {
+  const d = new Date(`${iso}T00:00:00Z`);
+  d.setUTCMonth(d.getUTCMonth() + months);
+  return d.toISOString().slice(0, 10);
+}
+
+function resolveRule(args: {
+  amount: number;
+  isBudgeted: boolean;
+  cadence: Cadence;
+}): { approvalRule: string; minimumApprovals: number; requiredApprovals: number } {
+  if (args.amount > 10000) {
+    return {
+      approvalRule: "All-member written consent required: proposed spend is over the $10,000 signature-authority working default.",
+      minimumApprovals: 6,
+      requiredApprovals: 6,
+    };
+  }
+  if (!args.isBudgeted) {
+    return {
+      approvalRule: `All-member written consent required: this is ${args.cadence === "monthly" ? "recurring " : ""}unbudgeted spend that affects member contributions.`,
+      minimumApprovals: 4,
+      requiredApprovals: 6,
+    };
+  }
+  return {
+    approvalRule: "Majority approval required: ordinary budgeted operations or administrative spending.",
+    minimumApprovals: 4,
+    requiredApprovals: 4,
+  };
+}
+
+function statusLabel(status: ProposalStatus): string {
+  return status.split("_").map(p => p.charAt(0).toUpperCase() + p.slice(1)).join(" ");
+}
+
+function nextProposalStatus(proposal: ExpenseProposal, proposalVotes: ProposalVote[]): ProposalStatus {
+  if (proposal.status === "converted") return "converted";
+  const approved = proposalVotes.filter(v => v.decision === "approve").length;
+  const rejected = proposalVotes.filter(v => v.decision === "reject").length;
+  if (approved >= proposal.required_approvals) return "approved";
+  if (MEMBER_COUNT - rejected < proposal.required_approvals) return "rejected";
+  return "review";
+}
+
+export default function ExpensePlanningPage() {
+  const router = useRouter();
+  const [user, setUser] = useState<string | null>(null);
+  const [settings, setSettings] = useState<TrackerSettings | null>(null);
+  const [profiles, setProfiles] = useState<MemberProfile[]>([]);
+  const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [proposals, setProposals] = useState<ExpenseProposal[]>([]);
+  const [votes, setVotes] = useState<ProposalVote[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [voteNote, setVoteNote] = useState("");
+
+  const [title, setTitle] = useState("New VA");
+  const [category, setCategory] = useState("VA");
+  const [expenseKind, setExpenseKind] = useState<ExpenseKind>("hourly");
+  const [cadence, setCadence] = useState<Cadence>("monthly");
+  const [hourlyRate, setHourlyRate] = useState("7");
+  const [hoursPerMonth, setHoursPerMonth] = useState("14");
+  const [fixedAmount, setFixedAmount] = useState("");
+  const [upfrontAmount, setUpfrontAmount] = useState("");
+  const [memberCap, setMemberCap] = useState(String(DEFAULT_MEMBER_CAP));
+  const [durationMonths, setDurationMonths] = useState("1");
+  const [startMonth, setStartMonth] = useState(new Date().toISOString().slice(0, 10));
+  const [isBudgeted, setIsBudgeted] = useState(false);
+  const [notes, setNotes] = useState("");
+
+  useEffect(() => {
+    const u = localStorage.getItem("meridian_user");
+    if (!u) { router.push("/"); return; }
+    setUser(u);
+    void load();
+    if (!supabase) return;
+    const sb = supabase;
+    const ch = sb
+      .channel("tracker_planning_changes")
+      .on("postgres_changes", { event: "*", schema: "public", table: "tracker_expenses" }, () => load())
+      .on("postgres_changes", { event: "*", schema: "public", table: "tracker_expense_proposals" }, () => load())
+      .on("postgres_changes", { event: "*", schema: "public", table: "tracker_expense_proposal_votes" }, () => load())
+      .subscribe();
+    return () => { void sb.removeChannel(ch); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [router]);
+
+  async function load() {
+    if (!supabase) { setLoading(false); return; }
+    setLoading(true);
+    const [s, p, e, pr, v] = await Promise.all([
+      supabase.from("tracker_settings").select("*").eq("key", "tracker").maybeSingle(),
+      supabase.from("tracker_member_profiles").select("*").order("member_name"),
+      supabase.from("tracker_expenses").select("*").is("deleted_at", null).order("expense_date", { ascending: true, nullsFirst: false }),
+      supabase.from("tracker_expense_proposals").select("*").is("deleted_at", null).order("created_at", { ascending: false }),
+      supabase.from("tracker_expense_proposal_votes").select("*").order("updated_at", { ascending: false }),
+    ]);
+    setSettings((s.data as TrackerSettings | null) ?? null);
+    setProfiles((p.data as MemberProfile[] | null) ?? []);
+    setExpenses((e.data as Expense[] | null) ?? []);
+    setProposals((pr.data as ExpenseProposal[] | null) ?? []);
+    setVotes((v.data as ProposalVote[] | null) ?? []);
+    setLoading(false);
+  }
+
+  const currentMonthly = useMemo(() => {
+    const start = settings?.llc_start_date ?? null;
+    const totals = new Map<string, number>();
+    for (const e of expenses) {
+      if (e.deleted_at) continue;
+      const bucket = monthBucket(e.expense_date, start);
+      if (monthSort(bucket) < 1) continue;
+      totals.set(bucket, (totals.get(bucket) ?? 0) + Number(e.amount));
+    }
+    const latest = Array.from(totals.entries()).sort((a, b) => monthSort(b[0]) - monthSort(a[0]))[0];
+    return { bucket: latest?.[0] ?? "No month", amount: latest?.[1] ?? 0 };
+  }, [expenses, settings]);
+
+  if (!user) return null;
+
+  const admin = isAdmin(profiles, user);
+  const cap = toNumber(memberCap);
+  const teamCap = cap * MEMBER_COUNT;
+  const duration = Math.max(1, Math.round(toNumber(durationMonths)));
+  const hourlyCost = toNumber(hourlyRate) * toNumber(hoursPerMonth);
+  const enteredFixed = toNumber(fixedAmount);
+  const upfrontCost = toNumber(upfrontAmount);
+  const proposedImpact = expenseKind === "hourly" ? hourlyCost : enteredFixed;
+  const monthlyAmount = cadence === "monthly" ? proposedImpact : 0;
+  const oneTimeAmount = cadence === "one_time" ? proposedImpact : 0;
+  const firstMonthImpact = cadence === "monthly" ? monthlyAmount + upfrontCost : oneTimeAmount + upfrontCost;
+  const ongoingMonthlyImpact = cadence === "monthly" ? monthlyAmount : 0;
+  const newMonthlyTotal = currentMonthly.amount + firstMonthImpact;
+  const ongoingMonthlyTotal = currentMonthly.amount + ongoingMonthlyImpact;
+  const newPerMember = MEMBER_COUNT > 0 ? newMonthlyTotal / MEMBER_COUNT : 0;
+  const ongoingPerMember = MEMBER_COUNT > 0 ? ongoingMonthlyTotal / MEMBER_COUNT : 0;
+  const availableRoom = teamCap - currentMonthly.amount;
+  const overUnder = teamCap - newMonthlyTotal;
+  const ongoingOverUnder = teamCap - ongoingMonthlyTotal;
+  const rule = resolveRule({ amount: Math.max(firstMonthImpact, ongoingMonthlyImpact), isBudgeted, cadence });
+
+  async function saveProposal() {
+    if (!supabase || !user) return;
+    if (!title.trim() || firstMonthImpact <= 0) return;
+    setSaving(true);
+    const row = {
+      title: title.trim(),
+      category,
+      expense_kind: expenseKind,
+      cadence,
+      hourly_rate: expenseKind === "hourly" ? toNumber(hourlyRate) : null,
+      hours_per_month: expenseKind === "hourly" ? toNumber(hoursPerMonth) : null,
+      upfront_amount: upfrontCost,
+      monthly_amount: monthlyAmount,
+      one_time_amount: oneTimeAmount,
+      member_cap: cap,
+      is_budgeted: isBudgeted,
+      start_month: startMonth || null,
+      duration_months: cadence === "monthly" ? duration : 1,
+      notes: notes.trim() || null,
+      status: "review",
+      approval_rule: rule.approvalRule,
+      minimum_oa_approvals: rule.minimumApprovals,
+      required_approvals: rule.requiredApprovals,
+      created_by: user,
+      updated_by: user,
+    };
+    const { data, error } = await supabase.from("tracker_expense_proposals").insert(row).select().single();
+    setSaving(false);
+    if (error) { alert(error.message); return; }
+    await logAudit({
+      actor: user,
+      table_name: "tracker_expense_proposals",
+      row_id: String((data as ExpenseProposal).id),
+      action: "create",
+      diff: { after: data },
+    });
+    setNotes("");
+    void load();
+  }
+
+  async function vote(proposal: ExpenseProposal, decision: VoteDecision) {
+    if (!supabase || !user) return;
+    const row = {
+      proposal_id: proposal.id,
+      member_name: user,
+      decision,
+      note: voteNote.trim() || null,
+      updated_at: new Date().toISOString(),
+    };
+    const { error } = await supabase
+      .from("tracker_expense_proposal_votes")
+      .upsert(row, { onConflict: "proposal_id,member_name" });
+    if (error) { alert(error.message); return; }
+    const existing = votesFor(proposal.id).filter(v => v.member_name !== user);
+    const simulatedVote: ProposalVote = {
+      id: "",
+      proposal_id: proposal.id,
+      member_name: user,
+      decision,
+      note: voteNote.trim() || null,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    const nextStatus = nextProposalStatus(proposal, [...existing, simulatedVote]);
+    if (nextStatus !== proposal.status) {
+      await supabase
+        .from("tracker_expense_proposals")
+        .update({ status: nextStatus, updated_at: new Date().toISOString(), updated_by: user })
+        .eq("id", proposal.id);
+    }
+    await logAudit({
+      actor: user,
+      table_name: "tracker_expense_proposal_votes",
+      row_id: `${proposal.id}:${user}`,
+      action: "update",
+      diff: { after: row },
+    });
+    setVoteNote("");
+    void load();
+  }
+
+  async function convertToExpenses(proposal: ExpenseProposal) {
+    if (!supabase || !user || !admin) return;
+    const proposalVotes = votesFor(proposal.id);
+    const approved = proposalVotes.filter(v => v.decision === "approve").length;
+    if (approved < proposal.required_approvals) return;
+
+    const months = proposal.cadence === "monthly" ? proposal.duration_months : 0;
+    const baseDate = proposal.start_month || new Date().toISOString().slice(0, 10);
+    const rows = [
+      ...(proposal.upfront_amount > 0 ? [{
+        expense_date: baseDate,
+        category: proposal.category,
+        description: `${proposal.title} - up-front`,
+        amount: proposal.upfront_amount,
+        paid_by_member_name: null,
+        paid_by_label: "TBD",
+        created_by: user,
+        updated_by: user,
+      }] : []),
+      ...(proposal.cadence === "one_time" && proposal.one_time_amount > 0 ? [{
+        expense_date: baseDate,
+        category: proposal.category,
+        description: proposal.title,
+        amount: proposal.one_time_amount,
+        paid_by_member_name: null,
+        paid_by_label: "TBD",
+        created_by: user,
+        updated_by: user,
+      }] : []),
+      ...Array.from({ length: months }, (_, i) => ({
+        expense_date: addMonths(baseDate, i),
+        category: proposal.category,
+        description: months > 1 ? `${proposal.title} - M${i + 1}` : proposal.title,
+        amount: proposal.monthly_amount,
+        paid_by_member_name: null,
+        paid_by_label: "TBD",
+        created_by: user,
+        updated_by: user,
+      })),
+    ];
+    if (!rows.length) return;
+
+    const { data, error } = await supabase.from("tracker_expenses").insert(rows).select();
+    if (error) { alert(error.message); return; }
+    const first = (data as Expense[] | null)?.[0];
+    const { error: updateError } = await supabase
+      .from("tracker_expense_proposals")
+      .update({
+        status: "converted",
+        converted_expense_id: first?.id ?? null,
+        updated_at: new Date().toISOString(),
+        updated_by: user,
+      })
+      .eq("id", proposal.id);
+    if (updateError) { alert(updateError.message); return; }
+    await logAudit({
+      actor: user,
+      table_name: "tracker_expense_proposals",
+      row_id: proposal.id,
+      action: "update",
+      diff: { convertedExpenses: data },
+    });
+    void load();
+  }
+
+  function votesFor(proposalId: string): ProposalVote[] {
+    return votes.filter(v => v.proposal_id === proposalId);
+  }
+
+  return (
+    <TrackerShell title="Expense Planning" subtitle="Model proposed expenses, collect member sign-off, then convert approved proposals into tracker expenses.">
+      {loading && <div style={{ color: "var(--muted)", marginBottom: 12 }}>Loading...</div>}
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 16 }}>
+        <Stat label={`Current monthly (${currentMonthly.bucket})`} value={fmtUSD(currentMonthly.amount)} />
+        <Stat label="Member cap" value={`${fmtUSD(cap)}/mo`} />
+        <Stat label="Team cap" value={fmtUSD(teamCap)} />
+        <Stat label="Room before cap" value={fmtUSD(availableRoom)} tone={availableRoom >= 0 ? "good" : "warn"} />
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1.15fr) minmax(320px, 0.85fr)", gap: 16, alignItems: "start", marginBottom: 16 }}>
+        <div style={trackerCard}>
+          <h2 style={{ fontSize: 14, fontWeight: 700, marginBottom: 12 }}>Build proposal</h2>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 150px", gap: 10, marginBottom: 10 }}>
+            <Field label="Expense name">
+              <input value={title} onChange={e => setTitle(e.target.value)} style={trackerInput} />
+            </Field>
+            <Field label="Category">
+              <select value={category} onChange={e => setCategory(e.target.value)} style={trackerInput}>
+                {EXPENSE_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </Field>
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, marginBottom: 10 }}>
+            <Field label="Cost type">
+              <select value={expenseKind} onChange={e => setExpenseKind(e.target.value as ExpenseKind)} style={trackerInput}>
+                <option value="hourly">Hourly</option>
+                <option value="fixed">Fixed</option>
+              </select>
+            </Field>
+            <Field label="Cadence">
+              <select value={cadence} onChange={e => setCadence(e.target.value as Cadence)} style={trackerInput}>
+                <option value="monthly">Monthly</option>
+                <option value="one_time">One-time</option>
+              </select>
+            </Field>
+            <Field label="Member cap">
+              <input value={memberCap} onChange={e => setMemberCap(e.target.value)} style={trackerInput} />
+            </Field>
+            <Field label="Duration">
+              <input value={durationMonths} onChange={e => setDurationMonths(e.target.value)} disabled={cadence === "one_time"} style={{ ...trackerInput, opacity: cadence === "one_time" ? 0.55 : 1 }} />
+            </Field>
+          </div>
+
+          {expenseKind === "hourly" ? (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 10, marginBottom: 10 }}>
+              <Field label="Hourly rate">
+                <input value={hourlyRate} onChange={e => setHourlyRate(e.target.value)} style={trackerInput} />
+              </Field>
+              <Field label="Hours per month">
+                <input value={hoursPerMonth} onChange={e => setHoursPerMonth(e.target.value)} style={trackerInput} />
+              </Field>
+            </div>
+          ) : (
+            <Field label={cadence === "monthly" ? "Monthly amount" : "One-time amount"}>
+              <input value={fixedAmount} onChange={e => setFixedAmount(e.target.value)} style={trackerInput} />
+            </Field>
+          )}
+
+          <div style={{ marginTop: 10 }}>
+            <Field label="Up-front cost">
+              <input value={upfrontAmount} onChange={e => setUpfrontAmount(e.target.value)} placeholder="$0 deposit, setup fee, retainer..." style={trackerInput} />
+            </Field>
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "180px 1fr", gap: 10, marginTop: 10 }}>
+            <Field label="Start date">
+              <input type="date" value={startMonth} onChange={e => setStartMonth(e.target.value)} style={trackerInput} />
+            </Field>
+            <label style={{ display: "flex", alignItems: "end", gap: 8, fontSize: 13, paddingBottom: 10 }}>
+              <input type="checkbox" checked={isBudgeted} onChange={e => setIsBudgeted(e.target.checked)} />
+              Already inside an approved budget
+            </label>
+          </div>
+
+          <Field label="Notes">
+            <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={3} style={{ ...trackerInput, resize: "vertical" }} />
+          </Field>
+
+          <button onClick={saveProposal} disabled={saving || firstMonthImpact <= 0} style={{ ...trackerBtn, marginTop: 12, opacity: saving || firstMonthImpact <= 0 ? 0.6 : 1 }}>
+            {saving ? "Saving..." : "Save proposal for sign-off"}
+          </button>
+        </div>
+
+        <div style={trackerCard}>
+          <h2 style={{ fontSize: 14, fontWeight: 700, marginBottom: 12 }}>Live decision math</h2>
+          <div style={{ display: "grid", gap: 10 }}>
+            <ResultRow label="Proposed cost" value={fmtUSD(firstMonthImpact)} />
+            <ResultRow label="First-month total" value={fmtUSD(newMonthlyTotal)} />
+            <ResultRow label="First-month member portion" value={fmtUSD(newPerMember, { fractionDigits: 2 })} strong />
+            <ResultRow label={overUnder >= 0 ? "First month under cap by" : "First month over cap by"} value={fmtUSD(Math.abs(overUnder), { fractionDigits: 2 })} tone={overUnder >= 0 ? "good" : "warn"} />
+            <ResultRow label="Ongoing monthly total" value={fmtUSD(ongoingMonthlyTotal)} />
+            <ResultRow label="Ongoing member portion" value={fmtUSD(ongoingPerMember, { fractionDigits: 2 })} strong />
+            <ResultRow label={ongoingOverUnder >= 0 ? "Ongoing under cap by" : "Ongoing over cap by"} value={fmtUSD(Math.abs(ongoingOverUnder), { fractionDigits: 2 })} tone={ongoingOverUnder >= 0 ? "good" : "warn"} />
+          </div>
+          <div style={{ marginTop: 14, padding: 12, borderRadius: 8, background: "var(--surface2)", border: "1px solid var(--border)", fontSize: 12, color: "var(--muted)", lineHeight: 1.5 }}>
+            <strong style={{ color: "var(--fg)" }}>Approval rule:</strong> {rule.approvalRule}
+            <div style={{ marginTop: 6 }}>
+              System requires <b style={{ color: "var(--fg)" }}>{rule.requiredApprovals} of {MEMBER_COUNT}</b> approvals.
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <h2 style={{ fontSize: 16, fontWeight: 700, margin: "12px 0" }}>Proposals</h2>
+      <div style={{ display: "grid", gap: 12 }}>
+        {proposals.map(proposal => {
+          const proposalVotes = votesFor(proposal.id);
+          const approved = proposalVotes.filter(v => v.decision === "approve").length;
+          const rejected = proposalVotes.filter(v => v.decision === "reject").length;
+          const abstained = proposalVotes.filter(v => v.decision === "abstain").length;
+          const ready = approved >= proposal.required_approvals;
+          const myVote = proposalVotes.find(v => v.member_name === user);
+          const recurringAmount = proposal.cadence === "monthly" ? Number(proposal.monthly_amount) : 0;
+          const firstMonthAmount = recurringAmount + Number(proposal.one_time_amount) + Number(proposal.upfront_amount);
+          const firstMonthTotal = currentMonthly.amount + firstMonthAmount;
+          const ongoingTotal = currentMonthly.amount + recurringAmount;
+          const firstMonthPerMember = MEMBER_COUNT > 0 ? firstMonthTotal / MEMBER_COUNT : 0;
+          const ongoingPerMemberForProposal = MEMBER_COUNT > 0 ? ongoingTotal / MEMBER_COUNT : 0;
+
+          return (
+            <div key={proposal.id} style={trackerCard}>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 14, alignItems: "start", flexWrap: "wrap" }}>
+                <div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 4 }}>
+                    <h3 style={{ fontSize: 16, fontWeight: 700 }}>{proposal.title}</h3>
+                    <Badge text={proposal.status === "review" && ready ? "Approved - ready to convert" : statusLabel(proposal.status)} tone={proposal.status === "converted" ? "good" : ready ? "good" : "neutral"} />
+                    <Badge text={proposal.category} tone="neutral" />
+                  </div>
+                  <div style={{ color: "var(--muted)", fontSize: 12, lineHeight: 1.5 }}>
+                    {proposal.approval_rule}
+                  </div>
+                </div>
+                <div style={{ textAlign: "right", minWidth: 180 }}>
+                  <div style={{ fontSize: 20, fontWeight: 700 }}>{fmtUSD(firstMonthAmount)}</div>
+                  <div style={{ color: "var(--muted)", fontSize: 12 }}>
+                    first month - {fmtUSD(firstMonthPerMember, { fractionDigits: 2 })}/member
+                  </div>
+                  <div style={{ color: "var(--muted)", fontSize: 12 }}>
+                    ongoing - {fmtUSD(ongoingPerMemberForProposal, { fractionDigits: 2 })}/member
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, marginTop: 14 }}>
+                <MiniStat label="Approvals" value={`${approved}/${proposal.required_approvals}`} />
+                <MiniStat label="Reject" value={String(rejected)} />
+                <MiniStat label="Abstain" value={String(abstained)} />
+                <MiniStat label="OA minimum" value={`${proposal.minimum_oa_approvals}/${MEMBER_COUNT}`} />
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 8, marginTop: 14 }}>
+                {MEMBERS.map(member => {
+                  const v = proposalVotes.find(row => row.member_name === member);
+                  return (
+                    <div key={member} style={{ padding: 10, borderRadius: 8, background: "var(--surface2)", border: "1px solid var(--border)", minHeight: 74 }}>
+                      <div style={{ fontSize: 11, fontWeight: 700, marginBottom: 5 }}>{member}</div>
+                    <Badge text={v ? statusLabel(v.decision as ProposalStatus) : "Pending"} tone={v?.decision === "approve" ? "good" : v?.decision === "reject" ? "warn" : "neutral"} />
+                      {v?.note && <div style={{ marginTop: 6, color: "var(--muted)", fontSize: 11 }}>{v.note}</div>}
+                    </div>
+                  );
+                })}
+              </div>
+
+              {proposal.status !== "converted" && (
+                <div style={{ display: "flex", gap: 8, alignItems: "end", flexWrap: "wrap", marginTop: 14 }}>
+                  <input value={voteNote} onChange={e => setVoteNote(e.target.value)} placeholder="Optional note for your sign-off" style={{ ...trackerInput, maxWidth: 360 }} />
+                  <button onClick={() => vote(proposal, "approve")} style={trackerBtn}>
+                    {myVote?.decision === "approve" ? "Approved" : "Approve"}
+                  </button>
+                  <button onClick={() => vote(proposal, "abstain")} style={trackerBtnSubtle}>Abstain</button>
+                  <button onClick={() => vote(proposal, "reject")} style={{ ...trackerBtnGhost, borderColor: "var(--obsidian)", color: "var(--obsidian)" }}>Reject</button>
+                  {admin && ready && (
+                    <button onClick={() => convertToExpenses(proposal)} style={{ ...trackerBtn, background: "var(--obsidian)", color: "var(--surface)" }}>
+                      Convert to expenses
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })}
+        {!proposals.length && (
+          <div style={{ ...trackerCard, textAlign: "center", color: "var(--muted)" }}>
+            No proposals yet.
+          </div>
+        )}
+      </div>
+    </TrackerShell>
+  );
+}
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <label style={{ display: "block", fontSize: 12 }}>
+      <div style={{ color: "var(--muted)", marginBottom: 4 }}>{label}</div>
+      {children}
+    </label>
+  );
+}
+
+function Stat({ label, value, tone }: { label: string; value: string; tone?: "good" | "warn" }) {
+  return (
+    <div style={trackerCard}>
+      <div style={{ color: "var(--muted)", fontSize: 12, marginBottom: 4 }}>{label}</div>
+      <div style={{ fontSize: 20, fontWeight: 700, color: tone === "good" ? "var(--gold)" : tone === "warn" ? "var(--obsidian)" : "var(--fg)" }}>{value}</div>
+    </div>
+  );
+}
+
+function MiniStat({ label, value }: { label: string; value: string }) {
+  return (
+    <div style={{ padding: 10, borderRadius: 8, background: "var(--surface2)", border: "1px solid var(--border)" }}>
+      <div style={{ color: "var(--muted)", fontSize: 11, marginBottom: 3 }}>{label}</div>
+      <div style={{ fontWeight: 700 }}>{value}</div>
+    </div>
+  );
+}
+
+function ResultRow({ label, value, strong, tone }: { label: string; value: string; strong?: boolean; tone?: "good" | "warn" }) {
+  return (
+    <div style={{ display: "flex", justifyContent: "space-between", gap: 12, borderBottom: "1px solid var(--border)", paddingBottom: 8 }}>
+      <span style={{ color: "var(--muted)", fontSize: 13 }}>{label}</span>
+      <span style={{ fontWeight: strong ? 800 : 700, color: tone === "good" ? "var(--gold)" : tone === "warn" ? "var(--obsidian)" : "var(--fg)" }}>{value}</span>
+    </div>
+  );
+}
+
+function Badge({ text, tone }: { text: string; tone: "good" | "warn" | "neutral" }) {
+  return (
+    <span
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        borderRadius: 999,
+        padding: "3px 8px",
+        fontSize: 11,
+        fontWeight: 700,
+        background: tone === "good" ? "rgba(201,168,120,0.18)" : tone === "warn" ? "rgba(20,17,13,0.12)" : "var(--surface2)",
+        color: tone === "good" ? "var(--gold)" : tone === "warn" ? "var(--obsidian)" : "var(--muted)",
+        border: "1px solid var(--border)",
+      }}
+    >
+      {text}
+    </span>
+  );
+}

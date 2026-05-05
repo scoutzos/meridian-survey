@@ -39,6 +39,8 @@ alter table if exists tracker_expenses enable row level security;
 alter table if exists tracker_contributions enable row level security;
 alter table if exists tracker_capital_calls enable row level security;
 alter table if exists tracker_audit_log enable row level security;
+alter table if exists tracker_expense_proposals enable row level security;
+alter table if exists tracker_expense_proposal_votes enable row level security;
 alter table if exists action_items enable row level security;
 alter table if exists meeting_notes enable row level security;
 alter table if exists next_meeting enable row level security;
@@ -69,7 +71,7 @@ declare
   t text;
   tables text[] := array[
     'meridian_members','meridian_responses',
-    'tracker_settings','tracker_member_profiles','tracker_expenses','tracker_contributions','tracker_capital_calls','tracker_audit_log',
+    'tracker_settings','tracker_member_profiles','tracker_expenses','tracker_contributions','tracker_capital_calls','tracker_audit_log','tracker_expense_proposals','tracker_expense_proposal_votes',
     'action_items','meeting_notes','next_meeting','transcripts',
     'meridian_deals','meridian_deal_due_diligence_items','meridian_deal_votes','meridian_projects','meridian_project_timeline_events',
     'meridian_notifications','meridian_project_risks','meridian_vendors','meridian_project_documents',
