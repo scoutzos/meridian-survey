@@ -54,7 +54,7 @@ export const trackerBtnSubtle: React.CSSProperties = {
 
 const TABS = [
   { href: "/tracker",                label: "Dashboard" },
-  { href: "/tracker/members",        label: "Members" },
+  { href: "/tracker/members",        label: "Balances" },
   { href: "/tracker/expenses",       label: "Expenses" },
   { href: "/tracker/planning",       label: "Planning" },
   { href: "/tracker/contributions",  label: "Contributions" },

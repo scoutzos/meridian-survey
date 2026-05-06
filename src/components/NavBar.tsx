@@ -23,7 +23,7 @@ export default function NavBar() {
     { href: "/surveys",    label: "Surveys" },
     { href: "/actions",    label: "Actions" },
     { href: "/meetings",   label: "Meetings" },
-    { href: "/members",    label: "Members" },
+    { href: "/members",    label: "My Portal" },
     { href: "/documents",  label: "Docs" },
     { href: "/decisions",  label: "Decisions" },
     { href: "/hub",        label: "Hub" },

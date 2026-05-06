@@ -20,11 +20,17 @@ import {
   type Notification,
 } from "@/lib/operations";
 import {
-  fetchCalendarEvents,
   fetchReimbursements,
-  type CalendarEvent,
   type Reimbursement,
 } from "@/lib/governance";
+import {
+  computeMemberBalances,
+  fetchAll,
+  fmtUSD,
+  type CapitalCall,
+  type MemberBalance,
+} from "@/lib/tracker";
+import { fetchHubData, type Decision } from "@/lib/hub";
 
 type SurveyProgress = {
   surveyId: string;
@@ -47,28 +53,19 @@ const COLORS = {
 };
 
 const QUICK_LINKS: Array<{ title: string; href: string; eyebrow: string; external?: boolean }> = [
-  {
-    title: "Money & Expenses",
-    eyebrow: "Planning + Tracker",
-    href: "/tracker/planning",
-  },
-  {
-    title: "Operating Agreement Draft",
-    eyebrow: "Working Document",
-    href: "/decisions",
-  },
-  {
-    title: "Brand Guidelines Vol. I",
-    eyebrow: "Identity",
-    href: "/documents",
-  },
-  {
-    title: "Main Website",
-    eyebrow: "Public Site",
-    href: "https://meridian-website-red.vercel.app",
-    external: true,
-  },
+  { title: "Member Portal", eyebrow: "Full Record", href: "/members" },
+  { title: "Vote on Proposals", eyebrow: "Approvals", href: "/tracker/planning" },
+  { title: "My Balances", eyebrow: "Money", href: "/tracker/members" },
+  { title: "Actions", eyebrow: "Work", href: "/actions" },
+  { title: "Documents", eyebrow: "Records", href: "/documents" },
+  { title: "Main Website", eyebrow: "Public Site", href: "https://meridian-website-red.vercel.app", external: true },
 ];
+
+function canonicalMember(raw: string | null | undefined): string {
+  const trimmed = (raw ?? "").trim();
+  const match = MEMBERS.find(m => m.toLowerCase() === trimmed.toLowerCase());
+  return match ?? trimmed;
+}
 
 function formatDueDate(iso: string | null): string | null {
   if (!iso) return null;
@@ -84,10 +81,11 @@ function formatMeetingDate(iso: string | null): string | null {
   return d.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" });
 }
 
-function canonicalMember(raw: string | null | undefined): string {
-  const trimmed = (raw ?? "").trim();
-  const match = MEMBERS.find(m => m.toLowerCase() === trimmed.toLowerCase());
-  return match ?? trimmed;
+function formatActivityDate(iso: string | null): string {
+  if (!iso) return "No date";
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return iso;
+  return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
 export default function DashboardPage() {
@@ -99,8 +97,10 @@ export default function DashboardPage() {
   const [deals, setDeals] = useState<Deal[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [notifications, setNotifications] = useState<Notification[]>([]);
-  const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>([]);
   const [reimbursements, setReimbursements] = useState<Reimbursement[]>([]);
+  const [decisions, setDecisions] = useState<Decision[]>([]);
+  const [myBalance, setMyBalance] = useState<MemberBalance | null>(null);
+  const [capitalCalls, setCapitalCalls] = useState<CapitalCall[]>([]);
   const [loaded, setLoaded] = useState(false);
 
   const surveys = useMemo(() => getAllSurveys(), []);
@@ -113,9 +113,7 @@ export default function DashboardPage() {
     migrateLocalStorage(u);
 
     const totalsBySurvey: Record<string, number> = {};
-    for (const s of surveys) {
-      totalsBySurvey[s.id] = s.categories.reduce((sum, c) => sum + c.questions.length, 0);
-    }
+    for (const s of surveys) totalsBySurvey[s.id] = s.categories.reduce((sum, c) => sum + c.questions.length, 0);
 
     const buildProgressFromCounts = (counts: Record<string, Record<string, number>>) => {
       const myProgress: SurveyProgress[] = surveys.map(s => {
@@ -130,6 +128,51 @@ export default function DashboardPage() {
       setLoaded(true);
     };
 
+    async function loadSharedData() {
+      const [
+        items,
+        meeting,
+        dealRows,
+        projectRows,
+        notices,
+        reimbursementRows,
+        trackerData,
+        hub,
+      ] = await Promise.all([
+        fetchActionItems(),
+        fetchNextMeeting(),
+        fetchDeals(),
+        fetchProjects(),
+        fetchNotifications(u),
+        fetchReimbursements(),
+        fetchAll(),
+        fetchHubData(),
+      ]);
+
+      setActionItems(items);
+      setNextMeeting(meeting);
+      setDeals(dealRows);
+      setProjects(projectRows);
+      setNotifications(notices);
+      setReimbursements(reimbursementRows);
+      setDecisions(hub.decisions.slice(0, 4));
+
+      if (trackerData) {
+        setCapitalCalls(trackerData.capitalCalls);
+        const balances = computeMemberBalances({
+          members: MEMBERS.map(m => ({
+            name: m,
+            llcName: trackerData.profiles.find(p => p.member_name === m)?.llc_name || m,
+          })),
+          expenses: trackerData.expenses,
+          contributions: trackerData.contributions,
+          capitalCalls: trackerData.capitalCalls,
+          settings: trackerData.settings,
+        });
+        setMyBalance(balances.find(b => b.memberName === u) ?? null);
+      }
+    }
+
     if (!supabase) {
       const counts: Record<string, Record<string, number>> = {};
       for (const s of surveys) {
@@ -138,53 +181,27 @@ export default function DashboardPage() {
         if (!cached) continue;
         try {
           const data = JSON.parse(cached) as Record<string, unknown>;
-          const answered = Object.values(data).filter(v => {
-            if (Array.isArray(v)) return v.length > 0;
-            return typeof v === "string" && v.trim() !== "";
-          }).length;
+          const answered = Object.values(data).filter(v => Array.isArray(v) ? v.length > 0 : typeof v === "string" && v.trim() !== "").length;
           counts[s.id][u] = answered;
-        } catch { /* ignore */ }
+        } catch { /* ignore malformed cache */ }
       }
       buildProgressFromCounts(counts);
-      void Promise.all([fetchActionItems(), fetchNextMeeting(), fetchDeals(), fetchProjects(), fetchNotifications(u), fetchCalendarEvents(), fetchReimbursements()])
-        .then(([items, meeting, dealRows, projectRows, notices, eventRows, reimbursementRows]) => {
-          setActionItems(items);
-          setNextMeeting(meeting);
-          setDeals(dealRows);
-          setProjects(projectRows);
-          setNotifications(notices);
-          setCalendarEvents(eventRows);
-          setReimbursements(reimbursementRows);
-        });
+      void loadSharedData();
       return;
     }
 
     Promise.all([
       supabase.from("meridian_responses").select("member_name, survey_id"),
-      fetchActionItems(),
-      fetchNextMeeting(),
-      fetchDeals(),
-      fetchProjects(),
-      fetchNotifications(u),
-      fetchCalendarEvents(),
-      fetchReimbursements(),
-    ]).then(([respRes, items, meeting, dealRows, projectRows, notices, eventRows, reimbursementRows]) => {
-      const rows = respRes.data || [];
+      loadSharedData(),
+    ]).then(([respRes]) => {
       const counts: Record<string, Record<string, number>> = {};
-      for (const row of rows) {
+      for (const row of respRes.data || []) {
         const sid = row.survey_id || "operating-agreement";
         const canonical = canonicalMember(row.member_name);
         if (!counts[sid]) counts[sid] = {};
         counts[sid][canonical] = (counts[sid][canonical] || 0) + 1;
       }
       buildProgressFromCounts(counts);
-      setActionItems(items);
-      setNextMeeting(meeting);
-      setDeals(dealRows);
-      setProjects(projectRows);
-      setNotifications(notices);
-      setCalendarEvents(eventRows);
-      setReimbursements(reimbursementRows);
     });
   }, [router, surveys]);
 
@@ -193,15 +210,35 @@ export default function DashboardPage() {
   const firstName = user.split(" ")[0];
   const { obsidian, brass, bone, fog, ink } = COLORS;
 
-  // My open / in-progress action items, soonest first.
-  const myItems = actionItems
-    .filter(i => i.status !== "done" && isOwnedBy(i, user))
-    .slice(0, 5);
+  const myItems = actionItems.filter(i => i.status !== "done" && isOwnedBy(i, user)).slice(0, 5);
+  const pendingProposalVotes = notifications.filter(n => n.notification_type === "expense_proposal_vote");
+  const openCapitalCalls = capitalCalls.filter(c => !c.deleted_at && c.status === "open");
+  const suggestedCapitalCalls = capitalCalls.filter(c => !c.deleted_at && c.status === "suggested");
   const hotDeals = deals.filter(d => d.urgency === "hot" || d.analysis?.recommendation === "Strong Review").slice(0, 3);
   const activeProjects = projects.filter(p => !["sold", "passed"].includes(p.status)).slice(0, 3);
-  const upcomingEvents = calendarEvents.slice(0, 3);
   const pendingReimbursements = reimbursements.filter(r => r.status === "submitted" || r.status === "approved");
-  const pendingProposalVotes = notifications.filter(n => n.notification_type === "expense_proposal_vote");
+  const incompleteSurveys = progress.filter(p => p.status !== "Completed");
+  const surveyAnswered = progress.reduce((sum, p) => sum + p.answered, 0);
+  const surveyTotal = progress.reduce((sum, p) => sum + p.total, 0);
+  const surveyPct = surveyTotal > 0 ? Math.round((surveyAnswered / surveyTotal) * 100) : 0;
+  const attentionCount = pendingProposalVotes.length + myItems.length + openCapitalCalls.length + suggestedCapitalCalls.length;
+
+  const activity = [
+    ...notifications.slice(0, 4).map(n => ({
+      id: `notice-${n.id}`,
+      title: n.title,
+      detail: n.body || "Notification",
+      date: n.created_at,
+      href: n.href || "/dashboard",
+    })),
+    ...decisions.slice(0, 3).map(d => ({
+      id: `decision-${d.id}`,
+      title: d.description,
+      detail: d.outcome || "Decision logged",
+      date: d.date,
+      href: "/hub",
+    })),
+  ].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 5);
 
   const dismissNotice = async (notice: Notification) => {
     await markNotificationRead(notice.id);
@@ -214,57 +251,94 @@ export default function DashboardPage() {
     setActionItems(prev => prev.map(i => i.id === item.id ? { ...i, status: "done", completed_at: new Date().toISOString() } : i));
   };
 
-  const statusStyle = (status: SurveyProgress["status"]) => {
-    if (status === "Completed") return { background: brass, color: obsidian, border: `1px solid ${brass}` };
-    if (status === "In Progress") return { background: bone, color: "var(--gold-dim)", border: `1px solid ${brass}` };
-    return { background: bone, color: "var(--gold-dim)", border: `1px solid ${fog}` };
-  };
-
   return (
     <div
       className="dashboard-root"
       style={{ minHeight: "100vh", background: bone, color: ink, fontFamily: BODY_FONT, padding: "84px 20px 40px" }}
     >
-      <div style={{ maxWidth: 1080, margin: "0 auto" }}>
-        {/* Welcome */}
-        <header style={{ marginBottom: 28 }}>
-          <p style={{ fontSize: 11, letterSpacing: 2, textTransform: "uppercase", color: brass, fontWeight: 600, marginBottom: 8 }}>
-            Meridian Collective
-          </p>
-          <h1 style={{
-            fontFamily: DISPLAY_FONT, fontSize: "clamp(34px, 6vw, 52px)", fontWeight: 500,
-            lineHeight: 1.05, color: obsidian, letterSpacing: "-0.5px", marginBottom: 6,
-          }}>
-            Welcome back, {firstName}
-          </h1>
-          <p style={{ color: ink, opacity: 0.62, fontSize: 14 }}>
-            Your operating hub for the collective.
-          </p>
+      <div style={{ maxWidth: 1120, margin: "0 auto" }}>
+        <header style={{ marginBottom: 24, display: "flex", justifyContent: "space-between", gap: 18, alignItems: "flex-end", flexWrap: "wrap" }}>
+          <div>
+            <p style={{ fontSize: 11, letterSpacing: 2, textTransform: "uppercase", color: brass, fontWeight: 700, marginBottom: 8 }}>
+              Home
+            </p>
+            <h1 style={{
+              fontFamily: DISPLAY_FONT,
+              fontSize: "clamp(34px, 6vw, 52px)",
+              fontWeight: 500,
+              lineHeight: 1.05,
+              color: obsidian,
+              letterSpacing: 0,
+              marginBottom: 6,
+            }}>
+              Welcome back, {firstName}
+            </h1>
+            <p style={{ color: ink, opacity: 0.62, fontSize: 14 }}>
+              What needs your attention today, with links into the deeper records.
+            </p>
+          </div>
+          <button
+            onClick={() => router.push("/members")}
+            style={{
+              background: obsidian,
+              color: bone,
+              border: "none",
+              borderRadius: 8,
+              padding: "12px 16px",
+              fontSize: 11,
+              fontWeight: 800,
+              letterSpacing: "0.14em",
+              textTransform: "uppercase",
+              cursor: "pointer",
+            }}
+          >
+            Open Member Portal
+          </button>
         </header>
 
-        {/* OPERATING BRIEF */}
         <section style={{ marginBottom: 28 }}>
           <SectionHeader
-            title="Operating brief"
-            subtitle="Deals, projects, and decisions that need attention."
-            cta={{ label: "Deal desk", onClick: () => router.push("/deals") }}
+            title="Needs My Attention"
+            subtitle={attentionCount ? `${attentionCount} item${attentionCount === 1 ? "" : "s"} waiting on you.` : "Nothing urgent is waiting on you."}
+            cta={{ label: "All actions", onClick: () => router.push("/actions") }}
           />
-          <p style={{
-            display: "inline-flex",
-            border: `1px solid ${fog}`,
-            borderRadius: 999,
-            padding: "4px 9px",
-            color: "var(--muted)",
-            fontSize: 10,
-            fontWeight: 700,
-            letterSpacing: "0.12em",
-            textTransform: "uppercase",
-            marginBottom: 14,
-          }}>
-            Email + SMS alerts coming soon
-          </p>
+          <div className="attention-grid">
+            <AttentionCard
+              title="Proposal votes"
+              value={String(pendingProposalVotes.length)}
+              detail={pendingProposalVotes.length ? "Review proposal math, notes, and approval rule." : "No proposal votes waiting."}
+              action="Review"
+              onClick={() => router.push("/tracker/planning")}
+              strong={pendingProposalVotes.length > 0}
+            />
+            <AttentionCard
+              title="Action items"
+              value={String(myItems.length)}
+              detail={myItems.length ? "Open or in-progress commitments assigned to you." : "Your assigned work is clear."}
+              action="Open"
+              onClick={() => router.push("/actions")}
+              strong={myItems.length > 0}
+            />
+            <AttentionCard
+              title="Capital calls"
+              value={String(openCapitalCalls.length + suggestedCapitalCalls.length)}
+              detail={openCapitalCalls.length ? "Open calls may need payment or review." : suggestedCapitalCalls.length ? "Suggested calls are waiting for admin review." : "No capital calls waiting."}
+              action="View"
+              onClick={() => router.push("/tracker/capital-calls")}
+              strong={openCapitalCalls.length + suggestedCapitalCalls.length > 0}
+            />
+            <AttentionCard
+              title="Surveys"
+              value={`${surveyPct}%`}
+              detail={incompleteSurveys.length ? "One or more surveys still need answers." : "All survey work is complete."}
+              action="Continue"
+              onClick={() => router.push("/surveys")}
+              strong={incompleteSurveys.length > 0}
+            />
+          </div>
+
           {notifications.length > 0 && (
-            <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 14 }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 14 }}>
               {notifications.slice(0, 3).map(notice => (
                 <div key={notice.id} style={{
                   background: notice.priority === "urgent" ? "rgba(20,17,13,0.10)" : "rgba(176,137,84,0.12)",
@@ -280,292 +354,144 @@ export default function DashboardPage() {
                     onClick={() => notice.href && router.push(notice.href)}
                     style={{ background: "transparent", border: "none", textAlign: "left", cursor: notice.href ? "pointer" : "default", flex: 1 }}
                   >
-                    <p style={{ fontSize: 13, fontWeight: 700, color: obsidian }}>{notice.title}</p>
+                    <p style={{ fontSize: 13, fontWeight: 800, color: obsidian }}>{notice.title}</p>
                     {notice.body && <p style={{ fontSize: 12, color: ink, opacity: 0.7 }}>{notice.body}</p>}
                   </button>
-                  <button onClick={() => dismissNotice(notice)} style={{ background: "transparent", border: "none", color: brass, fontSize: 11, fontWeight: 700, letterSpacing: "0.12em", textTransform: "uppercase", cursor: "pointer" }}>
+                  <button onClick={() => dismissNotice(notice)} style={{ background: "transparent", border: "none", color: brass, fontSize: 11, fontWeight: 800, letterSpacing: "0.12em", textTransform: "uppercase", cursor: "pointer" }}>
                     Clear
                   </button>
                 </div>
               ))}
             </div>
           )}
-          {pendingProposalVotes.length > 0 && (
-            <button
-              onClick={() => router.push("/tracker/planning")}
-              style={{
-                width: "100%",
-                background: "rgba(20,17,13,0.08)",
-                border: `1px solid ${obsidian}`,
-                borderLeft: `4px solid ${obsidian}`,
-                borderRadius: 12,
-                padding: "14px 16px",
-                marginBottom: 14,
-                textAlign: "left",
-                cursor: "pointer",
-                display: "flex",
-                justifyContent: "space-between",
-                gap: 12,
-                alignItems: "center",
-              }}
-            >
-              <div>
-                <p style={{ fontSize: 13, letterSpacing: 1.5, textTransform: "uppercase", color: brass, fontWeight: 700, marginBottom: 4 }}>
-                  Votes needed
-                </p>
-                <p style={{ fontSize: 17, fontWeight: 800, color: obsidian }}>
-                  {pendingProposalVotes.length} expense proposal{pendingProposalVotes.length === 1 ? "" : "s"} need your sign-off
-                </p>
-                <p style={{ fontSize: 12, color: ink, opacity: 0.7 }}>
-                  Review the proposal math, budget changes, notes, and approval record.
-                </p>
-              </div>
-              <span style={{ color: brass, fontSize: 22 }}>→</span>
-            </button>
-          )}
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }} className="dash-second-row">
-            <article style={{
-              background: "var(--surface)",
-              border: `1px solid ${fog}`,
-              borderRadius: 12,
-              padding: "16px 18px",
-            }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12, marginBottom: 12 }}>
-                <h2 style={{ fontFamily: DISPLAY_FONT, fontSize: 24, fontWeight: 500, color: obsidian }}>Deal alerts</h2>
-                <span style={{ fontSize: 11, color: "var(--muted)" }}>{deals.length} total</span>
-              </div>
-              {hotDeals.length === 0 ? (
-                <p style={{ fontSize: 13, color: ink, opacity: 0.62 }}>No hot or strong-review deals yet.</p>
-              ) : (
-                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                  {hotDeals.map(deal => (
-                    <button
-                      key={deal.id}
-                      onClick={() => router.push("/deals")}
-                      style={{
-                        background: "var(--bone)",
-                        border: `1px solid ${deal.urgency === "hot" ? brass : fog}`,
-                        borderRadius: 8,
-                        padding: 12,
-                        textAlign: "left",
-                        cursor: "pointer",
-                      }}
-                    >
-                      <p style={{ fontSize: 14, fontWeight: 700, color: obsidian }}>{deal.title}</p>
-                      <p style={{ fontSize: 12, color: ink, opacity: 0.66 }}>
-                        {deal.analysis?.recommendation ?? "Needs Review"} · {deal.address || deal.parcel_id || "Location pending"}
-                      </p>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </article>
-
-            <article style={{
-              background: "var(--surface)",
-              border: `1px solid ${fog}`,
-              borderRadius: 12,
-              padding: "16px 18px",
-            }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12, marginBottom: 12 }}>
-                <h2 style={{ fontFamily: DISPLAY_FONT, fontSize: 24, fontWeight: 500, color: obsidian }}>Projects</h2>
-                <button onClick={() => router.push("/projects")} style={{ background: "transparent", border: "none", color: brass, fontSize: 11, fontWeight: 700, letterSpacing: "0.16em", textTransform: "uppercase", cursor: "pointer" }}>
-                  View
-                </button>
-              </div>
-              {activeProjects.length === 0 ? (
-                <p style={{ fontSize: 13, color: ink, opacity: 0.62 }}>No active projects yet. Convert an approved deal to create one.</p>
-              ) : (
-                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                  {activeProjects.map(project => (
-                    <button
-                      key={project.id}
-                      onClick={() => router.push("/projects")}
-                      style={{
-                        background: "var(--bone)",
-                        border: `1px solid ${fog}`,
-                        borderRadius: 8,
-                        padding: 12,
-                        textAlign: "left",
-                        cursor: "pointer",
-                      }}
-                    >
-                      <p style={{ fontSize: 14, fontWeight: 700, color: obsidian }}>{project.name}</p>
-                      <p style={{ fontSize: 12, color: ink, opacity: 0.66 }}>
-                        {project.status.replace(/-/g, " ")} · {project.next_step || "Next step pending"}
-                      </p>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </article>
-          </div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginTop: 16 }} className="dash-second-row">
-            <article style={{ background: "var(--surface)", border: `1px solid ${fog}`, borderRadius: 12, padding: "16px 18px" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12, marginBottom: 12 }}>
-                <h2 style={{ fontFamily: DISPLAY_FONT, fontSize: 24, fontWeight: 500, color: obsidian }}>Calendar</h2>
-                <button onClick={() => router.push("/operations")} style={{ background: "transparent", border: "none", color: brass, fontSize: 11, fontWeight: 700, letterSpacing: "0.16em", textTransform: "uppercase", cursor: "pointer" }}>
-                  Ops
-                </button>
-              </div>
-              {upcomingEvents.length === 0 ? (
-                <p style={{ fontSize: 13, color: ink, opacity: 0.62 }}>No upcoming operating events logged.</p>
-              ) : (
-                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                  {upcomingEvents.map(event => (
-                    <button key={event.id} onClick={() => router.push("/operations")} style={{ background: "var(--bone)", border: `1px solid ${fog}`, borderRadius: 8, padding: 12, textAlign: "left", cursor: "pointer" }}>
-                      <p style={{ fontSize: 14, fontWeight: 700, color: obsidian }}>{event.title}</p>
-                      <p style={{ fontSize: 12, color: ink, opacity: 0.66 }}>{formatDueDate(event.event_date) ?? event.event_date} · {event.event_type}</p>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </article>
-            <article style={{ background: "var(--surface)", border: `1px solid ${fog}`, borderRadius: 12, padding: "16px 18px" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12, marginBottom: 12 }}>
-                <h2 style={{ fontFamily: DISPLAY_FONT, fontSize: 24, fontWeight: 500, color: obsidian }}>Finance queue</h2>
-                <span style={{ fontSize: 11, color: "var(--muted)" }}>{pendingReimbursements.length} pending</span>
-              </div>
-              {pendingReimbursements.length === 0 ? (
-                <p style={{ fontSize: 13, color: ink, opacity: 0.62 }}>No pending reimbursements.</p>
-              ) : (
-                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                  {pendingReimbursements.slice(0, 3).map(item => (
-                    <button key={item.id} onClick={() => router.push("/operations")} style={{ background: "var(--bone)", border: `1px solid ${fog}`, borderRadius: 8, padding: 12, textAlign: "left", cursor: "pointer" }}>
-                      <p style={{ fontSize: 14, fontWeight: 700, color: obsidian }}>{item.member_name} · {Number(item.amount).toLocaleString(undefined, { style: "currency", currency: "USD", maximumFractionDigits: 0 })}</p>
-                      <p style={{ fontSize: 12, color: ink, opacity: 0.66 }}>{item.status} · {item.vendor || item.category}</p>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </article>
-          </div>
         </section>
 
-        {/* ACTION ITEMS — top of fold, the most important thing */}
-        <section style={{ marginBottom: 28 }}>
-          <SectionHeader
-            title="Your action items"
-            subtitle={myItems.length > 0 ? "Items waiting on you." : "Everything assigned to you is complete."}
-            cta={{ label: "View all", onClick: () => router.push("/actions") }}
-          />
-          <div className="dash-action-grid">
-            {!loaded && <SkeletonCard />}
-            {loaded && myItems.length === 0 && (
-              <div style={{
-                gridColumn: "1 / -1",
-                background: "var(--surface)",
-                border: `1px solid ${fog}`,
-                borderRadius: 12,
-                padding: "18px 20px",
-                fontSize: 14,
-                color: ink,
-                opacity: 0.7,
-              }}>
-                Nothing assigned to you right now. Check the Actions page for the full backlog.
-              </div>
+        <section className="dashboard-two-col" style={{ marginBottom: 28 }}>
+          <Panel title="My Money" cta={{ label: "Balances", onClick: () => router.push("/tracker/members") }}>
+            {myBalance ? (
+              <>
+                <MoneyHero value={fmtUSD(myBalance.totalRemaining, { fractionDigits: 2 })} label="Total remaining" />
+                <MoneyRow label="Initial remaining" value={fmtUSD(myBalance.initialRemaining, { fractionDigits: 2 })} />
+                <MoneyRow label="Monthly remaining" value={fmtUSD(myBalance.monthlyRemaining, { fractionDigits: 2 })} />
+                <MoneyRow label="Capital calls remaining" value={fmtUSD(myBalance.capitalRemaining, { fractionDigits: 2 })} />
+                <button onClick={() => router.push("/tracker/planning")} style={inlineLinkStyle}>Model a proposed expense →</button>
+              </>
+            ) : (
+              <EmptyText>No balance data is available yet.</EmptyText>
             )}
-            {myItems.map(item => {
+          </Panel>
+
+          <Panel title="My Work" cta={{ label: "Actions", onClick: () => router.push("/actions") }}>
+            {!loaded && <SkeletonCard />}
+            {loaded && myItems.length === 0 && <EmptyText>Nothing assigned to you right now.</EmptyText>}
+            {myItems.slice(0, 4).map(item => {
               const due = formatDueDate(item.due_date);
               return (
-                <article key={item.id} style={{
-                  background: "var(--surface)",
-                  border: `1px solid ${fog}`,
-                  borderLeft: `3px solid ${brass}`,
-                  borderRadius: 12,
-                  padding: "14px 16px",
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: 8,
-                }}>
+                <div key={item.id} style={listItemStyle}>
                   <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start" }}>
-                    <p style={{ fontSize: 15, fontWeight: 600, color: obsidian, lineHeight: 1.3 }}>
-                      {item.title}
-                    </p>
-                    {item.status === "in-progress" && (
-                      <span style={{
-                        fontSize: 10, fontWeight: 600, letterSpacing: 1, textTransform: "uppercase",
-                        padding: "2px 8px", borderRadius: 999, color: brass, border: `1px solid ${brass}`, whiteSpace: "nowrap",
-                      }}>
-                        In Progress
-                      </span>
-                    )}
-                  </div>
-                  {item.description && (
-                    <p style={{ fontSize: 13, color: ink, opacity: 0.72, lineHeight: 1.5 }}>{item.description}</p>
-                  )}
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 4, gap: 8, flexWrap: "wrap" }}>
-                    <div style={{ display: "flex", gap: 12, fontSize: 12, color: ink, opacity: 0.65 }}>
-                      <span>{item.assigned_to}</span>
-                      {due && <span>Due {due}</span>}
+                    <div>
+                      <p style={{ fontSize: 14, fontWeight: 800, color: obsidian, marginBottom: 3 }}>{item.title}</p>
+                      {item.description && <p style={{ fontSize: 12, color: ink, opacity: 0.68, lineHeight: 1.45 }}>{item.description}</p>}
+                      <p style={{ fontSize: 11, color: ink, opacity: 0.58, marginTop: 6 }}>
+                        {item.status === "in-progress" ? "In progress" : "Open"}{due ? ` · Due ${due}` : ""}
+                      </p>
                     </div>
-                    <button
-                      onClick={() => handleMarkDone(item)}
-                      style={{
-                        background: "transparent", color: brass,
-                        border: `1px solid ${brass}`, borderRadius: 6,
-                        padding: "6px 12px", fontSize: 11, fontWeight: 600,
-                        letterSpacing: "0.12em", textTransform: "uppercase", cursor: "pointer",
-                      }}
-                    >
-                      Mark done
-                    </button>
+                    <button onClick={() => handleMarkDone(item)} style={smallButtonStyle}>Done</button>
                   </div>
-                </article>
+                </div>
               );
             })}
-          </div>
+          </Panel>
         </section>
 
-        {/* NEXT MEETING + QUICK LINKS row */}
-        <section style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr", gap: 20, marginBottom: 28 }} className="dash-second-row">
+        <section className="dashboard-two-col" style={{ marginBottom: 28 }}>
+          <Panel title="Operating Signals" cta={{ label: "Deal desk", onClick: () => router.push("/deals") }}>
+            {hotDeals.length === 0 && activeProjects.length === 0 && pendingReimbursements.length === 0 && (
+              <EmptyText>No deal, project, or finance signals need attention.</EmptyText>
+            )}
+            {hotDeals.map(deal => (
+              <SignalItem
+                key={deal.id}
+                label="Deal"
+                title={deal.title}
+                detail={`${deal.analysis?.recommendation ?? "Needs Review"} · ${deal.address || deal.parcel_id || "Location pending"}`}
+                onClick={() => router.push("/deals")}
+              />
+            ))}
+            {activeProjects.slice(0, 2).map(project => (
+              <SignalItem
+                key={project.id}
+                label="Project"
+                title={project.name}
+                detail={`${project.status.replace(/-/g, " ")} · ${project.next_step || "Next step pending"}`}
+                onClick={() => router.push("/projects")}
+              />
+            ))}
+            {pendingReimbursements.slice(0, 2).map(item => (
+              <SignalItem
+                key={item.id}
+                label="Finance"
+                title={`${item.member_name} · ${Number(item.amount).toLocaleString(undefined, { style: "currency", currency: "USD", maximumFractionDigits: 0 })}`}
+                detail={`${item.status} · ${item.vendor || item.category}`}
+                onClick={() => router.push("/operations")}
+              />
+            ))}
+          </Panel>
+
+          <Panel title="Recent Group Activity" cta={{ label: "Hub", onClick: () => router.push("/hub") }}>
+            {activity.length === 0 && <EmptyText>No recent activity yet.</EmptyText>}
+            {activity.map(item => (
+              <SignalItem
+                key={item.id}
+                label={formatActivityDate(item.date)}
+                title={item.title}
+                detail={item.detail}
+                onClick={() => router.push(item.href)}
+              />
+            ))}
+          </Panel>
+        </section>
+
+        <section style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr", gap: 20, marginBottom: 28 }} className="dashboard-two-col">
           <article style={{
-            background: obsidian, color: bone, borderRadius: 16, padding: "22px 24px",
-            display: "flex", flexDirection: "column", gap: 12,
+            background: obsidian,
+            color: bone,
+            borderRadius: 16,
+            padding: "22px 24px",
+            display: "flex",
+            flexDirection: "column",
+            gap: 12,
           }}>
             <div>
-              <p style={{ fontSize: 11, letterSpacing: 2, textTransform: "uppercase", color: brass, fontWeight: 600, marginBottom: 8 }}>
+              <p style={{ fontSize: 11, letterSpacing: 2, textTransform: "uppercase", color: brass, fontWeight: 700, marginBottom: 8 }}>
                 Next meeting
               </p>
-              <h2 style={{
-                fontFamily: DISPLAY_FONT, fontSize: 28, fontWeight: 500, color: bone,
-                lineHeight: 1.1, marginBottom: 4,
-              }}>
-                {formatMeetingDate(nextMeeting?.meeting_date ?? null) ?? "Monday"}
+              <h2 style={{ fontFamily: DISPLAY_FONT, fontSize: 28, fontWeight: 500, color: bone, lineHeight: 1.1, marginBottom: 4, letterSpacing: 0 }}>
+                {formatMeetingDate(nextMeeting?.meeting_date ?? null) ?? "Meeting date pending"}
               </h2>
-              <p style={{ fontSize: 14, color: fog }}>
-                {nextMeeting?.meeting_time ?? "7:15 PM ET"}
-              </p>
+              <p style={{ fontSize: 14, color: fog }}>{nextMeeting?.meeting_time ?? "Time pending"}</p>
             </div>
             {nextMeeting?.agenda && (
-              <div>
-                <p style={{ fontSize: 10, letterSpacing: 1.5, textTransform: "uppercase", color: fog, fontWeight: 600, marginBottom: 6 }}>
-                  Agenda
-                </p>
-                <pre style={{
-                  fontFamily: BODY_FONT, fontSize: 13, color: bone, opacity: 0.88,
-                  whiteSpace: "pre-wrap", lineHeight: 1.55, margin: 0,
-                }}>
-                  {nextMeeting.agenda}
-                </pre>
-              </div>
+              <pre style={{
+                fontFamily: BODY_FONT,
+                fontSize: 13,
+                color: bone,
+                opacity: 0.88,
+                whiteSpace: "pre-wrap",
+                lineHeight: 1.55,
+                margin: 0,
+              }}>
+                {nextMeeting.agenda}
+              </pre>
             )}
-            <button
-              onClick={() => router.push("/meetings")}
-              style={{
-                marginTop: "auto", alignSelf: "flex-start",
-                background: brass, color: obsidian, border: "none", borderRadius: 8,
-                padding: "10px 14px", fontSize: 11, fontWeight: 600,
-                letterSpacing: "0.18em", textTransform: "uppercase", cursor: "pointer",
-              }}
-            >
+            <button onClick={() => router.push("/meetings")} style={{ ...darkPanelButtonStyle, marginTop: "auto" }}>
               Meeting hub
             </button>
           </article>
 
-          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            <p style={{ fontSize: 11, letterSpacing: 2, textTransform: "uppercase", color: brass, fontWeight: 600 }}>
-              Quick links
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            <p style={{ fontSize: 11, letterSpacing: 2, textTransform: "uppercase", color: brass, fontWeight: 700 }}>
+              Quick Links
             </p>
             {QUICK_LINKS.map(link => {
               const onClick = () => {
@@ -573,25 +499,12 @@ export default function DashboardPage() {
                 else router.push(link.href);
               };
               return (
-                <button
-                  key={link.title}
-                  onClick={onClick}
-                  style={{
-                    background: "var(--surface)", color: ink,
-                    border: `1px solid ${fog}`, borderRadius: 12,
-                    padding: "14px 16px", textAlign: "left", cursor: "pointer",
-                    display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12,
-                    transition: "border-color 0.15s",
-                    fontFamily: BODY_FONT,
-                  }}
-                  onMouseOver={e => { e.currentTarget.style.borderColor = brass; }}
-                  onMouseOut={e => { e.currentTarget.style.borderColor = fog; }}
-                >
+                <button key={link.title} onClick={onClick} style={quickLinkStyle}>
                   <div>
-                    <p style={{ fontSize: 10, letterSpacing: 1.5, textTransform: "uppercase", color: brass, fontWeight: 600, marginBottom: 4 }}>
+                    <p style={{ fontSize: 10, letterSpacing: 1.5, textTransform: "uppercase", color: brass, fontWeight: 700, marginBottom: 4 }}>
                       {link.eyebrow}
                     </p>
-                    <p style={{ fontSize: 15, fontWeight: 500, color: obsidian }}>{link.title}</p>
+                    <p style={{ fontSize: 15, fontWeight: 700, color: obsidian }}>{link.title}</p>
                   </div>
                   <span style={{ color: brass, fontSize: 18, lineHeight: 1 }}>{link.external ? "↗" : "→"}</span>
                 </button>
@@ -600,50 +513,35 @@ export default function DashboardPage() {
           </div>
         </section>
 
-        {/* COMPACT SURVEY CARDS */}
         <section style={{ marginBottom: 32 }}>
           <SectionHeader
             title="Surveys"
             subtitle="Pick up where you left off."
             cta={{ label: "All surveys", onClick: () => router.push("/surveys") }}
           />
-          <div className="dash-survey-grid-compact">
-            {progress.length === 0 && loaded && (
-              <p style={{ color: ink, opacity: 0.6, fontSize: 14 }}>No surveys available.</p>
-            )}
+          <div className="survey-grid">
+            {progress.length === 0 && loaded && <EmptyText>No surveys available.</EmptyText>}
             {progress.map(p => {
               const pct = p.total > 0 ? Math.round((p.answered / p.total) * 100) : 0;
               const ctaLabel = p.status === "Completed" ? "View results" : p.status === "In Progress" ? "Continue" : "Start";
               const ctaHref = p.status === "Completed" ? `/results/${p.surveyId}` : `/survey/${p.surveyId}`;
               return (
-                <article
-                  key={p.surveyId}
-                  onClick={() => router.push(ctaHref)}
-                  style={{
-                    background: bone,
-                    color: ink,
-                    border: `1px solid ${fog}`,
-                    borderRadius: 12,
-                    padding: "16px 18px",
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: 10,
-                    cursor: "pointer",
-                    transition: "border-color 0.15s",
-                  }}
-                  onMouseOver={e => { e.currentTarget.style.borderColor = brass; }}
-                  onMouseOut={e => { e.currentTarget.style.borderColor = fog; }}
-                >
+                <button key={p.surveyId} onClick={() => router.push(ctaHref)} style={{ ...cardStyle, textAlign: "left", cursor: "pointer" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "flex-start" }}>
-                    <h3 style={{
-                      fontFamily: DISPLAY_FONT, fontSize: 20, fontWeight: 500, lineHeight: 1.2, color: obsidian,
-                    }}>
+                    <h3 style={{ fontFamily: DISPLAY_FONT, fontSize: 20, fontWeight: 500, lineHeight: 1.2, color: obsidian, letterSpacing: 0 }}>
                       {p.title}
                     </h3>
                     <span style={{
-                      ...statusStyle(p.status),
-                      fontSize: 10, fontWeight: 600, letterSpacing: 1, textTransform: "uppercase",
-                      padding: "3px 8px", borderRadius: 999, whiteSpace: "nowrap",
+                      fontSize: 10,
+                      fontWeight: 800,
+                      letterSpacing: 1,
+                      textTransform: "uppercase",
+                      padding: "3px 8px",
+                      borderRadius: 999,
+                      whiteSpace: "nowrap",
+                      background: p.status === "Completed" ? brass : bone,
+                      color: p.status === "Completed" ? obsidian : "var(--gold-dim)",
+                      border: `1px solid ${p.status === "Completed" ? brass : fog}`,
                     }}>
                       {p.status}
                     </span>
@@ -657,8 +555,8 @@ export default function DashboardPage() {
                       <div style={{ height: "100%", width: `${pct}%`, background: brass, transition: "width 0.3s" }} />
                     </div>
                   </div>
-                  <span style={{ fontSize: 12, color: brass, fontWeight: 600 }}>{ctaLabel} →</span>
-                </article>
+                  <span style={{ fontSize: 12, color: brass, fontWeight: 700 }}>{ctaLabel} →</span>
+                </button>
               );
             })}
           </div>
@@ -666,21 +564,29 @@ export default function DashboardPage() {
       </div>
 
       <style jsx>{`
-        .dash-action-grid {
+        .attention-grid {
           display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+          grid-template-columns: repeat(4, 1fr);
           gap: 12px;
         }
-        .dash-survey-grid-compact {
+        .dashboard-two-col {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 16px;
+        }
+        .survey-grid {
           display: grid;
           grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
           gap: 14px;
         }
-        @media (max-width: 767px) {
+        @media (max-width: 900px) {
+          .attention-grid { grid-template-columns: repeat(2, 1fr); }
+          .dashboard-two-col { grid-template-columns: 1fr !important; }
+        }
+        @media (max-width: 600px) {
           .dashboard-root { padding-top: 28px !important; }
-          .dash-second-row { grid-template-columns: 1fr !important; }
-          .dash-action-grid { grid-template-columns: 1fr; }
-          .dash-survey-grid-compact { grid-template-columns: 1fr; }
+          .attention-grid,
+          .survey-grid { grid-template-columns: 1fr; }
         }
       `}</style>
     </div>
@@ -695,21 +601,13 @@ function SectionHeader({ title, subtitle, cta }: {
   return (
     <div style={{ marginBottom: 14, display: "flex", justifyContent: "space-between", alignItems: "flex-end", gap: 12, flexWrap: "wrap" }}>
       <div>
-        <h2 style={{ fontFamily: DISPLAY_FONT, fontSize: 26, fontWeight: 500, color: COLORS.obsidian, marginBottom: 2 }}>
+        <h2 style={{ fontFamily: DISPLAY_FONT, fontSize: 26, fontWeight: 500, color: COLORS.obsidian, marginBottom: 2, letterSpacing: 0 }}>
           {title}
         </h2>
         {subtitle && <p style={{ fontSize: 13, color: COLORS.ink, opacity: 0.6 }}>{subtitle}</p>}
       </div>
       {cta && (
-        <button
-          onClick={cta.onClick}
-          style={{
-            background: "transparent", color: COLORS.brass,
-            border: "none", padding: "4px 0", fontSize: 11, fontWeight: 600,
-            letterSpacing: "0.18em", textTransform: "uppercase", cursor: "pointer",
-            fontFamily: BODY_FONT,
-          }}
-        >
+        <button onClick={cta.onClick} style={inlineLinkStyle}>
           {cta.label} →
         </button>
       )}
@@ -717,11 +615,150 @@ function SectionHeader({ title, subtitle, cta }: {
   );
 }
 
-function SkeletonCard() {
+function AttentionCard({
+  title,
+  value,
+  detail,
+  action,
+  onClick,
+  strong,
+}: {
+  title: string;
+  value: string;
+  detail: string;
+  action: string;
+  onClick: () => void;
+  strong: boolean;
+}) {
   return (
-    <div style={{
-      background: "var(--surface)", border: `1px solid ${COLORS.fog}`, borderRadius: 12,
-      padding: "14px 16px", height: 92, opacity: 0.5,
-    }} />
+    <button onClick={onClick} style={{ ...cardStyle, textAlign: "left", cursor: "pointer", minHeight: 150, borderColor: strong ? COLORS.obsidian : COLORS.fog }}>
+      <p style={{ fontSize: 11, letterSpacing: 1.4, textTransform: "uppercase", color: COLORS.brass, fontWeight: 800, marginBottom: 6 }}>{title}</p>
+      <p style={{ fontSize: 32, fontWeight: 900, color: strong ? COLORS.obsidian : COLORS.brass, marginBottom: 6 }}>{value}</p>
+      <p style={{ fontSize: 12, lineHeight: 1.45, color: COLORS.ink, opacity: 0.7, marginBottom: 10 }}>{detail}</p>
+      <span style={{ marginTop: "auto", fontSize: 11, color: COLORS.brass, fontWeight: 800, letterSpacing: "0.14em", textTransform: "uppercase" }}>{action} →</span>
+    </button>
   );
 }
+
+function Panel({ title, cta, children }: { title: string; cta: { label: string; onClick: () => void }; children: React.ReactNode }) {
+  return (
+    <section style={{ ...cardStyle, minHeight: 260 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "baseline", marginBottom: 10 }}>
+        <h2 style={{ fontFamily: DISPLAY_FONT, fontSize: 24, fontWeight: 500, color: COLORS.obsidian, letterSpacing: 0 }}>{title}</h2>
+        <button onClick={cta.onClick} style={inlineLinkStyle}>{cta.label} →</button>
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>{children}</div>
+    </section>
+  );
+}
+
+function MoneyHero({ value, label }: { value: string; label: string }) {
+  return (
+    <div style={{ borderBottom: "1px solid var(--fog)", paddingBottom: 12, marginBottom: 2 }}>
+      <p style={{ fontSize: 32, fontWeight: 900, color: COLORS.obsidian, lineHeight: 1 }}>{value}</p>
+      <p style={{ fontSize: 12, color: COLORS.ink, opacity: 0.64, marginTop: 4 }}>{label}</p>
+    </div>
+  );
+}
+
+function MoneyRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div style={{ display: "flex", justifyContent: "space-between", gap: 12, padding: "7px 0", alignItems: "baseline" }}>
+      <span style={{ fontSize: 13, color: COLORS.ink, opacity: 0.72 }}>{label}</span>
+      <strong style={{ fontSize: 14, color: COLORS.obsidian, fontVariantNumeric: "tabular-nums" }}>{value}</strong>
+    </div>
+  );
+}
+
+function SignalItem({ label, title, detail, onClick }: { label: string; title: string; detail: string; onClick: () => void }) {
+  return (
+    <button onClick={onClick} style={{ ...listItemStyle, textAlign: "left", cursor: "pointer" }}>
+      <p style={{ fontSize: 10, color: COLORS.brass, fontWeight: 800, letterSpacing: "0.14em", textTransform: "uppercase", marginBottom: 4 }}>{label}</p>
+      <p style={{ fontSize: 14, fontWeight: 800, color: COLORS.obsidian, marginBottom: 3 }}>{title}</p>
+      <p style={{ fontSize: 12, color: COLORS.ink, opacity: 0.68, lineHeight: 1.45 }}>{detail}</p>
+    </button>
+  );
+}
+
+function EmptyText({ children }: { children: React.ReactNode }) {
+  return <p style={{ fontSize: 13, color: COLORS.ink, opacity: 0.58 }}>{children}</p>;
+}
+
+function SkeletonCard() {
+  return <div style={{ background: "var(--surface)", border: `1px solid ${COLORS.fog}`, borderRadius: 12, padding: "14px 16px", height: 92, opacity: 0.5 }} />;
+}
+
+const cardStyle: React.CSSProperties = {
+  background: "var(--surface)",
+  border: "1px solid var(--fog)",
+  borderRadius: 12,
+  padding: "16px 18px",
+  color: "var(--ink)",
+  display: "flex",
+  flexDirection: "column",
+  gap: 10,
+};
+
+const listItemStyle: React.CSSProperties = {
+  background: "var(--bone)",
+  border: "1px solid var(--fog)",
+  borderRadius: 8,
+  padding: "12px 14px",
+  color: "var(--ink)",
+};
+
+const inlineLinkStyle: React.CSSProperties = {
+  background: "transparent",
+  color: "var(--brass)",
+  border: "none",
+  padding: 0,
+  fontSize: 11,
+  fontWeight: 800,
+  letterSpacing: "0.14em",
+  textTransform: "uppercase",
+  cursor: "pointer",
+  fontFamily: BODY_FONT,
+};
+
+const smallButtonStyle: React.CSSProperties = {
+  background: "transparent",
+  color: "var(--brass)",
+  border: "1px solid var(--brass)",
+  borderRadius: 6,
+  padding: "6px 10px",
+  fontSize: 11,
+  fontWeight: 800,
+  letterSpacing: "0.12em",
+  textTransform: "uppercase",
+  cursor: "pointer",
+  flexShrink: 0,
+};
+
+const darkPanelButtonStyle: React.CSSProperties = {
+  alignSelf: "flex-start",
+  background: "var(--brass)",
+  color: "var(--obsidian)",
+  border: "none",
+  borderRadius: 8,
+  padding: "10px 14px",
+  fontSize: 11,
+  fontWeight: 800,
+  letterSpacing: "0.16em",
+  textTransform: "uppercase",
+  cursor: "pointer",
+};
+
+const quickLinkStyle: React.CSSProperties = {
+  background: "var(--surface)",
+  color: "var(--ink)",
+  border: "1px solid var(--fog)",
+  borderRadius: 12,
+  padding: "13px 15px",
+  textAlign: "left",
+  cursor: "pointer",
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  gap: 12,
+  fontFamily: BODY_FONT,
+};

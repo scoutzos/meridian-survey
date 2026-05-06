@@ -90,7 +90,7 @@ export default function MemberTrackerPage() {
   );
 
   return (
-    <TrackerShell title="Member Tracker" subtitle="What each LLC owes vs. what they've paid, by bucket.">
+    <TrackerShell title="Member Balances" subtitle="What each LLC owes vs. what they've paid, by bucket.">
       {loading && <div style={{ color: "var(--muted)" }}>Loading…</div>}
 
       <div style={{ ...trackerCard, marginBottom: 16, display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16 }}>

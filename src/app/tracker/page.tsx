@@ -259,7 +259,7 @@ export default function TrackerDashboard() {
 
       {/* Quick links */}
       <div style={{ ...trackerCard, display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
-        <QuickLink label="Member Tracker" desc="Per-LLC balance breakdown" href="/tracker/members" router={router} />
+        <QuickLink label="Member Balances" desc="Per-LLC owed vs. paid" href="/tracker/members" router={router} />
         <QuickLink label="Expenses" desc="Log and categorize costs" href="/tracker/expenses" router={router} />
         <QuickLink label="Contributions" desc="Member bank deposits" href="/tracker/contributions" router={router} />
         <QuickLink label="Capital Calls" desc="Approve, close, or dismiss calls" href="/tracker/capital-calls" router={router} />
