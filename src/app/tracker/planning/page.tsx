@@ -27,12 +27,12 @@ import TrackerShell, {
   trackerInput,
 } from "@/components/TrackerShell";
 
-type ProposalStatus = "draft" | "review" | "approved" | "rejected" | "converted";
+type ProposalStatus = "draft" | "review" | "revision_needed" | "approved" | "rejected" | "converted";
 type ExpenseKind = "fixed" | "hourly";
 type Cadence = "monthly" | "quarterly" | "one_time";
-type VoteDecision = "approve" | "reject" | "abstain";
+type VoteDecision = "approve" | "reject" | "abstain" | "request_changes";
 type OffsetKind = "increase" | "reduce" | "remove";
-type ProposalFilter = "needs_my_vote" | "review" | "approved" | "converted" | "rejected" | "all";
+type ProposalFilter = "needs_my_vote" | "review" | "revision_needed" | "approved" | "converted" | "rejected" | "all";
 
 interface ExpenseProposal {
   id: string;
@@ -55,6 +55,8 @@ interface ExpenseProposal {
   minimum_oa_approvals: number;
   required_approvals: number;
   converted_expense_id: number | null;
+  revision_number: number;
+  revision_note: string | null;
   created_at: string;
   created_by: string | null;
   updated_at: string;
@@ -65,6 +67,7 @@ interface ExpenseProposal {
 interface ProposalVote {
   id: string;
   proposal_id: string;
+  proposal_version: number;
   member_name: string;
   decision: VoteDecision;
   note: string | null;
@@ -140,6 +143,7 @@ function statusLabel(status: ProposalStatus): string {
 }
 
 function decisionLabel(decision: VoteDecision): string {
+  if (decision === "request_changes") return "Changes requested";
   return decision.charAt(0).toUpperCase() + decision.slice(1);
 }
 
@@ -166,6 +170,7 @@ function addDays(days: number): string {
 
 function nextProposalStatus(proposal: ExpenseProposal, proposalVotes: ProposalVote[]): ProposalStatus {
   if (proposal.status === "converted") return "converted";
+  if (proposalVotes.some(v => v.decision === "request_changes")) return "revision_needed";
   const approved = proposalVotes.filter(v => v.decision === "approve").length;
   const rejected = proposalVotes.filter(v => v.decision === "reject").length;
   if (approved >= proposal.required_approvals) return "approved";
@@ -206,6 +211,11 @@ export default function ExpensePlanningPage() {
   const [saving, setSaving] = useState(false);
   const [voteNote, setVoteNote] = useState("");
   const [proposalFilter, setProposalFilter] = useState<ProposalFilter>("needs_my_vote");
+  const [builderOpen, setBuilderOpen] = useState(false);
+  const [inboxOpen, setInboxOpen] = useState(true);
+  const [expandedProposalId, setExpandedProposalId] = useState<string | null>(null);
+  const [revisionTarget, setRevisionTarget] = useState<ExpenseProposal | null>(null);
+  const [revisionNote, setRevisionNote] = useState("");
 
   const [title, setTitle] = useState("New VA");
   const [category, setCategory] = useState("VA");
@@ -354,6 +364,70 @@ export default function ExpensePlanningPage() {
       created_by: user,
       updated_by: user,
     };
+    if (revisionTarget) {
+      const nextVersion = (revisionTarget.revision_number ?? 1) + 1;
+      const { data, error } = await supabase
+        .from("tracker_expense_proposals")
+        .update({
+          ...row,
+          status: "review",
+          revision_number: nextVersion,
+          revision_note: revisionNote.trim() || null,
+          updated_at: new Date().toISOString(),
+          updated_by: user,
+        })
+        .eq("id", revisionTarget.id)
+        .select()
+        .single();
+      setSaving(false);
+      if (error) { alert(error.message); return; }
+      await supabase
+        .from("tracker_expense_proposal_offsets")
+        .update({ deleted_at: new Date().toISOString(), updated_by: user })
+        .eq("proposal_id", revisionTarget.id)
+        .is("deleted_at", null);
+      if (offsetDrafts.length) {
+        const offsetRows = offsetDrafts.map(o => ({
+          proposal_id: revisionTarget.id,
+          source_expense_id: o.source_expense_id,
+          title: o.title,
+          offset_kind: o.offset_kind,
+          cadence: o.cadence,
+          amount: o.amount,
+          notes: o.notes,
+          created_by: user,
+          updated_by: user,
+        }));
+        const { error: offsetError } = await supabase.from("tracker_expense_proposal_offsets").insert(offsetRows);
+        if (offsetError) { alert(offsetError.message); return; }
+      }
+      await logAudit({
+        actor: user,
+        table_name: "tracker_expense_proposals",
+        row_id: revisionTarget.id,
+        action: "update",
+        diff: { before: revisionTarget, after: data, offsets: offsetDrafts, revisionNote },
+      });
+      await Promise.all(MEMBERS.map(member => createNotification({
+        title: `Expense proposal revised: ${title.trim()}`,
+        body: `Version ${nextVersion} is ready for a new vote. ${revisionNote.trim() || "Review the updated proposal details."}`,
+        priority: "high",
+        assigned_to: member,
+        href: `/tracker/planning?proposal=${revisionTarget.id}`,
+        source_table: "tracker_expense_proposals",
+        source_id: revisionTarget.id,
+        notification_type: "expense_proposal_revised",
+      }, user)));
+      setNotes("");
+      setRevisionNote("");
+      setRevisionTarget(null);
+      setOffsetDrafts([]);
+      setBuilderOpen(false);
+      setInboxOpen(true);
+      setExpandedProposalId(revisionTarget.id);
+      void load();
+      return;
+    }
     const { data, error } = await supabase.from("tracker_expense_proposals").insert(row).select().single();
     setSaving(false);
     if (error) { alert(error.message); return; }
@@ -398,6 +472,9 @@ export default function ExpensePlanningPage() {
     }, user)));
     setNotes("");
     setOffsetDrafts([]);
+    setBuilderOpen(false);
+    setInboxOpen(true);
+    setExpandedProposalId(proposal.id);
     void load();
   }
 
@@ -405,6 +482,7 @@ export default function ExpensePlanningPage() {
     if (!supabase || !user) return;
     const row = {
       proposal_id: proposal.id,
+      proposal_version: proposal.revision_number ?? 1,
       member_name: user,
       decision,
       note: voteNote.trim() || null,
@@ -412,12 +490,13 @@ export default function ExpensePlanningPage() {
     };
     const { error } = await supabase
       .from("tracker_expense_proposal_votes")
-      .upsert(row, { onConflict: "proposal_id,member_name" });
+      .upsert(row, { onConflict: "proposal_id,member_name,proposal_version" });
     if (error) { alert(error.message); return; }
     const existing = votesFor(proposal.id).filter(v => v.member_name !== user);
     const simulatedVote: ProposalVote = {
       id: "",
       proposal_id: proposal.id,
+      proposal_version: proposal.revision_number ?? 1,
       member_name: user,
       decision,
       note: voteNote.trim() || null,
@@ -442,6 +521,18 @@ export default function ExpensePlanningPage() {
           source_table: "tracker_expense_proposals",
           source_id: proposal.id,
           notification_type: `expense_proposal_${nextStatus}`,
+        }, user)));
+      }
+      if (nextStatus === "revision_needed") {
+        await Promise.all(MEMBERS.map(member => createNotification({
+          title: `Changes requested: ${proposal.title}`,
+          body: `${user} requested changes before approval. Review the note and revise the proposal for a new vote.`,
+          priority: "high",
+          assigned_to: member,
+          href: `/tracker/planning?proposal=${proposal.id}`,
+          source_table: "tracker_expense_proposals",
+          source_id: proposal.id,
+          notification_type: "expense_proposal_revision_needed",
         }, user)));
       }
     }
@@ -586,8 +677,14 @@ export default function ExpensePlanningPage() {
     void load();
   }
 
-  function votesFor(proposalId: string): ProposalVote[] {
+  function allVotesFor(proposalId: string): ProposalVote[] {
     return votes.filter(v => v.proposal_id === proposalId);
+  }
+
+  function votesFor(proposalId: string, version?: number): ProposalVote[] {
+    const proposal = proposals.find(p => p.id === proposalId);
+    const currentVersion = version ?? proposal?.revision_number ?? 1;
+    return votes.filter(v => v.proposal_id === proposalId && (v.proposal_version ?? 1) === currentVersion);
   }
 
   function offsetsFor(proposalId: string): ProposalOffset[] {
@@ -599,6 +696,36 @@ export default function ExpensePlanningPage() {
     return !votesFor(proposal.id).some(v => v.member_name === user);
   }
 
+  function startRevision(proposal: ExpenseProposal) {
+    const proposalOffsets = offsetsFor(proposal.id);
+    setRevisionTarget(proposal);
+    setTitle(proposal.title);
+    setCategory(proposal.category);
+    setExpenseKind(proposal.expense_kind);
+    setCadence(proposal.cadence);
+    setHourlyRate(String(Number(proposal.hourly_rate ?? 0)));
+    setHoursPerMonth(String(Number(proposal.hours_per_month ?? 0)));
+    setFixedAmount(String(Number(proposal.cadence === "one_time" ? proposal.one_time_amount : proposal.monthly_amount)));
+    setUpfrontAmount(String(Number(proposal.upfront_amount)));
+    setMemberCap(String(Number(proposal.member_cap)));
+    setDurationMonths(String(Number(proposal.duration_months)));
+    setStartMonth(proposal.start_month || new Date().toISOString().slice(0, 10));
+    setIsBudgeted(proposal.is_budgeted);
+    setNotes(proposal.notes || "");
+    setRevisionNote("");
+    setOffsetDrafts(proposalOffsets.map(o => ({
+      title: o.title,
+      offset_kind: o.offset_kind,
+      cadence: o.cadence,
+      amount: Number(o.amount),
+      source_expense_id: o.source_expense_id,
+      notes: o.notes,
+    })));
+    setBuilderOpen(true);
+    setInboxOpen(true);
+    setExpandedProposalId(proposal.id);
+  }
+
   const visibleProposals = proposals.filter(proposal => {
     if (proposalFilter === "all") return true;
     if (proposalFilter === "needs_my_vote") return needsMyVote(proposal);
@@ -608,6 +735,7 @@ export default function ExpensePlanningPage() {
   const filterCounts: Record<ProposalFilter, number> = {
     needs_my_vote: proposals.filter(needsMyVote).length,
     review: proposals.filter(p => p.status === "review").length,
+    revision_needed: proposals.filter(p => p.status === "revision_needed").length,
     approved: proposals.filter(p => p.status === "approved").length,
     converted: proposals.filter(p => p.status === "converted").length,
     rejected: proposals.filter(p => p.status === "rejected").length,
@@ -634,8 +762,39 @@ export default function ExpensePlanningPage() {
         <Stat label="Room before cap" value={fmtUSD(availableRoom)} tone={availableRoom >= 0 ? "good" : "warn"} />
       </div>
 
-      <div style={{ display: "flex", flexDirection: "column" }}>
-      <div style={{ order: 2, display: "grid", gridTemplateColumns: "minmax(0, 1.15fr) minmax(320px, 0.85fr)", gap: 16, alignItems: "start", marginBottom: 16 }}>
+      <div style={{ ...trackerCard, marginBottom: 12, display: "flex", justifyContent: "space-between", gap: 14, alignItems: "center", flexWrap: "wrap" }}>
+        <div>
+          <h2 style={{ fontSize: 16, fontWeight: 800, marginBottom: 4 }}>{revisionTarget ? `Revise proposal v${revisionTarget.revision_number ?? 1}` : "New proposal"}</h2>
+          <p style={{ color: "var(--muted)", fontSize: 12 }}>
+            {revisionTarget
+              ? "Update the proposal and send a new version back to members for sign-off."
+              : "Build expense scenarios separately from the inbox so members can review active proposals cleanly."}
+          </p>
+        </div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          {revisionTarget && (
+            <button
+              onClick={() => {
+                setRevisionTarget(null);
+                setRevisionNote("");
+                setOffsetDrafts([]);
+              }}
+              style={trackerBtnSubtle}
+            >
+              Cancel revision
+            </button>
+          )}
+          <button
+            onClick={() => setBuilderOpen(open => !open)}
+            style={builderOpen ? trackerBtnGhost : trackerBtn}
+          >
+            {builderOpen ? "Collapse builder" : revisionTarget ? "Continue revision" : "Create proposal"}
+          </button>
+        </div>
+      </div>
+
+      {builderOpen && (
+      <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1.15fr) minmax(320px, 0.85fr)", gap: 16, alignItems: "start", marginBottom: 16 }}>
         <div style={trackerCard}>
           <h2 style={{ fontSize: 14, fontWeight: 700, marginBottom: 12 }}>Build proposal</h2>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 150px", gap: 10, marginBottom: 10 }}>
@@ -703,6 +862,20 @@ export default function ExpensePlanningPage() {
             <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={3} style={{ ...trackerInput, resize: "vertical" }} />
           </Field>
 
+          {revisionTarget && (
+            <div style={{ marginTop: 10 }}>
+              <Field label="Revision note">
+                <textarea
+                  value={revisionNote}
+                  onChange={e => setRevisionNote(e.target.value)}
+                  rows={2}
+                  placeholder="What changed, and why should members re-vote?"
+                  style={{ ...trackerInput, resize: "vertical" }}
+                />
+              </Field>
+            </div>
+          )}
+
           <div style={{ marginTop: 16, paddingTop: 14, borderTop: "1px solid var(--border)" }}>
             <h3 style={{ fontSize: 13, fontWeight: 700, marginBottom: 10 }}>Budget changes</h3>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 120px", gap: 10, marginBottom: 10 }}>
@@ -769,7 +942,7 @@ export default function ExpensePlanningPage() {
           </div>
 
           <button onClick={saveProposal} disabled={saving || grossFirstMonthImpact <= 0} style={{ ...trackerBtn, marginTop: 12, opacity: saving || grossFirstMonthImpact <= 0 ? 0.6 : 1 }}>
-            {saving ? "Saving..." : "Save proposal for sign-off"}
+            {saving ? "Saving..." : revisionTarget ? "Save revision for new vote" : "Save proposal for sign-off"}
           </button>
         </div>
 
@@ -795,13 +968,24 @@ export default function ExpensePlanningPage() {
           </div>
         </div>
       </div>
+      )}
 
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap", margin: "12px 0" }}>
-        <h2 style={{ fontSize: 16, fontWeight: 700 }}>Proposal inbox</h2>
+      <div style={{ ...trackerCard, padding: 14, margin: "12px 0" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+        <button
+          onClick={() => setInboxOpen(open => !open)}
+          style={{ background: "transparent", border: "none", color: "var(--fg)", cursor: "pointer", textAlign: "left", padding: 0 }}
+        >
+          <h2 style={{ fontSize: 16, fontWeight: 800 }}>Proposal inbox {inboxOpen ? "−" : "+"}</h2>
+          <p style={{ color: "var(--muted)", fontSize: 12, marginTop: 3 }}>
+            {visibleProposals.length} proposal{visibleProposals.length === 1 ? "" : "s"} in this view. Click a proposal to review details, notes, votes, and sign-off.
+          </p>
+        </button>
         <div style={{ display: "flex", gap: 6, overflowX: "auto", paddingBottom: 2 }}>
           {([
             ["needs_my_vote", "Needs my vote"],
             ["review", "Under review"],
+            ["revision_needed", "Revision needed"],
             ["approved", "Approved"],
             ["converted", "Converted"],
             ["rejected", "Rejected"],
@@ -830,9 +1014,12 @@ export default function ExpensePlanningPage() {
           })}
         </div>
       </div>
+      </div>
+      {inboxOpen && (
       <div style={{ display: "grid", gap: 12 }}>
         {visibleProposals.map(proposal => {
           const proposalVotes = votesFor(proposal.id);
+          const allProposalVotes = allVotesFor(proposal.id);
           const proposalOffsets = offsetsFor(proposal.id);
           const approved = proposalVotes.filter(v => v.decision === "approve").length;
           const rejected = proposalVotes.filter(v => v.decision === "reject").length;
@@ -840,6 +1027,9 @@ export default function ExpensePlanningPage() {
           const ready = approved >= proposal.required_approvals;
           const myVote = proposalVotes.find(v => v.member_name === user);
           const sortedVotes = [...proposalVotes].sort((a, b) => a.member_name.localeCompare(b.member_name));
+          const priorVotes = allProposalVotes
+            .filter(v => (v.proposal_version ?? 1) !== (proposal.revision_number ?? 1))
+            .sort((a, b) => b.updated_at.localeCompare(a.updated_at));
           const ongoingMonthlyAmount = proposal.cadence === "monthly"
             ? Number(proposal.monthly_amount)
             : proposal.cadence === "quarterly"
@@ -857,19 +1047,39 @@ export default function ExpensePlanningPage() {
           const ongoingTotal = currentMonthly.amount + netOngoingMonthlyAmount;
           const firstMonthPerMember = MEMBER_COUNT > 0 ? firstMonthTotal / MEMBER_COUNT : 0;
           const ongoingPerMemberForProposal = MEMBER_COUNT > 0 ? ongoingTotal / MEMBER_COUNT : 0;
+          const expanded = expandedProposalId === proposal.id;
 
           return (
             <div key={proposal.id} style={trackerCard}>
+              <button
+                onClick={() => setExpandedProposalId(expanded ? null : proposal.id)}
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  color: "var(--fg)",
+                  cursor: "pointer",
+                  padding: 0,
+                  textAlign: "left",
+                  width: "100%",
+                }}
+              >
               <div style={{ display: "flex", justifyContent: "space-between", gap: 14, alignItems: "start", flexWrap: "wrap" }}>
                 <div>
                   <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 4 }}>
                     <h3 style={{ fontSize: 16, fontWeight: 700 }}>{proposal.title}</h3>
                     <Badge text={proposal.status === "review" && ready ? "Approved - ready to convert" : statusLabel(proposal.status)} tone={proposal.status === "converted" ? "good" : ready ? "good" : "neutral"} />
+                    <Badge text={`v${proposal.revision_number ?? 1}`} tone="neutral" />
                     <Badge text={proposal.category} tone="neutral" />
+                    <Badge text={expanded ? "Hide details" : "Review details"} tone="neutral" />
                   </div>
                   <div style={{ color: "var(--muted)", fontSize: 12, lineHeight: 1.5 }}>
                     {proposal.approval_rule}
                   </div>
+                  {proposal.revision_note && (
+                    <div style={{ color: "var(--gold)", fontSize: 12, lineHeight: 1.45, marginTop: 4 }}>
+                      Revision note: {proposal.revision_note}
+                    </div>
+                  )}
                   {proposalOffsets.length > 0 && (
                     <div style={{ display: "grid", gap: 6, marginTop: 10 }}>
                       {proposalOffsets.map(o => (
@@ -898,7 +1108,10 @@ export default function ExpensePlanningPage() {
                   </div>
                 </div>
               </div>
+              </button>
 
+              {expanded && (
+              <>
               <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(280px, 0.8fr)", gap: 12, marginTop: 14 }}>
                 <div style={{ padding: 12, borderRadius: 8, background: "var(--surface2)", border: "1px solid var(--border)" }}>
                   <h4 style={{ fontSize: 12, fontWeight: 800, marginBottom: 10 }}>Proposal details</h4>
@@ -972,7 +1185,7 @@ export default function ExpensePlanningPage() {
                   return (
                     <div key={member} style={{ padding: 10, borderRadius: 8, background: "var(--surface2)", border: "1px solid var(--border)", minHeight: 74 }}>
                       <div style={{ fontSize: 11, fontWeight: 700, marginBottom: 5 }}>{member}</div>
-                    <Badge text={v ? decisionLabel(v.decision) : "Pending"} tone={v?.decision === "approve" ? "good" : v?.decision === "reject" ? "warn" : "neutral"} />
+                    <Badge text={v ? decisionLabel(v.decision) : "Pending"} tone={v?.decision === "approve" ? "good" : v?.decision === "reject" || v?.decision === "request_changes" ? "warn" : "neutral"} />
                       {v?.note && <div style={{ marginTop: 6, color: "var(--muted)", fontSize: 11 }}>{v.note}</div>}
                     </div>
                   );
@@ -992,7 +1205,7 @@ export default function ExpensePlanningPage() {
                     {sortedVotes.map(v => (
                       <div key={v.id || `${v.proposal_id}-${v.member_name}`} style={{ display: "grid", gridTemplateColumns: "140px 90px 1fr 150px", gap: 8, alignItems: "center", fontSize: 12 }}>
                         <strong>{v.member_name}</strong>
-                        <Badge text={decisionLabel(v.decision)} tone={v.decision === "approve" ? "good" : v.decision === "reject" ? "warn" : "neutral"} />
+                        <Badge text={decisionLabel(v.decision)} tone={v.decision === "approve" ? "good" : v.decision === "reject" || v.decision === "request_changes" ? "warn" : "neutral"} />
                         <span style={{ color: v.note ? "var(--fg)" : "var(--muted)" }}>{v.note || "No note"}</span>
                         <span style={{ color: "var(--muted)", fontSize: 11, textAlign: "right" }}>{formatDateTime(v.updated_at)}</span>
                       </div>
@@ -1003,11 +1216,31 @@ export default function ExpensePlanningPage() {
                 )}
               </div>
 
-              {proposal.status !== "converted" && (
+              {priorVotes.length > 0 && (
+                <div style={{ marginTop: 12, padding: 12, borderRadius: 8, background: "var(--surface2)", border: "1px solid var(--border)" }}>
+                  <h4 style={{ fontSize: 12, fontWeight: 800, marginBottom: 10 }}>Prior-version voting history</h4>
+                  <div style={{ display: "grid", gap: 6 }}>
+                    {priorVotes.map(v => (
+                      <div key={v.id || `${v.proposal_id}-${v.member_name}-${v.proposal_version}`} style={{ display: "grid", gridTemplateColumns: "70px 140px 130px 1fr 150px", gap: 8, alignItems: "center", fontSize: 12 }}>
+                        <strong>v{v.proposal_version ?? 1}</strong>
+                        <strong>{v.member_name}</strong>
+                        <Badge text={decisionLabel(v.decision)} tone={v.decision === "approve" ? "good" : v.decision === "reject" || v.decision === "request_changes" ? "warn" : "neutral"} />
+                        <span style={{ color: v.note ? "var(--fg)" : "var(--muted)" }}>{v.note || "No note"}</span>
+                        <span style={{ color: "var(--muted)", fontSize: 11, textAlign: "right" }}>{formatDateTime(v.updated_at)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {proposal.status !== "converted" && proposal.status !== "revision_needed" && (
                 <div style={{ display: "flex", gap: 8, alignItems: "end", flexWrap: "wrap", marginTop: 14 }}>
                   <input value={voteNote} onChange={e => setVoteNote(e.target.value)} placeholder="Optional note for your sign-off" style={{ ...trackerInput, maxWidth: 360 }} />
                   <button onClick={() => vote(proposal, "approve")} style={trackerBtn}>
                     {myVote?.decision === "approve" ? "Approved" : "Approve"}
+                  </button>
+                  <button onClick={() => vote(proposal, "request_changes")} style={{ ...trackerBtnGhost, borderColor: "var(--gold)", color: "var(--gold)" }}>
+                    Request changes
                   </button>
                   <button onClick={() => vote(proposal, "abstain")} style={trackerBtnSubtle}>Abstain</button>
                   <button onClick={() => vote(proposal, "reject")} style={{ ...trackerBtnGhost, borderColor: "var(--obsidian)", color: "var(--obsidian)" }}>Reject</button>
@@ -1025,6 +1258,23 @@ export default function ExpensePlanningPage() {
                   )}
                 </div>
               )}
+              {proposal.status === "revision_needed" && (
+                <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginTop: 14, padding: 12, borderRadius: 8, background: "rgba(20,17,13,0.08)", border: "1px solid var(--border)" }}>
+                  <div style={{ flex: 1, minWidth: 240 }}>
+                    <strong>Revision needed before voting continues.</strong>
+                    <div style={{ color: "var(--muted)", fontSize: 12, marginTop: 3 }}>
+                      Review the requested-change notes, update the proposal, and send a new version back to members.
+                    </div>
+                  </div>
+                  {(admin || proposal.created_by === user) && (
+                    <button onClick={() => startRevision(proposal)} style={{ ...trackerBtn, background: "var(--obsidian)", color: "var(--surface)" }}>
+                      Revise proposal
+                    </button>
+                  )}
+                </div>
+              )}
+              </>
+              )}
             </div>
           );
         })}
@@ -1034,7 +1284,7 @@ export default function ExpensePlanningPage() {
           </div>
         )}
       </div>
-      </div>
+      )}
     </TrackerShell>
   );
 }
