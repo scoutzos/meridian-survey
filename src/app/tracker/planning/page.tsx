@@ -1057,6 +1057,7 @@ export default function ExpensePlanningPage() {
           const netOngoingMonthlyAmount = ongoingMonthlyAmount + proposalBudgetChangeOngoing;
           const firstMonthTotal = currentMonthly.amount + firstMonthAmount;
           const ongoingTotal = currentMonthly.amount + netOngoingMonthlyAmount;
+          const currentMonthlyPerMember = MEMBER_COUNT > 0 ? currentMonthly.amount / MEMBER_COUNT : 0;
           const firstMonthPerMember = MEMBER_COUNT > 0 ? firstMonthTotal / MEMBER_COUNT : 0;
           const ongoingPerMemberForProposal = MEMBER_COUNT > 0 ? ongoingTotal / MEMBER_COUNT : 0;
           const firstMonthImpactPerMember = MEMBER_COUNT > 0 ? firstMonthAmount / MEMBER_COUNT : 0;
@@ -1158,13 +1159,25 @@ export default function ExpensePlanningPage() {
                 <div style={{ padding: 12, borderRadius: 8, background: "var(--surface2)", border: "1px solid var(--border)" }}>
                   <h4 style={{ fontSize: 12, fontWeight: 800, marginBottom: 10 }}>Proposal math</h4>
                   <div style={{ display: "grid", gap: 8 }}>
-                    <ResultRow label="New proposal cost" value={fmtUSD(grossFirstMonthAmount)} />
-                    <ResultRow label="Budget adjustments" value={`${proposalBudgetChangeFirst >= 0 ? "+" : "-"}${fmtUSD(Math.abs(proposalBudgetChangeFirst))}`} tone={proposalBudgetChangeFirst <= 0 ? "good" : "warn"} />
-                    <ResultRow label="Net proposal impact" value={fmtUSD(firstMonthAmount)} strong />
-                    <ResultRow label="Proposal impact / member" value={fmtUSD(firstMonthImpactPerMember, { fractionDigits: 2 })} strong />
-                    <ResultRow label="Total monthly obligation / member" value={fmtUSD(firstMonthPerMember, { fractionDigits: 2 })} />
-                    <ResultRow label="Ongoing proposal impact / member" value={fmtUSD(ongoingImpactPerMember, { fractionDigits: 2 })} />
-                    <ResultRow label="Ongoing total obligation / member" value={fmtUSD(ongoingPerMemberForProposal, { fractionDigits: 2 })} />
+                    <div>
+                      <div style={{ color: "var(--muted)", fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.12em", marginBottom: 6 }}>Before this proposal</div>
+                      <ResultRow label={`Current monthly budget (${currentMonthly.bucket})`} value={fmtUSD(currentMonthly.amount)} />
+                      <ResultRow label="Current monthly / member" value={fmtUSD(currentMonthlyPerMember, { fractionDigits: 2 })} />
+                    </div>
+                    <div>
+                      <div style={{ color: "var(--muted)", fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.12em", margin: "4px 0 6px" }}>Change if approved</div>
+                      <ResultRow label="New proposal cost" value={`+${fmtUSD(grossFirstMonthAmount)}`} />
+                      <ResultRow label="Budget adjustments" value={`${proposalBudgetChangeFirst >= 0 ? "+" : "-"}${fmtUSD(Math.abs(proposalBudgetChangeFirst))}`} tone={proposalBudgetChangeFirst <= 0 ? "good" : "warn"} />
+                      <ResultRow label="Net proposal impact" value={`${firstMonthAmount >= 0 ? "+" : "-"}${fmtUSD(Math.abs(firstMonthAmount))}`} strong />
+                      <ResultRow label="Net impact / member" value={`${firstMonthImpactPerMember >= 0 ? "+" : "-"}${fmtUSD(Math.abs(firstMonthImpactPerMember), { fractionDigits: 2 })}`} strong />
+                    </div>
+                    <div>
+                      <div style={{ color: "var(--muted)", fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.12em", margin: "4px 0 6px" }}>After approval</div>
+                      <ResultRow label="First month total budget" value={fmtUSD(firstMonthTotal)} />
+                      <ResultRow label="First month total / member" value={fmtUSD(firstMonthPerMember, { fractionDigits: 2 })} />
+                      <ResultRow label="Ongoing proposal impact / member" value={`${ongoingImpactPerMember >= 0 ? "+" : "-"}${fmtUSD(Math.abs(ongoingImpactPerMember), { fractionDigits: 2 })}`} />
+                      <ResultRow label="Ongoing total / member" value={fmtUSD(ongoingPerMemberForProposal, { fractionDigits: 2 })} />
+                    </div>
                   </div>
                 </div>
               </div>
