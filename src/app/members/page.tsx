@@ -222,7 +222,7 @@ export default function MembersPage() {
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           <button onClick={() => router.push("/members/candidates")} style={buttonStyle}>Member Reviews</button>
-          <button onClick={() => router.push("/actions")} style={buttonStyle}>Actions</button>
+          <button onClick={() => router.push("/actions")} style={buttonStyle}>Tasks</button>
           <button onClick={() => router.push("/tracker/planning")} style={buttonStyle}>Planning</button>
           <button onClick={() => router.push("/tracker/members")} style={buttonStyle}>Balances</button>
         </div>

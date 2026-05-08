@@ -2,8 +2,19 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { MEMBERS } from "@/data/questions";
+import { getAllSurveys } from "@/data/surveys";
 import { supabase } from "@/lib/supabase";
-import { isAdmin, type MemberProfile } from "@/lib/tracker";
+import { getStorageKey } from "@/lib/migration";
+import { isAdmin, type CapitalCall, type MemberProfile } from "@/lib/tracker";
+import { fetchAll } from "@/lib/tracker";
+import {
+  fetchPendingMembershipCandidateVotes,
+  type MembershipCandidate,
+} from "@/lib/membership-candidates";
+import {
+  fetchPendingExpenseProposalVotes,
+  type PendingExpenseProposalVote,
+} from "@/lib/expense-proposal-votes";
 import {
   ALL_MEMBERS_LABEL,
   createActionItem,
@@ -23,6 +34,18 @@ const STATUS_LABEL: Record<ActionItemStatus, string> = {
   "in-progress": "In Progress",
   "done": "Done",
 };
+type TaskFilter = "needs-me" | "votes" | "money" | "surveys" | "actions" | "completed";
+
+interface TaskCard {
+  id: string;
+  kind: "Vote" | "Money" | "Survey" | "Action";
+  title: string;
+  detail: string;
+  href: string;
+  status: "Open" | "In Progress" | "Done";
+  due: string | null;
+  sourceItem?: ActionItem;
+}
 
 function formatDue(iso: string | null): string | null {
   if (!iso) return null;
@@ -36,6 +59,11 @@ export default function ActionsPage() {
   const [user, setUser] = useState<string | null>(null);
   const [items, setItems] = useState<ActionItem[]>([]);
   const [profiles, setProfiles] = useState<MemberProfile[]>([]);
+  const [candidateVotes, setCandidateVotes] = useState<MembershipCandidate[]>([]);
+  const [proposalVotes, setProposalVotes] = useState<PendingExpenseProposalVote[]>([]);
+  const [capitalCalls, setCapitalCalls] = useState<CapitalCall[]>([]);
+  const [surveyCounts, setSurveyCounts] = useState<Record<string, number>>({});
+  const [filter, setFilter] = useState<TaskFilter>("needs-me");
   const [loading, setLoading] = useState(true);
   const [showNew, setShowNew] = useState(false);
   const [draft, setDraft] = useState({
@@ -47,9 +75,43 @@ export default function ActionsPage() {
   const [saving, setSaving] = useState(false);
 
   const reload = useCallback(async () => {
+    const currentUser = localStorage.getItem("meridian_user");
+    if (!currentUser) return;
     setLoading(true);
-    const data = await fetchActionItems();
+    const [data, pendingCandidates, pendingProposals, trackerData] = await Promise.all([
+      fetchActionItems(),
+      fetchPendingMembershipCandidateVotes(currentUser),
+      fetchPendingExpenseProposalVotes(currentUser),
+      fetchAll(),
+    ]);
     setItems(data);
+    setCandidateVotes(pendingCandidates);
+    setProposalVotes(pendingProposals);
+    setCapitalCalls(trackerData?.capitalCalls ?? []);
+
+    const surveys = getAllSurveys();
+    const counts: Record<string, number> = {};
+    if (supabase) {
+      const { data: responses } = await supabase
+        .from("meridian_responses")
+        .select("survey_id")
+        .eq("member_name", currentUser);
+      for (const row of responses ?? []) {
+        const sid = row.survey_id || "operating-agreement";
+        counts[sid] = (counts[sid] || 0) + 1;
+      }
+    } else {
+      for (const survey of surveys) {
+        const raw = localStorage.getItem(getStorageKey(survey.id, currentUser));
+        if (!raw) continue;
+        try {
+          const parsed = JSON.parse(raw) as Record<string, unknown>;
+          counts[survey.id] = Object.values(parsed).filter(v => Array.isArray(v) ? v.length > 0 : typeof v === "string" && v.trim() !== "").length;
+        } catch { /* ignore malformed local survey cache */ }
+      }
+    }
+    setSurveyCounts(counts);
+
     if (supabase) {
       const { data: prof } = await supabase.from("tracker_member_profiles").select("*");
       setProfiles((prof as MemberProfile[] | null) ?? []);
@@ -72,6 +134,99 @@ export default function ActionsPage() {
 
   if (!user) return null;
   const admin = isAdmin(profiles, user);
+  const surveys = getAllSurveys();
+  const openCapitalCalls = capitalCalls.filter(c => !c.deleted_at && c.status === "open");
+  const suggestedCapitalCalls = capitalCalls.filter(c => !c.deleted_at && c.status === "suggested");
+  const surveyTasks: TaskCard[] = surveys
+    .map(survey => {
+      const total = survey.categories.reduce((sum, c) => sum + c.questions.length, 0);
+      const answered = surveyCounts[survey.id] || 0;
+      return { survey, total, answered };
+    })
+    .filter(row => row.total > 0 && row.answered < row.total)
+    .map(({ survey, total, answered }) => ({
+      id: `survey-${survey.id}`,
+      kind: "Survey",
+      title: survey.title,
+      detail: `${answered}/${total} questions answered.`,
+      href: `/survey/${survey.id}`,
+      status: answered > 0 ? "In Progress" : "Open",
+      due: null,
+    }));
+  const taskCards: TaskCard[] = [
+    ...proposalVotes.map(proposal => ({
+      id: `proposal-${proposal.id}`,
+      kind: "Vote" as const,
+      title: `Vote on proposal: ${proposal.title}`,
+      detail: `Version ${proposal.revision_number ?? 1} is waiting for your review.`,
+      href: `/tracker/planning?proposal=${proposal.id}`,
+      status: "Open" as const,
+      due: null,
+    })),
+    ...candidateVotes.map(candidate => ({
+      id: `candidate-${candidate.id}`,
+      kind: "Vote" as const,
+      title: `Review application: ${candidate.full_name}`,
+      detail: "Member application vote needed.",
+      href: `/members/candidates?candidate=${candidate.id}`,
+      status: "Open" as const,
+      due: null,
+    })),
+    ...openCapitalCalls.map(call => ({
+      id: `capital-${call.id}`,
+      kind: "Money" as const,
+      title: `Capital call: ${call.reason}`,
+      detail: `${call.per_member_amount.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 2 })} per member.`,
+      href: "/tracker/capital-calls",
+      status: "Open" as const,
+      due: call.date_called,
+    })),
+    ...suggestedCapitalCalls.map(call => ({
+      id: `suggested-capital-${call.id}`,
+      kind: "Money" as const,
+      title: `Review suggested capital call: ${call.reason}`,
+      detail: `${call.total_amount.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 })} total suggested.`,
+      href: "/tracker/capital-calls",
+      status: "Open" as const,
+      due: call.date_called,
+    })),
+    ...surveyTasks,
+    ...items.filter(item => item.status !== "done" && isOwnedBy(item, user)).map(item => ({
+      id: `action-${item.id}`,
+      kind: "Action" as const,
+      title: item.title,
+      detail: item.description || "Assigned action item.",
+      href: "/actions",
+      status: item.status === "in-progress" ? "In Progress" as const : "Open" as const,
+      due: item.due_date,
+      sourceItem: item,
+    })),
+  ];
+  const completedTasks: TaskCard[] = items.filter(item => item.status === "done" && isOwnedBy(item, user)).map(item => ({
+    id: `action-${item.id}`,
+    kind: "Action",
+    title: item.title,
+    detail: item.description || "Completed action item.",
+    href: "/actions",
+    status: "Done",
+    due: item.completed_at,
+    sourceItem: item,
+  }));
+  const visibleTasks = (filter === "completed" ? completedTasks : taskCards).filter(task => {
+    if (filter === "needs-me" || filter === "completed") return true;
+    if (filter === "votes") return task.kind === "Vote";
+    if (filter === "money") return task.kind === "Money";
+    if (filter === "surveys") return task.kind === "Survey";
+    return task.kind === "Action";
+  });
+  const filterCounts: Record<TaskFilter, number> = {
+    "needs-me": taskCards.length,
+    votes: taskCards.filter(task => task.kind === "Vote").length,
+    money: taskCards.filter(task => task.kind === "Money").length,
+    surveys: taskCards.filter(task => task.kind === "Survey").length,
+    actions: taskCards.filter(task => task.kind === "Action").length,
+    completed: completedTasks.length,
+  };
 
   const handleStatusChange = async (item: ActionItem, status: ActionItemStatus) => {
     const { error } = await updateActionItemStatus(item.id, status, user);
@@ -112,10 +267,10 @@ export default function ActionsPage() {
             Operations
           </p>
           <h1 style={{ fontFamily: DISPLAY_FONT, fontSize: "clamp(34px, 5vw, 48px)", fontWeight: 500, color: "var(--obsidian)", letterSpacing: "-0.5px", marginBottom: 6 }}>
-            Action items
+            Task inbox
           </h1>
           <p style={{ color: "var(--ink)", opacity: 0.65, fontSize: 14 }}>
-            Track what each of us owns. Mark your work done as you finish it.
+            One place for votes, money tasks, surveys, and assigned action items.
           </p>
         </div>
         {admin && (
@@ -189,7 +344,108 @@ export default function ActionsPage() {
 
       {loading && <p style={{ color: "var(--muted)", fontSize: 13 }}>Loading…</p>}
 
-      {!loading && STATUS_ORDER.map(status => {
+      {!loading && (
+        <>
+          <section style={{
+            background: "var(--surface)",
+            border: "1px solid var(--fog)",
+            borderRadius: 12,
+            padding: 16,
+            marginBottom: 20,
+          }}>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-end", flexWrap: "wrap", marginBottom: 14 }}>
+              <div>
+                <p style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.16em", textTransform: "uppercase", color: "var(--brass)", marginBottom: 6 }}>
+                  Needs My Attention
+                </p>
+                <h2 style={{ fontFamily: DISPLAY_FONT, fontSize: 26, fontWeight: 500, color: "var(--obsidian)" }}>
+                  {filterCounts["needs-me"]} open task{filterCounts["needs-me"] === 1 ? "" : "s"}
+                </h2>
+              </div>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                {([
+                  ["needs-me", "All"],
+                  ["votes", "Votes"],
+                  ["money", "Money"],
+                  ["surveys", "Surveys"],
+                  ["actions", "Actions"],
+                  ["completed", "Done"],
+                ] as Array<[TaskFilter, string]>).map(([value, label]) => (
+                  <button
+                    key={value}
+                    onClick={() => setFilter(value)}
+                    style={{
+                      ...(filter === value ? primaryBtnStyle : subtleBtnStyle),
+                      padding: "8px 10px",
+                      fontSize: 10,
+                    }}
+                  >
+                    {label} {filterCounts[value]}
+                  </button>
+                ))}
+              </div>
+            </div>
+            {visibleTasks.length === 0 ? (
+              <p style={{ color: "var(--ink)", opacity: 0.58, fontSize: 13 }}>Nothing in this view.</p>
+            ) : (
+              <div style={{ display: "grid", gap: 8 }}>
+                {visibleTasks.map(task => (
+                  <div key={task.id} style={{
+                    background: "var(--bone)",
+                    border: "1px solid var(--fog)",
+                    borderLeft: `3px solid ${task.status === "Done" ? "var(--fog)" : "var(--brass)"}`,
+                    borderRadius: 10,
+                    padding: "14px 16px",
+                    display: "flex",
+                    justifyContent: "space-between",
+                    gap: 12,
+                    alignItems: "flex-start",
+                    opacity: task.status === "Done" ? 0.68 : 1,
+                  }}>
+                    <button
+                      onClick={() => router.push(task.href)}
+                      style={{ background: "transparent", border: "none", padding: 0, textAlign: "left", cursor: "pointer", flex: 1, color: "var(--ink)" }}
+                    >
+                      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 5 }}>
+                        <span style={{
+                          background: "var(--surface)",
+                          border: "1px solid var(--fog)",
+                          borderRadius: 999,
+                          padding: "2px 8px",
+                          fontSize: 10,
+                          fontWeight: 800,
+                          color: "var(--brass)",
+                          letterSpacing: "0.12em",
+                          textTransform: "uppercase",
+                        }}>{task.kind}</span>
+                        <span style={{ fontSize: 11, color: "var(--ink)", opacity: 0.58 }}>{task.status}</span>
+                        {task.due && <span style={{ fontSize: 11, color: "var(--ink)", opacity: 0.58 }}>{formatDue(task.due)}</span>}
+                      </div>
+                      <p style={{ fontSize: 15, fontWeight: 700, color: "var(--obsidian)", lineHeight: 1.3 }}>{task.title}</p>
+                      <p style={{ fontSize: 13, color: "var(--ink)", opacity: 0.7, lineHeight: 1.45, marginTop: 4 }}>{task.detail}</p>
+                    </button>
+                    {task.sourceItem && task.status !== "Done" && (
+                      <button onClick={() => handleStatusChange(task.sourceItem!, "done")} style={primaryBtnStyle}>
+                        Done
+                      </button>
+                    )}
+                    {task.sourceItem && task.status === "Done" && (
+                      <button onClick={() => handleStatusChange(task.sourceItem!, "open")} style={subtleBtnStyle}>
+                        Reopen
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+
+          <details style={{ marginBottom: 24 }}>
+            <summary style={{ cursor: "pointer", color: "var(--brass)", fontSize: 11, fontWeight: 800, letterSpacing: "0.16em", textTransform: "uppercase", marginBottom: 12 }}>
+              Manual action board
+            </summary>
+            <div style={{ marginTop: 12 }}>
+              {STATUS_ORDER.map(status => {
         const list = grouped[status];
         return (
           <section key={status} style={{ marginBottom: 24 }}>
@@ -284,6 +540,10 @@ export default function ActionsPage() {
           </section>
         );
       })}
+            </div>
+          </details>
+        </>
+      )}
 
       <style jsx>{`
         @media (max-width: 600px) {

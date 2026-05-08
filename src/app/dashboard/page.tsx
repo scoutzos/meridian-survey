@@ -67,7 +67,7 @@ const QUICK_LINKS: Array<{ title: string; href: string; eyebrow: string; externa
   { title: "Vote on Proposals", eyebrow: "Approvals", href: "/tracker/planning" },
   { title: "Applications", eyebrow: "Member Review", href: "/members/candidates" },
   { title: "My Balances", eyebrow: "Money", href: "/tracker/members" },
-  { title: "Actions", eyebrow: "Work", href: "/actions" },
+  { title: "Task Inbox", eyebrow: "Work", href: "/actions" },
   { title: "Documents", eyebrow: "Records", href: "/documents" },
   { title: "Main Website", eyebrow: "Public Site", href: "https://meridian-website-red.vercel.app", external: true },
 ];
@@ -358,7 +358,7 @@ export default function DashboardPage() {
           <SectionHeader
             title="Needs My Attention"
             subtitle={attentionCount ? `${attentionCount} item${attentionCount === 1 ? "" : "s"} waiting on you.` : "Nothing urgent is waiting on you."}
-            cta={{ label: "All actions", onClick: () => router.push("/actions") }}
+            cta={{ label: "Task inbox", onClick: () => router.push("/actions") }}
           />
           <div className="attention-grid">
             <AttentionCard
@@ -370,7 +370,7 @@ export default function DashboardPage() {
               strong={pendingVotes.length > 0}
             />
             <AttentionCard
-              title="Action items"
+              title="Task inbox"
               value={String(myItems.length)}
               detail={myItems.length ? "Open or in-progress commitments assigned to you." : "Your assigned work is clear."}
               action="Open"
@@ -439,7 +439,7 @@ export default function DashboardPage() {
             )}
           </Panel>
 
-          <Panel title="My Work" cta={{ label: "Actions", onClick: () => router.push("/actions") }}>
+          <Panel title="Task Inbox Preview" cta={{ label: "Tasks", onClick: () => router.push("/actions") }}>
             {!loaded && <SkeletonCard />}
             {loaded && myItems.length === 0 && <EmptyText>Nothing assigned to you right now.</EmptyText>}
             {myItems.slice(0, 4).map(item => {

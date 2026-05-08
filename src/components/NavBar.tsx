@@ -21,7 +21,7 @@ export default function NavBar() {
     { href: "/projects",   label: "Projects" },
     { href: "/operations", label: "Ops" },
     { href: "/surveys",    label: "Surveys" },
-    { href: "/actions",    label: "Actions" },
+    { href: "/actions",    label: "Tasks" },
     { href: "/meetings",   label: "Meetings" },
     { href: "/members",    label: "My Portal" },
     { href: "/members/candidates", label: "Applications" },

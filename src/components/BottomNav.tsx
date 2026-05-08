@@ -10,7 +10,7 @@ const PRIMARY = [
 ];
 
 const MORE = [
-  { href: "/actions",    label: "Actions" },
+  { href: "/actions",    label: "Tasks" },
   { href: "/operations", label: "Operations" },
   { href: "/meetings",   label: "Meetings" },
   { href: "/surveys",    label: "Surveys" },
