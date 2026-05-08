@@ -350,6 +350,48 @@ export async function createDeal(input: DealInput, actor: string): Promise<{ dat
   return { data: deal, error: checklistError?.message ?? null };
 }
 
+export async function updateDeal(
+  id: string,
+  input: DealInput,
+  actor: string,
+): Promise<{ data: Deal | null; error: string | null }> {
+  const analysis = calculateDealAnalysis(input);
+  const links = (input.links ?? []).map(l => l.trim()).filter(Boolean);
+  const row = {
+    ...input,
+    links,
+    analysis,
+    source: input.source?.trim() || null,
+    strategy: input.strategy.trim() || "review",
+    address: input.address?.trim() || null,
+    parcel_id: input.parcel_id?.trim() || null,
+    seller_name: input.seller_name?.trim() || null,
+    seller_phone: input.seller_phone?.trim() || null,
+    zoning: input.zoning?.trim() || null,
+    road_frontage: input.road_frontage?.trim() || null,
+    utilities: input.utilities?.trim() || null,
+    notes: input.notes?.trim() || null,
+    updated_at: new Date().toISOString(),
+    updated_by: actor,
+  };
+
+  if (!supabase) {
+    const rows = localGet<Deal[]>(LOCAL_DEALS, []);
+    const next = rows.map(deal => deal.id === id ? normalizeDeal({ ...deal, ...row }) : deal);
+    localSet(LOCAL_DEALS, next);
+    return { data: next.find(deal => deal.id === id) ?? null, error: null };
+  }
+
+  const { data, error } = await supabase
+    .from("meridian_deals")
+    .update(row)
+    .eq("id", id)
+    .select()
+    .single();
+  if (error || !data) return { data: null, error: error?.message ?? "Deal update failed" };
+  return { data: normalizeDeal(data as Record<string, unknown>), error: null };
+}
+
 export async function updateChecklistItemStatus(
   id: string,
   status: ChecklistStatus,

@@ -24,6 +24,11 @@ import {
   fetchPendingExpenseProposalVotes,
   type PendingExpenseProposalVote,
 } from "@/lib/expense-proposal-votes";
+import {
+  DEAL_VOTE_TYPES,
+  fetchPendingDealVotes,
+  type PendingDealVote,
+} from "@/lib/deal-votes";
 
 const DISPLAY_FONT = "var(--font-display)";
 
@@ -54,6 +59,7 @@ function formatDueDate(iso: string | null): string | null {
 function statusLabel(notice: Notification): string {
   if (notice.notification_type === "expense_proposal_vote") return "Vote";
   if (notice.notification_type === "membership_candidate_vote") return "Member";
+  if (notice.notification_type === "deal_vote" || notice.notification_type === "deal-review") return "Deal";
   if (notice.notification_type.includes("capital")) return "Capital";
   if (notice.notification_type.includes("expense")) return "Money";
   return "Notice";
@@ -68,6 +74,7 @@ export default function MembersPage() {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [pendingCandidateVotes, setPendingCandidateVotes] = useState<MembershipCandidate[]>([]);
   const [pendingProposalVotes, setPendingProposalVotes] = useState<PendingExpenseProposalVote[]>([]);
+  const [pendingDealVotes, setPendingDealVotes] = useState<PendingDealVote[]>([]);
   const [decisions, setDecisions] = useState<Decision[]>([]);
   const [myBalance, setMyBalance] = useState<MemberBalance | null>(null);
   const [surveyCounts, setSurveyCounts] = useState<Record<string, number>>({});
@@ -96,13 +103,14 @@ export default function MembersPage() {
         responsesBySurvey: {},
       }));
 
-      const [trackerData, actionRows, noticeRows, hub, candidateVoteRows, proposalVoteRows] = await Promise.all([
+      const [trackerData, actionRows, noticeRows, hub, candidateVoteRows, proposalVoteRows, dealVoteRows] = await Promise.all([
         fetchAll(),
         fetchActionItems(),
         fetchNotifications(memberName),
         fetchHubData(),
         fetchPendingMembershipCandidateVotes(memberName),
         fetchPendingExpenseProposalVotes(memberName),
+        fetchPendingDealVotes(memberName),
       ]);
 
       const responseCounts: Record<string, Record<string, number>> = {};
@@ -150,6 +158,7 @@ export default function MembersPage() {
       setNotifications(noticeRows);
       setPendingCandidateVotes(candidateVoteRows);
       setPendingProposalVotes(proposalVoteRows);
+      setPendingDealVotes(dealVoteRows);
       setDecisions(hub.decisions.slice(0, 4));
       setSurveyCounts(responseCounts[memberName] ?? {});
       setLoading(false);
@@ -162,11 +171,14 @@ export default function MembersPage() {
 
   const pendingProposalIds = new Set(pendingProposalVotes.map(proposal => proposal.id));
   const pendingCandidateIds = new Set(pendingCandidateVotes.map(candidate => candidate.id));
+  const pendingDealIds = new Set(pendingDealVotes.map(deal => deal.id));
   const proposalNotificationVotes = notifications.filter(n => EXPENSE_PROPOSAL_VOTE_TYPES.includes(n.notification_type) && !!n.source_id && pendingProposalIds.has(n.source_id));
   const candidateNotificationVotes = notifications.filter(n => n.notification_type === MEMBERSHIP_CANDIDATE_VOTE && !!n.source_id && pendingCandidateIds.has(n.source_id));
-  const notificationVotes = [...proposalNotificationVotes, ...candidateNotificationVotes];
+  const dealNotificationVotes = notifications.filter(n => DEAL_VOTE_TYPES.includes(n.notification_type) && !!n.source_id && pendingDealIds.has(n.source_id));
+  const notificationVotes = [...proposalNotificationVotes, ...candidateNotificationVotes, ...dealNotificationVotes];
   const notifiedProposalIds = new Set(proposalNotificationVotes.map(n => n.source_id));
   const notifiedCandidateIds = new Set(candidateNotificationVotes.map(n => n.source_id));
+  const notifiedDealIds = new Set(dealNotificationVotes.map(n => n.source_id));
   const proposalVoteNotices: Notification[] = pendingProposalVotes
     .filter(proposal => !notifiedProposalIds.has(proposal.id))
     .map(proposal => ({
@@ -199,7 +211,23 @@ export default function MembersPage() {
       created_at: candidate.submitted_at,
       created_by: "Membership Application",
     }));
-  const pendingVotes = [...notificationVotes, ...proposalVoteNotices, ...candidateVoteNotices];
+  const dealVoteNotices: Notification[] = pendingDealVotes
+    .filter(deal => !notifiedDealIds.has(deal.id))
+    .map(deal => ({
+      id: `deal-${deal.id}`,
+      title: `Deal needs your vote: ${deal.title}`,
+      body: `${deal.recommendation ?? "Needs Review"} · ${deal.urgency === "hot" ? "Hot deal" : "Review requested"}`,
+      notification_type: "deal_vote",
+      priority: deal.urgency === "hot" ? "urgent" : "high",
+      assigned_to: user,
+      href: `/deals?deal=${deal.id}`,
+      source_table: "meridian_deals",
+      source_id: deal.id,
+      read_at: null,
+      created_at: deal.submitted_at,
+      created_by: "Deal Desk",
+    }));
+  const pendingVotes = [...notificationVotes, ...proposalVoteNotices, ...candidateVoteNotices, ...dealVoteNotices];
   const moneyNotices = notifications.filter(n => n.notification_type.includes("expense") || n.notification_type.includes("capital"));
   const myRow = rows.find(row => row.name === user);
   const surveyTotal = surveys.reduce((sum, s) => sum + (totalsBySurvey[s.id] || 0), 0);
@@ -242,7 +270,7 @@ export default function MembersPage() {
         <SnapshotCard
           title="Votes needed"
           value={String(pendingVotes.length)}
-          detail={pendingVotes.length ? "Proposal sign-offs or member reviews waiting on you." : "No votes waiting."}
+          detail={pendingVotes.length ? "Deals, proposals, or member reviews waiting on you." : "No votes waiting."}
           action="Review votes"
           onClick={() => router.push(pendingVotes[0]?.href || "/tracker/planning")}
           tone={pendingVotes.length ? "strong" : "normal"}

@@ -12,6 +12,7 @@ import {
   fetchDealVotes,
   generateDueDiligenceChecklist,
   updateChecklistItemStatus,
+  updateDeal,
   upsertDealAgreement,
   upsertDealVote,
   type ChecklistStatus,
@@ -27,8 +28,10 @@ import {
   type DealVoteOption,
 } from "@/lib/deals";
 import { createProjectFromDeal } from "@/lib/projects";
-import { createNotification } from "@/lib/operations";
+import { createActionItem } from "@/lib/action-items";
+import { createNotification, markNotificationRead } from "@/lib/operations";
 import { saveGeneratedMemo } from "@/lib/governance";
+import { supabase } from "@/lib/supabase";
 import { MEMBERS } from "@/data/questions";
 
 const DISPLAY_FONT = "var(--font-display)";
@@ -134,6 +137,36 @@ function statusLabel(value: string): string {
   return value.split("-").map(p => p.charAt(0).toUpperCase() + p.slice(1)).join(" ");
 }
 
+function addDays(days: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+function draftFromDeal(deal: Deal): DealInput & { linksText: string } {
+  return {
+    title: deal.title,
+    source: deal.source ?? "",
+    property_type: deal.property_type,
+    strategy: deal.strategy,
+    status: deal.status,
+    urgency: deal.urgency,
+    address: deal.address ?? "",
+    parcel_id: deal.parcel_id ?? "",
+    seller_name: deal.seller_name ?? "",
+    seller_phone: deal.seller_phone ?? "",
+    asking_price: deal.asking_price ?? null,
+    arv: deal.arv ?? null,
+    repair_estimate: deal.repair_estimate ?? null,
+    acreage: deal.acreage ?? null,
+    zoning: deal.zoning ?? "",
+    road_frontage: deal.road_frontage ?? "",
+    utilities: deal.utilities ?? "",
+    notes: deal.notes ?? "",
+    linksText: deal.links.join("\n"),
+  };
+}
+
 export default function DealsPage() {
   const router = useRouter();
   const [user, setUser] = useState<string | null>(null);
@@ -151,12 +184,14 @@ export default function DealsPage() {
   const [agreementSaving, setAgreementSaving] = useState(false);
   const [voteNote, setVoteNote] = useState("");
   const [draft, setDraft] = useState(EMPTY_DRAFT);
+  const [editingDealId, setEditingDealId] = useState<string | null>(null);
 
   const reload = useCallback(async () => {
     setLoading(true);
     const rows = await fetchDeals();
     setDeals(rows);
-    setSelectedId(prev => prev ?? rows[0]?.id ?? null);
+    const focusedDealId = new URLSearchParams(window.location.search).get("deal");
+    setSelectedId(prev => focusedDealId || prev || rows[0]?.id || null);
     setLoading(false);
   }, []);
 
@@ -194,6 +229,28 @@ export default function DealsPage() {
 
   if (!user) return null;
 
+  const notifyDealReviewWork = async (deal: Deal, message: string): Promise<string[]> => {
+    const results = await Promise.all(MEMBERS.flatMap(member => [
+      createNotification({
+        title: `Deal needs your vote: ${deal.title}`,
+        body: message,
+        priority: deal.urgency === "hot" ? "urgent" : "high",
+        assigned_to: member,
+        href: `/deals?deal=${deal.id}`,
+        source_table: "meridian_deals",
+        source_id: deal.id,
+        notification_type: "deal_vote",
+      }, user),
+      createActionItem({
+        title: `Review deal: ${deal.title}`,
+        description: message,
+        assigned_to: member,
+        due_date: addDays(deal.urgency === "hot" ? 1 : 2),
+      }, user),
+    ]));
+    return results.map(result => result.error).filter((error): error is string => !!error);
+  };
+
   const handleCreate = async () => {
     if (!draft.title.trim()) { alert("Deal title is required."); return; }
     setSaving(true);
@@ -211,24 +268,37 @@ export default function DealsPage() {
       utilities: draft.utilities?.trim() || null,
       notes: draft.notes?.trim() || null,
     };
-    const { data, error } = await createDeal(payload, user);
+    const { data, error } = editingDealId
+      ? await updateDeal(editingDealId, payload, user)
+      : await createDeal(payload, user);
     setSaving(false);
-    if (error) { alert(error); return; }
-    if (data && (payload.urgency === "hot" || data.analysis?.recommendation === "Strong Review")) {
-      await createNotification({
-        title: `Deal needs review: ${data.title}`,
-        body: `${data.analysis?.recommendation ?? "Needs Review"} · ${data.address || data.parcel_id || "Location pending"}`,
-        priority: payload.urgency === "hot" ? "urgent" : "high",
-        href: "/deals",
-        source_table: "meridian_deals",
-        source_id: data.id,
-        notification_type: "deal-review",
-      }, user);
+    if (error && !data) { alert(error); return; }
+    if (error && data) {
+      alert(`Deal saved, but one follow-up step did not finish: ${error}`);
+    }
+    if (data) {
+      const workErrors = await notifyDealReviewWork(
+        data,
+        editingDealId
+          ? `Updated deal details are ready for review. ${data.analysis?.recommendation ?? "Needs Review"} · ${data.address || data.parcel_id || "Location pending"}`
+          : `${data.analysis?.recommendation ?? "Needs Review"} · ${data.address || data.parcel_id || "Location pending"}`,
+      );
+      if (workErrors.length) {
+        alert(`Deal saved, but member vote notifications or action items did not fully create: ${workErrors[0]}`);
+      }
     }
     setDraft(EMPTY_DRAFT);
+    setEditingDealId(null);
     setShowNew(false);
     await reload();
     if (data) setSelectedId(data.id);
+  };
+
+  const startEdit = (deal: Deal) => {
+    setDraft(draftFromDeal(deal));
+    setEditingDealId(deal.id);
+    setShowNew(true);
+    window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
   const handleChecklistStatus = async (item: DealDueDiligenceItem, status: ChecklistStatus) => {
@@ -241,12 +311,15 @@ export default function DealsPage() {
     if (!selected) return;
     const { error } = await upsertDealVote(selected.id, user, vote, voteNote);
     if (error) { alert(error); return; }
+    await markDealVoteWorkComplete(selected, user);
     setVoteNote("");
     setVotes(await fetchDealVotes(selected.id));
   };
 
   const handleConvertToProject = async () => {
     if (!selected) return;
+    const gate = conversionBlockReason();
+    if (gate) { alert(gate); return; }
     setConverting(true);
     const { data, error } = await createProjectFromDeal(selected, user);
     setConverting(false);
@@ -264,6 +337,30 @@ export default function DealsPage() {
     }
     if (data) router.push("/projects");
   };
+
+  async function markDealVoteWorkComplete(deal: Deal, member: string) {
+    if (!supabase) return;
+    const { data: notices } = await supabase
+      .from("meridian_notifications")
+      .select("id")
+      .eq("assigned_to", member)
+      .eq("source_id", deal.id)
+      .in("notification_type", ["deal_vote", "deal-review"])
+      .is("read_at", null);
+    await Promise.all((notices ?? []).map(notice => markNotificationRead(notice.id)));
+
+    await supabase
+      .from("action_items")
+      .update({
+        status: "done",
+        completed_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        updated_by: member,
+      })
+      .eq("assigned_to", member)
+      .eq("title", `Review deal: ${deal.title}`)
+      .neq("status", "done");
+  }
 
   const buildDealMemo = (deal: Deal): string => {
     const voteLines = votes.length
@@ -366,6 +463,16 @@ export default function DealsPage() {
       : quorumReached
         ? "Quorum reached, decision split"
         : `${Math.max(0, quorumNeeded - votes.length)} more response${quorumNeeded - votes.length === 1 ? "" : "s"} for quorum`;
+  const blockedDiligence = checklist.filter(item => item.status === "blocked").length;
+  const agreementReady = agreement?.status === "approved" || agreement?.status === "signed";
+  const conversionBlockReason = () => {
+    if (!selected) return "Select a deal before converting it to a project.";
+    if (approvalVotes < quorumNeeded) return `This deal needs ${quorumNeeded} Make Offer or Counter votes before it can become a project.`;
+    if (!agreementReady) return "Approve or sign the deal agreement before converting this deal to a project.";
+    if (blockedDiligence > 0) return "Resolve blocked due diligence items before converting this deal to a project.";
+    return "";
+  };
+  const canConvert = !!selected && !conversionBlockReason();
 
   return (
     <div className="deals-root" style={{ maxWidth: 1180, margin: "0 auto", padding: "84px 20px 100px" }}>
@@ -381,7 +488,11 @@ export default function DealsPage() {
           <p style={comingSoonPill}>Land portal + call tool sync coming soon</p>
         </div>
         <button
-          onClick={() => setShowNew(s => !s)}
+          onClick={() => {
+            setShowNew(s => !s);
+            setEditingDealId(null);
+            setDraft(EMPTY_DRAFT);
+          }}
           style={showNew ? secondaryButton : primaryButton}
         >
           {showNew ? "Cancel" : "New Deal"}
@@ -394,7 +505,7 @@ export default function DealsPage() {
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
               <div>
                 <label style={label}>Deal title</label>
-                <input value={draft.title} onChange={e => setDraft({ ...draft, title: e.target.value })} placeholder="1842 Oakview Dr SW or Parcel 14-..." />
+                <input type="text" value={draft.title} onChange={e => setDraft({ ...draft, title: e.target.value })} placeholder="1842 Oakview Dr SW or Parcel 14-..." />
               </div>
               <div style={twoCol} className="two-col">
                 <div>
@@ -413,31 +524,31 @@ export default function DealsPage() {
               <div style={twoCol} className="two-col">
                 <div>
                   <label style={label}>Source</label>
-                  <input value={draft.source ?? ""} onChange={e => setDraft({ ...draft, source: e.target.value })} placeholder="Land portal, call tool, referral" />
+                  <input type="text" value={draft.source ?? ""} onChange={e => setDraft({ ...draft, source: e.target.value })} placeholder="Land portal, call tool, referral" />
                 </div>
                 <div>
                   <label style={label}>Strategy</label>
-                  <input value={draft.strategy} onChange={e => setDraft({ ...draft, strategy: e.target.value })} placeholder="land resale, infill build, flip, hold" />
+                  <input type="text" value={draft.strategy} onChange={e => setDraft({ ...draft, strategy: e.target.value })} placeholder="land resale, infill build, flip, hold" />
                 </div>
               </div>
               <div style={twoCol} className="two-col">
                 <div>
                   <label style={label}>Address</label>
-                  <input value={draft.address ?? ""} onChange={e => setDraft({ ...draft, address: e.target.value })} />
+                  <input type="text" value={draft.address ?? ""} onChange={e => setDraft({ ...draft, address: e.target.value })} />
                 </div>
                 <div>
                   <label style={label}>Parcel ID</label>
-                  <input value={draft.parcel_id ?? ""} onChange={e => setDraft({ ...draft, parcel_id: e.target.value })} />
+                  <input type="text" value={draft.parcel_id ?? ""} onChange={e => setDraft({ ...draft, parcel_id: e.target.value })} />
                 </div>
               </div>
               <div style={twoCol} className="two-col">
                 <div>
                   <label style={label}>Seller</label>
-                  <input value={draft.seller_name ?? ""} onChange={e => setDraft({ ...draft, seller_name: e.target.value })} />
+                  <input type="text" value={draft.seller_name ?? ""} onChange={e => setDraft({ ...draft, seller_name: e.target.value })} />
                 </div>
                 <div>
                   <label style={label}>Seller phone</label>
-                  <input value={draft.seller_phone ?? ""} onChange={e => setDraft({ ...draft, seller_phone: e.target.value })} />
+                  <input type="text" value={draft.seller_phone ?? ""} onChange={e => setDraft({ ...draft, seller_phone: e.target.value })} />
                 </div>
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10 }} className="number-grid">
@@ -450,15 +561,15 @@ export default function DealsPage() {
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }} className="three-col">
                   <div>
                     <label style={label}>Zoning</label>
-                    <input value={draft.zoning ?? ""} onChange={e => setDraft({ ...draft, zoning: e.target.value })} />
+                    <input type="text" value={draft.zoning ?? ""} onChange={e => setDraft({ ...draft, zoning: e.target.value })} />
                   </div>
                   <div>
                     <label style={label}>Road frontage/access</label>
-                    <input value={draft.road_frontage ?? ""} onChange={e => setDraft({ ...draft, road_frontage: e.target.value })} />
+                    <input type="text" value={draft.road_frontage ?? ""} onChange={e => setDraft({ ...draft, road_frontage: e.target.value })} />
                   </div>
                   <div>
                     <label style={label}>Utilities</label>
-                    <input value={draft.utilities ?? ""} onChange={e => setDraft({ ...draft, utilities: e.target.value })} />
+                    <input type="text" value={draft.utilities ?? ""} onChange={e => setDraft({ ...draft, utilities: e.target.value })} />
                   </div>
                 </div>
               )}
@@ -488,7 +599,7 @@ export default function DealsPage() {
                 </div>
               </div>
               <button onClick={handleCreate} disabled={saving} style={{ ...primaryButton, opacity: saving ? 0.6 : 1 }}>
-                {saving ? "Creating..." : "Create Deal Packet"}
+                {saving ? "Saving..." : editingDealId ? "Save Deal Updates" : "Create Deal Packet"}
               </button>
             </aside>
           </div>
@@ -558,7 +669,15 @@ export default function DealsPage() {
                   </div>
                   <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", justifyContent: "flex-end" }}>
                     <span style={selected.urgency === "hot" ? hotPillLarge : pillLarge}>{statusLabel(selected.urgency)}</span>
-                    <button onClick={handleConvertToProject} disabled={converting} style={{ ...primaryButton, opacity: converting ? 0.6 : 1 }}>
+                    <button onClick={() => startEdit(selected)} style={secondaryButton}>
+                      Edit Deal
+                    </button>
+                    <button
+                      onClick={handleConvertToProject}
+                      disabled={converting || !canConvert}
+                      title={conversionBlockReason() || "Convert approved deal to project"}
+                      style={{ ...primaryButton, opacity: converting || !canConvert ? 0.55 : 1 }}
+                    >
                       {converting ? "Converting..." : "Convert to Project"}
                     </button>
                     <button onClick={handleSaveMemo} disabled={memoSaving} style={{ ...secondaryButton, opacity: memoSaving ? 0.6 : 1 }}>
@@ -651,9 +770,9 @@ export default function DealsPage() {
                   </div>
                   <div>
                     <label style={label}>Go / no-go deadline</label>
-                    <input value={agreementDraft.go_no_go_deadline ?? ""} onChange={e => setAgreementDraft({ ...agreementDraft, go_no_go_deadline: e.target.value })} placeholder="e.g. 2026-05-15 or end of diligence period" />
+                    <input type="text" value={agreementDraft.go_no_go_deadline ?? ""} onChange={e => setAgreementDraft({ ...agreementDraft, go_no_go_deadline: e.target.value })} placeholder="e.g. 2026-05-15 or end of diligence period" />
                     <label style={{ ...label, marginTop: 10 }}>Notes</label>
-                    <input value={agreementDraft.notes ?? ""} onChange={e => setAgreementDraft({ ...agreementDraft, notes: e.target.value })} placeholder="Attorney, lender, or group notes" />
+                    <input type="text" value={agreementDraft.notes ?? ""} onChange={e => setAgreementDraft({ ...agreementDraft, notes: e.target.value })} placeholder="Attorney, lender, or group notes" />
                   </div>
                 </div>
                 {agreement && (
@@ -765,6 +884,7 @@ function NumberField({ label: labelText, value, onChange }: { label: string; val
     <div>
       <label style={label}>{labelText}</label>
       <input
+        type="text"
         inputMode="decimal"
         value={value ?? ""}
         onChange={e => onChange(toNumber(e.target.value))}
