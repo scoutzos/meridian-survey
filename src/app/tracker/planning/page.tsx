@@ -198,6 +198,18 @@ function budgetChangeVerb(kind: OffsetKind): string {
   return "Reduce";
 }
 
+function cadenceLabel(cadence: Cadence): string {
+  if (cadence === "one_time") return "One-time";
+  if (cadence === "quarterly") return "Quarterly";
+  return "Monthly";
+}
+
+function budgetChangeEffect(kind: OffsetKind): string {
+  if (kind === "increase") return "Adds to the approved budget";
+  if (kind === "remove") return "Removes existing budget";
+  return "Reduces existing budget";
+}
+
 export default function ExpensePlanningPage() {
   const router = useRouter();
   const [user, setUser] = useState<string | null>(null);
@@ -1155,19 +1167,57 @@ export default function ExpensePlanningPage() {
 
               {proposalOffsets.length > 0 && (
                 <div style={{ marginTop: 12, padding: 12, borderRadius: 8, background: "var(--surface2)", border: "1px solid var(--border)" }}>
-                  <h4 style={{ fontSize: 12, fontWeight: 800, marginBottom: 10 }}>Budget-change details</h4>
-                  <div style={{ display: "grid", gap: 8 }}>
-                    {proposalOffsets.map(o => (
-                      <div key={`detail-${o.id}`} style={{ display: "grid", gridTemplateColumns: "110px 1fr 120px 100px minmax(180px, 1fr)", gap: 8, alignItems: "center", fontSize: 12 }}>
-                        <Badge text={budgetChangeVerb(o.offset_kind)} tone={o.offset_kind === "increase" ? "warn" : "good"} />
-                        <strong>{o.title}</strong>
-                        <span style={{ color: o.offset_kind === "increase" ? "var(--obsidian)" : "var(--gold)", fontWeight: 700 }}>
-                          {budgetChangeSign(o.offset_kind) > 0 ? "+" : "-"}{fmtUSD(Number(o.amount))}
-                        </span>
-                        <span style={{ color: "var(--muted)" }}>{o.cadence}</span>
-                        <span style={{ color: o.notes ? "var(--fg)" : "var(--muted)" }}>{o.notes || "No note"}</span>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "start", flexWrap: "wrap", marginBottom: 10 }}>
+                    <div>
+                      <h4 style={{ fontSize: 12, fontWeight: 800, marginBottom: 4 }}>Budget-change details</h4>
+                      <div style={{ color: "var(--muted)", fontSize: 12, lineHeight: 1.45 }}>
+                        These adjustments are approved with the proposal and explain how the net budget changes.
                       </div>
-                    ))}
+                    </div>
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                      <Badge text={`First payment ${proposalBudgetChangeFirst >= 0 ? "+" : "-"}${fmtUSD(Math.abs(proposalBudgetChangeFirst))}`} tone={proposalBudgetChangeFirst <= 0 ? "good" : "warn"} />
+                      <Badge text={`Monthly run-rate ${proposalBudgetChangeOngoing >= 0 ? "+" : "-"}${fmtUSD(Math.abs(proposalBudgetChangeOngoing))}`} tone={proposalBudgetChangeOngoing <= 0 ? "good" : "warn"} />
+                    </div>
+                  </div>
+                  <div style={{ display: "grid", gap: 10 }}>
+                    {proposalOffsets.map(o => {
+                      const signed = budgetChangeSign(o.offset_kind);
+                      const amount = Number(o.amount);
+                      const sourceExpense = o.source_expense_id ? expenses.find(exp => Number(exp.id) === Number(o.source_expense_id)) : null;
+                      const firstPayment = signed * firstPeriodAmount(o.cadence, amount);
+                      const monthlyEquivalent = signed * monthlyEquivalentAmount(o.cadence, amount);
+
+                      return (
+                        <div key={`detail-${o.id}`} style={{ padding: 10, borderRadius: 8, background: "rgba(255,255,255,0.24)", border: "1px solid var(--border)" }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "start", flexWrap: "wrap", marginBottom: 8 }}>
+                            <div>
+                              <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 4 }}>
+                                <Badge text={budgetChangeVerb(o.offset_kind)} tone={o.offset_kind === "increase" ? "warn" : "good"} />
+                                <strong style={{ fontSize: 13 }}>{o.title}</strong>
+                              </div>
+                              <div style={{ color: "var(--muted)", fontSize: 12 }}>
+                                {budgetChangeEffect(o.offset_kind)}
+                                {sourceExpense ? `: ${sourceExpense.description}` : ""}
+                              </div>
+                            </div>
+                            <div style={{ textAlign: "right" }}>
+                              <div style={{ color: signed > 0 ? "var(--obsidian)" : "var(--gold)", fontWeight: 800, fontSize: 14 }}>
+                                {signed > 0 ? "+" : "-"}{fmtUSD(amount)}
+                              </div>
+                              <div style={{ color: "var(--muted)", fontSize: 11 }}>{cadenceLabel(o.cadence)} amount</div>
+                            </div>
+                          </div>
+                          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 8 }}>
+                            <Detail label="First payment impact" value={`${firstPayment >= 0 ? "+" : "-"}${fmtUSD(Math.abs(firstPayment))}`} />
+                            <Detail label="Monthly equivalent" value={`${monthlyEquivalent >= 0 ? "+" : "-"}${fmtUSD(Math.abs(monthlyEquivalent), { fractionDigits: 2 })}`} />
+                            <Detail label="Linked expense" value={sourceExpense ? sourceExpense.description : "Custom change"} />
+                          </div>
+                          <div style={{ marginTop: 8, color: o.notes ? "var(--fg)" : "var(--muted)", fontSize: 12, lineHeight: 1.45 }}>
+                            {o.notes || "No operational note entered."}
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               )}
