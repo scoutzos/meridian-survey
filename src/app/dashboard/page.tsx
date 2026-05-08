@@ -307,8 +307,8 @@ export default function DashboardPage() {
   const surveyAnswered = progress.reduce((sum, p) => sum + p.answered, 0);
   const surveyTotal = progress.reduce((sum, p) => sum + p.total, 0);
   const surveyPct = surveyTotal > 0 ? Math.round((surveyAnswered / surveyTotal) * 100) : 0;
-  const attentionCount = pendingVotes.length + myItems.length + openCapitalCalls.length + suggestedCapitalCalls.length;
-  const taskInboxCount = pendingVotes.length + myItems.length;
+  const taskInboxCount = pendingVotes.length + myItems.length + openCapitalCalls.length + suggestedCapitalCalls.length + incompleteSurveys.length;
+  const attentionCount = taskInboxCount;
 
   const activity = [
     ...notifications.slice(0, 4).map(n => ({
@@ -393,7 +393,7 @@ export default function DashboardPage() {
             <AttentionCard
               title="Task inbox"
               value={String(taskInboxCount)}
-              detail={taskInboxCount ? "Votes and assigned tasks waiting on you." : "No votes or assigned tasks waiting."}
+              detail={taskInboxCount ? "Votes, money tasks, surveys, and assigned work waiting on you." : "No tasks waiting."}
               action="Open"
               onClick={() => router.push("/actions")}
               strong={taskInboxCount > 0}
