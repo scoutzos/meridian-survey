@@ -424,9 +424,29 @@ export default function LoginPage() {
         </p>
       </div>
 
-      <p style={{ ...subheadingStyle, color: "rgba(237,230,214,0.55)", fontSize: 12, textAlign: "center" }}>
-        Partnership Transparency Hub · Atlanta · Est. MMXXVI
-      </p>
+      <footer style={{ display: "grid", gap: 14, justifyItems: "center", textAlign: "center" }}>
+        <button
+          onClick={() => router.push("/apply")}
+          style={{
+            background: "transparent",
+            color: "var(--brass)",
+            border: "1px solid rgba(201,168,120,0.55)",
+            borderRadius: 4,
+            padding: "12px 16px",
+            fontSize: 11,
+            fontWeight: 600,
+            letterSpacing: "0.18em",
+            textTransform: "uppercase",
+            fontFamily: "var(--font-body)",
+            cursor: "pointer",
+          }}
+        >
+          New Member Interest
+        </button>
+        <p style={{ ...subheadingStyle, color: "rgba(237,230,214,0.55)", fontSize: 12 }}>
+          Partnership Transparency Hub · Atlanta · Est. MMXXVI
+        </p>
+      </footer>
     </div>
   );
 }
