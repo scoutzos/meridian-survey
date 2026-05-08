@@ -1059,6 +1059,8 @@ export default function ExpensePlanningPage() {
           const ongoingTotal = currentMonthly.amount + netOngoingMonthlyAmount;
           const firstMonthPerMember = MEMBER_COUNT > 0 ? firstMonthTotal / MEMBER_COUNT : 0;
           const ongoingPerMemberForProposal = MEMBER_COUNT > 0 ? ongoingTotal / MEMBER_COUNT : 0;
+          const firstMonthImpactPerMember = MEMBER_COUNT > 0 ? firstMonthAmount / MEMBER_COUNT : 0;
+          const ongoingImpactPerMember = MEMBER_COUNT > 0 ? netOngoingMonthlyAmount / MEMBER_COUNT : 0;
           const expanded = expandedProposalId === proposal.id;
 
           return (
@@ -1113,10 +1115,10 @@ export default function ExpensePlanningPage() {
                     </div>
                   )}
                   <div style={{ color: "var(--muted)", fontSize: 12 }}>
-                    first month - {fmtUSD(firstMonthPerMember, { fractionDigits: 2 })}/member
+                    proposal impact - {fmtUSD(firstMonthImpactPerMember, { fractionDigits: 2 })}/member
                   </div>
                   <div style={{ color: "var(--muted)", fontSize: 12 }}>
-                    ongoing - {fmtUSD(ongoingPerMemberForProposal, { fractionDigits: 2 })}/member
+                    total monthly obligation - {fmtUSD(ongoingPerMemberForProposal, { fractionDigits: 2 })}/member
                   </div>
                 </div>
               </div>
@@ -1154,13 +1156,15 @@ export default function ExpensePlanningPage() {
                 </div>
 
                 <div style={{ padding: 12, borderRadius: 8, background: "var(--surface2)", border: "1px solid var(--border)" }}>
-                  <h4 style={{ fontSize: 12, fontWeight: 800, marginBottom: 10 }}>Cost breakdown</h4>
+                  <h4 style={{ fontSize: 12, fontWeight: 800, marginBottom: 10 }}>Proposal math</h4>
                   <div style={{ display: "grid", gap: 8 }}>
-                    <ResultRow label="Gross first month" value={fmtUSD(grossFirstMonthAmount)} />
-                    <ResultRow label="Budget changes" value={`${proposalBudgetChangeFirst >= 0 ? "+" : "-"}${fmtUSD(Math.abs(proposalBudgetChangeFirst))}`} tone={proposalBudgetChangeFirst <= 0 ? "good" : "warn"} />
-                    <ResultRow label="Net first month" value={fmtUSD(firstMonthAmount)} strong />
-                    <ResultRow label="First month / member" value={fmtUSD(firstMonthPerMember, { fractionDigits: 2 })} strong />
-                    <ResultRow label="Ongoing / member" value={fmtUSD(ongoingPerMemberForProposal, { fractionDigits: 2 })} />
+                    <ResultRow label="New proposal cost" value={fmtUSD(grossFirstMonthAmount)} />
+                    <ResultRow label="Budget adjustments" value={`${proposalBudgetChangeFirst >= 0 ? "+" : "-"}${fmtUSD(Math.abs(proposalBudgetChangeFirst))}`} tone={proposalBudgetChangeFirst <= 0 ? "good" : "warn"} />
+                    <ResultRow label="Net proposal impact" value={fmtUSD(firstMonthAmount)} strong />
+                    <ResultRow label="Proposal impact / member" value={fmtUSD(firstMonthImpactPerMember, { fractionDigits: 2 })} strong />
+                    <ResultRow label="Total monthly obligation / member" value={fmtUSD(firstMonthPerMember, { fractionDigits: 2 })} />
+                    <ResultRow label="Ongoing proposal impact / member" value={fmtUSD(ongoingImpactPerMember, { fractionDigits: 2 })} />
+                    <ResultRow label="Ongoing total obligation / member" value={fmtUSD(ongoingPerMemberForProposal, { fractionDigits: 2 })} />
                   </div>
                 </div>
               </div>
