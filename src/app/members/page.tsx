@@ -43,6 +43,7 @@ function formatDueDate(iso: string | null): string | null {
 
 function statusLabel(notice: Notification): string {
   if (notice.notification_type === "expense_proposal_vote") return "Vote";
+  if (notice.notification_type === "membership_candidate_vote") return "Member";
   if (notice.notification_type.includes("capital")) return "Capital";
   if (notice.notification_type.includes("expense")) return "Money";
   return "Notice";
@@ -143,7 +144,7 @@ export default function MembersPage() {
 
   if (!user) return null;
 
-  const pendingVotes = notifications.filter(n => n.notification_type === "expense_proposal_vote");
+  const pendingVotes = notifications.filter(n => ["expense_proposal_vote", "membership_candidate_vote"].includes(n.notification_type));
   const moneyNotices = notifications.filter(n => n.notification_type.includes("expense") || n.notification_type.includes("capital"));
   const myRow = rows.find(row => row.name === user);
   const surveyTotal = surveys.reduce((sum, s) => sum + (totalsBySurvey[s.id] || 0), 0);
@@ -165,6 +166,7 @@ export default function MembersPage() {
           </p>
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <button onClick={() => router.push("/members/candidates")} style={buttonStyle}>Member Reviews</button>
           <button onClick={() => router.push("/actions")} style={buttonStyle}>Actions</button>
           <button onClick={() => router.push("/tracker/planning")} style={buttonStyle}>Planning</button>
           <button onClick={() => router.push("/tracker/members")} style={buttonStyle}>Balances</button>
@@ -185,9 +187,9 @@ export default function MembersPage() {
         <SnapshotCard
           title="Votes needed"
           value={String(pendingVotes.length)}
-          detail={pendingVotes.length ? "Expense proposal sign-offs waiting on you." : "No proposal votes waiting."}
-          action="Review proposals"
-          onClick={() => router.push("/tracker/planning")}
+          detail={pendingVotes.length ? "Proposal sign-offs or member reviews waiting on you." : "No votes waiting."}
+          action="Review votes"
+          onClick={() => router.push(pendingVotes[0]?.href || "/tracker/planning")}
           tone={pendingVotes.length ? "strong" : "normal"}
         />
         <SnapshotCard
@@ -216,9 +218,9 @@ export default function MembersPage() {
           {pendingVotes.slice(0, 3).map(notice => (
             <AttentionItem
               key={notice.id}
-              label="Vote"
+              label={statusLabel(notice)}
               title={notice.title}
-              detail={notice.body ?? "Review proposal details and submit your sign-off."}
+              detail={notice.body ?? "Review details and submit your vote."}
               onClick={() => router.push(notice.href || "/tracker/planning")}
             />
           ))}

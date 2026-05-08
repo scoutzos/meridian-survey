@@ -55,6 +55,7 @@ const COLORS = {
 const QUICK_LINKS: Array<{ title: string; href: string; eyebrow: string; external?: boolean }> = [
   { title: "Member Portal", eyebrow: "Full Record", href: "/members" },
   { title: "Vote on Proposals", eyebrow: "Approvals", href: "/tracker/planning" },
+  { title: "Applications", eyebrow: "Member Review", href: "/members/candidates" },
   { title: "My Balances", eyebrow: "Money", href: "/tracker/members" },
   { title: "Actions", eyebrow: "Work", href: "/actions" },
   { title: "Documents", eyebrow: "Records", href: "/documents" },
@@ -211,7 +212,7 @@ export default function DashboardPage() {
   const { obsidian, brass, bone, fog, ink } = COLORS;
 
   const myItems = actionItems.filter(i => i.status !== "done" && isOwnedBy(i, user)).slice(0, 5);
-  const pendingProposalVotes = notifications.filter(n => n.notification_type === "expense_proposal_vote");
+  const pendingVotes = notifications.filter(n => ["expense_proposal_vote", "membership_candidate_vote"].includes(n.notification_type));
   const openCapitalCalls = capitalCalls.filter(c => !c.deleted_at && c.status === "open");
   const suggestedCapitalCalls = capitalCalls.filter(c => !c.deleted_at && c.status === "suggested");
   const hotDeals = deals.filter(d => d.urgency === "hot" || d.analysis?.recommendation === "Strong Review").slice(0, 3);
@@ -221,7 +222,7 @@ export default function DashboardPage() {
   const surveyAnswered = progress.reduce((sum, p) => sum + p.answered, 0);
   const surveyTotal = progress.reduce((sum, p) => sum + p.total, 0);
   const surveyPct = surveyTotal > 0 ? Math.round((surveyAnswered / surveyTotal) * 100) : 0;
-  const attentionCount = pendingProposalVotes.length + myItems.length + openCapitalCalls.length + suggestedCapitalCalls.length;
+  const attentionCount = pendingVotes.length + myItems.length + openCapitalCalls.length + suggestedCapitalCalls.length;
 
   const activity = [
     ...notifications.slice(0, 4).map(n => ({
@@ -304,12 +305,12 @@ export default function DashboardPage() {
           />
           <div className="attention-grid">
             <AttentionCard
-              title="Proposal votes"
-              value={String(pendingProposalVotes.length)}
-              detail={pendingProposalVotes.length ? "Review proposal math, notes, and approval rule." : "No proposal votes waiting."}
+              title="Votes needed"
+              value={String(pendingVotes.length)}
+              detail={pendingVotes.length ? "Review proposals or new member applications waiting on you." : "No votes waiting."}
               action="Review"
-              onClick={() => router.push("/tracker/planning")}
-              strong={pendingProposalVotes.length > 0}
+              onClick={() => router.push(pendingVotes[0]?.href || "/tracker/planning")}
+              strong={pendingVotes.length > 0}
             />
             <AttentionCard
               title="Action items"
