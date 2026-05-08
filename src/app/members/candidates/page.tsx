@@ -16,6 +16,21 @@ import {
 
 const voteOptions: CandidateVoteDecision[] = ["approve", "discuss", "hold", "decline"];
 
+const candidateQuestions = {
+  join_as: "Are you seeking to join as an individual or through your own LLC?",
+  max_deal_contribution: "Most you could contribute to a single deal, between cash and credit",
+  cash_available: "How much of that is cash?",
+  credit_available: "How much is available credit?",
+  deal_readiness: "If the group found a deal tomorrow, how quickly could you have your contribution ready?",
+  credit_pull_comfort: "Are you comfortable with a lender pulling your credit if required for financing?",
+  participation: "Are you committed to actively participating in Meridian business?",
+  table_contribution: "What else do you bring to the table besides money?",
+  relationships: "Do you have relationships or resources that could help Meridian find, fund, renovate, manage, or sell deals?",
+  first_90_days: "What would you be able to contribute in your first 90 days?",
+  support_requested: "What support would you be looking for from Meridian Collective?",
+  member_notes: "Is there anything current members should know before voting on your membership?",
+};
+
 export default function CandidateReviewsPage() {
   return (
     <Suspense fallback={<main style={{ maxWidth: 1180, margin: "0 auto", padding: "84px 20px 100px" }}>Loading candidates...</main>}>
@@ -150,12 +165,12 @@ function CandidateReviewsContent() {
             </div>
 
             <div className="candidate-stats">
-              <Stat label="Join as" value={selectedCandidate.join_as} />
-              <Stat label="Max deal contribution" value={formatCandidateMoney(selectedCandidate.max_deal_contribution)} />
-              <Stat label="Cash available" value={formatCandidateMoney(selectedCandidate.cash_available)} />
-              <Stat label="Credit available" value={formatCandidateMoney(selectedCandidate.credit_available)} />
-              <Stat label="Deal readiness" value={selectedCandidate.deal_readiness || "Not provided"} />
-              <Stat label="Credit pull" value={selectedCandidate.credit_pull_comfort || "Not provided"} />
+              <Stat label="Join as" question={candidateQuestions.join_as} value={selectedCandidate.join_as} />
+              <Stat label="Max deal contribution" question={candidateQuestions.max_deal_contribution} value={formatCandidateMoney(selectedCandidate.max_deal_contribution)} />
+              <Stat label="Cash available" question={candidateQuestions.cash_available} value={formatCandidateMoney(selectedCandidate.cash_available)} />
+              <Stat label="Credit available" question={candidateQuestions.credit_available} value={formatCandidateMoney(selectedCandidate.credit_available)} />
+              <Stat label="Deal readiness" question={candidateQuestions.deal_readiness} value={selectedCandidate.deal_readiness || "Not provided"} />
+              <Stat label="Credit pull" question={candidateQuestions.credit_pull_comfort} value={selectedCandidate.credit_pull_comfort || "Not provided"} />
             </div>
 
             {selectedCandidate.join_as === "Through my LLC" && (
@@ -167,12 +182,12 @@ function CandidateReviewsContent() {
             )}
 
             <div className="review-grid">
-              <ReviewBlock title="Participation" value={selectedCandidate.participation} />
-              <ReviewBlock title="What They Bring Besides Money" value={selectedCandidate.table_contribution} />
-              <ReviewBlock title="Relationships & Resources" value={selectedCandidate.relationships} />
-              <ReviewBlock title="First 90 Days" value={selectedCandidate.first_90_days} />
-              <ReviewBlock title="Support Requested" value={selectedCandidate.support_requested} />
-              <ReviewBlock title="Notes For Members" value={selectedCandidate.member_notes} />
+              <ReviewBlock title="Participation" question={candidateQuestions.participation} value={selectedCandidate.participation} />
+              <ReviewBlock title="What They Bring Besides Money" question={candidateQuestions.table_contribution} value={selectedCandidate.table_contribution} />
+              <ReviewBlock title="Relationships & Resources" question={candidateQuestions.relationships} value={selectedCandidate.relationships} />
+              <ReviewBlock title="First 90 Days" question={candidateQuestions.first_90_days} value={selectedCandidate.first_90_days} />
+              <ReviewBlock title="Support Requested" question={candidateQuestions.support_requested} value={selectedCandidate.support_requested} />
+              <ReviewBlock title="Notes For Members" question={candidateQuestions.member_notes} value={selectedCandidate.member_notes} />
             </div>
 
             <section style={votePanel}>
@@ -247,10 +262,11 @@ function CandidateReviewsContent() {
   );
 }
 
-function Stat({ label, value }: { label: string; value: string }) {
+function Stat({ label, value, question }: { label: string; value: string; question?: string }) {
   return (
     <div style={{ background: "var(--surface2)", border: "1px solid var(--fog)", borderRadius: 8, padding: 14 }}>
       <p style={{ fontSize: 10, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--brass)", marginBottom: 6 }}>{label}</p>
+      {question && <p style={{ color: "var(--ink)", opacity: 0.54, fontSize: 11, lineHeight: 1.45, marginBottom: 8 }}>{question}</p>}
       <strong style={{ fontSize: 15, color: "var(--obsidian)", lineHeight: 1.35 }}>{value}</strong>
     </div>
   );
@@ -260,10 +276,11 @@ function Detail({ label, value }: { label: string; value: string }) {
   return <span><strong>{label}:</strong> {value}</span>;
 }
 
-function ReviewBlock({ title, value }: { title: string; value: string | null }) {
+function ReviewBlock({ title, question, value }: { title: string; question: string; value: string | null }) {
   return (
     <div style={{ background: "var(--surface2)", border: "1px solid var(--fog)", borderRadius: 8, padding: 16 }}>
       <h3 style={{ fontSize: 12, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--obsidian)", marginBottom: 8 }}>{title}</h3>
+      <p style={{ color: "var(--ink)", opacity: 0.56, lineHeight: 1.5, fontSize: 12, marginBottom: 10 }}>{question}</p>
       <p style={{ color: "var(--ink)", opacity: 0.72, lineHeight: 1.6, fontSize: 13, whiteSpace: "pre-wrap" }}>{value || "Not provided"}</p>
     </div>
   );
