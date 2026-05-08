@@ -46,3 +46,28 @@ create index if not exists membership_candidate_votes_candidate_idx
 
 comment on table membership_candidates is 'Potential member applications submitted for existing member review.';
 comment on table membership_candidate_votes is 'Existing member votes on potential membership candidates.';
+
+alter table if exists membership_candidates enable row level security;
+alter table if exists membership_candidate_votes enable row level security;
+
+drop policy if exists "membership_candidates prototype anon read" on membership_candidates;
+drop policy if exists "membership_candidates prototype anon insert" on membership_candidates;
+drop policy if exists "membership_candidates prototype anon update" on membership_candidates;
+
+create policy "membership_candidates prototype anon read"
+  on membership_candidates for select to anon using (true);
+
+create policy "membership_candidates prototype anon insert"
+  on membership_candidates for insert to anon with check (true);
+
+create policy "membership_candidates prototype anon update"
+  on membership_candidates for update to anon using (true) with check (true);
+
+drop policy if exists "membership_candidate_votes prototype anon read" on membership_candidate_votes;
+drop policy if exists "membership_candidate_votes prototype anon write" on membership_candidate_votes;
+
+create policy "membership_candidate_votes prototype anon read"
+  on membership_candidate_votes for select to anon using (true);
+
+create policy "membership_candidate_votes prototype anon write"
+  on membership_candidate_votes for all to anon using (true) with check (true);
