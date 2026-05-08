@@ -280,6 +280,7 @@ export default function DashboardPage() {
   const surveyTotal = progress.reduce((sum, p) => sum + p.total, 0);
   const surveyPct = surveyTotal > 0 ? Math.round((surveyAnswered / surveyTotal) * 100) : 0;
   const attentionCount = pendingVotes.length + myItems.length + openCapitalCalls.length + suggestedCapitalCalls.length;
+  const taskInboxCount = pendingVotes.length + myItems.length;
 
   const activity = [
     ...notifications.slice(0, 4).map(n => ({
@@ -362,20 +363,12 @@ export default function DashboardPage() {
           />
           <div className="attention-grid">
             <AttentionCard
-              title="Votes needed"
-              value={String(pendingVotes.length)}
-              detail={pendingVotes.length ? "Review proposals or new member applications waiting on you." : "No votes waiting."}
-              action="Review"
-              onClick={() => router.push(pendingVotes[0]?.href || "/tracker/planning")}
-              strong={pendingVotes.length > 0}
-            />
-            <AttentionCard
               title="Task inbox"
-              value={String(myItems.length)}
-              detail={myItems.length ? "Open or in-progress commitments assigned to you." : "Your assigned work is clear."}
+              value={String(taskInboxCount)}
+              detail={taskInboxCount ? "Votes and assigned tasks waiting on you." : "No votes or assigned tasks waiting."}
               action="Open"
               onClick={() => router.push("/actions")}
-              strong={myItems.length > 0}
+              strong={taskInboxCount > 0}
             />
             <AttentionCard
               title="Capital calls"
