@@ -33,6 +33,12 @@ const creditPullOptions = [
   "No, not right now",
 ];
 
+const monthlyDuesOptions = [
+  "Yes, I am comfortable with monthly dues",
+  "Maybe, but I would want to review the budget first",
+  "No, I am not comfortable with monthly dues right now",
+];
+
 export default function ApplyPage() {
   const [submittedName, setSubmittedName] = useState("");
   const [saving, setSaving] = useState(false);
@@ -49,6 +55,8 @@ export default function ApplyPage() {
     max_deal_contribution: "",
     cash_available: "",
     credit_available: "",
+    monthly_dues_comfort: monthlyDuesOptions[0],
+    monthly_dues_max: "",
     deal_readiness: readinessOptions[0],
     credit_pull_comfort: creditPullOptions[0],
     table_contribution: "",
@@ -79,6 +87,8 @@ export default function ApplyPage() {
       max_deal_contribution: parseMoney(form.max_deal_contribution),
       cash_available: parseMoney(form.cash_available),
       credit_available: parseMoney(form.credit_available),
+      monthly_dues_comfort: form.monthly_dues_comfort,
+      monthly_dues_max: parseMoney(form.monthly_dues_max),
       deal_readiness: form.deal_readiness,
       credit_pull_comfort: form.credit_pull_comfort,
       table_contribution: form.table_contribution,
@@ -147,6 +157,10 @@ export default function ApplyPage() {
             <Field label="Most you could contribute to a single deal, between cash and credit" value={form.max_deal_contribution} onChange={v => update("max_deal_contribution", v)} placeholder="$10,000" />
             <Field label="How much of that is cash?" value={form.cash_available} onChange={v => update("cash_available", v)} placeholder="$5,000" />
             <Field label="How much is available credit?" value={form.credit_available} onChange={v => update("credit_available", v)} placeholder="$15,000" />
+          </div>
+          <div className="apply-grid">
+            <Select label="Would you be comfortable paying monthly dues for shared operating costs like VA support, software, call tools, and admin?" value={form.monthly_dues_comfort} options={monthlyDuesOptions} onChange={v => update("monthly_dues_comfort", v)} />
+            <Field label="If yes, what is the most you would be comfortable paying per month?" value={form.monthly_dues_max} onChange={v => update("monthly_dues_max", v)} placeholder="$250" />
           </div>
           <Select label="If the group found a deal tomorrow, how quickly could you have your contribution ready?" value={form.deal_readiness} options={readinessOptions} onChange={v => update("deal_readiness", v)} />
           <Select label="Are you comfortable with a lender pulling your credit if required for financing?" value={form.credit_pull_comfort} options={creditPullOptions} onChange={v => update("credit_pull_comfort", v)} />

@@ -21,6 +21,8 @@ const candidateQuestions = {
   max_deal_contribution: "Most you could contribute to a single deal, between cash and credit",
   cash_available: "How much of that is cash?",
   credit_available: "How much is available credit?",
+  monthly_dues_comfort: "Would you be comfortable paying monthly dues for shared operating costs like VA support, software, call tools, and admin?",
+  monthly_dues_max: "If yes, what is the most you would be comfortable paying per month?",
   deal_readiness: "If the group found a deal tomorrow, how quickly could you have your contribution ready?",
   credit_pull_comfort: "Are you comfortable with a lender pulling your credit if required for financing?",
   participation: "Are you committed to actively participating in Meridian business?",
@@ -169,6 +171,8 @@ function CandidateReviewsContent() {
               <Stat label="Max deal contribution" question={candidateQuestions.max_deal_contribution} value={formatCandidateMoney(selectedCandidate.max_deal_contribution)} />
               <Stat label="Cash available" question={candidateQuestions.cash_available} value={formatCandidateMoney(selectedCandidate.cash_available)} />
               <Stat label="Credit available" question={candidateQuestions.credit_available} value={formatCandidateMoney(selectedCandidate.credit_available)} />
+              <Stat label="Monthly dues" question={candidateQuestions.monthly_dues_comfort} value={selectedCandidate.monthly_dues_comfort || "Not provided"} />
+              <Stat label="Monthly dues max" question={candidateQuestions.monthly_dues_max} value={formatCandidateMoney(selectedCandidate.monthly_dues_max)} />
               <Stat label="Deal readiness" question={candidateQuestions.deal_readiness} value={selectedCandidate.deal_readiness || "Not provided"} />
               <Stat label="Credit pull" question={candidateQuestions.credit_pull_comfort} value={selectedCandidate.credit_pull_comfort || "Not provided"} />
             </div>

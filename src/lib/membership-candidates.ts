@@ -18,6 +18,8 @@ export interface MembershipCandidate {
   max_deal_contribution: number | null;
   cash_available: number | null;
   credit_available: number | null;
+  monthly_dues_comfort: string | null;
+  monthly_dues_max: number | null;
   deal_readiness: string | null;
   credit_pull_comfort: string | null;
   table_contribution: string | null;
@@ -82,6 +84,7 @@ export async function createMembershipCandidate(
       entity_name: draft.entity_name?.trim() || null,
       entity_state: draft.entity_state?.trim() || null,
       entity_title: draft.entity_title?.trim() || null,
+      monthly_dues_comfort: draft.monthly_dues_comfort?.trim() || null,
       deal_readiness: draft.deal_readiness?.trim() || null,
       credit_pull_comfort: draft.credit_pull_comfort?.trim() || null,
       table_contribution: draft.table_contribution?.trim() || null,
