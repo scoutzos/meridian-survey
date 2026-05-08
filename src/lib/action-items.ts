@@ -21,6 +21,14 @@ export interface ActionItem {
 
 export const ALL_MEMBERS_LABEL = "All Members";
 
+const HIDDEN_ACTION_ITEM_TITLES = new Set([
+  "Complete Branding Survey",
+]);
+
+function isVisibleActionItem(item: ActionItem): boolean {
+  return !HIDDEN_ACTION_ITEM_TITLES.has(item.title);
+}
+
 export async function fetchActionItems(): Promise<ActionItem[]> {
   if (!supabase) return [];
   const { data, error } = await supabase
@@ -30,7 +38,7 @@ export async function fetchActionItems(): Promise<ActionItem[]> {
     .order("due_date", { ascending: true, nullsFirst: false })
     .order("created_at", { ascending: true });
   if (error || !data) return [];
-  return data as ActionItem[];
+  return (data as ActionItem[]).filter(isVisibleActionItem);
 }
 
 export async function createActionItem(

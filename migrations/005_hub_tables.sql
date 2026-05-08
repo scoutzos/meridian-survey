@@ -32,7 +32,7 @@ create index if not exists action_items_assigned_idx
 create index if not exists action_items_due_idx
   on action_items(due_date) where deleted_at is null;
 
--- Seed the two surveys-in-flight as initial group action items. Re-runs are
+-- Seed the survey-in-flight as an initial group action item. Re-runs are
 -- safe: matched by (title, assigned_to) — if a row with the same title already
 -- exists for "All Members" we skip.
 insert into action_items (title, description, assigned_to, status, created_by)
@@ -40,9 +40,6 @@ select t.title, t.description, t.assigned_to, 'open', 'system'
 from (values
   ('Complete Tiebreaker Survey',
    'Resolve the open OA decisions by ranking your preferred outcomes on the tiebreaker survey.',
-   'All Members'),
-  ('Complete Branding Survey',
-   'Pick the logo direction, palette, and tone so we can lock Brand Vol. I.',
    'All Members')
 ) as t(title, description, assigned_to)
 where not exists (
