@@ -34,7 +34,7 @@ export default function BottomNav() {
   // Close the More sheet whenever the route changes.
   useEffect(() => { setMoreOpen(false); }, [pathname]);
 
-  if (!user || pathname === "/") return null;
+  if (!user || pathname === "/" || pathname === "/apply") return null;
 
   const isActive = (href: string) => {
     if (pathname === href) return true;

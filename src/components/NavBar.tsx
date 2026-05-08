@@ -12,7 +12,7 @@ export default function NavBar() {
     setUser(localStorage.getItem("meridian_user"));
   }, []);
 
-  if (!user || pathname === "/") return null;
+  if (!user || pathname === "/" || pathname === "/apply") return null;
 
   const links = [
     { href: "/dashboard",  label: "Home" },
