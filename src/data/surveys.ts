@@ -1,6 +1,5 @@
 import { oaSurvey } from "./questions";
 import { readinessSurvey } from "./readiness-survey";
-import { brandingSurvey } from "./branding-survey";
 import { tiebreakerSurvey } from "./tiebreaker-survey";
 
 export interface SurveyQuestion {
@@ -34,7 +33,7 @@ export interface Survey {
   categories: SurveyCategory[];
 }
 
-const surveys: Survey[] = [oaSurvey, readinessSurvey, brandingSurvey, tiebreakerSurvey];
+const surveys: Survey[] = [oaSurvey, readinessSurvey, tiebreakerSurvey];
 
 export function getAllSurveys(): Survey[] {
   return surveys;
