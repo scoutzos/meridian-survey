@@ -23,12 +23,10 @@ export const ALL_MEMBERS_LABEL = "All Members";
 
 const HIDDEN_ACTION_ITEM_TITLES = new Set([
   "Complete Branding Survey",
-  "Complete Tiebreaker Survey",
 ]);
 
 function isVisibleActionItem(item: ActionItem): boolean {
-  if (HIDDEN_ACTION_ITEM_TITLES.has(item.title)) return false;
-  return !/^Complete .+ Survey$/i.test(item.title);
+  return !HIDDEN_ACTION_ITEM_TITLES.has(item.title);
 }
 
 export async function fetchActionItems(): Promise<ActionItem[]> {

@@ -153,6 +153,7 @@ export default function ActionsPage() {
       status: answered > 0 ? "In Progress" : "Open",
       due: null,
     }));
+  const hasTiebreakerSurveyTask = surveyTasks.some(task => task.id === "survey-tiebreaker-decisions");
   const taskCards: TaskCard[] = [
     ...proposalVotes.map(proposal => ({
       id: `proposal-${proposal.id}`,
@@ -191,7 +192,11 @@ export default function ActionsPage() {
       due: call.date_called,
     })),
     ...surveyTasks,
-    ...items.filter(item => item.status !== "done" && isOwnedBy(item, user)).map(item => ({
+    ...items.filter(item => {
+      if (item.status === "done" || !isOwnedBy(item, user)) return false;
+      if (hasTiebreakerSurveyTask && item.title === "Complete Tiebreaker Survey") return false;
+      return true;
+    }).map(item => ({
       id: `action-${item.id}`,
       kind: "Action" as const,
       title: item.title,
