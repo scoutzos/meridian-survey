@@ -20,6 +20,11 @@ import {
   type Notification,
 } from "@/lib/operations";
 import {
+  fetchPendingMembershipCandidateVotes,
+  MEMBERSHIP_CANDIDATE_VOTE,
+  type MembershipCandidate,
+} from "@/lib/membership-candidates";
+import {
   fetchReimbursements,
   type Reimbursement,
 } from "@/lib/governance";
@@ -102,6 +107,7 @@ export default function DashboardPage() {
   const [decisions, setDecisions] = useState<Decision[]>([]);
   const [myBalance, setMyBalance] = useState<MemberBalance | null>(null);
   const [capitalCalls, setCapitalCalls] = useState<CapitalCall[]>([]);
+  const [pendingCandidateVotes, setPendingCandidateVotes] = useState<MembershipCandidate[]>([]);
   const [loaded, setLoaded] = useState(false);
 
   const surveys = useMemo(() => getAllSurveys(), []);
@@ -139,6 +145,7 @@ export default function DashboardPage() {
         reimbursementRows,
         trackerData,
         hub,
+        candidateVoteRows,
       ] = await Promise.all([
         fetchActionItems(),
         fetchNextMeeting(),
@@ -148,6 +155,7 @@ export default function DashboardPage() {
         fetchReimbursements(),
         fetchAll(),
         fetchHubData(),
+        fetchPendingMembershipCandidateVotes(u),
       ]);
 
       setActionItems(items);
@@ -155,6 +163,7 @@ export default function DashboardPage() {
       setDeals(dealRows);
       setProjects(projectRows);
       setNotifications(notices);
+      setPendingCandidateVotes(candidateVoteRows);
       setReimbursements(reimbursementRows);
       setDecisions(hub.decisions.slice(0, 4));
 
@@ -212,7 +221,25 @@ export default function DashboardPage() {
   const { obsidian, brass, bone, fog, ink } = COLORS;
 
   const myItems = actionItems.filter(i => i.status !== "done" && isOwnedBy(i, user)).slice(0, 5);
-  const pendingVotes = notifications.filter(n => ["expense_proposal_vote", "membership_candidate_vote"].includes(n.notification_type));
+  const notificationVotes = notifications.filter(n => ["expense_proposal_vote", MEMBERSHIP_CANDIDATE_VOTE].includes(n.notification_type));
+  const notifiedCandidateIds = new Set(notificationVotes.filter(n => n.notification_type === MEMBERSHIP_CANDIDATE_VOTE).map(n => n.source_id));
+  const candidateVoteNotices: Notification[] = pendingCandidateVotes
+    .filter(candidate => !notifiedCandidateIds.has(candidate.id))
+    .map(candidate => ({
+      id: `candidate-${candidate.id}`,
+      title: `New member review: ${candidate.full_name}`,
+      body: "Review readiness, capital, credit, relationships, and what this applicant can bring to Meridian.",
+      notification_type: MEMBERSHIP_CANDIDATE_VOTE,
+      priority: "high",
+      assigned_to: user,
+      href: `/members/candidates?candidate=${candidate.id}`,
+      source_table: "membership_candidates",
+      source_id: candidate.id,
+      read_at: null,
+      created_at: candidate.submitted_at,
+      created_by: "Membership Application",
+    }));
+  const pendingVotes = [...notificationVotes, ...candidateVoteNotices];
   const openCapitalCalls = capitalCalls.filter(c => !c.deleted_at && c.status === "open");
   const suggestedCapitalCalls = capitalCalls.filter(c => !c.deleted_at && c.status === "suggested");
   const hotDeals = deals.filter(d => d.urgency === "hot" || d.analysis?.recommendation === "Strong Review").slice(0, 3);

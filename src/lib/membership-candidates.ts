@@ -96,7 +96,7 @@ export async function createMembershipCandidate(
   if (error || !data) return { data: null, error: error?.message ?? "Could not submit candidate" };
 
   const candidate = data as MembershipCandidate;
-  await Promise.all(MEMBERS.map(member => createNotification({
+  const noticeResults = await Promise.all(MEMBERS.map(member => createNotification({
     title: `New member review: ${candidate.full_name}`,
     body: "Review readiness, capital, credit, relationships, and what this applicant can bring to Meridian.",
     priority: "high",
@@ -106,8 +106,34 @@ export async function createMembershipCandidate(
     source_id: candidate.id,
     notification_type: MEMBERSHIP_CANDIDATE_VOTE,
   }, "Membership Application")));
+  const noticeError = noticeResults.find(result => result.error)?.error;
+  if (noticeError) {
+    return {
+      data: candidate,
+      error: `Application saved, but member vote notifications could not be created: ${noticeError}`,
+    };
+  }
 
   return { data: candidate, error: null };
+}
+
+export async function fetchPendingMembershipCandidateVotes(memberName: string): Promise<MembershipCandidate[]> {
+  if (!supabase) return [];
+  const [candidatesResult, votesResult] = await Promise.all([
+    supabase
+      .from("membership_candidates")
+      .select("*")
+      .eq("status", "under_review")
+      .order("submitted_at", { ascending: false }),
+    supabase
+      .from("membership_candidate_votes")
+      .select("candidate_id")
+      .eq("member_name", memberName),
+  ]);
+
+  if (candidatesResult.error || !candidatesResult.data) return [];
+  const votedIds = new Set((votesResult.data ?? []).map(row => row.candidate_id));
+  return (candidatesResult.data as MembershipCandidate[]).filter(candidate => !votedIds.has(candidate.id));
 }
 
 export async function fetchMembershipCandidates(): Promise<MembershipCandidate[]> {

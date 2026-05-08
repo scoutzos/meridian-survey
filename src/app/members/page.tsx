@@ -14,6 +14,11 @@ import {
 import { fetchActionItems, isOwnedBy, type ActionItem } from "@/lib/action-items";
 import { fetchNotifications, type Notification } from "@/lib/operations";
 import { fetchHubData, type Decision } from "@/lib/hub";
+import {
+  fetchPendingMembershipCandidateVotes,
+  MEMBERSHIP_CANDIDATE_VOTE,
+  type MembershipCandidate,
+} from "@/lib/membership-candidates";
 
 const DISPLAY_FONT = "var(--font-display)";
 
@@ -56,6 +61,7 @@ export default function MembersPage() {
   const [loading, setLoading] = useState(true);
   const [actions, setActions] = useState<ActionItem[]>([]);
   const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [pendingCandidateVotes, setPendingCandidateVotes] = useState<MembershipCandidate[]>([]);
   const [decisions, setDecisions] = useState<Decision[]>([]);
   const [myBalance, setMyBalance] = useState<MemberBalance | null>(null);
   const [surveyCounts, setSurveyCounts] = useState<Record<string, number>>({});
@@ -84,11 +90,12 @@ export default function MembersPage() {
         responsesBySurvey: {},
       }));
 
-      const [trackerData, actionRows, noticeRows, hub] = await Promise.all([
+      const [trackerData, actionRows, noticeRows, hub, candidateVoteRows] = await Promise.all([
         fetchAll(),
         fetchActionItems(),
         fetchNotifications(memberName),
         fetchHubData(),
+        fetchPendingMembershipCandidateVotes(memberName),
       ]);
 
       const responseCounts: Record<string, Record<string, number>> = {};
@@ -134,6 +141,7 @@ export default function MembersPage() {
       setRows(nextRows);
       setActions(actionRows.filter(item => item.status !== "done" && isOwnedBy(item, memberName)));
       setNotifications(noticeRows);
+      setPendingCandidateVotes(candidateVoteRows);
       setDecisions(hub.decisions.slice(0, 4));
       setSurveyCounts(responseCounts[memberName] ?? {});
       setLoading(false);
@@ -144,7 +152,25 @@ export default function MembersPage() {
 
   if (!user) return null;
 
-  const pendingVotes = notifications.filter(n => ["expense_proposal_vote", "membership_candidate_vote"].includes(n.notification_type));
+  const notificationVotes = notifications.filter(n => ["expense_proposal_vote", MEMBERSHIP_CANDIDATE_VOTE].includes(n.notification_type));
+  const notifiedCandidateIds = new Set(notificationVotes.filter(n => n.notification_type === MEMBERSHIP_CANDIDATE_VOTE).map(n => n.source_id));
+  const candidateVoteNotices: Notification[] = pendingCandidateVotes
+    .filter(candidate => !notifiedCandidateIds.has(candidate.id))
+    .map(candidate => ({
+      id: `candidate-${candidate.id}`,
+      title: `New member review: ${candidate.full_name}`,
+      body: "Review readiness, capital, credit, relationships, and what this applicant can bring to Meridian.",
+      notification_type: MEMBERSHIP_CANDIDATE_VOTE,
+      priority: "high",
+      assigned_to: user,
+      href: `/members/candidates?candidate=${candidate.id}`,
+      source_table: "membership_candidates",
+      source_id: candidate.id,
+      read_at: null,
+      created_at: candidate.submitted_at,
+      created_by: "Membership Application",
+    }));
+  const pendingVotes = [...notificationVotes, ...candidateVoteNotices];
   const moneyNotices = notifications.filter(n => n.notification_type.includes("expense") || n.notification_type.includes("capital"));
   const myRow = rows.find(row => row.name === user);
   const surveyTotal = surveys.reduce((sum, s) => sum + (totalsBySurvey[s.id] || 0), 0);
