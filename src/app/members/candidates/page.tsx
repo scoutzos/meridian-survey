@@ -15,6 +15,7 @@ import {
 } from "@/lib/membership-candidates";
 
 const voteOptions: CandidateVoteDecision[] = ["approve", "discuss", "hold", "decline"];
+type CandidateView = "needs-my-vote" | "my-votes" | "all";
 
 const candidateQuestions = {
   join_as: "Are you seeking to join as an individual or through your own LLC?",
@@ -45,6 +46,9 @@ function CandidateReviewsContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const selectedId = searchParams.get("candidate");
+  const activeView = (searchParams.get("view") === "my-votes" || searchParams.get("view") === "all"
+    ? searchParams.get("view")
+    : "needs-my-vote") as CandidateView;
   const [user, setUser] = useState<string | null>(null);
   const [candidates, setCandidates] = useState<MembershipCandidate[]>([]);
   const [votes, setVotes] = useState<MembershipCandidateVote[]>([]);
@@ -70,10 +74,21 @@ function CandidateReviewsContent() {
     void load();
   }, [router]);
 
+  const myVotedCandidateIds = useMemo(() => {
+    if (!user) return new Set<string>();
+    return new Set(votes.filter(vote => vote.member_name === user).map(vote => vote.candidate_id));
+  }, [user, votes]);
+
+  const visibleCandidates = useMemo(() => {
+    if (activeView === "my-votes") return candidates.filter(candidate => myVotedCandidateIds.has(candidate.id));
+    if (activeView === "all") return candidates;
+    return candidates.filter(candidate => candidate.status === "under_review" && !myVotedCandidateIds.has(candidate.id));
+  }, [activeView, candidates, myVotedCandidateIds]);
+
   const selectedCandidate = useMemo(() => {
-    if (selectedId) return candidates.find(candidate => candidate.id === selectedId) ?? candidates[0] ?? null;
-    return candidates.find(candidate => candidate.status === "under_review") ?? candidates[0] ?? null;
-  }, [candidates, selectedId]);
+    if (selectedId) return candidates.find(candidate => candidate.id === selectedId) ?? visibleCandidates[0] ?? null;
+    return visibleCandidates[0] ?? null;
+  }, [candidates, selectedId, visibleCandidates]);
 
   const candidateVotes = useMemo(() => {
     if (!selectedCandidate) return [];
@@ -103,6 +118,14 @@ function CandidateReviewsContent() {
     return acc;
   }, { approve: 0, discuss: 0, hold: 0, decline: 0 });
 
+  const myPastVotes = votes
+    .filter(vote => vote.member_name === user)
+    .map(vote => ({ vote, candidate: candidates.find(candidate => candidate.id === vote.candidate_id) }))
+    .filter((row): row is { vote: MembershipCandidateVote; candidate: MembershipCandidate } => !!row.candidate)
+    .sort((a, b) => b.vote.updated_at.localeCompare(a.vote.updated_at));
+
+  const viewHref = (view: CandidateView) => `/members/candidates?view=${view}`;
+
   return (
     <main style={{ maxWidth: 1180, margin: "0 auto", padding: "84px 20px 100px" }}>
       <header style={{ marginBottom: 24, display: "flex", justifyContent: "space-between", gap: 16, flexWrap: "wrap", alignItems: "flex-end" }}>
@@ -113,6 +136,24 @@ function CandidateReviewsContent() {
         </div>
         <button onClick={() => router.push("/members")} style={buttonGhost}>Back to Portal</button>
       </header>
+
+      <section style={viewPanel}>
+        <div>
+          <p style={eyebrow}>Application Views</p>
+          <p style={muted}>Jump between applicants waiting on you, your voting history, and the full applicant list.</p>
+        </div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <button onClick={() => router.push(viewHref("needs-my-vote"))} style={activeView === "needs-my-vote" ? buttonPrimary : buttonGhost}>
+            Needs My Vote
+          </button>
+          <button onClick={() => router.push(viewHref("my-votes"))} style={activeView === "my-votes" ? buttonPrimary : buttonGhost}>
+            My Past Votes
+          </button>
+          <button onClick={() => router.push(viewHref("all"))} style={activeView === "all" ? buttonPrimary : buttonGhost}>
+            All Applicants
+          </button>
+        </div>
+      </section>
 
       {loading && <p style={muted}>Loading candidates...</p>}
 
@@ -126,18 +167,73 @@ function CandidateReviewsContent() {
         </section>
       )}
 
+      {!loading && activeView === "my-votes" && (
+        <section style={{ ...mainCard, marginBottom: 18 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 14, flexWrap: "wrap", marginBottom: 14 }}>
+            <div>
+              <p style={eyebrow}>My Vote History</p>
+              <h2 style={{ fontSize: 22, color: "var(--obsidian)", marginBottom: 4 }}>Past member application votes</h2>
+              <p style={muted}>Every member-review vote you have submitted, newest first.</p>
+            </div>
+            <div style={voteSummary}>
+              <strong>{myPastVotes.length}</strong>
+              <span>votes cast</span>
+            </div>
+          </div>
+          {myPastVotes.length === 0 ? (
+            <p style={muted}>You have not voted on any member applications yet.</p>
+          ) : (
+            <div style={{ display: "grid", gap: 8 }}>
+              {myPastVotes.map(({ vote, candidate }) => (
+                <button
+                  key={vote.id}
+                  onClick={() => router.push(`/members/candidates?view=my-votes&candidate=${candidate.id}`)}
+                  style={{
+                    background: selectedCandidate?.id === candidate.id ? "rgba(201,168,120,0.12)" : "var(--bone)",
+                    border: `1px solid ${selectedCandidate?.id === candidate.id ? "var(--brass)" : "var(--fog)"}`,
+                    borderRadius: 8,
+                    padding: 12,
+                    textAlign: "left",
+                    cursor: "pointer",
+                    display: "grid",
+                    gap: 5,
+                    color: "var(--ink)",
+                  }}
+                >
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+                    <strong style={{ color: "var(--obsidian)" }}>{candidate.full_name}</strong>
+                    <span style={{ color: "var(--brass)", fontWeight: 800 }}>{voteLabel(vote.decision)}</span>
+                  </div>
+                  <span style={{ color: "var(--ink)", opacity: 0.6, fontSize: 12 }}>
+                    Updated {new Date(vote.updated_at).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}
+                  </span>
+                  {vote.note && <span style={{ color: "var(--ink)", opacity: 0.72, fontSize: 13 }}>{vote.note}</span>}
+                </button>
+              ))}
+            </div>
+          )}
+        </section>
+      )}
+
+      {!loading && candidates.length > 0 && visibleCandidates.length === 0 && activeView !== "my-votes" && (
+        <section style={{ ...emptyCard, marginBottom: 18 }}>
+          <h2 style={{ fontSize: 18, marginBottom: 6 }}>No applicants in this view</h2>
+          <p style={muted}>Switch to All Applicants or My Past Votes to review older applications.</p>
+        </section>
+      )}
+
       {selectedCandidate && (
         <div className="candidate-layout">
           <aside style={sideCard}>
-            <p style={sideTitle}>Applicants</p>
-            {candidates.map(candidate => {
+            <p style={sideTitle}>{activeView === "needs-my-vote" ? "Needs My Vote" : activeView === "my-votes" ? "Voted Applicants" : "Applicants"}</p>
+            {visibleCandidates.map(candidate => {
               const applicantVotes = votes.filter(vote => vote.candidate_id === candidate.id);
               const voted = applicantVotes.some(vote => vote.member_name === user);
               const active = candidate.id === selectedCandidate.id;
               return (
                 <button
                   key={candidate.id}
-                  onClick={() => router.push(`/members/candidates?candidate=${candidate.id}`)}
+                  onClick={() => router.push(`/members/candidates?view=${activeView}&candidate=${candidate.id}`)}
                   style={{
                     ...candidateButton,
                     borderColor: active ? "var(--brass)" : "var(--fog)",
@@ -149,6 +245,7 @@ function CandidateReviewsContent() {
                 </button>
               );
             })}
+            {visibleCandidates.length === 0 && <p style={{ ...muted, fontSize: 12 }}>Nothing in this view.</p>}
           </aside>
 
           <section style={mainCard}>
@@ -355,6 +452,19 @@ const emptyCard: React.CSSProperties = {
   border: "1px solid var(--fog)",
   borderRadius: 8,
   padding: 26,
+};
+
+const viewPanel: React.CSSProperties = {
+  background: "var(--surface)",
+  border: "1px solid var(--fog)",
+  borderRadius: 8,
+  padding: 16,
+  marginBottom: 18,
+  display: "flex",
+  justifyContent: "space-between",
+  gap: 14,
+  alignItems: "center",
+  flexWrap: "wrap",
 };
 
 const voteSummary: React.CSSProperties = {
