@@ -18,7 +18,7 @@ import {
 } from "@/lib/tracker";
 import { MEMBERS } from "@/data/questions";
 import { createActionItem } from "@/lib/action-items";
-import { createNotification } from "@/lib/operations";
+import { createNotification, markNotificationRead } from "@/lib/operations";
 import TrackerShell, {
   trackerBtn,
   trackerBtnGhost,
@@ -254,6 +254,12 @@ export default function ExpensePlanningPage() {
     const u = localStorage.getItem("meridian_user");
     if (!u) { router.push("/"); return; }
     setUser(u);
+    const focusedProposalId = new URLSearchParams(window.location.search).get("proposal");
+    if (focusedProposalId) {
+      setProposalFilter("all");
+      setInboxOpen(true);
+      setExpandedProposalId(focusedProposalId);
+    }
     void load();
     if (!supabase) return;
     const sb = supabase;
@@ -373,7 +379,6 @@ export default function ExpensePlanningPage() {
       approval_rule: rule.approvalRule,
       minimum_oa_approvals: rule.minimumApprovals,
       required_approvals: rule.requiredApprovals,
-      created_by: user,
       updated_by: user,
     };
     if (revisionTarget) {
@@ -421,14 +426,20 @@ export default function ExpensePlanningPage() {
         diff: { before: revisionTarget, after: data, offsets: offsetDrafts, revisionNote },
       });
       await Promise.all(MEMBERS.map(member => createNotification({
-        title: `Expense proposal revised: ${title.trim()}`,
+        title: `Expense proposal needs your vote: ${title.trim()}`,
         body: `Version ${nextVersion} is ready for a new vote. ${revisionNote.trim() || "Review the updated proposal details."}`,
         priority: "high",
         assigned_to: member,
         href: `/tracker/planning?proposal=${revisionTarget.id}`,
         source_table: "tracker_expense_proposals",
         source_id: revisionTarget.id,
-        notification_type: "expense_proposal_revised",
+        notification_type: "expense_proposal_vote",
+      }, user)));
+      await Promise.all(MEMBERS.map(member => createActionItem({
+        title: `Review expense proposal: ${title.trim()}`,
+        description: `Review and vote on version ${nextVersion} in Money -> Planning.`,
+        assigned_to: member,
+        due_date: addDays(2),
       }, user)));
       setNotes("");
       setRevisionNote("");
@@ -440,7 +451,7 @@ export default function ExpensePlanningPage() {
       void load();
       return;
     }
-    const { data, error } = await supabase.from("tracker_expense_proposals").insert(row).select().single();
+    const { data, error } = await supabase.from("tracker_expense_proposals").insert({ ...row, created_by: user }).select().single();
     setSaving(false);
     if (error) { alert(error.message); return; }
     const proposal = data as ExpenseProposal;
@@ -504,6 +515,7 @@ export default function ExpensePlanningPage() {
       .from("tracker_expense_proposal_votes")
       .upsert(row, { onConflict: "proposal_id,member_name,proposal_version" });
     if (error) { alert(error.message); return; }
+    await markProposalVoteWorkComplete(proposal, user);
     const existing = votesFor(proposal.id).filter(v => v.member_name !== user);
     const simulatedVote: ProposalVote = {
       id: "",
@@ -521,6 +533,9 @@ export default function ExpensePlanningPage() {
         .from("tracker_expense_proposals")
         .update({ status: nextStatus, updated_at: new Date().toISOString(), updated_by: user })
         .eq("id", proposal.id);
+      if (nextStatus === "approved" || nextStatus === "rejected" || nextStatus === "revision_needed") {
+        await closeProposalVoteWork(proposal, user);
+      }
       if (nextStatus === "approved" || nextStatus === "rejected") {
         await Promise.all(MEMBERS.map(member => createNotification({
           title: `Expense proposal ${nextStatus}: ${proposal.title}`,
@@ -557,6 +572,51 @@ export default function ExpensePlanningPage() {
     });
     setVoteNote("");
     void load();
+  }
+
+  async function markProposalVoteWorkComplete(proposal: ExpenseProposal, member: string) {
+    if (!supabase) return;
+    const { data: notices } = await supabase
+      .from("meridian_notifications")
+      .select("id")
+      .eq("assigned_to", member)
+      .eq("source_id", proposal.id)
+      .in("notification_type", ["expense_proposal_vote", "expense_proposal_revised"])
+      .is("read_at", null);
+    await Promise.all((notices ?? []).map(notice => markNotificationRead(notice.id)));
+
+    await supabase
+      .from("action_items")
+      .update({
+        status: "done",
+        completed_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        updated_by: member,
+      })
+      .eq("assigned_to", member)
+      .eq("title", `Review expense proposal: ${proposal.title}`)
+      .neq("status", "done");
+  }
+
+  async function closeProposalVoteWork(proposal: ExpenseProposal, actor: string) {
+    if (!supabase) return;
+    await supabase
+      .from("meridian_notifications")
+      .update({ read_at: new Date().toISOString() })
+      .eq("source_id", proposal.id)
+      .in("notification_type", ["expense_proposal_vote", "expense_proposal_revised"])
+      .is("read_at", null);
+
+    await supabase
+      .from("action_items")
+      .update({
+        status: "done",
+        completed_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        updated_by: actor,
+      })
+      .eq("title", `Review expense proposal: ${proposal.title}`)
+      .neq("status", "done");
   }
 
   async function convertToExpenses(proposal: ExpenseProposal) {
@@ -1303,6 +1363,11 @@ export default function ExpensePlanningPage() {
               {proposal.status !== "converted" && proposal.status !== "revision_needed" && (
                 <div style={{ display: "flex", gap: 8, alignItems: "end", flexWrap: "wrap", marginTop: 14 }}>
                   <input value={voteNote} onChange={e => setVoteNote(e.target.value)} placeholder="Optional note for your sign-off" style={{ ...trackerInput, maxWidth: 360 }} />
+                  {(admin || proposal.created_by === user) && (
+                    <button onClick={() => startRevision(proposal)} style={trackerBtnSubtle}>
+                      Edit / send new version
+                    </button>
+                  )}
                   <button onClick={() => vote(proposal, "approve")} style={trackerBtn}>
                     {myVote?.decision === "approve" ? "Approved" : "Approve"}
                   </button>

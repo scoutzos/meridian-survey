@@ -19,6 +19,11 @@ import {
   MEMBERSHIP_CANDIDATE_VOTE,
   type MembershipCandidate,
 } from "@/lib/membership-candidates";
+import {
+  EXPENSE_PROPOSAL_VOTE_TYPES,
+  fetchPendingExpenseProposalVotes,
+  type PendingExpenseProposalVote,
+} from "@/lib/expense-proposal-votes";
 
 const DISPLAY_FONT = "var(--font-display)";
 
@@ -62,6 +67,7 @@ export default function MembersPage() {
   const [actions, setActions] = useState<ActionItem[]>([]);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [pendingCandidateVotes, setPendingCandidateVotes] = useState<MembershipCandidate[]>([]);
+  const [pendingProposalVotes, setPendingProposalVotes] = useState<PendingExpenseProposalVote[]>([]);
   const [decisions, setDecisions] = useState<Decision[]>([]);
   const [myBalance, setMyBalance] = useState<MemberBalance | null>(null);
   const [surveyCounts, setSurveyCounts] = useState<Record<string, number>>({});
@@ -90,12 +96,13 @@ export default function MembersPage() {
         responsesBySurvey: {},
       }));
 
-      const [trackerData, actionRows, noticeRows, hub, candidateVoteRows] = await Promise.all([
+      const [trackerData, actionRows, noticeRows, hub, candidateVoteRows, proposalVoteRows] = await Promise.all([
         fetchAll(),
         fetchActionItems(),
         fetchNotifications(memberName),
         fetchHubData(),
         fetchPendingMembershipCandidateVotes(memberName),
+        fetchPendingExpenseProposalVotes(memberName),
       ]);
 
       const responseCounts: Record<string, Record<string, number>> = {};
@@ -142,6 +149,7 @@ export default function MembersPage() {
       setActions(actionRows.filter(item => item.status !== "done" && isOwnedBy(item, memberName)));
       setNotifications(noticeRows);
       setPendingCandidateVotes(candidateVoteRows);
+      setPendingProposalVotes(proposalVoteRows);
       setDecisions(hub.decisions.slice(0, 4));
       setSurveyCounts(responseCounts[memberName] ?? {});
       setLoading(false);
@@ -152,8 +160,29 @@ export default function MembersPage() {
 
   if (!user) return null;
 
-  const notificationVotes = notifications.filter(n => ["expense_proposal_vote", MEMBERSHIP_CANDIDATE_VOTE].includes(n.notification_type));
-  const notifiedCandidateIds = new Set(notificationVotes.filter(n => n.notification_type === MEMBERSHIP_CANDIDATE_VOTE).map(n => n.source_id));
+  const pendingProposalIds = new Set(pendingProposalVotes.map(proposal => proposal.id));
+  const pendingCandidateIds = new Set(pendingCandidateVotes.map(candidate => candidate.id));
+  const proposalNotificationVotes = notifications.filter(n => EXPENSE_PROPOSAL_VOTE_TYPES.includes(n.notification_type) && !!n.source_id && pendingProposalIds.has(n.source_id));
+  const candidateNotificationVotes = notifications.filter(n => n.notification_type === MEMBERSHIP_CANDIDATE_VOTE && !!n.source_id && pendingCandidateIds.has(n.source_id));
+  const notificationVotes = [...proposalNotificationVotes, ...candidateNotificationVotes];
+  const notifiedProposalIds = new Set(proposalNotificationVotes.map(n => n.source_id));
+  const notifiedCandidateIds = new Set(candidateNotificationVotes.map(n => n.source_id));
+  const proposalVoteNotices: Notification[] = pendingProposalVotes
+    .filter(proposal => !notifiedProposalIds.has(proposal.id))
+    .map(proposal => ({
+      id: `proposal-${proposal.id}`,
+      title: `Expense proposal needs your vote: ${proposal.title}`,
+      body: `Version ${proposal.revision_number ?? 1} is waiting for your review.`,
+      notification_type: "expense_proposal_vote",
+      priority: "high",
+      assigned_to: user,
+      href: `/tracker/planning?proposal=${proposal.id}`,
+      source_table: "tracker_expense_proposals",
+      source_id: proposal.id,
+      read_at: null,
+      created_at: proposal.submitted_at,
+      created_by: "Expense Planning",
+    }));
   const candidateVoteNotices: Notification[] = pendingCandidateVotes
     .filter(candidate => !notifiedCandidateIds.has(candidate.id))
     .map(candidate => ({
@@ -170,7 +199,7 @@ export default function MembersPage() {
       created_at: candidate.submitted_at,
       created_by: "Membership Application",
     }));
-  const pendingVotes = [...notificationVotes, ...candidateVoteNotices];
+  const pendingVotes = [...notificationVotes, ...proposalVoteNotices, ...candidateVoteNotices];
   const moneyNotices = notifications.filter(n => n.notification_type.includes("expense") || n.notification_type.includes("capital"));
   const myRow = rows.find(row => row.name === user);
   const surveyTotal = surveys.reduce((sum, s) => sum + (totalsBySurvey[s.id] || 0), 0);

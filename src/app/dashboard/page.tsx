@@ -25,6 +25,11 @@ import {
   type MembershipCandidate,
 } from "@/lib/membership-candidates";
 import {
+  EXPENSE_PROPOSAL_VOTE_TYPES,
+  fetchPendingExpenseProposalVotes,
+  type PendingExpenseProposalVote,
+} from "@/lib/expense-proposal-votes";
+import {
   fetchReimbursements,
   type Reimbursement,
 } from "@/lib/governance";
@@ -108,6 +113,7 @@ export default function DashboardPage() {
   const [myBalance, setMyBalance] = useState<MemberBalance | null>(null);
   const [capitalCalls, setCapitalCalls] = useState<CapitalCall[]>([]);
   const [pendingCandidateVotes, setPendingCandidateVotes] = useState<MembershipCandidate[]>([]);
+  const [pendingProposalVotes, setPendingProposalVotes] = useState<PendingExpenseProposalVote[]>([]);
   const [loaded, setLoaded] = useState(false);
 
   const surveys = useMemo(() => getAllSurveys(), []);
@@ -146,6 +152,7 @@ export default function DashboardPage() {
         trackerData,
         hub,
         candidateVoteRows,
+        proposalVoteRows,
       ] = await Promise.all([
         fetchActionItems(),
         fetchNextMeeting(),
@@ -156,6 +163,7 @@ export default function DashboardPage() {
         fetchAll(),
         fetchHubData(),
         fetchPendingMembershipCandidateVotes(u),
+        fetchPendingExpenseProposalVotes(u),
       ]);
 
       setActionItems(items);
@@ -164,6 +172,7 @@ export default function DashboardPage() {
       setProjects(projectRows);
       setNotifications(notices);
       setPendingCandidateVotes(candidateVoteRows);
+      setPendingProposalVotes(proposalVoteRows);
       setReimbursements(reimbursementRows);
       setDecisions(hub.decisions.slice(0, 4));
 
@@ -221,8 +230,29 @@ export default function DashboardPage() {
   const { obsidian, brass, bone, fog, ink } = COLORS;
 
   const myItems = actionItems.filter(i => i.status !== "done" && isOwnedBy(i, user)).slice(0, 5);
-  const notificationVotes = notifications.filter(n => ["expense_proposal_vote", MEMBERSHIP_CANDIDATE_VOTE].includes(n.notification_type));
-  const notifiedCandidateIds = new Set(notificationVotes.filter(n => n.notification_type === MEMBERSHIP_CANDIDATE_VOTE).map(n => n.source_id));
+  const pendingProposalIds = new Set(pendingProposalVotes.map(proposal => proposal.id));
+  const pendingCandidateIds = new Set(pendingCandidateVotes.map(candidate => candidate.id));
+  const proposalNotificationVotes = notifications.filter(n => EXPENSE_PROPOSAL_VOTE_TYPES.includes(n.notification_type) && !!n.source_id && pendingProposalIds.has(n.source_id));
+  const candidateNotificationVotes = notifications.filter(n => n.notification_type === MEMBERSHIP_CANDIDATE_VOTE && !!n.source_id && pendingCandidateIds.has(n.source_id));
+  const notificationVotes = [...proposalNotificationVotes, ...candidateNotificationVotes];
+  const notifiedProposalIds = new Set(proposalNotificationVotes.map(n => n.source_id));
+  const notifiedCandidateIds = new Set(candidateNotificationVotes.map(n => n.source_id));
+  const proposalVoteNotices: Notification[] = pendingProposalVotes
+    .filter(proposal => !notifiedProposalIds.has(proposal.id))
+    .map(proposal => ({
+      id: `proposal-${proposal.id}`,
+      title: `Expense proposal needs your vote: ${proposal.title}`,
+      body: `Version ${proposal.revision_number ?? 1} is waiting for your review.`,
+      notification_type: "expense_proposal_vote",
+      priority: "high",
+      assigned_to: user,
+      href: `/tracker/planning?proposal=${proposal.id}`,
+      source_table: "tracker_expense_proposals",
+      source_id: proposal.id,
+      read_at: null,
+      created_at: proposal.submitted_at,
+      created_by: "Expense Planning",
+    }));
   const candidateVoteNotices: Notification[] = pendingCandidateVotes
     .filter(candidate => !notifiedCandidateIds.has(candidate.id))
     .map(candidate => ({
@@ -239,7 +269,7 @@ export default function DashboardPage() {
       created_at: candidate.submitted_at,
       created_by: "Membership Application",
     }));
-  const pendingVotes = [...notificationVotes, ...candidateVoteNotices];
+  const pendingVotes = [...notificationVotes, ...proposalVoteNotices, ...candidateVoteNotices];
   const openCapitalCalls = capitalCalls.filter(c => !c.deleted_at && c.status === "open");
   const suggestedCapitalCalls = capitalCalls.filter(c => !c.deleted_at && c.status === "suggested");
   const hotDeals = deals.filter(d => d.urgency === "hot" || d.analysis?.recommendation === "Strong Review").slice(0, 3);
