@@ -15,7 +15,7 @@ import {
 } from "@/lib/membership-candidates";
 
 const voteOptions: CandidateVoteDecision[] = ["approve", "discuss", "hold", "decline"];
-type CandidateView = "needs-my-vote" | "my-votes" | "all";
+type CandidateView = "needs-my-vote" | "started" | "my-votes" | "all";
 
 const candidateQuestions = {
   join_as: "Are you seeking to join as an individual or through your own LLC?",
@@ -46,7 +46,7 @@ function CandidateReviewsContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const selectedId = searchParams.get("candidate");
-  const activeView = (searchParams.get("view") === "my-votes" || searchParams.get("view") === "all"
+  const activeView = (searchParams.get("view") === "started" || searchParams.get("view") === "my-votes" || searchParams.get("view") === "all"
     ? searchParams.get("view")
     : "needs-my-vote") as CandidateView;
   const [user, setUser] = useState<string | null>(null);
@@ -81,6 +81,7 @@ function CandidateReviewsContent() {
 
   const visibleCandidates = useMemo(() => {
     if (activeView === "my-votes") return candidates.filter(candidate => myVotedCandidateIds.has(candidate.id));
+    if (activeView === "started") return candidates.filter(candidate => candidate.status === "started");
     if (activeView === "all") return candidates;
     return candidates.filter(candidate => candidate.status === "under_review" && !myVotedCandidateIds.has(candidate.id));
   }, [activeView, candidates, myVotedCandidateIds]);
@@ -125,6 +126,7 @@ function CandidateReviewsContent() {
     .sort((a, b) => b.vote.updated_at.localeCompare(a.vote.updated_at));
 
   const viewHref = (view: CandidateView) => `/members/candidates?view=${view}`;
+  const startedCount = candidates.filter(candidate => candidate.status === "started").length;
 
   return (
     <main style={{ maxWidth: 1180, margin: "0 auto", padding: "84px 20px 100px" }}>
@@ -132,7 +134,7 @@ function CandidateReviewsContent() {
         <div>
           <p style={eyebrow}>Member Portal</p>
           <h1 style={heading}>New Member Reviews</h1>
-          <p style={muted}>Review potential members, compare what they can bring, and submit your vote.</p>
+          <p style={muted}>Review submitted applicants, see applications that have been started, and submit your vote.</p>
         </div>
         <button onClick={() => router.push("/members")} style={buttonGhost}>Back to Portal</button>
       </header>
@@ -145,6 +147,9 @@ function CandidateReviewsContent() {
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           <button onClick={() => router.push(viewHref("needs-my-vote"))} style={activeView === "needs-my-vote" ? buttonPrimary : buttonGhost}>
             Needs My Vote
+          </button>
+          <button onClick={() => router.push(viewHref("started"))} style={activeView === "started" ? buttonPrimary : buttonGhost}>
+            Started ({startedCount})
           </button>
           <button onClick={() => router.push(viewHref("my-votes"))} style={activeView === "my-votes" ? buttonPrimary : buttonGhost}>
             My Past Votes
@@ -160,7 +165,7 @@ function CandidateReviewsContent() {
       {!loading && candidates.length === 0 && (
         <section style={emptyCard}>
           <h2 style={{ fontSize: 18, marginBottom: 6 }}>No applicants yet</h2>
-          <p style={muted}>When someone submits the membership review form, they will show up here for member voting.</p>
+          <p style={muted}>When someone starts or submits the membership review form, they will show up here.</p>
           <button onClick={() => router.push("/apply")} style={{ ...buttonPrimary, marginTop: 16 }}>
             Open Application Form
           </button>
@@ -225,11 +230,12 @@ function CandidateReviewsContent() {
       {selectedCandidate && (
         <div className="candidate-layout">
           <aside style={sideCard}>
-            <p style={sideTitle}>{activeView === "needs-my-vote" ? "Needs My Vote" : activeView === "my-votes" ? "Voted Applicants" : "Applicants"}</p>
+          <p style={sideTitle}>{activeView === "needs-my-vote" ? "Needs My Vote" : activeView === "started" ? "Started Applications" : activeView === "my-votes" ? "Voted Applicants" : "Applicants"}</p>
             {visibleCandidates.map(candidate => {
               const applicantVotes = votes.filter(vote => vote.candidate_id === candidate.id);
               const voted = applicantVotes.some(vote => vote.member_name === user);
               const active = candidate.id === selectedCandidate.id;
+              const started = candidate.status === "started";
               return (
                 <button
                   key={candidate.id}
@@ -240,8 +246,12 @@ function CandidateReviewsContent() {
                     background: active ? "rgba(201,168,120,0.12)" : "var(--bone)",
                   }}
                 >
-                  <strong>{candidate.full_name}</strong>
-                  <span>{applicantVotes.length}/{MEMBERS.length} votes · {voted ? "you voted" : "needs your vote"}</span>
+                  <strong>{candidateDisplayName(candidate)}</strong>
+                  <span>
+                    {started
+                      ? `started · updated ${formatShortDate(candidate.updated_at)}`
+                      : `${applicantVotes.length}/${MEMBERS.length} votes · ${voted ? "you voted" : "needs your vote"}`}
+                  </span>
                 </button>
               );
             })}
@@ -252,16 +262,27 @@ function CandidateReviewsContent() {
             <div style={{ display: "flex", justifyContent: "space-between", gap: 16, flexWrap: "wrap", marginBottom: 22 }}>
               <div>
                 <p style={eyebrow}>Applicant</p>
-                <h2 style={{ ...heading, fontSize: "clamp(30px, 5vw, 46px)" }}>{selectedCandidate.full_name}</h2>
+                <h2 style={{ ...heading, fontSize: "clamp(30px, 5vw, 46px)" }}>{candidateDisplayName(selectedCandidate)}</h2>
                 <p style={muted}>
-                  Submitted {new Date(selectedCandidate.submitted_at).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}
+                  {selectedCandidate.status === "started"
+                    ? `Started application · last updated ${formatShortDate(selectedCandidate.updated_at)}`
+                    : `Submitted ${formatShortDate(selectedCandidate.submitted_at)}`}
                 </p>
               </div>
-              <div style={voteSummary}>
-                <strong>{candidateVotes.length}/{MEMBERS.length}</strong>
-                <span>member votes</span>
+              <div style={selectedCandidate.status === "started" ? startedSummary : voteSummary}>
+                <strong>{selectedCandidate.status === "started" ? "Started" : `${candidateVotes.length}/${MEMBERS.length}`}</strong>
+                <span>{selectedCandidate.status === "started" ? "not submitted yet" : "member votes"}</span>
               </div>
             </div>
+
+            {selectedCandidate.status === "started" && (
+              <section style={startedPanel}>
+                <p style={eyebrow}>Application In Progress</p>
+                <p style={muted}>
+                  This person has started the application but has not submitted it for member review yet. Voting opens after they submit the form.
+                </p>
+              </section>
+            )}
 
             <div className="candidate-stats">
               <Stat label="Join as" question={candidateQuestions.join_as} value={selectedCandidate.join_as} />
@@ -291,6 +312,7 @@ function CandidateReviewsContent() {
               <ReviewBlock title="Notes For Members" question={candidateQuestions.member_notes} value={selectedCandidate.member_notes} />
             </div>
 
+            {selectedCandidate.status !== "started" && (
             <section style={votePanel}>
               <div>
                 <p style={eyebrow}>Your Vote</p>
@@ -313,7 +335,9 @@ function CandidateReviewsContent() {
                 ))}
               </div>
             </section>
+            )}
 
+            {selectedCandidate.status !== "started" && (
             <section style={resultsPanel}>
               <p style={eyebrow}>Vote Results</p>
               <div className="vote-counts">
@@ -332,6 +356,7 @@ function CandidateReviewsContent() {
                 })}
               </div>
             </section>
+            )}
           </section>
         </div>
       )}
@@ -371,6 +396,15 @@ function Stat({ label, value, question }: { label: string; value: string; questi
       <strong style={{ fontSize: 15, color: "var(--obsidian)", lineHeight: 1.35 }}>{value}</strong>
     </div>
   );
+}
+
+function formatShortDate(iso: string): string {
+  return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+}
+
+function candidateDisplayName(candidate: MembershipCandidate): string {
+  if (candidate.full_name && candidate.full_name !== "Started application") return candidate.full_name;
+  return candidate.contact_email || candidate.contact_phone || "Started application";
 }
 
 function Detail({ label, value }: { label: string; value: string }) {
@@ -478,6 +512,13 @@ const voteSummary: React.CSSProperties = {
   alignContent: "center",
 };
 
+const startedSummary: React.CSSProperties = {
+  ...voteSummary,
+  background: "rgba(201,168,120,0.18)",
+  color: "var(--obsidian)",
+  border: "1px solid rgba(201,168,120,0.35)",
+};
+
 const detailBand: React.CSSProperties = {
   display: "flex",
   flexWrap: "wrap",
@@ -488,6 +529,14 @@ const detailBand: React.CSSProperties = {
   padding: 14,
   marginBottom: 18,
   fontSize: 13,
+};
+
+const startedPanel: React.CSSProperties = {
+  background: "rgba(201,168,120,0.12)",
+  border: "1px solid rgba(201,168,120,0.3)",
+  borderRadius: 8,
+  padding: 16,
+  marginBottom: 18,
 };
 
 const votePanel: React.CSSProperties = {

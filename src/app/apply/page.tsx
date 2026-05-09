@@ -1,8 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Logo from "@/components/Logo";
-import { createMembershipCandidate, parseMoney, type CandidateDraft } from "@/lib/membership-candidates";
+import {
+  createMembershipCandidate,
+  parseMoney,
+  saveMembershipCandidateDraft,
+  type CandidateDraft,
+} from "@/lib/membership-candidates";
 
 const joinOptions = [
   "As an individual",
@@ -39,10 +44,13 @@ const monthlyDuesOptions = [
   "No, I am not comfortable with monthly dues right now",
 ];
 
+const draftStorageKey = "meridian_membership_candidate_draft_id";
+
 export default function ApplyPage() {
   const [submittedName, setSubmittedName] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [draftId, setDraftId] = useState<string | null>(null);
   const [form, setForm] = useState({
     full_name: "",
     contact_email: "",
@@ -68,14 +76,12 @@ export default function ApplyPage() {
 
   const update = (key: keyof typeof form, value: string) => setForm(prev => ({ ...prev, [key]: value }));
 
-  async function submit(e: React.FormEvent) {
-    e.preventDefault();
-    setError("");
-    if (!form.full_name.trim()) { setError("Please enter your full legal name."); return; }
-    if (!form.table_contribution.trim()) { setError("Please share what you bring to the table."); return; }
-    setSaving(true);
+  useEffect(() => {
+    setDraftId(localStorage.getItem(draftStorageKey));
+  }, []);
 
-    const draft: CandidateDraft = {
+  const buildDraft = useCallback((): CandidateDraft => {
+    return {
       full_name: form.full_name.trim(),
       contact_email: form.contact_email,
       contact_phone: form.contact_phone,
@@ -97,10 +103,35 @@ export default function ApplyPage() {
       support_requested: form.support_requested,
       member_notes: form.member_notes,
     };
+  }, [form]);
 
-    const result = await createMembershipCandidate(draft);
+  useEffect(() => {
+    if (submittedName) return;
+    const hasIdentifier = [form.full_name, form.contact_email, form.contact_phone].some(value => value.trim().length > 0);
+    if (!hasIdentifier) return;
+
+    const timer = window.setTimeout(async () => {
+      const result = await saveMembershipCandidateDraft(buildDraft(), draftId);
+      if (result.data?.id && result.data.id !== draftId) {
+        localStorage.setItem(draftStorageKey, result.data.id);
+        setDraftId(result.data.id);
+      }
+    }, 900);
+
+    return () => window.clearTimeout(timer);
+  }, [buildDraft, form.contact_email, form.contact_phone, form.full_name, draftId, submittedName]);
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setError("");
+    if (!form.full_name.trim()) { setError("Please enter your full legal name."); return; }
+    if (!form.table_contribution.trim()) { setError("Please share what you bring to the table."); return; }
+    setSaving(true);
+
+    const result = await createMembershipCandidate(buildDraft(), draftId);
     setSaving(false);
     if (result.error) { setError(result.error); return; }
+    localStorage.removeItem(draftStorageKey);
     setSubmittedName(form.full_name.trim());
   }
 

@@ -2,7 +2,7 @@ import { MEMBERS } from "@/data/questions";
 import { supabase } from "./supabase";
 import { createNotification, markNotificationRead } from "./operations";
 
-export type CandidateStatus = "under_review" | "approved" | "declined" | "withdrawn";
+export type CandidateStatus = "started" | "under_review" | "approved" | "declined" | "withdrawn";
 export type CandidateVoteDecision = "approve" | "discuss" | "hold" | "decline";
 
 export interface MembershipCandidate {
@@ -70,31 +70,85 @@ export function voteLabel(decision: CandidateVoteDecision): string {
   }[decision];
 }
 
-export async function createMembershipCandidate(
+function normalizeCandidateDraft(draft: CandidateDraft) {
+  return {
+    ...draft,
+    contact_email: draft.contact_email?.trim() || null,
+    contact_phone: draft.contact_phone?.trim() || null,
+    entity_name: draft.entity_name?.trim() || null,
+    entity_state: draft.entity_state?.trim() || null,
+    entity_title: draft.entity_title?.trim() || null,
+    monthly_dues_comfort: draft.monthly_dues_comfort?.trim() || null,
+    deal_readiness: draft.deal_readiness?.trim() || null,
+    credit_pull_comfort: draft.credit_pull_comfort?.trim() || null,
+    table_contribution: draft.table_contribution?.trim() || null,
+    relationships: draft.relationships?.trim() || null,
+    first_90_days: draft.first_90_days?.trim() || null,
+    support_requested: draft.support_requested?.trim() || null,
+    member_notes: draft.member_notes?.trim() || null,
+  };
+}
+
+export async function saveMembershipCandidateDraft(
   draft: CandidateDraft,
+  candidateId?: string | null,
 ): Promise<{ data: MembershipCandidate | null; error: string | null }> {
   if (!supabase) return { data: null, error: "Supabase not configured" };
 
-  const { data, error } = await supabase
-    .from("membership_candidates")
-    .insert({
-      ...draft,
-      contact_email: draft.contact_email?.trim() || null,
-      contact_phone: draft.contact_phone?.trim() || null,
-      entity_name: draft.entity_name?.trim() || null,
-      entity_state: draft.entity_state?.trim() || null,
-      entity_title: draft.entity_title?.trim() || null,
-      monthly_dues_comfort: draft.monthly_dues_comfort?.trim() || null,
-      deal_readiness: draft.deal_readiness?.trim() || null,
-      credit_pull_comfort: draft.credit_pull_comfort?.trim() || null,
-      table_contribution: draft.table_contribution?.trim() || null,
-      relationships: draft.relationships?.trim() || null,
-      first_90_days: draft.first_90_days?.trim() || null,
-      support_requested: draft.support_requested?.trim() || null,
-      member_notes: draft.member_notes?.trim() || null,
-    })
-    .select()
-    .single();
+  const payload = {
+    ...normalizeCandidateDraft(draft),
+    full_name: draft.full_name.trim() || "Started application",
+    status: "started" as CandidateStatus,
+    updated_at: new Date().toISOString(),
+  };
+
+  const query = candidateId
+    ? supabase
+        .from("membership_candidates")
+        .update(payload)
+        .eq("id", candidateId)
+        .eq("status", "started")
+        .select()
+        .maybeSingle()
+    : supabase
+        .from("membership_candidates")
+        .insert(payload)
+        .select()
+        .single();
+
+  const { data, error } = await query;
+  if (error) return { data: null, error: error.message };
+  return { data: (data as MembershipCandidate | null) ?? null, error: null };
+}
+
+export async function createMembershipCandidate(
+  draft: CandidateDraft,
+  candidateId?: string | null,
+): Promise<{ data: MembershipCandidate | null; error: string | null }> {
+  if (!supabase) return { data: null, error: "Supabase not configured" };
+
+  const payload = {
+    ...normalizeCandidateDraft(draft),
+    full_name: draft.full_name.trim(),
+    status: "under_review" as CandidateStatus,
+    submitted_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  };
+
+  const query = candidateId
+    ? supabase
+        .from("membership_candidates")
+        .update(payload)
+        .eq("id", candidateId)
+        .select()
+        .single()
+    : supabase
+        .from("membership_candidates")
+        .insert(payload)
+        .select()
+        .single();
+
+  const { data, error } = await query;
 
   if (error || !data) return { data: null, error: error?.message ?? "Could not submit candidate" };
 
