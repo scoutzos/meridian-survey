@@ -234,14 +234,14 @@ export default function LoginPage() {
 
   if (showSetPassword) {
     return (
-      <div style={pageWrap}>
-        <div style={monogramWrap}>
-          <Logo width={120} onDark />
+      <div className="login-page-wrap" style={pageWrap}>
+        <div className="login-logo-wrap" style={monogramWrap}>
+          <Logo className="login-logo" width={120} onDark />
         </div>
-        <div style={cardStyle}>
+        <div className="login-card" style={cardStyle}>
           <p style={{ ...eyebrowStyle, marginBottom: 14 }}>Welcome</p>
-          <h1 style={headingStyle}>Set your password</h1>
-          <p style={{ ...subheadingStyle, marginBottom: 28 }}>
+          <h1 className="login-heading" style={headingStyle}>Set your password</h1>
+          <p className="login-subheading" style={{ ...subheadingStyle, marginBottom: 28 }}>
             <span style={{ color: "var(--brass)", fontWeight: 500 }}>{name}</span>
             {" — "}create a personal password so only you can access your account.
           </p>
@@ -276,17 +276,17 @@ export default function LoginPage() {
   if (showForgotPassword) {
     if (resetSuccess) {
       return (
-        <div style={pageWrap}>
-          <div style={monogramWrap}>
-            <Logo width={120} onDark />
+        <div className="login-page-wrap" style={pageWrap}>
+          <div className="login-logo-wrap" style={monogramWrap}>
+            <Logo className="login-logo" width={120} onDark />
           </div>
-          <div style={cardStyle}>
+          <div className="login-card" style={cardStyle}>
             <p style={{ ...eyebrowStyle, marginBottom: 14 }}>Account</p>
-            <h1 style={headingStyle}>Password reset</h1>
-            <p style={{ ...subheadingStyle, marginBottom: 8 }}>
+            <h1 className="login-heading" style={headingStyle}>Password reset</h1>
+            <p className="login-subheading" style={{ ...subheadingStyle, marginBottom: 8 }}>
               Your password has been reset to the default.
             </p>
-            <p style={{ ...subheadingStyle, marginBottom: 28 }}>
+            <p className="login-subheading" style={{ ...subheadingStyle, marginBottom: 28 }}>
               Sign in as <span style={{ color: "var(--brass)" }}>{resetName}</span> with{" "}
               <span style={{ color: "var(--brass)", fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}>meridian2026</span>{" "}
               and you&apos;ll be prompted to set a new personal password.
@@ -303,14 +303,14 @@ export default function LoginPage() {
     }
 
     return (
-      <div style={pageWrap}>
-        <div style={monogramWrap}>
-          <Logo width={120} onDark />
+      <div className="login-page-wrap" style={pageWrap}>
+        <div className="login-logo-wrap" style={monogramWrap}>
+          <Logo className="login-logo" width={120} onDark />
         </div>
-        <div style={cardStyle}>
+        <div className="login-card" style={cardStyle}>
           <p style={{ ...eyebrowStyle, marginBottom: 14 }}>Account</p>
-          <h1 style={headingStyle}>Reset password</h1>
-          <p style={{ ...subheadingStyle, marginBottom: 28 }}>
+          <h1 className="login-heading" style={headingStyle}>Reset password</h1>
+          <p className="login-subheading" style={{ ...subheadingStyle, marginBottom: 28 }}>
             Verify your identity and we&apos;ll reset your password to the default.
           </p>
 
@@ -352,18 +352,18 @@ export default function LoginPage() {
   }
 
   return (
-    <div style={pageWrap}>
-      <div style={monogramWrap}>
-        <Logo width={140} onDark />
+    <div className="login-page-wrap" style={pageWrap}>
+      <div className="login-logo-wrap" style={monogramWrap}>
+        <Logo className="login-logo" width={140} onDark />
       </div>
 
-      <div style={cardStyle}>
+      <div className="login-card" style={cardStyle}>
         <p style={{ ...eyebrowStyle, marginBottom: 14 }}>Partnership Hub</p>
-        <h1 style={headingStyle}>Welcome back</h1>
-        <p style={{ ...subheadingStyle, marginBottom: 28 }}>
+        <h1 className="login-heading" style={headingStyle}>Welcome back</h1>
+        <p className="login-subheading" style={{ ...subheadingStyle, marginBottom: 28 }}>
           Sign in to continue your work with the Collective.
         </p>
-        <p style={{
+        <p className="login-badge" style={{
           display: "inline-flex",
           border: "1px solid var(--fog)",
           borderRadius: 999,
@@ -399,11 +399,11 @@ export default function LoginPage() {
           {error && <p style={{ color: "#A0392E", fontSize: 13, marginTop: 4 }}>{error}</p>}
 
           <button type="submit" disabled={loading} style={{ ...primaryBtnStyle(loading), marginTop: 6 }}>
-            {loading ? "Signing in…" : "Enter"}
+            {loading ? "Signing in…" : "Member Log In"}
           </button>
         </form>
 
-        <p style={{ marginTop: 20, textAlign: "center" }}>
+        <p className="login-forgot-row" style={{ marginTop: 20, textAlign: "center" }}>
           <button
             onClick={() => { setShowForgotPassword(true); setError(""); setResetName(name); }}
             style={{
@@ -424,7 +424,7 @@ export default function LoginPage() {
         </p>
       </div>
 
-      <footer style={{ display: "grid", gap: 14, justifyItems: "center", textAlign: "center" }}>
+      <footer className="login-footer" style={{ display: "grid", gap: 14, justifyItems: "center", textAlign: "center" }}>
         <button
           onClick={() => router.push("/apply")}
           style={{

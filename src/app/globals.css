@@ -158,4 +158,50 @@ button {
   .main-content { padding-bottom: calc(70px + env(safe-area-inset-bottom)); }
   /* Hide top nav on mobile */
   .top-nav-bar { display: none !important; }
+
+  .login-page-wrap {
+    min-height: 100svh !important;
+    justify-content: flex-start !important;
+    gap: 14px !important;
+    padding: calc(14px + env(safe-area-inset-top)) 20px 22px !important;
+    overflow-y: auto;
+  }
+
+  .login-logo-wrap {
+    gap: 6px !important;
+  }
+
+  .login-logo svg {
+    width: 94px;
+    height: auto;
+  }
+
+  .login-card {
+    max-width: 100% !important;
+    padding: 28px 24px !important;
+  }
+
+  .login-heading {
+    font-size: 38px !important;
+    line-height: 1 !important;
+  }
+
+  .login-subheading {
+    margin-bottom: 20px !important;
+  }
+
+  .login-badge {
+    max-width: 100%;
+    white-space: normal;
+    line-height: 1.35;
+    margin-bottom: 14px !important;
+  }
+
+  .login-forgot-row {
+    margin-top: 12px !important;
+  }
+
+  .login-footer {
+    gap: 10px !important;
+  }
 }
