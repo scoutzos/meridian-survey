@@ -130,6 +130,8 @@ const IMPORT_STATUS_FILTERS = [
 ] as const;
 
 type ImportStatusFilter = typeof IMPORT_STATUS_FILTERS[number]["value"];
+type ImportStep = "upload" | "preview" | "importing" | "work";
+type ImportStage = "idle" | "previewing" | "creating-batch" | "saving-leads" | "refreshing" | "done";
 
 const LEAD_ACTIVITY_TYPES: Array<{ value: ImportedLandLeadActivity["activity_type"]; label: string }> = [
   { value: "called", label: "Called" },
@@ -349,8 +351,11 @@ export default function VaPage() {
   const [importedLeads, setImportedLeads] = useState<ImportedLandLead[]>([]);
   const [leadBatches, setLeadBatches] = useState<LandLeadBatch[]>([]);
   const [selectedImportedLeadId, setSelectedImportedLeadId] = useState<string | null>(null);
+  const [selectedBatchId, setSelectedBatchId] = useState<string | null>(null);
   const [leadActivities, setLeadActivities] = useState<ImportedLandLeadActivity[]>([]);
   const [importPreview, setImportPreview] = useState<LandLeadImportPreview | null>(null);
+  const [importStep, setImportStep] = useState<ImportStep>("upload");
+  const [importStage, setImportStage] = useState<ImportStage>("idle");
   const [leadSearch, setLeadSearch] = useState("");
   const [leadFilter, setLeadFilter] = useState<ImportStatusFilter>("all");
   const [minAcreage, setMinAcreage] = useState("");
@@ -398,11 +403,13 @@ export default function VaPage() {
   const submittedDeals = useMemo(() => deals.filter(deal => deal.status === "under-review"), [deals]);
   const interestedLeads = useMemo(() => importedLeads.filter(lead => lead.status === "interested"), [importedLeads]);
   const selectedImportedLead = useMemo(() => importedLeads.find(lead => lead.id === selectedImportedLeadId) ?? null, [importedLeads, selectedImportedLeadId]);
+  const selectedBatch = useMemo(() => leadBatches.find(batch => batch.id === selectedBatchId) ?? null, [leadBatches, selectedBatchId]);
   const filteredImportedLeads = useMemo(() => {
     const query = leadSearch.trim().toLowerCase();
     const min = toNumber(minAcreage);
     const max = toNumber(maxAcreage);
     const rows = importedLeads.filter(lead => {
+      if (selectedBatchId && lead.batch_id !== selectedBatchId) return false;
       if (lead.status === "converted") return false;
       if (leadFilter === "duplicates" && lead.duplicate_status === "new") return false;
       if (leadFilter === "has-phone" && !lead.phone && !lead.phone_2) return false;
@@ -427,7 +434,9 @@ export default function VaPage() {
       ].filter(Boolean).join(" ").toLowerCase().includes(query);
     });
     return rows.sort((a, b) => (b.lead_score ?? 0) - (a.lead_score ?? 0)).slice(0, 120);
-  }, [importedLeads, leadFilter, leadSearch, maxAcreage, minAcreage]);
+  }, [importedLeads, leadFilter, leadSearch, maxAcreage, minAcreage, selectedBatchId]);
+  const batchLeads = useMemo(() => selectedBatchId ? importedLeads.filter(lead => lead.batch_id === selectedBatchId) : importedLeads, [importedLeads, selectedBatchId]);
+  const nextBestLead = useMemo(() => filteredImportedLeads.find(lead => lead.status === "new" || lead.status === "contacted") ?? filteredImportedLeads[0] ?? null, [filteredImportedLeads]);
   const importStats = useMemo(() => ({
     newRows: importedLeads.filter(lead => lead.status === "new").length,
     contacted: importedLeads.filter(lead => lead.status === "contacted").length,
@@ -594,6 +603,7 @@ export default function VaPage() {
       return;
     }
     setImporting(true);
+    setImportStage("previewing");
     setMessage("");
     const text = await file.text();
     const preview = await previewLandLeadsCsv({
@@ -604,8 +614,10 @@ export default function VaPage() {
       actor: user,
     });
     setImporting(false);
+    setImportStage("idle");
     if (preview.error) { setMessage(preview.error); return; }
     setImportPreview(preview);
+    setImportStep("preview");
     setMessage(`Preview ready. Review the import preview card and click Confirm Import to save ${preview.usableLeads} usable leads.`);
     setActiveTab("imports");
   };
@@ -613,8 +625,11 @@ export default function VaPage() {
   const confirmLeadImport = async () => {
     if (!importPreview) return;
     setImporting(true);
+    setImportStage("creating-batch");
+    setImportStep("importing");
     setMessage(`Importing ${importPreview.usableLeads} leads now. Large lists can take a minute; keep this tab open.`);
     try {
+      setImportStage("saving-leads");
       const response = await fetch("/api/import-land-leads", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -626,12 +641,17 @@ export default function VaPage() {
           actor: user,
         }),
       });
-      const result = await response.json() as { importedCount?: number; warning?: string | null; error?: string };
-      if (!response.ok || result.error) { setMessage(`Import failed: ${result.error || response.statusText}`); return; }
-      const [leadRows, batchRows] = await Promise.all([fetchImportedLandLeads(500), fetchLandLeadBatches()]);
+      const result = await response.json() as { importedCount?: number; batchId?: string | null; warning?: string | null; error?: string };
+      if (!response.ok || result.error) { setImportStep("preview"); setMessage(`Import failed: ${result.error || response.statusText}`); return; }
+      setImportStage("refreshing");
+      const [leadRows, batchRows] = await Promise.all([fetchImportedLandLeads(1500), fetchLandLeadBatches()]);
       setImportedLeads(leadRows);
       setLeadBatches(batchRows);
+      setSelectedBatchId(result.batchId ?? batchRows[0]?.id ?? null);
+      setSelectedImportedLeadId(leadRows.find(lead => lead.batch_id === (result.batchId ?? batchRows[0]?.id))?.id ?? leadRows[0]?.id ?? null);
       setImportPreview(null);
+      setImportStep("work");
+      setImportStage("done");
       setMessage([
         `Imported ${result.importedCount ?? importPreview.usableLeads} lead${(result.importedCount ?? importPreview.usableLeads) === 1 ? "" : "s"} from ${importPreview.filename}.`,
         result.warning || "",
@@ -639,6 +659,7 @@ export default function VaPage() {
       setActiveTab("imports");
     } catch (error) {
       const detail = error instanceof Error ? error.message : "Unknown upload error.";
+      setImportStep("preview");
       setMessage(`Import failed before it could finish: ${detail}`);
     } finally {
       setImporting(false);
@@ -1050,10 +1071,28 @@ export default function VaPage() {
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12, flexWrap: "wrap", marginBottom: 12 }}>
               <div>
                 <p style={eyebrowSmall}>Land lists</p>
-                <h2 style={sectionTitle}>Upload & search imported leads</h2>
+                <h2 style={sectionTitle}>{selectedBatch ? selectedBatch.campaign_source || selectedBatch.original_filename || "Work imported batch" : "Import land list"}</h2>
               </div>
-              <span style={pill}>{importedLeads.length} imported · Avg score {importStats.avgScore}</span>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <button onClick={() => { setImportStep("upload"); setImportPreview(null); setSelectedBatchId(null); }} style={secondaryButton}>New Import</button>
+                <span style={pill}>{importedLeads.length} imported · Avg score {importStats.avgScore}</span>
+              </div>
             </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8, marginBottom: 12 }} className="number-grid">
+              {(["upload", "preview", "importing", "work"] as ImportStep[]).map((step, index) => (
+                <div key={step} style={{
+                  border: importStep === step ? "1px solid var(--brass)" : "1px solid var(--fog)",
+                  background: importStep === step ? "rgba(176,137,84,0.14)" : "var(--surface)",
+                  borderRadius: 8,
+                  padding: 10,
+                }}>
+                  <p style={miniLabel}>Step {index + 1}</p>
+                  <strong style={{ color: "var(--obsidian)", fontSize: 13 }}>{step === "upload" ? "Upload" : step === "preview" ? "Preview & Validate" : step === "importing" ? "Import Progress" : "Work The List"}</strong>
+                </div>
+              ))}
+            </div>
+
             <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 8, marginBottom: 12 }} className="number-grid">
               <ShiftCard label="New" value={String(importStats.newRows)} />
               <ShiftCard label="Contacted" value={String(importStats.contacted)} />
@@ -1061,48 +1100,70 @@ export default function VaPage() {
               <ShiftCard label="Duplicates" value={String(importStats.duplicates)} />
               <ShiftCard label="Converted" value={String(importStats.converted)} />
             </div>
-            <div style={{ ...subPanel, marginBottom: 12 }}>
-              <div style={{ display: "grid", gridTemplateColumns: "180px minmax(0, 1fr) 190px", gap: 10 }} className="three-col">
-                <div>
-                  <label style={label}>Source</label>
-                  <select value={uploadSource} onChange={e => setUploadSource(e.target.value)}>
-                    <option>Land Portal</option>
-                    <option>Land Insights</option>
-                    <option>County Export</option>
-                    <option>Skip Trace List</option>
-                    <option>Other Land List</option>
-                  </select>
-                </div>
-                <div>
-                  <label style={label}>Campaign / list name</label>
-                  <input value={uploadCampaign} onChange={e => setUploadCampaign(e.target.value)} placeholder="Example: Fulton infill lots May 2026" />
-                </div>
-                <div>
-                  <label style={label}>CSV upload</label>
-                  <input
-                    type="file"
-                    accept=".csv,text/csv"
-                    disabled={importing}
-                    onChange={e => { void handleLeadCsvUpload(e.target.files?.[0] ?? null); e.currentTarget.value = ""; }}
-                  />
+
+            {(importStep === "upload" || (!importPreview && importedLeads.length === 0)) && (
+              <div style={{ ...subPanel, marginBottom: 12 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "220px minmax(0, 1fr)", gap: 12 }} className="two-col">
+                  <label style={{
+                    border: "1px dashed var(--brass)",
+                    borderRadius: 8,
+                    minHeight: 156,
+                    display: "grid",
+                    placeItems: "center",
+                    textAlign: "center",
+                    cursor: importing ? "default" : "pointer",
+                    background: "rgba(176,137,84,0.08)",
+                    padding: 16,
+                  }}>
+                    <input
+                      type="file"
+                      accept=".csv,text/csv"
+                      disabled={importing}
+                      onChange={e => { void handleLeadCsvUpload(e.target.files?.[0] ?? null); e.currentTarget.value = ""; }}
+                      style={{ display: "none" }}
+                    />
+                    <span>
+                      <strong style={{ display: "block", color: "var(--obsidian)", fontSize: 15, marginBottom: 6 }}>{importing && importStage === "previewing" ? "Reading CSV..." : "Choose CSV"}</strong>
+                      <span style={{ display: "block", color: "var(--muted)", fontSize: 12, lineHeight: 1.45 }}>Land Portal or Land Insights export</span>
+                    </span>
+                  </label>
+                  <div>
+                    <div style={twoCol} className="two-col">
+                      <div>
+                        <label style={label}>Source</label>
+                        <select value={uploadSource} onChange={e => setUploadSource(e.target.value)}>
+                          <option>Land Portal</option>
+                          <option>Land Insights</option>
+                          <option>County Export</option>
+                          <option>Skip Trace List</option>
+                          <option>Other Land List</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label style={label}>Campaign / list name</label>
+                        <input value={uploadCampaign} onChange={e => setUploadCampaign(e.target.value)} placeholder="Gwinnett County GA Odessa" />
+                      </div>
+                    </div>
+                    <p style={{ fontSize: 12, color: "var(--muted)", marginTop: 12, lineHeight: 1.55 }}>
+                      CSV uploads are validated before saving. Apple Numbers files should be exported to CSV first.
+                    </p>
+                  </div>
                 </div>
               </div>
-              <p style={{ fontSize: 12, color: "var(--muted)", marginTop: 10, lineHeight: 1.45 }}>
-                The importer recognizes Land Portal and Land Insights CSV columns like APN, owner name(s), mail, address, city, state, ZIP, county, acreage, price/value, property tax, email, maps, and property URL. Apple Numbers files should be exported to CSV before upload.
-              </p>
-            </div>
+            )}
 
             {importPreview && (
               <div style={{ ...subPanel, marginBottom: 12, borderColor: "var(--brass)" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "baseline", marginBottom: 10 }}>
                   <div>
-                    <p style={eyebrowSmall}>Import preview</p>
+                    <p style={eyebrowSmall}>Preview & Validate</p>
                     <h3 style={{ ...sectionTitle, fontSize: 20 }}>{importPreview.filename}</h3>
+                    <p style={{ color: "var(--muted)", fontSize: 12, marginTop: 4 }}>Land list format recognized · {importPreview.rowsFound} rows found</p>
                   </div>
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                    <button onClick={() => setImportPreview(null)} style={secondaryButton}>Cancel</button>
+                    <button onClick={() => { setImportPreview(null); setImportStep("upload"); }} style={secondaryButton}>Cancel</button>
                     <button onClick={confirmLeadImport} disabled={importing} style={{ ...primaryButton, opacity: importing ? 0.6 : 1 }}>
-                      {importing ? "Importing..." : "Confirm Import"}
+                      {importing ? "Importing..." : `Import ${importPreview.usableLeads} Leads`}
                     </button>
                   </div>
                 </div>
@@ -1114,7 +1175,35 @@ export default function VaPage() {
                   <MiniStat label="Duplicates" value={String(importPreview.possibleDuplicates + importPreview.alreadyConverted)} />
                   <MiniStat label="Avg score" value={String(importPreview.averageScore)} />
                 </div>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 8, marginTop: 10 }} className="two-col">
+                <div style={{ overflowX: "auto", marginTop: 12 }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+                    <thead>
+                      <tr style={{ color: "var(--muted)", textAlign: "left", borderBottom: "1px solid var(--fog)" }}>
+                        <th style={th}>Owner</th>
+                        <th style={th}>APN</th>
+                        <th style={th}>Address</th>
+                        <th style={th}>Phone</th>
+                        <th style={th}>Acres</th>
+                        <th style={th}>Score</th>
+                        <th style={th}>Flags</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {importPreview.sampleLeads.map((lead, index) => (
+                        <tr key={`${lead.parcel_id}-${index}`} style={{ borderBottom: "1px solid var(--fog)" }}>
+                          <td style={td}>{lead.owner_name || "Owner unknown"}</td>
+                          <td style={td}>{lead.parcel_id || "N/A"}</td>
+                          <td style={td}>{lead.property_address || "No parcel address"}</td>
+                          <td style={td}>{lead.phone || lead.phone_2 || "No phone"}</td>
+                          <td style={td}>{lead.acreage ?? "N/A"}</td>
+                          <td style={td}>{lead.lead_score ?? 0}</td>
+                          <td style={td}><FlagRow lead={lead} /></td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <div style={{ display: "none" }}>
                   {importPreview.sampleLeads.map((lead, index) => (
                     <div key={`${lead.parcel_id}-${index}`} style={{ border: "1px solid var(--fog)", borderRadius: 8, padding: 10, background: "var(--surface)" }}>
                       <strong style={{ color: "var(--obsidian)", fontSize: 13 }}>{lead.owner_name || "Owner unknown"}</strong>
@@ -1125,12 +1214,28 @@ export default function VaPage() {
               </div>
             )}
 
+            {importStep === "importing" && (
+              <div style={{ ...subPanel, marginBottom: 12, borderColor: "var(--brass)" }}>
+                <p style={eyebrowSmall}>Import Progress</p>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }} className="three-col">
+                  <StageCard label="Creating batch" active={["creating-batch", "saving-leads", "refreshing", "done"].includes(importStage)} />
+                  <StageCard label="Saving leads" active={["saving-leads", "refreshing", "done"].includes(importStage)} />
+                  <StageCard label="Refreshing list" active={["refreshing", "done"].includes(importStage)} />
+                </div>
+              </div>
+            )}
+
             <div style={{ ...subPanel, marginBottom: 12 }}>
-              <p style={eyebrowSmall}>Batch workflow</p>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", alignItems: "baseline", marginBottom: 8 }}>
+                <p style={eyebrowSmall}>Batch workflow</p>
+                {selectedBatch && <span style={hotPill}>{batchLeads.length} in selected batch</span>}
+              </div>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }} className="three-col">
                 {leadBatches.slice(0, 6).map(batch => (
-                  <div key={batch.id} style={{ border: "1px solid var(--fog)", borderRadius: 8, padding: 10, background: "var(--surface)" }}>
-                    <strong style={{ display: "block", color: "var(--obsidian)", fontSize: 13 }}>{batch.campaign_source || batch.original_filename || batch.source_system}</strong>
+                  <div key={batch.id} style={{ border: selectedBatchId === batch.id ? "1px solid var(--brass)" : "1px solid var(--fog)", borderRadius: 8, padding: 10, background: selectedBatchId === batch.id ? "rgba(176,137,84,0.12)" : "var(--surface)" }}>
+                    <button onClick={() => { setSelectedBatchId(batch.id); setImportStep("work"); }} style={{ background: "transparent", border: "none", padding: 0, textAlign: "left", cursor: "pointer", width: "100%" }}>
+                      <strong style={{ display: "block", color: "var(--obsidian)", fontSize: 13 }}>{batch.campaign_source || batch.original_filename || batch.source_system}</strong>
+                    </button>
                     <p style={{ color: "var(--muted)", fontSize: 12, margin: "4px 0 8px" }}>{batch.row_count} rows · {statusLabel(batch.status || "not-started")}</p>
                     <select
                       value={batch.status || "not-started"}
@@ -1148,6 +1253,22 @@ export default function VaPage() {
                 {leadBatches.length === 0 && <p style={{ fontSize: 13, color: "var(--muted)" }}>No import batches yet.</p>}
               </div>
             </div>
+
+            {nextBestLead && (
+              <div style={{ ...subPanel, marginBottom: 12, borderColor: "var(--brass)" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
+                  <div>
+                    <p style={eyebrowSmall}>Next best lead</p>
+                    <h3 style={{ ...sectionTitle, fontSize: 20 }}>{nextBestLead.owner_name || "Owner unknown"}</h3>
+                    <p style={{ color: "var(--muted)", fontSize: 12, marginTop: 4 }}>{nextBestLead.property_address || nextBestLead.parcel_id || "No address"} · Score {nextBestLead.lead_score ?? 0}</p>
+                  </div>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    <button onClick={() => setSelectedImportedLeadId(nextBestLead.id)} style={secondaryButton}>Review</button>
+                    <button onClick={() => loadImportedLead(nextBestLead, true)} style={primaryButton}>Create Deal</button>
+                  </div>
+                </div>
+              </div>
+            )}
 
             <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 0.95fr) minmax(320px, 1.05fr)", gap: 12 }} className="va-form-grid">
               <div>
@@ -1510,6 +1631,42 @@ function MiniStat({ label: text, value }: { label: string; value: string }) {
   );
 }
 
+function StageCard({ label: text, active }: { label: string; active: boolean }) {
+  return (
+    <div style={{
+      border: active ? "1px solid var(--brass)" : "1px solid var(--fog)",
+      background: active ? "rgba(176,137,84,0.14)" : "var(--surface)",
+      borderRadius: 8,
+      padding: 12,
+    }}>
+      <span style={active ? readyDot : openDot} />
+      <strong style={{ display: "block", color: "var(--obsidian)", fontSize: 13, marginTop: 8 }}>{text}</strong>
+    </div>
+  );
+}
+
+function leadFlagLabels(lead: Partial<ImportedLandLead>): string[] {
+  const flags: string[] = [];
+  const raw = lead.raw_data ?? {};
+  if (!lead.phone && !lead.phone_2) flags.push("No Phone");
+  if (lead.duplicate_status && lead.duplicate_status !== "new") flags.push("Duplicate");
+  if (String(raw["Land Locked"] ?? raw["Tag:Land Locked"] ?? "").toLowerCase().startsWith("y")) flags.push("Landlocked");
+  if ((toNumber(String(raw["Flood Zone Percent"] ?? "")) ?? 0) > 0) flags.push("Flood");
+  if ((toNumber(String(raw["Wetlands Percent"] ?? "")) ?? 0) > 0) flags.push("Wetlands");
+  if ((lead.lead_score ?? 0) >= 60) flags.push("High Score");
+  return flags.slice(0, 4);
+}
+
+function FlagRow({ lead }: { lead: Partial<ImportedLandLead> }) {
+  const flags = leadFlagLabels(lead);
+  if (!flags.length) return <span style={{ color: "var(--muted)" }}>Clear</span>;
+  return (
+    <span style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+      {flags.map(flag => <span key={flag} style={flagChip}>{flag}</span>)}
+    </span>
+  );
+}
+
 const panel: React.CSSProperties = {
   background: "rgba(255,255,255,0.78)",
   border: "1px solid var(--fog)",
@@ -1659,4 +1816,24 @@ const miniLabel: React.CSSProperties = {
   fontWeight: 700,
   letterSpacing: "0.12em",
   textTransform: "uppercase",
+};
+
+const th: React.CSSProperties = {
+  padding: "8px 8px 8px 0",
+  fontSize: 10,
+  letterSpacing: "0.1em",
+  textTransform: "uppercase",
+};
+
+const td: React.CSSProperties = {
+  padding: "9px 8px 9px 0",
+  color: "var(--ink)",
+  verticalAlign: "top",
+};
+
+const flagChip: React.CSSProperties = {
+  ...pill,
+  fontSize: 9,
+  padding: "2px 6px",
+  letterSpacing: "0.06em",
 };
