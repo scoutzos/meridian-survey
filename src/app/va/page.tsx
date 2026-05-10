@@ -607,7 +607,7 @@ export default function VaPage() {
     setImporting(false);
     if (preview.error) { setMessage(preview.error); return; }
     setImportPreview(preview);
-    setMessage(`Preview ready: ${preview.usableLeads} usable leads, ${preview.possibleDuplicates + preview.alreadyConverted} duplicates flagged.`);
+    setMessage(`Preview ready. Review the import preview card and click Confirm Import to save ${preview.usableLeads} usable leads.`);
     setActiveTab("imports");
   };
 
@@ -627,7 +627,10 @@ export default function VaPage() {
     setImportedLeads(leadRows);
     setLeadBatches(batchRows);
     setImportPreview(null);
-    setMessage(`Imported ${result.leads.length} lead${result.leads.length === 1 ? "" : "s"} from ${importPreview.filename}.`);
+    setMessage([
+      `Imported ${result.leads.length} lead${result.leads.length === 1 ? "" : "s"} from ${importPreview.filename}.`,
+      result.warning || "",
+    ].filter(Boolean).join(" "));
     setActiveTab("imports");
   };
 

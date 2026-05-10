@@ -62,6 +62,7 @@ export interface LeadImportResult {
   batch: LandLeadBatch | null;
   leads: ImportedLandLead[];
   error: string | null;
+  warning?: string | null;
 }
 
 export interface LandLeadImportPreview {
@@ -320,6 +321,46 @@ function applyDuplicateMetadata<T extends Omit<ImportedLandLead, "id" | "created
   });
 }
 
+function isSchemaMismatch(error: { message?: string; code?: string } | null | undefined): boolean {
+  const message = error?.message?.toLowerCase() || "";
+  return error?.code === "PGRST204"
+    || message.includes("column")
+    || message.includes("schema cache")
+    || message.includes("does not exist")
+    || message.includes("could not find");
+}
+
+function legacyLeadInsert(lead: Omit<ImportedLandLead, "id" | "created_at" | "updated_at">) {
+  return {
+    batch_id: lead.batch_id,
+    source_system: lead.source_system,
+    campaign_source: lead.campaign_source,
+    owner_name: lead.owner_name,
+    phone: lead.phone,
+    phone_2: lead.phone_2,
+    email: lead.email,
+    property_address: lead.property_address,
+    parcel_id: lead.parcel_id,
+    county: lead.county,
+    city: lead.city,
+    state: lead.state,
+    zip: lead.zip,
+    mailing_address: lead.mailing_address,
+    acreage: lead.acreage,
+    asking_price: lead.asking_price,
+    assessed_value: lead.assessed_value,
+    market_value: lead.market_value,
+    zoning: lead.zoning,
+    land_use: lead.land_use,
+    property_url: lead.property_url,
+    status: lead.status,
+    deal_id: lead.deal_id,
+    notes: lead.notes,
+    raw_data: lead.raw_data,
+    uploaded_by: lead.uploaded_by,
+  };
+}
+
 export async function previewLandLeadsCsv(args: {
   csvText: string;
   filename: string;
@@ -367,6 +408,8 @@ export async function importLandLeadsFromCsv(args: {
     campaign_source: args.campaignSource?.trim() || null,
     row_count: rows.length,
     uploaded_by: args.actor,
+  };
+  const enhancedBatchFields = {
     assigned_to: args.actor,
     status: "not-started" as const,
     import_summary: {
@@ -376,7 +419,7 @@ export async function importLandLeadsFromCsv(args: {
   };
 
   if (!supabase) {
-    const batch: LandLeadBatch = { ...batchSeed, id: `lead-batch-${Date.now()}`, created_at: now };
+    const batch: LandLeadBatch = { ...batchSeed, ...enhancedBatchFields, id: `lead-batch-${Date.now()}`, created_at: now };
     const existing = localGet<ImportedLandLead[]>(LOCAL_LEADS, []);
     const normalized = applyDuplicateMetadata(rows.map(row => normalizeLead(row, batch.source_system, batch.campaign_source, args.actor, batch.id)), existing);
     const leads = normalized.map((lead, index): ImportedLandLead => ({
@@ -392,20 +435,46 @@ export async function importLandLeadsFromCsv(args: {
 
   const { data: batchData, error: batchError } = await supabase
     .from("meridian_land_lead_import_batches")
-    .insert(batchSeed)
+    .insert({ ...batchSeed, ...enhancedBatchFields })
     .select()
     .single();
-  if (batchError || !batchData) return { batch: null, leads: [], error: batchError?.message ?? "Could not create import batch." };
+  let batch = batchData as LandLeadBatch | null;
+  let warning: string | null = null;
+  if ((batchError || !batchData) && isSchemaMismatch(batchError)) {
+    const legacy = await supabase
+      .from("meridian_land_lead_import_batches")
+      .insert(batchSeed)
+      .select()
+      .single();
+    if (legacy.error || !legacy.data) return { batch: null, leads: [], error: legacy.error?.message ?? batchError?.message ?? "Could not create import batch." };
+    batch = legacy.data as LandLeadBatch;
+    warning = "Imported with the existing database schema. Run migration 028 to enable scoring, duplicate flags, batch status, and activity logging.";
+  } else if (batchError || !batchData) {
+    return { batch: null, leads: [], error: batchError?.message ?? "Could not create import batch." };
+  }
+  if (!batch) return { batch: null, leads: [], error: "Could not create import batch." };
 
-  const batch = batchData as LandLeadBatch;
   const existing = await fetchImportedLandLeads(5000);
   const inserts = applyDuplicateMetadata(rows.map(row => normalizeLead(row, batch.source_system, batch.campaign_source, args.actor, batch.id)), existing);
   const { data, error } = await supabase
     .from("meridian_imported_land_leads")
     .insert(inserts)
     .select();
+  if ((error || !data) && isSchemaMismatch(error)) {
+    const legacy = await supabase
+      .from("meridian_imported_land_leads")
+      .insert(inserts.map(legacyLeadInsert))
+      .select();
+    if (legacy.error || !legacy.data) return { batch, leads: [], error: legacy.error?.message ?? error?.message ?? "Could not import lead rows." };
+    return {
+      batch,
+      leads: legacy.data as ImportedLandLead[],
+      error: null,
+      warning: warning ?? "Imported with the existing database schema. Run migration 028 to enable scoring, duplicate flags, batch status, and activity logging.",
+    };
+  }
   if (error || !data) return { batch, leads: [], error: error?.message ?? "Could not import lead rows." };
-  return { batch, leads: data as ImportedLandLead[], error: null };
+  return { batch, leads: data as ImportedLandLead[], error: null, warning };
 }
 
 export async function fetchLandLeadBatches(limit = 30): Promise<LandLeadBatch[]> {
