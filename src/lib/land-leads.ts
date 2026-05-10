@@ -361,6 +361,26 @@ function legacyLeadInsert(lead: Omit<ImportedLandLead, "id" | "created_at" | "up
   };
 }
 
+async function insertLeadRowsInChunks(
+  leads: Array<Omit<ImportedLandLead, "id" | "created_at" | "updated_at">>,
+  useLegacyShape = false,
+): Promise<{ data: ImportedLandLead[]; error: { message?: string; code?: string } | null }> {
+  if (!supabase) return { data: [], error: null };
+  const inserted: ImportedLandLead[] = [];
+  const chunkSize = 100;
+  for (let index = 0; index < leads.length; index += chunkSize) {
+    const chunk = leads.slice(index, index + chunkSize);
+    const payload = useLegacyShape ? chunk.map(legacyLeadInsert) : chunk;
+    const { data, error } = await supabase
+      .from("meridian_imported_land_leads")
+      .insert(payload)
+      .select();
+    if (error || !data) return { data: inserted, error: error ?? { message: "Could not import lead rows." } };
+    inserted.push(...data as ImportedLandLead[]);
+  }
+  return { data: inserted, error: null };
+}
+
 export async function previewLandLeadsCsv(args: {
   csvText: string;
   filename: string;
@@ -456,25 +476,19 @@ export async function importLandLeadsFromCsv(args: {
 
   const existing = await fetchImportedLandLeads(5000);
   const inserts = applyDuplicateMetadata(rows.map(row => normalizeLead(row, batch.source_system, batch.campaign_source, args.actor, batch.id)), existing);
-  const { data, error } = await supabase
-    .from("meridian_imported_land_leads")
-    .insert(inserts)
-    .select();
-  if ((error || !data) && isSchemaMismatch(error)) {
-    const legacy = await supabase
-      .from("meridian_imported_land_leads")
-      .insert(inserts.map(legacyLeadInsert))
-      .select();
-    if (legacy.error || !legacy.data) return { batch, leads: [], error: legacy.error?.message ?? error?.message ?? "Could not import lead rows." };
+  const enhanced = await insertLeadRowsInChunks(inserts);
+  if (enhanced.error && isSchemaMismatch(enhanced.error)) {
+    const legacy = await insertLeadRowsInChunks(inserts, true);
+    if (legacy.error) return { batch, leads: [], error: legacy.error?.message ?? enhanced.error?.message ?? "Could not import lead rows." };
     return {
       batch,
-      leads: legacy.data as ImportedLandLead[],
+      leads: legacy.data,
       error: null,
       warning: warning ?? "Imported with the existing database schema. Run migration 028 to enable scoring, duplicate flags, batch status, and activity logging.",
     };
   }
-  if (error || !data) return { batch, leads: [], error: error?.message ?? "Could not import lead rows." };
-  return { batch, leads: data as ImportedLandLead[], error: null, warning };
+  if (enhanced.error) return { batch, leads: [], error: enhanced.error?.message ?? "Could not import lead rows." };
+  return { batch, leads: enhanced.data, error: null, warning };
 }
 
 export async function fetchLandLeadBatches(limit = 30): Promise<LandLeadBatch[]> {

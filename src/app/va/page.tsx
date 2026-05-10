@@ -614,6 +614,7 @@ export default function VaPage() {
   const confirmLeadImport = async () => {
     if (!importPreview) return;
     setImporting(true);
+    setMessage(`Importing ${importPreview.usableLeads} leads now. Large lists can take a minute; keep this tab open.`);
     const result = await importLandLeadsFromCsv({
       csvText: importPreview.csvText,
       filename: importPreview.filename,
