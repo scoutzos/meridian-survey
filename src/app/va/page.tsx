@@ -172,6 +172,26 @@ const LEAD_ACTIVITY_TYPES: Array<{ value: ImportedLandLeadActivity["activity_typ
   { value: "note", label: "Note" },
 ];
 
+type LeadDisposition = "no-answer" | "left-voicemail" | "texted" | "interested" | "wants-offer" | "follow-up" | "wrong-number" | "dnc" | "not-interested";
+
+const LEAD_DISPOSITIONS: Array<{
+  value: LeadDisposition;
+  label: string;
+  activityType: ImportedLandLeadActivity["activity_type"];
+  nextStatus: ImportedLandLead["status"];
+  briefType: "outreach" | "reply" | "follow-up" | "closed";
+}> = [
+  { value: "no-answer", label: "No Answer", activityType: "called", nextStatus: "contacted", briefType: "outreach" },
+  { value: "left-voicemail", label: "Left Voicemail", activityType: "left-voicemail", nextStatus: "contacted", briefType: "outreach" },
+  { value: "texted", label: "Texted", activityType: "texted", nextStatus: "contacted", briefType: "outreach" },
+  { value: "interested", label: "Interested", activityType: "interested", nextStatus: "interested", briefType: "reply" },
+  { value: "wants-offer", label: "Wants Offer", activityType: "interested", nextStatus: "interested", briefType: "reply" },
+  { value: "follow-up", label: "Follow-Up Set", activityType: "follow-up-set", nextStatus: "contacted", briefType: "follow-up" },
+  { value: "wrong-number", label: "Wrong Number", activityType: "wrong-number", nextStatus: "passed", briefType: "closed" },
+  { value: "dnc", label: "DNC / Opt Out", activityType: "not-interested", nextStatus: "passed", briefType: "closed" },
+  { value: "not-interested", label: "Not Interested", activityType: "not-interested", nextStatus: "passed", briefType: "closed" },
+];
+
 const EMPTY_DRAFT: DealInput & { linksText: string } = {
   title: "",
   source: "VA intake",
@@ -452,6 +472,7 @@ export default function VaPage() {
   const [uploadSource, setUploadSource] = useState("Land Portal");
   const [uploadCampaign, setUploadCampaign] = useState("");
   const [activityDraft, setActivityDraft] = useState<{ activityType: ImportedLandLeadActivity["activity_type"]; summary: string; nextFollowUpDate: string }>({ activityType: "called", summary: "", nextFollowUpDate: "" });
+  const [dispositionDraft, setDispositionDraft] = useState<{ disposition: LeadDisposition; note: string; nextFollowUpDate: string }>({ disposition: "no-answer", note: "", nextFollowUpDate: "" });
   const [smsDraft, setSmsDraft] = useState("");
   const [bulkSmsDraft, setBulkSmsDraft] = useState("");
   const [bulkSmsSending, setBulkSmsSending] = useState(false);
@@ -573,6 +594,16 @@ export default function VaPage() {
   const bulkExcludedCount = filteredImportedLeads.length - bulkEligibleLeads.length;
   const batchLeads = useMemo(() => selectedBatchId ? importedLeads.filter(lead => lead.batch_id === selectedBatchId) : importedLeads, [importedLeads, selectedBatchId]);
   const nextBestLead = useMemo(() => filteredImportedLeads.find(lead => lead.status === "new" || lead.status === "contacted") ?? filteredImportedLeads[0] ?? null, [filteredImportedLeads]);
+  const priorityImportedLeads = useMemo(() => filteredImportedLeads
+    .filter(lead => lead.status === "new" || lead.status === "contacted")
+    .sort((a, b) => {
+      const aDue = a.next_follow_up_date && a.next_follow_up_date <= today ? 1000 : 0;
+      const bDue = b.next_follow_up_date && b.next_follow_up_date <= today ? 1000 : 0;
+      const aFresh = a.status === "new" ? 40 : 0;
+      const bFresh = b.status === "new" ? 40 : 0;
+      return ((b.lead_score ?? 0) + bDue + bFresh) - ((a.lead_score ?? 0) + aDue + aFresh);
+    })
+    .slice(0, 12), [filteredImportedLeads, today]);
   const importStats = useMemo(() => ({
     newRows: importedLeads.filter(lead => lead.status === "new").length,
     contacted: importedLeads.filter(lead => lead.status === "contacted").length,
@@ -633,6 +664,47 @@ export default function VaPage() {
   }, [selectedImportedLeadId]);
 
   if (!user) return null;
+
+  const leadLabel = (lead: ImportedLandLead) => lead.owner_name || lead.property_address || lead.parcel_id || "Selected lead";
+
+  const addToDailyBrief = (line: string, patch: Partial<VaDailyBriefInput> = {}) => {
+    setBriefDraft(prev => ({
+      ...prev,
+      ...patch,
+      activities_completed: patch.activities_completed ?? appendBriefText(prev.activities_completed, line),
+    }));
+  };
+
+  const applyLeadDisposition = async () => {
+    if (!selectedImportedLead) { setMessage("Select an imported lead first."); return; }
+    const config = LEAD_DISPOSITIONS.find(item => item.value === dispositionDraft.disposition);
+    if (!config) return;
+    const summary = dispositionDraft.note.trim() || config.label;
+    const { error } = await createImportedLandLeadActivity({
+      leadId: selectedImportedLead.id,
+      actor: user,
+      activityType: config.activityType,
+      summary,
+      nextFollowUpDate: dispositionDraft.nextFollowUpDate || null,
+    });
+    if (error) { setMessage(error); return; }
+    await updateImportedLandLeadStatus(selectedImportedLead.id, config.nextStatus, selectedImportedLead.deal_id);
+    const [leadRows, activityRows] = await Promise.all([
+      fetchImportedLandLeads(500),
+      fetchImportedLandLeadActivities(selectedImportedLead.id),
+    ]);
+    setImportedLeads(leadRows);
+    setLeadActivities(activityRows);
+    setDispositionDraft({ disposition: "no-answer", note: "", nextFollowUpDate: "" });
+    const line = `${config.label}: ${leadLabel(selectedImportedLead)}${summary && summary !== config.label ? ` — ${summary}` : ""}`;
+    addToDailyBrief(line, {
+      outreach_sent: config.briefType === "outreach" ? (briefDraft.outreach_sent ?? 0) + 1 : briefDraft.outreach_sent,
+      seller_replies: config.briefType === "reply" ? (briefDraft.seller_replies ?? 0) + 1 : briefDraft.seller_replies,
+      leads_updated: (briefDraft.leads_updated ?? 0) + 1,
+      follow_ups_needed: config.briefType === "follow-up" ? appendBriefText(briefDraft.follow_ups_needed, `${leadLabel(selectedImportedLead)} follow-up set for ${dispositionDraft.nextFollowUpDate || "next available date"}.`) : briefDraft.follow_ups_needed,
+    });
+    setMessage(`${config.label} saved for ${leadLabel(selectedImportedLead)}.`);
+  };
 
   const startNew = () => {
     setSelectedId(null);
@@ -697,6 +769,9 @@ export default function VaPage() {
         activityType: "converted",
         summary: `Converted to deal packet: ${result.data.title}`,
       });
+      addToDailyBrief(`Converted lead to deal packet: ${leadLabel(matchingLead)} → ${result.data.title}`, {
+        leads_updated: (briefDraft.leads_updated ?? 0) + 1,
+      });
       setImportedLeads(await fetchImportedLandLeads());
     }
     if (draftCommunicationEventId) {
@@ -720,6 +795,9 @@ export default function VaPage() {
         });
         if (errors.length) setMessage(`Deal submitted, but review notifications had an issue: ${errors[0]}`);
         else setMessage(result.data.review_intent === "ready-for-vote" ? "Deal submitted for member vote." : "Deal submitted for member review.");
+        addToDailyBrief(`Submitted deal for member review: ${result.data.title}`, {
+          deals_submitted: (briefDraft.deals_submitted ?? 0) + 1,
+        });
       } else {
         setMessage("Deal packet updated. Members were not notified again.");
       }
@@ -839,6 +917,10 @@ export default function VaPage() {
     if (markInterested && lead.status !== "interested") {
       await updateImportedLandLeadStatus(lead.id, "interested", lead.deal_id);
       setImportedLeads(await fetchImportedLandLeads());
+      addToDailyBrief(`Marked interested and loaded deal brief: ${leadLabel(lead)}`, {
+        leads_updated: (briefDraft.leads_updated ?? 0) + 1,
+        seller_replies: (briefDraft.seller_replies ?? 0) + 1,
+      });
     }
   };
 
@@ -882,6 +964,10 @@ export default function VaPage() {
       }
       setSmsDraft("");
       await refreshSelectedLeadMessages(selectedImportedLead.id);
+      addToDailyBrief(`SMS sent to ${leadLabel(selectedImportedLead)}: ${body}`, {
+        outreach_sent: (briefDraft.outreach_sent ?? 0) + 1,
+        leads_updated: (briefDraft.leads_updated ?? 0) + 1,
+      });
       setMessage("SMS sent through Sakari.");
     } catch (error) {
       setMessage(`SMS failed: ${error instanceof Error ? error.message : "Unknown error"}`);
@@ -986,6 +1072,13 @@ export default function VaPage() {
     const [leadRows, activityRows] = await Promise.all([fetchImportedLandLeads(500), fetchImportedLandLeadActivities(selectedImportedLead.id)]);
     setImportedLeads(leadRows);
     setLeadActivities(activityRows);
+    addToDailyBrief(`${statusLabel(activityDraft.activityType)}: ${leadLabel(selectedImportedLead)} — ${summary}`, {
+      outreach_sent: ["called", "texted", "emailed", "left-voicemail"].includes(activityDraft.activityType) ? (briefDraft.outreach_sent ?? 0) + 1 : briefDraft.outreach_sent,
+      seller_replies: activityDraft.activityType === "interested" ? (briefDraft.seller_replies ?? 0) + 1 : briefDraft.seller_replies,
+      leads_updated: (briefDraft.leads_updated ?? 0) + 1,
+      calls_completed: ["called", "left-voicemail"].includes(activityDraft.activityType) ? (briefDraft.calls_completed ?? 0) + 1 : briefDraft.calls_completed,
+      follow_ups_needed: activityDraft.activityType === "follow-up-set" ? appendBriefText(briefDraft.follow_ups_needed, `${leadLabel(selectedImportedLead)} follow-up set for ${activityDraft.nextFollowUpDate || "next available date"}.`) : briefDraft.follow_ups_needed,
+    });
     setActivityDraft({ activityType: "called", summary: "", nextFollowUpDate: "" });
     setMessage("Lead activity logged.");
   };
@@ -1330,7 +1423,7 @@ export default function VaPage() {
                       onAction={() => setSelectedImportedLeadId(lead.id)}
                     />
                   ))}
-                  {filteredImportedLeads.slice(0, 8).map(lead => (
+                  {priorityImportedLeads.map(lead => (
                     <WorkQueueCard
                       key={`lead-${lead.id}`}
                       eyebrow={statusLabel(lead.status)}
@@ -1340,7 +1433,7 @@ export default function VaPage() {
                       onAction={() => setSelectedImportedLeadId(lead.id)}
                     />
                   ))}
-                  {!unmatchedSms.length && !followUpsDue.length && !interestedLeads.length && !filteredImportedLeads.length && (
+                  {!unmatchedSms.length && !followUpsDue.length && !interestedLeads.length && !priorityImportedLeads.length && (
                     <p style={{ color: "var(--muted)", fontSize: 13, lineHeight: 1.5 }}>No VA queue items yet. Import a list or create a lead to start the day.</p>
                   )}
                 </div>
@@ -1387,8 +1480,17 @@ export default function VaPage() {
                     <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                       <button onClick={() => router.push(`/opportunity?lead=${selectedImportedLead.id}`)} style={secondaryButton}>Open file</button>
                       <button onClick={() => loadImportedLead(selectedImportedLead, true)} style={primaryButton}>Convert to deal brief</button>
-                      <button onClick={async () => { await updateImportedLandLeadStatus(selectedImportedLead.id, "interested", selectedImportedLead.deal_id); setImportedLeads(await fetchImportedLandLeads(500)); }} style={secondaryButton}>Mark interested</button>
-                      <button onClick={async () => { await updateImportedLandLeadStatus(selectedImportedLead.id, "passed", selectedImportedLead.deal_id); setImportedLeads(await fetchImportedLandLeads(500)); }} style={secondaryButton}>Pass</button>
+                    </div>
+                    <div style={{ ...subPanel, background: "var(--surface)" }}>
+                      <p style={eyebrowSmall}>Disposition</p>
+                      <div style={{ display: "grid", gridTemplateColumns: "170px 1fr 140px", gap: 8 }} className="three-col">
+                        <select value={dispositionDraft.disposition} onChange={e => setDispositionDraft({ ...dispositionDraft, disposition: e.target.value as LeadDisposition })}>
+                          {LEAD_DISPOSITIONS.map(item => <option key={item.value} value={item.value}>{item.label}</option>)}
+                        </select>
+                        <input value={dispositionDraft.note} onChange={e => setDispositionDraft({ ...dispositionDraft, note: e.target.value })} placeholder="Short result note" />
+                        <input value={dispositionDraft.nextFollowUpDate} onChange={e => setDispositionDraft({ ...dispositionDraft, nextFollowUpDate: e.target.value })} type="date" />
+                      </div>
+                      <button onClick={applyLeadDisposition} style={{ ...primaryButton, marginTop: 8 }}>Save Disposition</button>
                     </div>
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }} className="two-col">
                       <div>
