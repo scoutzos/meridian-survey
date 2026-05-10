@@ -601,6 +601,25 @@ export default function DealsPage() {
         : `${Math.max(0, quorumNeeded - votes.length)} more response${quorumNeeded - votes.length === 1 ? "" : "s"} for quorum`;
   const blockedDiligence = checklist.filter(item => item.status === "blocked").length;
   const agreementReady = agreement?.status === "approved" || agreement?.status === "signed";
+  const sellerTouchCount = communicationEvents.length + activity.filter(item =>
+    ["created", "updated", "submitted-review", "status-change"].includes(item.activity_type) === false
+  ).length;
+  const vaHandoffVisible = !!selected && (
+    !!selected.submitted_by
+    || !!selected.submission_summary
+    || !!selected.requested_next_step
+    || !!selected.review_intent
+    || selected.status === "under-review"
+  );
+  const vaHandoffSource = selected
+    ? [selected.source, selected.campaign_source].filter(Boolean).join(" · ") || "Source pending"
+    : "Source pending";
+  const vaDecisionAsk = selected?.requested_next_step
+    || (selected?.review_intent === "ready-for-vote"
+      ? "Vote on whether Meridian should move forward."
+      : selected?.review_intent === "blocked-decision"
+        ? "Resolve the blocker before the VA keeps working this lead."
+        : "Review the packet and request missing information or a next action.");
   const conversionBlockReason = () => {
     if (!selected) return "Select a deal before converting it to a project.";
     if (approvalVotes < quorumNeeded) return `This deal needs ${quorumNeeded} Make Offer or Counter votes before it can become a project.`;
@@ -846,6 +865,38 @@ export default function DealsPage() {
                   </div>
                 </div>
                 <p style={{ ...comingSoonPill, marginBottom: 12 }}>Branded PDF export coming soon</p>
+
+                {vaHandoffVisible && (
+                  <div style={handoffPanel}>
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "flex-start", marginBottom: 12 }}>
+                      <div>
+                        <p style={{ ...eyebrowSmall, color: "var(--brass)" }}>VA handoff</p>
+                        <h3 style={{ fontFamily: DISPLAY_FONT, color: "var(--bone)", fontSize: 26, fontWeight: 500, marginTop: 5 }}>
+                          {selected.submitted_by || selected.created_by || "VA"} submitted this packet for member action
+                        </h3>
+                      </div>
+                      <span style={handoffPill}>
+                        {selected.review_intent ? statusLabel(selected.review_intent) : statusLabel(selected.status)}
+                      </span>
+                    </div>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }} className="number-grid">
+                      <HandoffMetric label="Source" value={vaHandoffSource} />
+                      <HandoffMetric label="Seller touches" value={sellerTouchCount ? String(sellerTouchCount) : "None attached"} />
+                      <HandoffMetric label="Round" value={selected.review_round ? `Round ${selected.review_round}` : "First review"} />
+                      <HandoffMetric label="Submitted" value={selected.last_submitted_at ? formatDate(selected.last_submitted_at) : "Not timestamped"} />
+                    </div>
+                    <div style={{ display: "grid", gridTemplateColumns: "1.15fr 0.85fr", gap: 12, marginTop: 12 }} className="two-col">
+                      <div>
+                        <p style={handoffLabel}>Member decision needed</p>
+                        <p style={handoffText}>{vaDecisionAsk}</p>
+                      </div>
+                      <div>
+                        <p style={handoffLabel}>Open questions</p>
+                        <p style={handoffText}>{selected.submit_uncertainties || selected.analysis.missingInfo.slice(0, 3).join(", ") || "No open questions documented."}</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 <AnalysisCard analysis={selected.analysis} compact={false} />
 
@@ -1288,6 +1339,15 @@ function Stat({ label: labelText, value }: { label: string; value: string }) {
   );
 }
 
+function HandoffMetric({ label: labelText, value }: { label: string; value: string }) {
+  return (
+    <div style={handoffMetric}>
+      <p style={handoffLabel}>{labelText}</p>
+      <p style={{ color: "var(--bone)", fontSize: 13, fontWeight: 700, lineHeight: 1.35 }}>{value}</p>
+    </div>
+  );
+}
+
 const eyebrow: React.CSSProperties = {
   fontSize: 11,
   letterSpacing: 2,
@@ -1431,4 +1491,51 @@ const preStyle: React.CSSProperties = {
   whiteSpace: "pre-wrap",
   lineHeight: 1.55,
   margin: 0,
+};
+
+const handoffPanel: React.CSSProperties = {
+  background: "linear-gradient(180deg, #1b1712 0%, #2c241a 100%)",
+  border: "1px solid rgba(201,168,120,0.36)",
+  borderRadius: 12,
+  padding: 16,
+  marginBottom: 14,
+  boxShadow: "0 18px 34px rgba(20,17,13,0.16)",
+};
+
+const handoffMetric: React.CSSProperties = {
+  border: "1px solid rgba(237,230,214,0.16)",
+  borderRadius: 8,
+  padding: 10,
+  background: "rgba(237,230,214,0.06)",
+};
+
+const handoffLabel: React.CSSProperties = {
+  color: "rgba(237,230,214,0.58)",
+  fontSize: 10,
+  fontWeight: 700,
+  letterSpacing: "0.12em",
+  textTransform: "uppercase",
+  marginBottom: 5,
+};
+
+const handoffText: React.CSSProperties = {
+  color: "rgba(237,230,214,0.82)",
+  fontSize: 13,
+  lineHeight: 1.55,
+  whiteSpace: "pre-wrap",
+};
+
+const handoffPill: React.CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  border: "1px solid rgba(201,168,120,0.52)",
+  borderRadius: 999,
+  color: "var(--brass)",
+  background: "rgba(201,168,120,0.1)",
+  padding: "5px 9px",
+  fontSize: 10,
+  fontWeight: 800,
+  letterSpacing: "0.08em",
+  textTransform: "uppercase",
+  whiteSpace: "nowrap",
 };
