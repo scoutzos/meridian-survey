@@ -17,6 +17,7 @@ export default function NavBar() {
 
   const memberLinks = [
     { href: "/dashboard",  label: "Home" },
+    { href: "/crm",        label: "CRM" },
     { href: "/tracker",    label: "Money" },
     { href: "/deals",      label: "Deals" },
     { href: "/projects",   label: "Projects" },
@@ -32,6 +33,7 @@ export default function NavBar() {
   ];
   const vaLinks = [
     { href: "/va", label: "VA Desk" },
+    { href: "/crm", label: "CRM" },
   ];
   const links = isVaUser(user) ? vaLinks : memberLinks;
 

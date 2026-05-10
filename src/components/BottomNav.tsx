@@ -5,9 +5,9 @@ import { isVaUser } from "@/lib/identity";
 
 const PRIMARY = [
   { href: "/dashboard",  label: "Home" },
+  { href: "/crm",        label: "CRM" },
   { href: "/tracker",    label: "Money" },
   { href: "/deals",      label: "Deals" },
-  { href: "/projects",   label: "Projects" },
 ];
 
 const MORE = [
@@ -52,6 +52,12 @@ export default function BottomNav() {
           className={`bottom-nav-tab${isActive("/va") ? " bottom-nav-active" : ""}`}
         >
           VA Desk
+        </button>
+        <button
+          onClick={() => router.push("/crm")}
+          className={`bottom-nav-tab${isActive("/crm") ? " bottom-nav-active" : ""}`}
+        >
+          CRM
         </button>
       </nav>
     );
