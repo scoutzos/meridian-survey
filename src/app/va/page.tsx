@@ -32,7 +32,6 @@ import {
   fetchImportedLandLeadActivities,
   fetchLandLeadBatches,
   fetchImportedLandLeads,
-  importLandLeadsFromCsv,
   leadToDealDraft,
   previewLandLeadsCsv,
   updateLandLeadBatch,
@@ -616,20 +615,25 @@ export default function VaPage() {
     setImporting(true);
     setMessage(`Importing ${importPreview.usableLeads} leads now. Large lists can take a minute; keep this tab open.`);
     try {
-      const result = await importLandLeadsFromCsv({
-        csvText: importPreview.csvText,
-        filename: importPreview.filename,
-        sourceSystem: uploadSource,
-        campaignSource: uploadCampaign,
-        actor: user,
+      const response = await fetch("/api/import-land-leads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          csvText: importPreview.csvText,
+          filename: importPreview.filename,
+          sourceSystem: uploadSource,
+          campaignSource: uploadCampaign,
+          actor: user,
+        }),
       });
-      if (result.error) { setMessage(`Import failed: ${result.error}`); return; }
+      const result = await response.json() as { importedCount?: number; warning?: string | null; error?: string };
+      if (!response.ok || result.error) { setMessage(`Import failed: ${result.error || response.statusText}`); return; }
       const [leadRows, batchRows] = await Promise.all([fetchImportedLandLeads(500), fetchLandLeadBatches()]);
       setImportedLeads(leadRows);
       setLeadBatches(batchRows);
       setImportPreview(null);
       setMessage([
-        `Imported ${result.leads.length} lead${result.leads.length === 1 ? "" : "s"} from ${importPreview.filename}.`,
+        `Imported ${result.importedCount ?? importPreview.usableLeads} lead${(result.importedCount ?? importPreview.usableLeads) === 1 ? "" : "s"} from ${importPreview.filename}.`,
         result.warning || "",
       ].filter(Boolean).join(" "));
       setActiveTab("imports");
