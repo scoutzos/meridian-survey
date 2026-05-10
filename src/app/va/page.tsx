@@ -220,6 +220,12 @@ function addDays(days: number): string {
   return d.toISOString().slice(0, 10);
 }
 
+function appendBriefText(existing: string | null | undefined, addition: string): string {
+  const current = (existing ?? "").trim();
+  if (!addition.trim()) return current;
+  return current ? `${current}\n\n${addition.trim()}` : addition.trim();
+}
+
 function formatDate(iso: string): string {
   try {
     return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
@@ -832,6 +838,44 @@ export default function VaPage() {
       deals_submitted: ownDeals.filter(deal => deal.status === "under-review" && sameDay(deal.updated_at)).length,
       checklist_items_cleared: checklist.filter(item => sameDay(item.updated_at) && (item.status === "cleared" || item.status === "not-applicable") && item.updated_by === user).length,
     }));
+  };
+
+  const pullSakariBrief = async () => {
+    const date = briefDraft.work_date;
+    const sameDay = (iso?: string | null) => !!iso && iso.slice(0, 10) === date;
+    const rows = await fetchCommunicationEvents({ limit: 200 });
+    const todayEvents = rows.filter(event => sameDay(event.provider_created_at || event.created_at));
+    const outbound = todayEvents.filter(event => event.direction === "outbound");
+    const inbound = todayEvents.filter(event => event.direction === "inbound");
+    const unmatchedInbound = inbound.filter(event => !event.matched_lead_id && !event.matched_deal_id);
+    const hotReplies = inbound.filter(event => {
+      const body = (event.body || "").toLowerCase();
+      return event.matched_lead_id || event.matched_deal_id || ["offer", "price", "interested", "call", "yes", "sell"].some(term => body.includes(term));
+    }).slice(0, 6);
+    const lineFor = (event: CommunicationEvent) => {
+      const who = event.contact_name || event.contact_number || event.from_number || event.to_number || "Unknown seller";
+      const body = event.body ? `: ${event.body}` : "";
+      return `- ${who}${body}`;
+    };
+    const activityLines = [
+      `Sakari SMS: ${outbound.length} sent, ${inbound.length} seller replies received.`,
+      hotReplies.length ? `Priority replies:\n${hotReplies.map(lineFor).join("\n")}` : "",
+    ].filter(Boolean).join("\n");
+    const followUpLines = [
+      unmatchedInbound.length ? `Unmatched inbound SMS needing match/review:\n${unmatchedInbound.slice(0, 8).map(lineFor).join("\n")}` : "",
+    ].filter(Boolean).join("\n");
+    setBriefDraft(prev => ({
+      ...prev,
+      outreach_sent: Math.max(prev.outreach_sent ?? 0, outbound.length),
+      seller_replies: Math.max(prev.seller_replies ?? 0, inbound.length),
+      leads_updated: Math.max(prev.leads_updated ?? 0, importedLeads.filter(lead => sameDay(lead.last_sms_at)).length),
+      activities_completed: appendBriefText(prev.activities_completed, activityLines || "Sakari SMS: no messages for this work date."),
+      follow_ups_needed: appendBriefText(prev.follow_ups_needed, followUpLines),
+      blockers: unmatchedInbound.length
+        ? appendBriefText(prev.blockers, `${unmatchedInbound.length} inbound SMS ${unmatchedInbound.length === 1 ? "is" : "are"} unmatched and need lead/deal assignment.`)
+        : prev.blockers,
+    }));
+    setMessage(todayEvents.length ? `Pulled ${todayEvents.length} Sakari event${todayEvents.length === 1 ? "" : "s"} into the daily brief.` : "No Sakari messages found for that work date.");
   };
 
   const submitDailyBrief = async () => {
@@ -1699,9 +1743,14 @@ export default function VaPage() {
               <NumberField label="Deals submitted" value={briefDraft.deals_submitted} onChange={v => setBriefDraft({ ...briefDraft, deals_submitted: v })} />
               <NumberField label="Checklist cleared" value={briefDraft.checklist_items_cleared} onChange={v => setBriefDraft({ ...briefDraft, checklist_items_cleared: v })} />
             </div>
-            <button onClick={autofillBriefStats} style={{ ...secondaryButton, marginTop: 10 }}>
-              Auto-fill Portal Stats
-            </button>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
+              <button onClick={autofillBriefStats} style={secondaryButton}>
+                Auto-fill Portal Stats
+              </button>
+              <button onClick={pullSakariBrief} style={secondaryButton}>
+                Pull Sakari Activity
+              </button>
+            </div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 12 }} className="two-col">
               <div>
                 <label style={label}>Activities completed</label>
