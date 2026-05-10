@@ -3,6 +3,7 @@ import { supabase } from "./supabase";
 export type DealPropertyType = "land" | "house" | "rental" | "commercial" | "other";
 export type DealStatus = "lead" | "under-review" | "offer-made" | "under-contract" | "due-diligence" | "closed" | "active-project" | "stabilized" | "sold" | "passed";
 export type DealUrgency = "routine" | "time-sensitive" | "hot";
+export type DealReviewIntent = "needs-info-review" | "ready-for-vote" | "blocked-decision";
 export type ChecklistStatus = "open" | "in-review" | "cleared" | "blocked" | "not-applicable";
 export type DealVoteOption = "pass" | "needs-more-info" | "schedule-call" | "make-offer" | "counter" | "urgent-review";
 export type DealAgreementStatus = "draft" | "ready-for-review" | "approved" | "signed" | "superseded";
@@ -32,6 +33,14 @@ export interface DealInput {
   next_follow_up_date?: string | null;
   lead_temperature?: "cold" | "warm" | "hot" | "dead" | null;
   campaign_source?: string | null;
+  review_intent?: DealReviewIntent | null;
+  submission_summary?: string | null;
+  requested_next_step?: string | null;
+  submit_uncertainties?: string | null;
+  first_submitted_at?: string | null;
+  last_submitted_at?: string | null;
+  review_round?: number;
+  last_review_notification_at?: string | null;
 }
 
 export interface Deal extends DealInput {
@@ -310,6 +319,14 @@ function cleanDealInput(input: DealInput): DealInput {
     next_follow_up_date: input.next_follow_up_date || null,
     lead_temperature: input.lead_temperature || null,
     campaign_source: input.campaign_source?.trim() || null,
+    review_intent: input.review_intent || null,
+    submission_summary: input.submission_summary?.trim() || null,
+    requested_next_step: input.requested_next_step?.trim() || null,
+    submit_uncertainties: input.submit_uncertainties?.trim() || null,
+    first_submitted_at: input.first_submitted_at || null,
+    last_submitted_at: input.last_submitted_at || null,
+    review_round: input.review_round ?? 0,
+    last_review_notification_at: input.last_review_notification_at || null,
   };
 }
 
@@ -319,7 +336,8 @@ function diffDeal(before: Deal | null, after: DealInput): Record<string, { befor
     "title", "source", "property_type", "strategy", "status", "urgency", "address", "parcel_id",
     "seller_name", "seller_phone", "asking_price", "arv", "repair_estimate", "acreage", "zoning",
     "road_frontage", "utilities", "notes", "submitted_by", "assigned_to", "next_follow_up_date",
-    "lead_temperature", "campaign_source",
+    "lead_temperature", "campaign_source", "review_intent", "submission_summary", "requested_next_step",
+    "submit_uncertainties", "first_submitted_at", "last_submitted_at", "review_round", "last_review_notification_at",
   ];
   return keys.reduce<Record<string, { before: unknown; after: unknown }>>((acc, key) => {
     const left = before[key] ?? null;

@@ -110,6 +110,14 @@ const EMPTY_DRAFT: DealInput & { linksText: string } = {
   next_follow_up_date: "",
   lead_temperature: "warm",
   campaign_source: "",
+  review_intent: null,
+  submission_summary: "",
+  requested_next_step: "",
+  submit_uncertainties: "",
+  first_submitted_at: null,
+  last_submitted_at: null,
+  review_round: 0,
+  last_review_notification_at: null,
   linksText: "",
 };
 
@@ -185,6 +193,14 @@ function draftFromDeal(deal: Deal): DealInput & { linksText: string } {
     next_follow_up_date: deal.next_follow_up_date ?? "",
     lead_temperature: deal.lead_temperature ?? "warm",
     campaign_source: deal.campaign_source ?? "",
+    review_intent: deal.review_intent ?? null,
+    submission_summary: deal.submission_summary ?? "",
+    requested_next_step: deal.requested_next_step ?? "",
+    submit_uncertainties: deal.submit_uncertainties ?? "",
+    first_submitted_at: deal.first_submitted_at ?? null,
+    last_submitted_at: deal.last_submitted_at ?? null,
+    review_round: deal.review_round ?? 0,
+    last_review_notification_at: deal.last_review_notification_at ?? null,
     linksText: deal.links.join("\n"),
   };
 }
@@ -301,6 +317,14 @@ export default function DealsPage() {
       next_follow_up_date: draft.next_follow_up_date || null,
       lead_temperature: draft.lead_temperature || null,
       campaign_source: draft.campaign_source?.trim() || null,
+      review_intent: draft.review_intent || null,
+      submission_summary: draft.submission_summary?.trim() || null,
+      requested_next_step: draft.requested_next_step?.trim() || null,
+      submit_uncertainties: draft.submit_uncertainties?.trim() || null,
+      first_submitted_at: draft.first_submitted_at || null,
+      last_submitted_at: draft.last_submitted_at || null,
+      review_round: draft.review_round ?? 0,
+      last_review_notification_at: draft.last_review_notification_at || null,
     };
     const { data, error } = editingDealId
       ? await updateDeal(editingDealId, payload, user)
@@ -757,6 +781,44 @@ export default function DealsPage() {
                   <Stat label="Follow-up" value={selected.next_follow_up_date || "Not set"} />
                 </div>
 
+                {(selected.submission_summary || selected.requested_next_step || selected.review_intent || selected.submit_uncertainties) && (
+                  <div style={{ ...subPanel, marginTop: 14 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
+                      <div>
+                        <p style={eyebrowSmall}>VA packet</p>
+                        <h3 style={{ fontFamily: DISPLAY_FONT, color: "var(--obsidian)", fontSize: 24, fontWeight: 500 }}>
+                          {selected.review_intent ? statusLabel(selected.review_intent) : "Member Review"}
+                        </h3>
+                      </div>
+                      <span style={pill}>
+                        Round {selected.review_round ?? 0}{selected.last_submitted_at ? ` · ${formatDate(selected.last_submitted_at)}` : ""}
+                      </span>
+                    </div>
+                    <div style={{ display: "grid", gridTemplateColumns: "1.2fr 0.8fr", gap: 12 }} className="two-col">
+                      <div>
+                        <p style={miniLabel}>VA summary</p>
+                        <p style={{ fontSize: 13, color: "var(--ink)", lineHeight: 1.55, whiteSpace: "pre-wrap" }}>
+                          {selected.submission_summary || "No VA summary submitted."}
+                        </p>
+                      </div>
+                      <div>
+                        <p style={miniLabel}>Requested next step</p>
+                        <p style={{ fontSize: 13, color: "var(--ink)", lineHeight: 1.55, whiteSpace: "pre-wrap" }}>
+                          {selected.requested_next_step || "No requested next step."}
+                        </p>
+                      </div>
+                    </div>
+                    {selected.submit_uncertainties && (
+                      <div style={{ marginTop: 12 }}>
+                        <p style={miniLabel}>Missing or uncertain</p>
+                        <p style={{ fontSize: 13, color: "var(--ink)", lineHeight: 1.55, whiteSpace: "pre-wrap" }}>
+                          {selected.submit_uncertainties}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 {(selected.notes || selected.links.length > 0) && (
                   <div style={{ marginTop: 14, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }} className="two-col">
                     {selected.notes && (
@@ -1079,6 +1141,15 @@ const label: React.CSSProperties = {
   textTransform: "uppercase",
   color: "var(--brass)",
   marginBottom: 6,
+};
+
+const miniLabel: React.CSSProperties = {
+  color: "var(--muted)",
+  fontSize: 10,
+  fontWeight: 700,
+  letterSpacing: "0.12em",
+  textTransform: "uppercase",
+  marginBottom: 5,
 };
 
 const panel: React.CSSProperties = {

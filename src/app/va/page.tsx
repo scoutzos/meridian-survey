@@ -6,6 +6,7 @@ import { MEMBERS } from "@/data/questions";
 import {
   calculateDealAnalysis,
   createDeal,
+  createDealActivity,
   createDealAttachment,
   fetchDealAttachments,
   fetchDealChecklist,
@@ -19,6 +20,7 @@ import {
   type DealAttachmentType,
   type DealInput,
   type DealPropertyType,
+  type DealReviewIntent,
   type DealStatus,
   type DealUrgency,
   type DealDueDiligenceItem,
@@ -82,6 +84,12 @@ const ATTACHMENT_TYPES: Array<{ value: DealAttachmentType; label: string }> = [
   { value: "other", label: "Other" },
 ];
 
+const REVIEW_INTENTS: Array<{ value: DealReviewIntent; label: string; description: string }> = [
+  { value: "needs-info-review", label: "Needs Info Review", description: "Ask members what else they need before this becomes a vote." },
+  { value: "ready-for-vote", label: "Ready For Vote", description: "Send a review task and ask members to vote." },
+  { value: "blocked-decision", label: "Blocked / Needs Decision", description: "Escalate a blocker or decision before more work continues." },
+];
+
 type VaTab = "leads" | "follow-ups" | "diligence" | "brief";
 
 const TABS: Array<{ value: VaTab; label: string }> = [
@@ -115,6 +123,14 @@ const EMPTY_DRAFT: DealInput & { linksText: string } = {
   next_follow_up_date: "",
   lead_temperature: "warm",
   campaign_source: "",
+  review_intent: "needs-info-review",
+  submission_summary: "",
+  requested_next_step: "",
+  submit_uncertainties: "",
+  first_submitted_at: null,
+  last_submitted_at: null,
+  review_round: 0,
+  last_review_notification_at: null,
   linksText: "",
 };
 
@@ -198,6 +214,14 @@ function draftFromDeal(deal: Deal): DealInput & { linksText: string } {
     next_follow_up_date: deal.next_follow_up_date ?? "",
     lead_temperature: deal.lead_temperature ?? "warm",
     campaign_source: deal.campaign_source ?? "",
+    review_intent: deal.review_intent ?? "needs-info-review",
+    submission_summary: deal.submission_summary ?? "",
+    requested_next_step: deal.requested_next_step ?? "",
+    submit_uncertainties: deal.submit_uncertainties ?? "",
+    first_submitted_at: deal.first_submitted_at ?? null,
+    last_submitted_at: deal.last_submitted_at ?? null,
+    review_round: deal.review_round ?? 0,
+    last_review_notification_at: deal.last_review_notification_at ?? null,
     linksText: deal.links.join("\n"),
   };
 }
@@ -227,30 +251,43 @@ function buildPayload(draft: DealInput & { linksText: string }, status: DealStat
     next_follow_up_date: draft.next_follow_up_date || null,
     lead_temperature: draft.lead_temperature || null,
     campaign_source: draft.campaign_source?.trim() || null,
+    review_intent: draft.review_intent || null,
+    submission_summary: draft.submission_summary?.trim() || null,
+    requested_next_step: draft.requested_next_step?.trim() || null,
+    submit_uncertainties: draft.submit_uncertainties?.trim() || null,
+    first_submitted_at: draft.first_submitted_at || null,
+    last_submitted_at: draft.last_submitted_at || null,
+    review_round: draft.review_round ?? 0,
+    last_review_notification_at: draft.last_review_notification_at || null,
     links: draft.linksText.split(/\r?\n/).map(l => l.trim()).filter(Boolean),
   };
 }
 
-async function notifyMembersForReview(deal: Deal, actor: string): Promise<string[]> {
-  const message = `${deal.analysis?.recommendation ?? "Needs Review"} - ${deal.address || deal.parcel_id || "Location pending"}`;
-  const results = await Promise.all(MEMBERS.flatMap(member => [
+async function notifyMembersForReview(deal: Deal, actor: string, shouldCreateVoteTasks: boolean): Promise<string[]> {
+  const message = [
+    deal.submission_summary || deal.analysis?.recommendation || "Needs Review",
+    deal.requested_next_step ? `Next: ${deal.requested_next_step}` : "",
+    deal.submit_uncertainties ? `Uncertain: ${deal.submit_uncertainties}` : "",
+  ].filter(Boolean).join(" · ");
+  const notifications = MEMBERS.map(member =>
     createNotification({
-      title: `Deal needs your vote: ${deal.title}`,
+      title: shouldCreateVoteTasks ? `Deal needs your vote: ${deal.title}` : `Deal needs review: ${deal.title}`,
       body: message,
       priority: deal.urgency === "hot" ? "urgent" : "high",
       assigned_to: member,
       href: `/deals?deal=${deal.id}`,
       source_table: "meridian_deals",
       source_id: deal.id,
-      notification_type: "deal_vote",
-    }, actor),
-    createActionItem({
+      notification_type: shouldCreateVoteTasks ? "deal_vote" : "deal-review",
+    }, actor)
+  );
+  const actionItems = shouldCreateVoteTasks ? MEMBERS.map(member => createActionItem({
       title: `Review deal: ${deal.title}`,
       description: message,
       assigned_to: member,
       due_date: addDays(deal.urgency === "hot" ? 1 : 2),
-    }, actor),
-  ]));
+    }, actor)) : [];
+  const results = await Promise.all([...notifications, ...actionItems]);
   return results.map(r => r.error).filter((error): error is string => !!error);
 }
 
@@ -270,6 +307,7 @@ export default function VaPage() {
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
   const [activeTab, setActiveTab] = useState<VaTab>("leads");
+  const [notifyReviewUpdate, setNotifyReviewUpdate] = useState(false);
 
   const reload = useCallback(async (memberName = user) => {
     setLoading(true);
@@ -315,6 +353,11 @@ export default function VaPage() {
     { label: "Link or attachment", done: (liveInput.links?.length ?? 0) > 0 || attachments.length > 0 },
   ], [attachments.length, liveInput]);
   const readyCount = readinessItems.filter(item => item.done).length;
+  const missingReadyItems = readinessItems.filter(item => !item.done).map(item => item.label);
+  const submissionReady = readyCount === readinessItems.length
+    && !!liveInput.submission_summary
+    && !!liveInput.requested_next_step
+    && !!liveInput.review_intent;
 
   useEffect(() => {
     if (!selected) {
@@ -340,15 +383,42 @@ export default function VaPage() {
     setAttachmentDraft(EMPTY_ATTACHMENT());
     setMessage("");
     setActiveTab("leads");
+    setNotifyReviewUpdate(false);
   };
 
   const saveDeal = async (status: DealStatus) => {
     if (!draft.title.trim()) { setMessage("Add a deal title before saving."); return; }
+    const now = new Date().toISOString();
+    const existingRound = selected?.review_round ?? draft.review_round ?? 0;
+    const isReviewSubmit = status === "under-review";
+    const shouldNotifyMembers = isReviewSubmit && (!selected?.last_review_notification_at || selected.status !== "under-review" || notifyReviewUpdate);
+    if (isReviewSubmit) {
+      if (!submissionReady) {
+        setActiveTab("leads");
+        setMessage([
+          missingReadyItems.length ? `Complete before submitting: ${missingReadyItems.join(", ")}.` : "",
+          !liveInput.submission_summary ? "Add a VA submission summary." : "",
+          !liveInput.requested_next_step ? "Add the requested member next step." : "",
+        ].filter(Boolean).join(" "));
+        return;
+      }
+      const intentLabel = REVIEW_INTENTS.find(intent => intent.value === draft.review_intent)?.label ?? "member review";
+      const confirmText = shouldNotifyMembers
+        ? `Submit this deal as "${intentLabel}"? This will notify members${draft.review_intent === "ready-for-vote" ? " and create vote tasks" : ""}.`
+        : "Update this under-review deal without sending duplicate member notifications?";
+      if (!window.confirm(confirmText)) return;
+    }
     setSaving(true);
     setMessage("");
     const payload = buildPayload(draft, status);
     payload.submitted_by = payload.submitted_by || user;
     payload.assigned_to = payload.assigned_to || user;
+    if (isReviewSubmit) {
+      payload.first_submitted_at = selected?.first_submitted_at || draft.first_submitted_at || now;
+      payload.last_submitted_at = now;
+      payload.review_round = shouldNotifyMembers ? existingRound + 1 : existingRound;
+      payload.last_review_notification_at = shouldNotifyMembers ? now : selected?.last_review_notification_at || draft.last_review_notification_at || null;
+    }
     const result = selected
       ? await updateDeal(selected.id, payload, user)
       : await createDeal(payload, user);
@@ -356,14 +426,30 @@ export default function VaPage() {
     if (result.error && !result.data) { setMessage(result.error); return; }
     if (!result.data) { setMessage("Deal could not be saved."); return; }
     if (status === "under-review") {
-      const errors = await notifyMembersForReview(result.data, user);
-      if (errors.length) setMessage(`Deal submitted, but review notifications had an issue: ${errors[0]}`);
-      else setMessage("Deal submitted for member review.");
+      if (shouldNotifyMembers) {
+        const errors = await notifyMembersForReview(result.data, user, result.data.review_intent === "ready-for-vote");
+        await createDealActivity({
+          deal_id: result.data.id,
+          actor: user,
+          activity_type: "submitted-review",
+          summary: `Submitted review packet: ${REVIEW_INTENTS.find(intent => intent.value === result.data?.review_intent)?.label ?? "Member Review"}`,
+          field_changes: {
+            review_intent: result.data.review_intent,
+            review_round: result.data.review_round,
+            requested_next_step: result.data.requested_next_step,
+          },
+        });
+        if (errors.length) setMessage(`Deal submitted, but review notifications had an issue: ${errors[0]}`);
+        else setMessage(result.data.review_intent === "ready-for-vote" ? "Deal submitted for member vote." : "Deal submitted for member review.");
+      } else {
+        setMessage("Deal packet updated. Members were not notified again.");
+      }
     } else {
       setMessage("Draft saved.");
     }
     await reload();
     setSelectedId(result.data.id);
+    setNotifyReviewUpdate(false);
   };
 
   const updateChecklist = async (item: DealDueDiligenceItem, status: ChecklistStatus) => {
@@ -597,6 +683,32 @@ export default function VaPage() {
                   <label style={label}>Strategy / recommendation</label>
                   <input type="text" value={draft.strategy} onChange={e => setDraft({ ...draft, strategy: e.target.value })} placeholder="wholesale, list retail, land resale, needs review" />
                 </div>
+                <div style={subPanel}>
+                  <p style={eyebrowSmall}>Member submission packet</p>
+                  <div style={twoCol} className="two-col">
+                    <div>
+                      <label style={label}>Review type</label>
+                      <select value={draft.review_intent ?? "needs-info-review"} onChange={e => setDraft({ ...draft, review_intent: e.target.value as DealReviewIntent })}>
+                        {REVIEW_INTENTS.map(intent => <option key={intent.value} value={intent.value}>{intent.label}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label style={label}>Requested next step</label>
+                      <input type="text" value={draft.requested_next_step ?? ""} onChange={e => setDraft({ ...draft, requested_next_step: e.target.value })} placeholder="Vote, answer blocker, request more info, pass" />
+                    </div>
+                  </div>
+                  <p style={{ fontSize: 12, color: "var(--muted)", marginTop: 8 }}>
+                    {REVIEW_INTENTS.find(intent => intent.value === draft.review_intent)?.description}
+                  </p>
+                  <div style={{ marginTop: 10 }}>
+                    <label style={label}>VA summary for members</label>
+                    <textarea rows={3} value={draft.submission_summary ?? ""} onChange={e => setDraft({ ...draft, submission_summary: e.target.value })} placeholder="Why this deal is worth member attention and what you found." />
+                  </div>
+                  <div style={{ marginTop: 10 }}>
+                    <label style={label}>Missing / uncertain items</label>
+                    <textarea rows={2} value={draft.submit_uncertainties ?? ""} onChange={e => setDraft({ ...draft, submit_uncertainties: e.target.value })} placeholder="Open questions, weak comps, seller uncertainty, county records still pending." />
+                  </div>
+                </div>
                 <div style={twoCol} className="two-col">
                   <div>
                     <label style={label}>Address</label>
@@ -674,7 +786,7 @@ export default function VaPage() {
                 <div style={subPanel}>
                   <p style={eyebrowSmall}>Ready to submit?</p>
                   <p style={{ fontSize: 13, color: "var(--muted)", marginBottom: 10 }}>
-                    {readyCount}/{readinessItems.length} quality checks complete. Finish the missing items before sending to members when possible.
+                    {readyCount}/{readinessItems.length} quality checks complete. Submission also requires a summary and requested next step.
                   </p>
                   <div style={{ display: "grid", gap: 8 }}>
                     {readinessItems.map(item => (
@@ -684,6 +796,17 @@ export default function VaPage() {
                       </div>
                     ))}
                   </div>
+                  {selected?.last_review_notification_at && selected.status === "under-review" && (
+                    <label style={{ display: "flex", gap: 8, alignItems: "flex-start", fontSize: 12, color: "var(--muted)", marginTop: 12, lineHeight: 1.4 }}>
+                      <input
+                        type="checkbox"
+                        checked={notifyReviewUpdate}
+                        onChange={e => setNotifyReviewUpdate(e.target.checked)}
+                        style={{ width: 16, minHeight: 16, marginTop: 1 }}
+                      />
+                      Notify members again about this updated packet.
+                    </label>
+                  )}
                 </div>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 8 }}>
                   <button onClick={() => saveDeal(draft.status ?? "lead")} disabled={saving} style={{ ...secondaryButton, opacity: saving ? 0.6 : 1 }}>
@@ -693,7 +816,7 @@ export default function VaPage() {
                     Save As Draft Lead
                   </button>
                   <button onClick={() => saveDeal("under-review")} disabled={saving} style={{ ...primaryButton, opacity: saving ? 0.6 : 1 }}>
-                    Submit For Member Review
+                    {selected?.last_review_notification_at && selected.status === "under-review" ? "Update Review Packet" : "Submit For Member Review"}
                   </button>
                 </div>
               </aside>
