@@ -1,6 +1,7 @@
 "use client";
 import { useRouter, usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
+import { isVaUser } from "@/lib/identity";
 import Logo from "./Logo";
 
 export default function NavBar() {
@@ -10,11 +11,11 @@ export default function NavBar() {
 
   useEffect(() => {
     setUser(localStorage.getItem("meridian_user"));
-  }, []);
+  }, [pathname]);
 
   if (!user || pathname === "/" || pathname === "/apply") return null;
 
-  const links = [
+  const memberLinks = [
     { href: "/dashboard",  label: "Home" },
     { href: "/tracker",    label: "Money" },
     { href: "/deals",      label: "Deals" },
@@ -29,6 +30,10 @@ export default function NavBar() {
     { href: "/decisions",  label: "Decisions" },
     { href: "/hub",        label: "Hub" },
   ];
+  const vaLinks = [
+    { href: "/va", label: "VA Desk" },
+  ];
+  const links = isVaUser(user) ? vaLinks : memberLinks;
 
   const isActive = (href: string) => {
     if (pathname === href) return true;
@@ -47,7 +52,7 @@ export default function NavBar() {
       gap: 16,
     }}>
       <div style={{ display: "flex", alignItems: "center", gap: 24, flex: 1, minWidth: 0 }}>
-        <Logo width={42} onDark style={{ cursor: "pointer", flexShrink: 0 }} onClick={() => router.push("/dashboard")} />
+        <Logo width={42} onDark style={{ cursor: "pointer", flexShrink: 0 }} onClick={() => router.push(isVaUser(user) ? "/va" : "/dashboard")} />
         <div style={{
           display: "flex", alignItems: "center", gap: 2, overflowX: "auto",
           scrollbarWidth: "none",

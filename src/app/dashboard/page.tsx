@@ -46,6 +46,7 @@ import {
   type MemberBalance,
 } from "@/lib/tracker";
 import { fetchHubData, type Decision } from "@/lib/hub";
+import { isVaUser } from "@/lib/identity";
 
 type SurveyProgress = {
   surveyId: string;
@@ -127,6 +128,7 @@ export default function DashboardPage() {
   useEffect(() => {
     const raw = localStorage.getItem("meridian_user");
     if (!raw) { router.push("/"); return; }
+    if (isVaUser(raw)) { router.push("/va"); return; }
     const u = canonicalMember(raw);
     setUser(u);
     migrateLocalStorage(u);

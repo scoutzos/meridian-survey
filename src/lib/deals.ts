@@ -27,6 +27,11 @@ export interface DealInput {
   utilities?: string | null;
   notes?: string | null;
   links?: string[];
+  submitted_by?: string | null;
+  assigned_to?: string | null;
+  next_follow_up_date?: string | null;
+  lead_temperature?: "cold" | "warm" | "hot" | "dead" | null;
+  campaign_source?: string | null;
 }
 
 export interface Deal extends DealInput {
@@ -82,6 +87,30 @@ export interface DealVote {
   updated_at: string;
 }
 
+export interface DealActivity {
+  id: string;
+  deal_id: string;
+  actor: string | null;
+  activity_type: "created" | "updated" | "status-change" | "checklist-update" | "submitted-review" | "attachment-added";
+  summary: string;
+  field_changes: Record<string, unknown>;
+  created_at: string;
+}
+
+export type DealAttachmentType = "link" | "photo" | "document" | "map" | "county-record" | "comp" | "other";
+
+export interface DealAttachment {
+  id: string;
+  deal_id: string;
+  title: string;
+  attachment_type: DealAttachmentType;
+  url: string;
+  notes: string | null;
+  created_at: string;
+  created_by: string | null;
+  deleted_at: string | null;
+}
+
 export interface DealAgreementInput {
   deal_id: string;
   status: DealAgreementStatus;
@@ -114,6 +143,8 @@ const LOCAL_DEALS = "meridian_deals_local";
 const LOCAL_CHECKLIST = "meridian_deal_checklist_local";
 const LOCAL_VOTES = "meridian_deal_votes_local";
 const LOCAL_AGREEMENTS = "meridian_deal_agreements_local";
+const LOCAL_ACTIVITY = "meridian_deal_activity_local";
+const LOCAL_ATTACHMENTS = "meridian_deal_attachments_local";
 
 function money(n: number | null | undefined): string {
   if (typeof n !== "number" || !isFinite(n)) return "—";
@@ -261,6 +292,105 @@ function normalizeDeal(row: Record<string, unknown>): Deal {
   };
 }
 
+function cleanDealInput(input: DealInput): DealInput {
+  return {
+    ...input,
+    source: input.source?.trim() || null,
+    strategy: input.strategy.trim() || "review",
+    address: input.address?.trim() || null,
+    parcel_id: input.parcel_id?.trim() || null,
+    seller_name: input.seller_name?.trim() || null,
+    seller_phone: input.seller_phone?.trim() || null,
+    zoning: input.zoning?.trim() || null,
+    road_frontage: input.road_frontage?.trim() || null,
+    utilities: input.utilities?.trim() || null,
+    notes: input.notes?.trim() || null,
+    submitted_by: input.submitted_by?.trim() || null,
+    assigned_to: input.assigned_to?.trim() || null,
+    next_follow_up_date: input.next_follow_up_date || null,
+    lead_temperature: input.lead_temperature || null,
+    campaign_source: input.campaign_source?.trim() || null,
+  };
+}
+
+function diffDeal(before: Deal | null, after: DealInput): Record<string, { before: unknown; after: unknown }> {
+  if (!before) return {};
+  const keys: Array<keyof DealInput> = [
+    "title", "source", "property_type", "strategy", "status", "urgency", "address", "parcel_id",
+    "seller_name", "seller_phone", "asking_price", "arv", "repair_estimate", "acreage", "zoning",
+    "road_frontage", "utilities", "notes", "submitted_by", "assigned_to", "next_follow_up_date",
+    "lead_temperature", "campaign_source",
+  ];
+  return keys.reduce<Record<string, { before: unknown; after: unknown }>>((acc, key) => {
+    const left = before[key] ?? null;
+    const right = after[key] ?? null;
+    if (JSON.stringify(left) !== JSON.stringify(right)) acc[key] = { before: left, after: right };
+    return acc;
+  }, {});
+}
+
+export async function createDealActivity(
+  patch: { deal_id: string; actor: string; activity_type: DealActivity["activity_type"]; summary: string; field_changes?: Record<string, unknown> },
+): Promise<{ error: string | null }> {
+  const row = { ...patch, field_changes: patch.field_changes ?? {} };
+  if (!supabase) {
+    const now = new Date().toISOString();
+    const activity: DealActivity = { id: `activity-${Date.now()}`, created_at: now, ...row };
+    localSet(LOCAL_ACTIVITY, [activity, ...localGet<DealActivity[]>(LOCAL_ACTIVITY, [])]);
+    return { error: null };
+  }
+  const { error } = await supabase.from("meridian_deal_activity").insert(row);
+  return { error: error?.message ?? null };
+}
+
+export async function fetchDealActivity(dealId: string): Promise<DealActivity[]> {
+  if (!supabase) return localGet<DealActivity[]>(LOCAL_ACTIVITY, []).filter(a => a.deal_id === dealId).sort((a, b) => b.created_at.localeCompare(a.created_at));
+  const { data, error } = await supabase
+    .from("meridian_deal_activity")
+    .select("*")
+    .eq("deal_id", dealId)
+    .order("created_at", { ascending: false });
+  if (error || !data) return [];
+  return data as DealActivity[];
+}
+
+export async function fetchDealAttachments(dealId: string): Promise<DealAttachment[]> {
+  if (!supabase) return localGet<DealAttachment[]>(LOCAL_ATTACHMENTS, []).filter(a => a.deal_id === dealId && !a.deleted_at).sort((a, b) => b.created_at.localeCompare(a.created_at));
+  const { data, error } = await supabase
+    .from("meridian_deal_attachments")
+    .select("*")
+    .eq("deal_id", dealId)
+    .is("deleted_at", null)
+    .order("created_at", { ascending: false });
+  if (error || !data) return [];
+  return data as DealAttachment[];
+}
+
+export async function createDealAttachment(
+  patch: { deal_id: string; title: string; attachment_type: DealAttachmentType; url: string; notes?: string | null },
+  actor: string,
+): Promise<{ data: DealAttachment | null; error: string | null }> {
+  const row = {
+    deal_id: patch.deal_id,
+    title: patch.title.trim(),
+    attachment_type: patch.attachment_type,
+    url: patch.url.trim(),
+    notes: patch.notes?.trim() || null,
+    created_by: actor,
+  };
+  if (!row.title || !row.url) return { data: null, error: "Attachment title and URL are required." };
+  if (!supabase) {
+    const now = new Date().toISOString();
+    const attachment: DealAttachment = { ...row, id: `attachment-${Date.now()}`, created_at: now, deleted_at: null };
+    localSet(LOCAL_ATTACHMENTS, [attachment, ...localGet<DealAttachment[]>(LOCAL_ATTACHMENTS, [])]);
+    await createDealActivity({ deal_id: patch.deal_id, actor, activity_type: "attachment-added", summary: `Added attachment: ${row.title}`, field_changes: row });
+    return { data: attachment, error: null };
+  }
+  const { data, error } = await supabase.from("meridian_deal_attachments").insert(row).select().single();
+  if (!error) await createDealActivity({ deal_id: patch.deal_id, actor, activity_type: "attachment-added", summary: `Added attachment: ${row.title}`, field_changes: row });
+  return { data: (data as DealAttachment) ?? null, error: error?.message ?? null };
+}
+
 export async function fetchDeals(): Promise<Deal[]> {
   if (!supabase) return localGet<Deal[]>(LOCAL_DEALS, []);
   const { data, error } = await supabase
@@ -308,12 +438,13 @@ export async function fetchDealAgreement(dealId: string): Promise<DealAgreement 
 }
 
 export async function createDeal(input: DealInput, actor: string): Promise<{ data: Deal | null; error: string | null }> {
+  const clean = cleanDealInput({ ...input, submitted_by: input.submitted_by ?? actor, assigned_to: input.assigned_to ?? actor });
   const analysis = calculateDealAnalysis(input);
   const links = (input.links ?? []).map(l => l.trim()).filter(Boolean);
   if (!supabase) {
     const now = new Date().toISOString();
     const deal: Deal = {
-      ...input,
+      ...clean,
       id: `local-${Date.now()}`,
       status: input.status ?? "under-review",
       links,
@@ -334,12 +465,13 @@ export async function createDeal(input: DealInput, actor: string): Promise<{ dat
       updated_by: actor,
     }));
     localSet(LOCAL_CHECKLIST, [...localGet<DealDueDiligenceItem[]>(LOCAL_CHECKLIST, []), ...checklist]);
+    await createDealActivity({ deal_id: deal.id, actor, activity_type: "created", summary: "Created deal intake packet.", field_changes: clean as unknown as Record<string, unknown> });
     return { data: deal, error: null };
   }
 
   const { data, error } = await supabase
     .from("meridian_deals")
-    .insert({ ...input, links, analysis, status: input.status ?? "under-review", created_by: actor, updated_by: actor })
+    .insert({ ...clean, links, analysis, status: clean.status ?? "under-review", created_by: actor, updated_by: actor })
     .select()
     .single();
   if (error || !data) return { data: null, error: error?.message ?? "Deal create failed" };
@@ -347,6 +479,7 @@ export async function createDeal(input: DealInput, actor: string): Promise<{ dat
   const deal = normalizeDeal(data as Record<string, unknown>);
   const checklist = generateDueDiligenceChecklist(input).map(seed => ({ ...seed, deal_id: deal.id }));
   const { error: checklistError } = await supabase.from("meridian_deal_due_diligence_items").insert(checklist);
+  await createDealActivity({ deal_id: deal.id, actor, activity_type: "created", summary: "Created deal intake packet.", field_changes: clean as unknown as Record<string, unknown> });
   return { data: deal, error: checklistError?.message ?? null };
 }
 
@@ -355,22 +488,14 @@ export async function updateDeal(
   input: DealInput,
   actor: string,
 ): Promise<{ data: Deal | null; error: string | null }> {
-  const analysis = calculateDealAnalysis(input);
+  const current = (await fetchDeals()).find(deal => deal.id === id) ?? null;
+  const clean = cleanDealInput(input);
+  const analysis = calculateDealAnalysis(clean);
   const links = (input.links ?? []).map(l => l.trim()).filter(Boolean);
   const row = {
-    ...input,
+    ...clean,
     links,
     analysis,
-    source: input.source?.trim() || null,
-    strategy: input.strategy.trim() || "review",
-    address: input.address?.trim() || null,
-    parcel_id: input.parcel_id?.trim() || null,
-    seller_name: input.seller_name?.trim() || null,
-    seller_phone: input.seller_phone?.trim() || null,
-    zoning: input.zoning?.trim() || null,
-    road_frontage: input.road_frontage?.trim() || null,
-    utilities: input.utilities?.trim() || null,
-    notes: input.notes?.trim() || null,
     updated_at: new Date().toISOString(),
     updated_by: actor,
   };
@@ -379,6 +504,7 @@ export async function updateDeal(
     const rows = localGet<Deal[]>(LOCAL_DEALS, []);
     const next = rows.map(deal => deal.id === id ? normalizeDeal({ ...deal, ...row }) : deal);
     localSet(LOCAL_DEALS, next);
+    await createDealActivity({ deal_id: id, actor, activity_type: current?.status !== clean.status ? "status-change" : "updated", summary: current?.status !== clean.status ? `Status changed to ${clean.status}.` : "Updated deal details.", field_changes: diffDeal(current, clean) });
     return { data: next.find(deal => deal.id === id) ?? null, error: null };
   }
 
@@ -389,6 +515,7 @@ export async function updateDeal(
     .select()
     .single();
   if (error || !data) return { data: null, error: error?.message ?? "Deal update failed" };
+  await createDealActivity({ deal_id: id, actor, activity_type: current?.status !== clean.status ? "status-change" : "updated", summary: current?.status !== clean.status ? `Status changed to ${clean.status}.` : "Updated deal details.", field_changes: diffDeal(current, clean) });
   return { data: normalizeDeal(data as Record<string, unknown>), error: null };
 }
 
@@ -399,13 +526,17 @@ export async function updateChecklistItemStatus(
 ): Promise<{ error: string | null }> {
   if (!supabase) {
     const rows = localGet<DealDueDiligenceItem[]>(LOCAL_CHECKLIST, []);
+    const existing = rows.find(r => r.id === id);
     localSet(LOCAL_CHECKLIST, rows.map(r => r.id === id ? { ...r, status, updated_at: new Date().toISOString(), updated_by: actor } : r));
+    if (existing) await createDealActivity({ deal_id: existing.deal_id, actor, activity_type: "checklist-update", summary: `Checklist updated: ${existing.title} -> ${status}`, field_changes: { checklist_item_id: id, status } });
     return { error: null };
   }
+  const { data: existing } = await supabase.from("meridian_deal_due_diligence_items").select("*").eq("id", id).maybeSingle();
   const { error } = await supabase
     .from("meridian_deal_due_diligence_items")
     .update({ status, updated_at: new Date().toISOString(), updated_by: actor })
     .eq("id", id);
+  if (!error && existing) await createDealActivity({ deal_id: existing.deal_id, actor, activity_type: "checklist-update", summary: `Checklist updated: ${existing.title} -> ${status}`, field_changes: { checklist_item_id: id, status } });
   return { error: error?.message ?? null };
 }
 

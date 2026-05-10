@@ -1,7 +1,7 @@
 "use client";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { MEMBERS } from "@/data/questions";
+import { LOGIN_USERS, getUserRole } from "@/lib/identity";
 import { supabase } from "@/lib/supabase";
 import Logo from "@/components/Logo";
 
@@ -13,7 +13,12 @@ const MEMBER_VERIFICATION: Record<string, string> = {
   "Odessa Patterson": "patterson",
   "Tiffany Stallworth": "stallworth",
   "Peggee": "peggee",
+  "Sophie / VA": "va",
 };
+
+function homeFor(name: string): string {
+  return getUserRole(name) === "va" ? "/va" : "/dashboard";
+}
 
 export default function LoginPage() {
   const [name, setName] = useState("");
@@ -40,7 +45,7 @@ export default function LoginPage() {
       // Fallback if no Supabase — use old hardcoded code
       if (code !== "meridian2026") { setError("Invalid password."); setLoading(false); return; }
       localStorage.setItem("meridian_user", name);
-      router.push("/dashboard");
+      router.push(homeFor(name));
       return;
     }
 
@@ -77,7 +82,7 @@ export default function LoginPage() {
       .update({ last_login: new Date().toISOString() })
       .eq("name", name);
     localStorage.setItem("meridian_user", name);
-    router.push("/dashboard");
+    router.push(homeFor(name));
   };
 
   const handleSetPassword = async (e: React.FormEvent) => {
@@ -107,7 +112,7 @@ export default function LoginPage() {
       .update({ last_login: new Date().toISOString() })
       .eq("name", name);
     localStorage.setItem("meridian_user", name);
-    router.push("/dashboard");
+    router.push(homeFor(name));
   };
 
   const handleForgotPassword = async (e: React.FormEvent) => {
@@ -321,7 +326,7 @@ export default function LoginPage() {
               style={selectStyle(!!resetName)}
             >
               <option value="">Select your name</option>
-              {MEMBERS.map(m => <option key={m} value={m}>{m}</option>)}
+              {LOGIN_USERS.map(m => <option key={m} value={m}>{m}</option>)}
             </select>
 
             <input
@@ -385,7 +390,7 @@ export default function LoginPage() {
             style={selectStyle(!!name)}
           >
             <option value="">Select your name</option>
-            {MEMBERS.map(m => <option key={m} value={m}>{m}</option>)}
+            {LOGIN_USERS.map(m => <option key={m} value={m}>{m}</option>)}
           </select>
 
           <input

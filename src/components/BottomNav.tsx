@@ -1,6 +1,7 @@
 "use client";
 import { useRouter, usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
+import { isVaUser } from "@/lib/identity";
 
 const PRIMARY = [
   { href: "/dashboard",  label: "Home" },
@@ -29,12 +30,10 @@ export default function BottomNav() {
 
   useEffect(() => {
     setUser(localStorage.getItem("meridian_user"));
-  }, []);
+  }, [pathname]);
 
   // Close the More sheet whenever the route changes.
   useEffect(() => { setMoreOpen(false); }, [pathname]);
-
-  if (!user || pathname === "/" || pathname === "/apply") return null;
 
   const isActive = (href: string) => {
     if (pathname === href) return true;
@@ -42,6 +41,21 @@ export default function BottomNav() {
     if (href === "/surveys" && (pathname.startsWith("/survey/") || pathname.startsWith("/results/"))) return true;
     return false;
   };
+
+  if (!user || pathname === "/" || pathname === "/apply") return null;
+
+  if (isVaUser(user)) {
+    return (
+      <nav className="bottom-nav">
+        <button
+          onClick={() => router.push("/va")}
+          className={`bottom-nav-tab${isActive("/va") ? " bottom-nav-active" : ""}`}
+        >
+          VA Desk
+        </button>
+      </nav>
+    );
+  }
 
   const moreActive = MORE.some(l => isActive(l.href));
 

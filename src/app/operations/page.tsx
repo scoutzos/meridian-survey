@@ -20,6 +20,14 @@ import {
   type Reimbursement,
   type ReimbursementStatus,
 } from "@/lib/governance";
+import {
+  fetchVaDailyBriefReviews,
+  fetchVaDailyBriefs,
+  upsertVaDailyBriefReview,
+  type VaDailyBrief,
+  type VaDailyBriefReview,
+} from "@/lib/va-briefs";
+import { isVaUser } from "@/lib/identity";
 
 const DISPLAY_FONT = "var(--font-display)";
 
@@ -52,6 +60,9 @@ export default function OperationsPage() {
   const [reimbursements, setReimbursements] = useState<Reimbursement[]>([]);
   const [distributions, setDistributions] = useState<Distribution[]>([]);
   const [scenarios, setScenarios] = useState<DealScenario[]>([]);
+  const [vaBriefs, setVaBriefs] = useState<VaDailyBrief[]>([]);
+  const [vaBriefReviews, setVaBriefReviews] = useState<VaDailyBriefReview[]>([]);
+  const [briefReviewNotes, setBriefReviewNotes] = useState<Record<string, string>>({});
   const [eventDraft, setEventDraft] = useState({ title: "", event_date: "", event_type: "deadline", assigned_to: "", notes: "", project_id: "" });
   const [reimbursementDraft, setReimbursementDraft] = useState({ member_name: "", amount: "", vendor: "", category: "Project", expense_date: "", receipt_url: "", notes: "", project_id: "" });
   const [distributionDraft, setDistributionDraft] = useState({ distribution_date: "", total_amount: "", reason: "", project_id: "" });
@@ -60,6 +71,7 @@ export default function OperationsPage() {
   useEffect(() => {
     const u = localStorage.getItem("meridian_user");
     if (!u) { router.push("/"); return; }
+    if (isVaUser(u)) { router.push("/va"); return; }
     setUser(u);
     setReimbursementDraft(prev => ({ ...prev, member_name: u }));
     void Promise.all([
@@ -68,12 +80,15 @@ export default function OperationsPage() {
       fetchReimbursements(),
       fetchDistributions(),
       fetchScenarios(),
-    ]).then(([projectRows, eventRows, reimbursementRows, distributionRows, scenarioRows]) => {
+      fetchVaDailyBriefs(12),
+    ]).then(([projectRows, eventRows, reimbursementRows, distributionRows, scenarioRows, briefRows]) => {
       setProjects(projectRows);
       setEvents(eventRows);
       setReimbursements(reimbursementRows);
       setDistributions(distributionRows);
       setScenarios(scenarioRows);
+      setVaBriefs(briefRows);
+      void fetchVaDailyBriefReviews(briefRows.map(brief => brief.id)).then(setVaBriefReviews);
     });
   }, [router]);
 
@@ -163,6 +178,22 @@ export default function OperationsPage() {
 
   const pendingReimbursements = reimbursements.filter(r => r.status === "submitted" || r.status === "approved");
 
+  const reviewBrief = async (brief: VaDailyBrief) => {
+    const { data, error } = await upsertVaDailyBriefReview(brief.id, user, briefReviewNotes[brief.id] ?? "");
+    if (error) { alert(error); return; }
+    if (data) {
+      setVaBriefReviews(prev => [data, ...prev.filter(review => !(review.brief_id === brief.id && review.member_name === user))]);
+      setVaBriefs(prev => prev.map(row => row.id === brief.id ? {
+        ...row,
+        reviewed_status: "reviewed",
+        reviewed_by: user,
+        reviewed_at: data.reviewed_at,
+        review_note: data.note,
+      } : row));
+      setBriefReviewNotes(prev => ({ ...prev, [brief.id]: "" }));
+    }
+  };
+
   return (
     <div className="operations-root" style={{ maxWidth: 1180, margin: "0 auto", padding: "84px 20px 100px" }}>
       <header style={{ marginBottom: 24 }}>
@@ -176,12 +207,81 @@ export default function OperationsPage() {
         <p style={comingSoonPill}>Bank sync + receipt file upload coming soon</p>
       </header>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, marginBottom: 18 }} className="stat-grid">
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 10, marginBottom: 18 }} className="stat-grid">
         <Stat label="Calendar items" value={String(events.length)} />
         <Stat label="Pending reimbursements" value={String(pendingReimbursements.length)} />
         <Stat label="Distributions" value={String(distributions.length)} />
         <Stat label="Scenarios" value={String(scenarios.length)} />
+        <Stat label="VA briefs" value={String(vaBriefs.length)} />
       </div>
+
+      <section style={{ ...panel, marginBottom: 18 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12, flexWrap: "wrap", marginBottom: 12 }}>
+          <div>
+            <p style={eyebrow}>VA Accountability</p>
+            <h2 style={sectionTitle}>Daily briefs</h2>
+          </div>
+          <span style={comingSoonPill}>End-of-shift reports</span>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12 }} className="brief-grid">
+          {vaBriefs.length === 0 && <p style={{ color: "var(--muted)", fontSize: 13 }}>No VA daily briefs have been submitted yet.</p>}
+          {vaBriefs.map(brief => (
+            <article key={brief.id} style={{ background: "var(--bone)", border: "1px solid var(--fog)", borderRadius: 8, padding: 12 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "baseline", marginBottom: 8 }}>
+                <div>
+                  <p style={rowTitle}>{fmtDate(brief.work_date)}</p>
+                  <p style={rowMeta}>{brief.submitted_by} · {brief.hours_worked ?? 0} hrs</p>
+                </div>
+                <span style={smallPill}>{vaBriefReviews.filter(review => review.brief_id === brief.id).length} reviewed</span>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 10 }}>
+                <MiniStat label="Leads" value={`${brief.leads_added ?? 0} new / ${brief.leads_updated ?? 0} updated`} />
+                <MiniStat label="Outreach" value={`${brief.outreach_sent ?? 0} sent`} />
+                <MiniStat label="Replies" value={`${brief.seller_replies ?? 0}`} />
+                <MiniStat label="Calls" value={`${brief.calls_completed ?? 0}`} />
+              </div>
+              <p style={briefLabel}>Completed</p>
+              <p style={briefText}>{brief.activities_completed}</p>
+              {brief.follow_ups_needed && (
+                <>
+                  <p style={briefLabel}>Follow-ups</p>
+                  <p style={briefText}>{brief.follow_ups_needed}</p>
+                </>
+              )}
+              {brief.blockers && (
+                <>
+                  <p style={briefLabel}>Blockers</p>
+                  <p style={briefText}>{brief.blockers}</p>
+                </>
+              )}
+              {brief.tomorrow_plan && (
+                <>
+                  <p style={briefLabel}>Next shift</p>
+                  <p style={briefText}>{brief.tomorrow_plan}</p>
+                </>
+              )}
+              <div style={{ borderTop: "1px solid var(--fog)", marginTop: 12, paddingTop: 10 }}>
+                <p style={briefLabel}>Member review</p>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 8 }}>
+                  {vaBriefReviews.filter(review => review.brief_id === brief.id).map(review => (
+                    <span key={review.id} style={smallPill}>{review.member_name}</span>
+                  ))}
+                  {vaBriefReviews.filter(review => review.brief_id === brief.id).length === 0 && (
+                    <span style={rowMeta}>No member review yet</span>
+                  )}
+                </div>
+                <textarea
+                  rows={2}
+                  value={briefReviewNotes[brief.id] ?? ""}
+                  onChange={e => setBriefReviewNotes(prev => ({ ...prev, [brief.id]: e.target.value }))}
+                  placeholder="Optional review note"
+                />
+                <button onClick={() => reviewBrief(brief)} style={{ ...primaryButton, marginTop: 8 }}>Mark Reviewed</button>
+              </div>
+            </article>
+          ))}
+        </div>
+      </section>
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18 }} className="ops-grid">
         <section style={panel}>
@@ -287,7 +387,7 @@ export default function OperationsPage() {
 
       <style jsx>{`
         @media (max-width: 900px) {
-          .ops-grid { grid-template-columns: 1fr !important; }
+          .ops-grid, .brief-grid { grid-template-columns: 1fr !important; }
         }
         @media (max-width: 680px) {
           .operations-root { padding-top: 28px !important; }
@@ -315,6 +415,15 @@ function Stat({ label, value }: { label: string; value: string }) {
     <div style={{ background: "var(--surface)", border: "1px solid var(--fog)", borderRadius: 8, padding: 12 }}>
       <p style={{ fontSize: 10, color: "var(--muted)", letterSpacing: "0.12em", textTransform: "uppercase" }}>{label}</p>
       <p style={{ fontSize: 18, fontWeight: 700, color: "var(--obsidian)" }}>{value}</p>
+    </div>
+  );
+}
+
+function MiniStat({ label, value }: { label: string; value: string }) {
+  return (
+    <div style={{ background: "var(--surface)", border: "1px solid var(--fog)", borderRadius: 6, padding: 8 }}>
+      <p style={{ fontSize: 9, color: "var(--muted)", letterSpacing: "0.12em", textTransform: "uppercase" }}>{label}</p>
+      <p style={{ fontSize: 12, fontWeight: 700, color: "var(--obsidian)" }}>{value}</p>
     </div>
   );
 }
@@ -397,6 +506,20 @@ const comingSoonPill: React.CSSProperties = {
   marginTop: 10,
 };
 
+const smallPill: React.CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  border: "1px solid var(--fog)",
+  borderRadius: 999,
+  color: "var(--muted)",
+  padding: "3px 7px",
+  fontSize: 10,
+  fontWeight: 700,
+  letterSpacing: "0.1em",
+  textTransform: "uppercase",
+  whiteSpace: "nowrap",
+};
+
 const rowStyle: React.CSSProperties = {
   background: "var(--bone)",
   border: "1px solid var(--fog)",
@@ -417,4 +540,22 @@ const rowTitle: React.CSSProperties = {
 const rowMeta: React.CSSProperties = {
   fontSize: 12,
   color: "var(--muted)",
+};
+
+const briefLabel: React.CSSProperties = {
+  fontSize: 10,
+  color: "var(--muted)",
+  fontWeight: 700,
+  letterSpacing: "0.12em",
+  textTransform: "uppercase",
+  marginTop: 10,
+  marginBottom: 3,
+};
+
+const briefText: React.CSSProperties = {
+  fontSize: 12,
+  color: "var(--ink)",
+  opacity: 0.74,
+  lineHeight: 1.45,
+  whiteSpace: "pre-wrap",
 };

@@ -6,6 +6,8 @@ import {
   calculateDealAnalysis,
   buildDealAgreementMemo,
   createDeal,
+  fetchDealActivity,
+  fetchDealAttachments,
   fetchDealChecklist,
   fetchDealAgreement,
   fetchDeals,
@@ -17,6 +19,8 @@ import {
   upsertDealVote,
   type ChecklistStatus,
   type Deal,
+  type DealActivity,
+  type DealAttachment,
   type DealAgreement,
   type DealAgreementInput,
   type DealAgreementStatus,
@@ -33,6 +37,7 @@ import { createNotification, markNotificationRead } from "@/lib/operations";
 import { saveGeneratedMemo } from "@/lib/governance";
 import { supabase } from "@/lib/supabase";
 import { MEMBERS } from "@/data/questions";
+import { isVaUser } from "@/lib/identity";
 
 const DISPLAY_FONT = "var(--font-display)";
 
@@ -75,6 +80,13 @@ const AGREEMENT_STATUSES: Array<{ value: DealAgreementStatus; label: string }> =
   { value: "superseded", label: "Superseded" },
 ];
 
+const LEAD_TEMPERATURES: Array<{ value: NonNullable<DealInput["lead_temperature"]>; label: string }> = [
+  { value: "cold", label: "Cold" },
+  { value: "warm", label: "Warm" },
+  { value: "hot", label: "Hot" },
+  { value: "dead", label: "Dead" },
+];
+
 const EMPTY_DRAFT: DealInput & { linksText: string } = {
   title: "",
   source: "Land portal",
@@ -93,6 +105,11 @@ const EMPTY_DRAFT: DealInput & { linksText: string } = {
   road_frontage: "",
   utilities: "",
   notes: "",
+  submitted_by: null,
+  assigned_to: "",
+  next_follow_up_date: "",
+  lead_temperature: "warm",
+  campaign_source: "",
   linksText: "",
 };
 
@@ -163,6 +180,11 @@ function draftFromDeal(deal: Deal): DealInput & { linksText: string } {
     road_frontage: deal.road_frontage ?? "",
     utilities: deal.utilities ?? "",
     notes: deal.notes ?? "",
+    submitted_by: deal.submitted_by ?? "",
+    assigned_to: deal.assigned_to ?? "",
+    next_follow_up_date: deal.next_follow_up_date ?? "",
+    lead_temperature: deal.lead_temperature ?? "warm",
+    campaign_source: deal.campaign_source ?? "",
     linksText: deal.links.join("\n"),
   };
 }
@@ -174,6 +196,8 @@ export default function DealsPage() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [checklist, setChecklist] = useState<DealDueDiligenceItem[]>([]);
   const [votes, setVotes] = useState<DealVote[]>([]);
+  const [activity, setActivity] = useState<DealActivity[]>([]);
+  const [attachments, setAttachments] = useState<DealAttachment[]>([]);
   const [agreement, setAgreement] = useState<DealAgreement | null>(null);
   const [agreementDraft, setAgreementDraft] = useState<DealAgreementInput>(emptyAgreementDraft());
   const [loading, setLoading] = useState(true);
@@ -198,6 +222,7 @@ export default function DealsPage() {
   useEffect(() => {
     const u = localStorage.getItem("meridian_user");
     if (!u) { router.push("/"); return; }
+    if (isVaUser(u)) { router.push("/va"); return; }
     setUser(u);
     void reload();
   }, [router, reload]);
@@ -208,12 +233,16 @@ export default function DealsPage() {
     if (!selected) {
       setChecklist([]);
       setVotes([]);
+      setActivity([]);
+      setAttachments([]);
       setAgreement(null);
       setAgreementDraft(emptyAgreementDraft());
       return;
     }
     void fetchDealChecklist(selected.id).then(setChecklist);
     void fetchDealVotes(selected.id).then(setVotes);
+    void fetchDealActivity(selected.id).then(setActivity);
+    void fetchDealAttachments(selected.id).then(setAttachments);
     void fetchDealAgreement(selected.id).then(row => {
       setAgreement(row);
       setAgreementDraft(row ?? emptyAgreementDraft(selected.id));
@@ -267,6 +296,11 @@ export default function DealsPage() {
       road_frontage: draft.road_frontage?.trim() || null,
       utilities: draft.utilities?.trim() || null,
       notes: draft.notes?.trim() || null,
+      submitted_by: draft.submitted_by?.trim() || null,
+      assigned_to: draft.assigned_to?.trim() || null,
+      next_follow_up_date: draft.next_follow_up_date || null,
+      lead_temperature: draft.lead_temperature || null,
+      campaign_source: draft.campaign_source?.trim() || null,
     };
     const { data, error } = editingDealId
       ? await updateDeal(editingDealId, payload, user)
@@ -531,6 +565,27 @@ export default function DealsPage() {
                   <input type="text" value={draft.strategy} onChange={e => setDraft({ ...draft, strategy: e.target.value })} placeholder="land resale, infill build, flip, hold" />
                 </div>
               </div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10 }} className="number-grid">
+                <div>
+                  <label style={label}>Assigned to</label>
+                  <input type="text" value={draft.assigned_to ?? ""} onChange={e => setDraft({ ...draft, assigned_to: e.target.value })} placeholder="Sophie / VA" />
+                </div>
+                <div>
+                  <label style={label}>Lead temperature</label>
+                  <select value={draft.lead_temperature ?? ""} onChange={e => setDraft({ ...draft, lead_temperature: (e.target.value || null) as DealInput["lead_temperature"] })}>
+                    <option value="">Unset</option>
+                    {LEAD_TEMPERATURES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label style={label}>Campaign</label>
+                  <input type="text" value={draft.campaign_source ?? ""} onChange={e => setDraft({ ...draft, campaign_source: e.target.value })} />
+                </div>
+                <div>
+                  <label style={label}>Next follow-up</label>
+                  <input type="date" value={draft.next_follow_up_date ?? ""} onChange={e => setDraft({ ...draft, next_follow_up_date: e.target.value })} />
+                </div>
+              </div>
               <div style={twoCol} className="two-col">
                 <div>
                   <label style={label}>Address</label>
@@ -695,6 +750,12 @@ export default function DealsPage() {
                   <Stat label="Repairs/site" value={money(selected.repair_estimate ?? null)} />
                   <Stat label="MAO" value={money(selected.analysis?.maxAllowableOffer ?? null)} />
                 </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, marginTop: 10 }} className="number-grid">
+                  <Stat label="Assigned" value={selected.assigned_to || "Unassigned"} />
+                  <Stat label="Submitted by" value={selected.submitted_by || selected.created_by || "Unknown"} />
+                  <Stat label="Temperature" value={selected.lead_temperature ? statusLabel(selected.lead_temperature) : "Unset"} />
+                  <Stat label="Follow-up" value={selected.next_follow_up_date || "Not set"} />
+                </div>
 
                 {(selected.notes || selected.links.length > 0) && (
                   <div style={{ marginTop: 14, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }} className="two-col">
@@ -719,6 +780,36 @@ export default function DealsPage() {
                   </div>
                 )}
               </section>
+
+              {(attachments.length > 0 || activity.length > 0) && (
+                <section style={panel}>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }} className="two-col">
+                    <div style={subPanel}>
+                      <p style={eyebrowSmall}>Research attachments</p>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+                        {attachments.length === 0 && <p style={{ fontSize: 12, color: "var(--muted)" }}>No attachments yet.</p>}
+                        {attachments.map(file => (
+                          <a key={file.id} href={file.url} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: "var(--brass)", overflowWrap: "anywhere" }}>
+                            {file.title} · {file.attachment_type}
+                          </a>
+                        ))}
+                      </div>
+                    </div>
+                    <div style={subPanel}>
+                      <p style={eyebrowSmall}>Activity trail</p>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 280, overflow: "auto" }}>
+                        {activity.length === 0 && <p style={{ fontSize: 12, color: "var(--muted)" }}>No activity yet.</p>}
+                        {activity.slice(0, 12).map(item => (
+                          <div key={item.id} style={{ borderBottom: "1px solid var(--fog)", paddingBottom: 7 }}>
+                            <p style={{ fontSize: 12, fontWeight: 700, color: "var(--obsidian)" }}>{item.summary}</p>
+                            <p style={{ fontSize: 11, color: "var(--muted)" }}>{item.actor || "Unknown"} · {formatDate(item.created_at)}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </section>
+              )}
 
               <section style={panel}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap", marginBottom: 12 }}>
