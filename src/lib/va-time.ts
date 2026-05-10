@@ -40,6 +40,7 @@ export interface VaPayPeriodSummary {
 }
 
 const LOCAL_TIME_ENTRIES = "meridian_va_time_entries_local";
+const MISSING_TIME_TABLE_MESSAGE = "VA time tracking needs the latest database migration before clock entries can be saved.";
 
 function localGet<T>(key: string, fallback: T): T {
   if (typeof window === "undefined") return fallback;
@@ -103,6 +104,11 @@ function normalizeEntry(row: VaTimeEntry): VaTimeEntry {
   };
 }
 
+function isMissingVaTimeTable(error: { message?: string; code?: string } | null | undefined): boolean {
+  const message = error?.message ?? "";
+  return error?.code === "PGRST205" || (message.includes("meridian_va_time_entries") && message.includes("schema cache"));
+}
+
 export async function fetchVaTimeEntries(limit = 100): Promise<VaTimeEntry[]> {
   if (!supabase) {
     return localGet<VaTimeEntry[]>(LOCAL_TIME_ENTRIES, [])
@@ -116,6 +122,7 @@ export async function fetchVaTimeEntries(limit = 100): Promise<VaTimeEntry[]> {
     .is("deleted_at", null)
     .order("clock_in_at", { ascending: false })
     .limit(limit);
+  if (isMissingVaTimeTable(error)) return [];
   if (error || !data) return [];
   return (data as VaTimeEntry[]).map(normalizeEntry);
 }
@@ -134,6 +141,7 @@ export async function fetchOpenVaTimeEntry(operatorName: string): Promise<VaTime
     .is("clock_out_at", null)
     .is("deleted_at", null)
     .maybeSingle();
+  if (isMissingVaTimeTable(error)) return null;
   if (error || !data) return null;
   return normalizeEntry(data as VaTimeEntry);
 }
@@ -177,6 +185,7 @@ export async function clockInVa(operatorName: string, hourlyRate = VA_DEFAULT_HO
     .insert(row)
     .select()
     .single();
+  if (isMissingVaTimeTable(error)) return { data: null, error: MISSING_TIME_TABLE_MESSAGE };
   return { data: data ? normalizeEntry(data as VaTimeEntry) : null, error: error?.message ?? null };
 }
 
@@ -206,6 +215,7 @@ export async function clockOutVa(entry: VaTimeEntry, notes = ""): Promise<{ data
     .eq("id", entry.id)
     .select()
     .single();
+  if (isMissingVaTimeTable(error)) return { data: null, error: MISSING_TIME_TABLE_MESSAGE };
   return { data: data ? normalizeEntry(data as VaTimeEntry) : null, error: error?.message ?? null };
 }
 
@@ -290,5 +300,6 @@ export async function approveVaPayPeriod(summary: VaPayPeriodSummary, actor: str
       updated_at: now,
     })
     .in("id", entryIds);
+  if (isMissingVaTimeTable(error)) return { error: MISSING_TIME_TABLE_MESSAGE };
   return { error: error?.message ?? null };
 }
