@@ -136,7 +136,7 @@ export interface DealActivity {
   id: string;
   deal_id: string;
   actor: string | null;
-  activity_type: "created" | "updated" | "status-change" | "checklist-update" | "submitted-review" | "attachment-added";
+  activity_type: "created" | "updated" | "status-change" | "checklist-update" | "submitted-review" | "attachment-added" | "note";
   summary: string;
   field_changes: Record<string, unknown>;
   created_at: string;

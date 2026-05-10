@@ -4,6 +4,7 @@ import { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   calculateDealAnalysis,
+  createDealActivity,
   fetchDealActivity,
   fetchDealAgreement,
   fetchDealAttachments,
@@ -18,6 +19,7 @@ import {
   type DealVote,
 } from "@/lib/deals";
 import {
+  createImportedLandLeadActivity,
   fetchImportedLandLeadActivities,
   fetchImportedLandLeads,
   type ImportedLandLead,
@@ -45,6 +47,14 @@ function statusLabel(value: string | null | undefined): string {
   return value.split("-").map(part => part.charAt(0).toUpperCase() + part.slice(1)).join(" ");
 }
 
+type SharedNote = {
+  id: string;
+  at: string;
+  actor: string;
+  body: string;
+  source: "Deal" | "Lead";
+};
+
 export default function OpportunityPage() {
   return (
     <Suspense fallback={<main style={{ maxWidth: 1280, margin: "0 auto", padding: "84px 20px 100px" }}>Loading file...</main>}>
@@ -71,6 +81,9 @@ function OpportunityContent() {
   const [campaigns, setCampaigns] = useState<DispositionCampaign[]>([]);
   const [offers, setOffers] = useState<BuyerOffer[]>([]);
   const [buyers, setBuyers] = useState<CrmBuyer[]>([]);
+  const [noteDraft, setNoteDraft] = useState("");
+  const [noteSaving, setNoteSaving] = useState(false);
+  const [noteMessage, setNoteMessage] = useState("");
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -118,6 +131,27 @@ function OpportunityContent() {
     const county = selectedLead?.county?.toLowerCase() || selectedDeal.address?.toLowerCase() || "";
     return buyers.filter(buyer => buyer.markets.some(market => county.includes(market.toLowerCase()) || market.toLowerCase().includes(county))).slice(0, 6);
   }, [buyers, selectedDeal, selectedLead]);
+  const sharedNotes = useMemo<SharedNote[]>(() => {
+    const leadNotes = leadActivities
+      .filter(activity => activity.activity_type === "note")
+      .map(activity => ({
+        id: `lead-note-${activity.id}`,
+        at: activity.created_at,
+        actor: activity.actor || "VA",
+        body: activity.summary,
+        source: "Lead" as const,
+      }));
+    const dealNotes = dealActivity
+      .filter(activity => activity.activity_type === "note")
+      .map(activity => ({
+        id: `deal-note-${activity.id}`,
+        at: activity.created_at,
+        actor: activity.actor || "Member",
+        body: activity.summary,
+        source: "Deal" as const,
+      }));
+    return [...leadNotes, ...dealNotes].sort((a, b) => b.at.localeCompare(a.at));
+  }, [dealActivity, leadActivities]);
 
   useEffect(() => {
     if (!selectedLead && !selectedDeal) return;
@@ -150,6 +184,51 @@ function OpportunityContent() {
   const title = selectedDeal?.title || selectedLead?.property_address || selectedLead?.parcel_id || selectedLead?.owner_name || "Opportunity file";
   const clearedChecklist = checklist.filter(item => item.status === "cleared" || item.status === "not-applicable").length;
   const approvedVotes = votes.filter(vote => ["make-offer", "counter", "urgent-review"].includes(vote.vote)).length;
+
+  async function saveSharedNote() {
+    const summary = noteDraft.trim();
+    if (!summary) {
+      setNoteMessage("Write a note first.");
+      return;
+    }
+    if (!selectedDeal && !selectedLead) {
+      setNoteMessage("Select a lead or deal first.");
+      return;
+    }
+    setNoteSaving(true);
+    setNoteMessage("");
+    if (selectedDeal) {
+      const { error } = await createDealActivity({
+        deal_id: selectedDeal.id,
+        actor: user || "Unknown",
+        activity_type: "note",
+        summary,
+        field_changes: { note: summary, source: "opportunity-file" },
+      });
+      if (error) {
+        setNoteMessage(error);
+      } else {
+        setDealActivity(await fetchDealActivity(selectedDeal.id));
+        setNoteDraft("");
+        setNoteMessage("Note saved to the shared deal file.");
+      }
+    } else if (selectedLead) {
+      const { error } = await createImportedLandLeadActivity({
+        leadId: selectedLead.id,
+        actor: user || "Unknown",
+        activityType: "note",
+        summary,
+      });
+      if (error) {
+        setNoteMessage(error);
+      } else {
+        setLeadActivities(await fetchImportedLandLeadActivities(selectedLead.id, 80));
+        setNoteDraft("");
+        setNoteMessage("Note saved to the shared lead file.");
+      }
+    }
+    setNoteSaving(false);
+  }
 
   return (
     <div className="opportunity-page" style={{ minHeight: "100vh", background: "linear-gradient(180deg, #f8f2e7 0%, #efe6d6 100%)", padding: "72px 20px 96px", color: "var(--ink)" }}>
@@ -233,6 +312,41 @@ function OpportunityContent() {
                   <p style={bodyText}>{selectedDeal?.submission_summary || selectedDeal?.notes || selectedLead?.notes || "No summary has been added yet."}</p>
                   {selectedDeal?.requested_next_step && <p style={{ ...bodyText, marginTop: 8 }}><strong>Requested next step:</strong> {selectedDeal.requested_next_step}</p>}
                   {selectedDeal?.submit_uncertainties && <p style={{ ...bodyText, marginTop: 8 }}><strong>Open questions:</strong> {selectedDeal.submit_uncertainties}</p>}
+                </div>
+              </section>
+
+              <section style={panel}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "start", marginBottom: 12 }} className="notes-header">
+                  <div>
+                    <p style={eyebrowSmall}>Shared notes</p>
+                    <h2 style={sectionTitle}>Leave the working record here</h2>
+                  </div>
+                  <span style={pill}>{sharedNotes.length} note{sharedNotes.length === 1 ? "" : "s"}</span>
+                </div>
+                <textarea
+                  value={noteDraft}
+                  onChange={event => setNoteDraft(event.target.value)}
+                  placeholder="Add a VA/member note, seller context, research finding, or handoff detail..."
+                  rows={4}
+                  style={noteTextarea}
+                />
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", marginTop: 10 }} className="note-actions">
+                  <p style={{ ...bodyText, color: noteMessage.toLowerCase().includes("saved") ? "var(--success)" : "var(--muted)" }}>{noteMessage || "Notes stay with this file so the next person does not have to hunt for context."}</p>
+                  <button type="button" onClick={saveSharedNote} disabled={noteSaving} style={{ ...primaryButton, opacity: noteSaving ? 0.6 : 1 }}>
+                    {noteSaving ? "Saving..." : "Save Note"}
+                  </button>
+                </div>
+                <div style={{ display: "grid", gap: 8, marginTop: 12, maxHeight: 260, overflow: "auto" }}>
+                  {sharedNotes.map(note => (
+                    <div key={note.id} style={noteItem}>
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
+                        <strong style={{ color: "var(--obsidian)", fontSize: 13 }}>{note.actor}</strong>
+                        <span style={miniLabel}>{note.source} · {formatDate(note.at)}</span>
+                      </div>
+                      <p style={{ ...bodyText, marginTop: 6 }}>{note.body}</p>
+                    </div>
+                  ))}
+                  {sharedNotes.length === 0 && <p style={bodyText}>No shared notes yet.</p>}
                 </div>
               </section>
 
@@ -344,6 +458,7 @@ function OpportunityContent() {
         }
         @media (max-width: 760px) {
           .summary-strip, .two-col, .number-grid { grid-template-columns: 1fr !important; }
+          .notes-header, .note-actions { display: grid !important; justify-content: stretch !important; }
         }
       `}</style>
     </div>
@@ -420,6 +535,8 @@ const subPanel: React.CSSProperties = { background: "var(--surface)", border: "1
 const darkPanel: React.CSSProperties = { background: "linear-gradient(180deg, #1b1712 0%, #2c241a 100%)", border: "1px solid rgba(27,23,18,0.8)", borderRadius: 8, padding: 14, boxShadow: "0 16px 34px rgba(20,17,13,0.16)" };
 const timelineItem: React.CSSProperties = { display: "grid", gridTemplateColumns: "18px minmax(0, 1fr)", gap: 8, border: "1px solid var(--fog)", borderRadius: 8, padding: 10, background: "var(--surface)" };
 const timelineDot: React.CSSProperties = { width: 10, height: 10, borderRadius: 999, background: "var(--brass)", marginTop: 4 };
+const noteItem: React.CSSProperties = { border: "1px solid var(--fog)", borderRadius: 8, padding: 10, background: "var(--surface)" };
+const noteTextarea: React.CSSProperties = { width: "100%", minHeight: 112, resize: "vertical", border: "1px solid var(--fog)", borderRadius: 8, background: "var(--surface)", color: "var(--obsidian)", padding: 12, font: "inherit", fontSize: 13, lineHeight: 1.5, outline: "none" };
 const bodyText: React.CSSProperties = { color: "var(--ink)", fontSize: 13, lineHeight: 1.55, whiteSpace: "pre-wrap" };
 const eyebrow: React.CSSProperties = { fontSize: 11, letterSpacing: 2, textTransform: "uppercase", color: "var(--brass)", fontWeight: 700, marginBottom: 8 };
 const eyebrowSmall: React.CSSProperties = { fontSize: 10, letterSpacing: "0.18em", textTransform: "uppercase", color: "var(--brass)", fontWeight: 700 };

@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import NavBarWrapper from "@/components/NavBar";
 import BottomNav from "@/components/BottomNav";
+import GlobalLeadSearch from "@/components/GlobalLeadSearch";
 
 export const metadata: Metadata = {
   title: "Meridian Collective LLC — Partnership Hub",
@@ -28,6 +29,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       </head>
       <body>
         <NavBarWrapper />
+        <GlobalLeadSearch />
         <div className="main-content">{children}</div>
         <BottomNav />
       </body>
