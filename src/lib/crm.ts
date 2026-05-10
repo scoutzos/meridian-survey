@@ -4,6 +4,7 @@ import { fetchDeals, type Deal } from "./deals";
 
 export type CrmContactType = "seller" | "buyer" | "agent" | "broker" | "builder" | "neighbor" | "title" | "lender" | "vendor" | "member" | "other";
 export type CrmTemplateType = "seller-sms" | "buyer-sms" | "seller-call" | "buyer-call" | "email" | "task" | "brief";
+export type OpportunityContactRole = "seller" | "owner" | "co-owner" | "buyer" | "agent" | "broker" | "builder" | "neighbor" | "title" | "lender" | "vendor" | "member" | "attorney" | "other";
 
 export interface CrmContact {
   id: string;
@@ -123,9 +124,27 @@ export interface CrmTemplate {
   updated_at: string;
 }
 
+export interface OpportunityContact {
+  id: string;
+  deal_id: string;
+  contact_id: string;
+  role: OpportunityContactRole;
+  is_primary: boolean;
+  relationship_notes: string | null;
+  source_system: string | null;
+  source_table: string | null;
+  source_id: string | null;
+  created_at: string;
+  created_by: string | null;
+  updated_at: string;
+  updated_by: string | null;
+  deleted_at: string | null;
+}
+
 export interface CrmDashboardData {
   deals: Deal[];
   contacts: CrmContact[];
+  opportunityContacts: OpportunityContact[];
   properties: CrmProperty[];
   buyers: CrmBuyer[];
   campaigns: DispositionCampaign[];
@@ -135,6 +154,7 @@ export interface CrmDashboardData {
 }
 
 const LOCAL_CONTACTS = "meridian_crm_contacts_local";
+const LOCAL_OPPORTUNITY_CONTACTS = "meridian_opportunity_contacts_local";
 const LOCAL_PROPERTIES = "meridian_crm_properties_local";
 const LOCAL_BUYERS = "meridian_crm_buyers_local";
 const LOCAL_CAMPAIGNS = "meridian_disposition_campaigns_local";
@@ -169,6 +189,7 @@ export async function fetchCrmDashboardData(): Promise<CrmDashboardData> {
       deals,
       communications,
       contacts: localGet<CrmContact[]>(LOCAL_CONTACTS, []),
+      opportunityContacts: localGet<OpportunityContact[]>(LOCAL_OPPORTUNITY_CONTACTS, []),
       properties: localGet<CrmProperty[]>(LOCAL_PROPERTIES, []),
       buyers: localGet<CrmBuyer[]>(LOCAL_BUYERS, []),
       campaigns: localGet<DispositionCampaign[]>(LOCAL_CAMPAIGNS, []),
@@ -177,8 +198,9 @@ export async function fetchCrmDashboardData(): Promise<CrmDashboardData> {
     };
   }
 
-  const [contacts, properties, buyers, campaigns, offers, templates] = await Promise.all([
+  const [contacts, opportunityContacts, properties, buyers, campaigns, offers, templates] = await Promise.all([
     supabase.from("meridian_crm_contacts").select("*").is("deleted_at", null).order("updated_at", { ascending: false }).limit(200),
+    supabase.from("meridian_opportunity_contacts").select("*").is("deleted_at", null).order("updated_at", { ascending: false }).limit(500),
     supabase.from("meridian_crm_properties").select("*").is("deleted_at", null).order("updated_at", { ascending: false }).limit(200),
     supabase.from("meridian_crm_buyers").select("*").is("deleted_at", null).order("updated_at", { ascending: false }).limit(200),
     supabase.from("meridian_disposition_campaigns").select("*").is("deleted_at", null).order("updated_at", { ascending: false }).limit(100),
@@ -190,12 +212,70 @@ export async function fetchCrmDashboardData(): Promise<CrmDashboardData> {
     deals,
     communications,
     contacts: (contacts.data as CrmContact[] | null) ?? [],
+    opportunityContacts: (opportunityContacts.data as OpportunityContact[] | null) ?? [],
     properties: (properties.data as CrmProperty[] | null) ?? [],
     buyers: (buyers.data as CrmBuyer[] | null) ?? [],
     campaigns: (campaigns.data as DispositionCampaign[] | null) ?? [],
     offers: (offers.data as BuyerOffer[] | null) ?? [],
     templates: (templates.data as CrmTemplate[] | null) ?? [],
   };
+}
+
+export async function linkContactToOpportunity(input: {
+  deal_id: string;
+  contact_id: string;
+  role: OpportunityContactRole;
+  is_primary?: boolean;
+  relationship_notes?: string | null;
+}, actor: string): Promise<{ data: OpportunityContact | null; error: string | null }> {
+  const row = {
+    deal_id: input.deal_id,
+    contact_id: input.contact_id,
+    role: input.role,
+    is_primary: input.is_primary ?? false,
+    relationship_notes: input.relationship_notes?.trim() || null,
+    source_system: "manual",
+    source_table: "meridian_crm_contacts",
+    source_id: input.contact_id,
+    updated_by: actor,
+  };
+  if (!row.deal_id || !row.contact_id) return { data: null, error: "Opportunity and contact are required." };
+  if (!supabase) {
+    const existing = localGet<OpportunityContact[]>(LOCAL_OPPORTUNITY_CONTACTS, []);
+    const found = existing.find(item => item.deal_id === row.deal_id && item.contact_id === row.contact_id && item.role === row.role && !item.deleted_at);
+    const item = {
+      ...row,
+      id: found?.id ?? `opportunity-contact-${Date.now()}`,
+      created_at: found?.created_at ?? now(),
+      created_by: found?.created_by ?? actor,
+      updated_at: now(),
+      deleted_at: null,
+    } as OpportunityContact;
+    localSet(LOCAL_OPPORTUNITY_CONTACTS, [item, ...existing.filter(link => link.id !== item.id)]);
+    return { data: item, error: null };
+  }
+  const existing = await supabase
+    .from("meridian_opportunity_contacts")
+    .select("id")
+    .eq("deal_id", row.deal_id)
+    .eq("contact_id", row.contact_id)
+    .eq("role", row.role)
+    .is("deleted_at", null)
+    .maybeSingle();
+  const query = existing.data?.id
+    ? supabase
+      .from("meridian_opportunity_contacts")
+      .update({ ...row, updated_at: now() })
+      .eq("id", existing.data.id)
+      .select()
+      .single()
+    : supabase
+      .from("meridian_opportunity_contacts")
+      .insert({ ...row, created_by: actor })
+      .select()
+      .single();
+  const { data, error } = await query;
+  return { data: data as OpportunityContact | null, error: error?.message ?? null };
 }
 
 export async function createCrmContact(input: {

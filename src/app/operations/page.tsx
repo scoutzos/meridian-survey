@@ -30,10 +30,13 @@ import {
 import {
   approveVaPayPeriod,
   fetchVaTimeEntries,
+  fetchVaTimeChangeRequests,
   formatDuration,
   formatPayPeriod,
+  reviewVaTimeChangeRequest,
   summarizeVaPayPeriods,
   type VaTimeEntry,
+  type VaTimeChangeRequest,
 } from "@/lib/va-time";
 import {
   fetchLandLeadBatches,
@@ -77,7 +80,10 @@ export default function OperationsPage() {
   const [vaBriefs, setVaBriefs] = useState<VaDailyBrief[]>([]);
   const [vaBriefReviews, setVaBriefReviews] = useState<VaDailyBriefReview[]>([]);
   const [vaTimeEntries, setVaTimeEntries] = useState<VaTimeEntry[]>([]);
+  const [vaTimeChangeRequests, setVaTimeChangeRequests] = useState<VaTimeChangeRequest[]>([]);
   const [approvingPeriod, setApprovingPeriod] = useState<string | null>(null);
+  const [reviewingTimeRequest, setReviewingTimeRequest] = useState<string | null>(null);
+  const [timeRequestNotes, setTimeRequestNotes] = useState<Record<string, string>>({});
   const [landLeadBatches, setLandLeadBatches] = useState<LandLeadBatch[]>([]);
   const [importedLeads, setImportedLeads] = useState<ImportedLandLead[]>([]);
   const [briefReviewNotes, setBriefReviewNotes] = useState<Record<string, string>>({});
@@ -100,9 +106,10 @@ export default function OperationsPage() {
       fetchScenarios(),
       fetchVaDailyBriefs(12),
       fetchVaTimeEntries(120),
+      fetchVaTimeChangeRequests(100),
       fetchLandLeadBatches(12),
       fetchImportedLandLeads(250),
-    ]).then(([projectRows, eventRows, reimbursementRows, distributionRows, scenarioRows, briefRows, timeRows, batchRows, leadRows]) => {
+    ]).then(([projectRows, eventRows, reimbursementRows, distributionRows, scenarioRows, briefRows, timeRows, timeRequestRows, batchRows, leadRows]) => {
       setProjects(projectRows);
       setEvents(eventRows);
       setReimbursements(reimbursementRows);
@@ -110,6 +117,7 @@ export default function OperationsPage() {
       setScenarios(scenarioRows);
       setVaBriefs(briefRows);
       setVaTimeEntries(timeRows);
+      setVaTimeChangeRequests(timeRequestRows);
       setLandLeadBatches(batchRows);
       setImportedLeads(leadRows);
       void fetchVaDailyBriefReviews(briefRows.map(brief => brief.id)).then(setVaBriefReviews);
@@ -127,6 +135,7 @@ export default function OperationsPage() {
   const vaPayPeriods = useMemo(() => summarizeVaPayPeriods(vaTimeEntries), [vaTimeEntries]);
   const vaSubmittedHours = useMemo(() => vaTimeEntries.reduce((sum, entry) => sum + ((entry.status === "submitted" || entry.status === "approved") ? (entry.duration_minutes ?? 0) : 0), 0) / 60, [vaTimeEntries]);
   const vaSubmittedCost = useMemo(() => vaTimeEntries.reduce((sum, entry) => sum + ((entry.status === "submitted" || entry.status === "approved") ? Number(entry.cost_amount ?? 0) : 0), 0), [vaTimeEntries]);
+  const pendingTimeRequests = useMemo(() => vaTimeChangeRequests.filter(request => request.status === "pending"), [vaTimeChangeRequests]);
 
   const scenarioPreview = useMemo(() => calculateScenario({
     purchase_price: toNumber(scenarioDraft.purchase_price),
@@ -146,6 +155,18 @@ export default function OperationsPage() {
     setApprovingPeriod(null);
     if (error) { alert(error); return; }
     setVaTimeEntries(await fetchVaTimeEntries(120));
+  };
+
+  const reviewTimeRequest = async (request: VaTimeChangeRequest, decision: "approved" | "rejected") => {
+    if (!user) return;
+    setReviewingTimeRequest(request.id);
+    const { error } = await reviewVaTimeChangeRequest(request, decision, user, timeRequestNotes[request.id] ?? "");
+    setReviewingTimeRequest(null);
+    if (error) { alert(error); return; }
+    const [timeRows, requestRows] = await Promise.all([fetchVaTimeEntries(120), fetchVaTimeChangeRequests(100)]);
+    setVaTimeEntries(timeRows);
+    setVaTimeChangeRequests(requestRows);
+    setTimeRequestNotes(prev => ({ ...prev, [request.id]: "" }));
   };
 
   if (!user) return null;
@@ -273,8 +294,65 @@ export default function OperationsPage() {
         <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10, marginBottom: 14 }} className="stat-grid">
           <MiniStat label="Submitted VA hours" value={`${vaSubmittedHours.toFixed(2)} hrs`} />
           <MiniStat label="Submitted VA cost" value={money(vaSubmittedCost)} />
-          <MiniStat label="Pay periods" value={String(vaPayPeriods.length)} />
+          <MiniStat label="Time edits pending" value={String(pendingTimeRequests.length)} />
         </div>
+        {pendingTimeRequests.length > 0 && (
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 12, marginBottom: 18 }} className="brief-grid">
+            {pendingTimeRequests.map(request => (
+              <article key={request.id} style={{ background: "var(--bone)", border: "1px solid var(--fog)", borderRadius: 8, padding: 12 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "baseline", marginBottom: 8 }}>
+                  <div>
+                    <p style={rowTitle}>{labelize(request.request_type)}</p>
+                    <p style={rowMeta}>{request.operator_name} · requested {fmtDate(request.created_at)}</p>
+                  </div>
+                  <span style={smallPill}>Pending</span>
+                </div>
+                <p style={briefLabel}>Requested time</p>
+                <p style={briefText}>
+                  {request.request_type === "void-shift"
+                    ? "Void/delete the selected shift"
+                    : `${request.requested_clock_in_at ? fmtDate(request.requested_clock_in_at) : "No start"} - ${request.requested_clock_out_at ? fmtDate(request.requested_clock_out_at) : "No end"}`}
+                </p>
+                {request.requested_notes && (
+                  <>
+                    <p style={briefLabel}>Shift notes</p>
+                    <p style={briefText}>{request.requested_notes}</p>
+                  </>
+                )}
+                <p style={briefLabel}>Reason</p>
+                <p style={briefText}>{request.reason}</p>
+                <textarea
+                  rows={2}
+                  value={timeRequestNotes[request.id] ?? ""}
+                  onChange={e => setTimeRequestNotes(prev => ({ ...prev, [request.id]: e.target.value }))}
+                  placeholder="Optional review note"
+                />
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
+                  <button
+                    onClick={() => reviewTimeRequest(request, "approved")}
+                    disabled={reviewingTimeRequest === request.id}
+                    style={{ ...primaryButton, opacity: reviewingTimeRequest === request.id ? 0.6 : 1 }}
+                  >
+                    Approve Correction
+                  </button>
+                  <button
+                    onClick={() => reviewTimeRequest(request, "rejected")}
+                    disabled={reviewingTimeRequest === request.id}
+                    style={{
+                      ...primaryButton,
+                      background: "transparent",
+                      border: "1px solid var(--fog)",
+                      color: "var(--obsidian)",
+                      opacity: reviewingTimeRequest === request.id ? 0.6 : 1,
+                    }}
+                  >
+                    Reject
+                  </button>
+                </div>
+              </article>
+            ))}
+          </div>
+        )}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 12, marginBottom: 18 }} className="brief-grid">
           {vaPayPeriods.length === 0 && <p style={{ color: "var(--muted)", fontSize: 13 }}>No VA time entries have been submitted yet.</p>}
           {vaPayPeriods.slice(0, 4).map(period => {
@@ -336,6 +414,14 @@ export default function OperationsPage() {
                 <MiniStat label="Replies" value={`${brief.seller_replies ?? 0}`} />
                 <MiniStat label="Calls" value={`${brief.calls_completed ?? 0}`} />
               </div>
+              {brief.revised_at && (
+                <>
+                  <p style={briefLabel}>Revision</p>
+                  <p style={briefText}>
+                    Updated {fmtDate(brief.revised_at)}{brief.revision_note ? ` · ${brief.revision_note}` : ""}
+                  </p>
+                </>
+              )}
               <p style={briefLabel}>Completed</p>
               <p style={briefText}>{brief.activities_completed}</p>
               {brief.follow_ups_needed && (

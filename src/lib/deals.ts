@@ -432,6 +432,83 @@ function cleanDealInput(input: DealInput): DealInput {
   };
 }
 
+async function findSellerContactId(name: string | null | undefined, phone: string | null | undefined): Promise<string | null> {
+  if (!supabase) return null;
+  const cleanName = name?.trim() || null;
+  const cleanPhone = phone?.trim() || null;
+  if (cleanPhone) {
+    const [primary, secondary] = await Promise.all([
+      supabase.from("meridian_crm_contacts").select("id").eq("phone", cleanPhone).is("deleted_at", null).limit(1).maybeSingle(),
+      supabase.from("meridian_crm_contacts").select("id").eq("phone_2", cleanPhone).is("deleted_at", null).limit(1).maybeSingle(),
+    ]);
+    if (primary.data?.id) return primary.data.id as string;
+    if (secondary.data?.id) return secondary.data.id as string;
+  }
+  if (cleanName) {
+    const { data } = await supabase
+      .from("meridian_crm_contacts")
+      .select("id")
+      .ilike("display_name", cleanName)
+      .is("deleted_at", null)
+      .limit(1)
+      .maybeSingle();
+    if (data?.id) return data.id as string;
+  }
+  return null;
+}
+
+async function syncDealSellerContact(deal: Deal, actor: string): Promise<void> {
+  if (!supabase || (!deal.seller_name && !deal.seller_phone)) return;
+  try {
+    let contactId = await findSellerContactId(deal.seller_name, deal.seller_phone);
+    if (!contactId) {
+      const { data } = await supabase
+        .from("meridian_crm_contacts")
+        .insert({
+          contact_type: "seller",
+          display_name: deal.seller_name || deal.seller_phone || "Unknown seller",
+          phone: deal.seller_phone || null,
+          tags: ["auto-linked", "deal-seller"],
+          source_system: "deal-sync",
+          created_by: actor,
+          updated_by: actor,
+        })
+        .select("id")
+        .single();
+      contactId = data?.id as string | null;
+    }
+    if (!contactId) return;
+
+    const existing = await supabase
+      .from("meridian_opportunity_contacts")
+      .select("id")
+      .eq("deal_id", deal.id)
+      .eq("contact_id", contactId)
+      .eq("role", "seller")
+      .is("deleted_at", null)
+      .limit(1)
+      .maybeSingle();
+
+    const link = {
+      deal_id: deal.id,
+      contact_id: contactId,
+      role: "seller",
+      is_primary: true,
+      source_system: "deal-sync",
+      source_table: "meridian_deals",
+      source_id: deal.id,
+      updated_by: actor,
+    };
+    if (existing.data?.id) {
+      await supabase.from("meridian_opportunity_contacts").update({ ...link, updated_at: new Date().toISOString() }).eq("id", existing.data.id);
+    } else {
+      await supabase.from("meridian_opportunity_contacts").insert({ ...link, created_by: actor });
+    }
+  } catch {
+    // CRM linking should never block saving the opportunity packet.
+  }
+}
+
 function diffDeal(before: Deal | null, after: DealInput): Record<string, { before: unknown; after: unknown }> {
   if (!before) return {};
   const keys: Array<keyof DealInput> = [
@@ -603,6 +680,7 @@ export async function createDeal(input: DealInput, actor: string): Promise<{ dat
   const checklist = generateDueDiligenceChecklist(input).map(seed => ({ ...seed, deal_id: deal.id }));
   const { error: checklistError } = await supabase.from("meridian_deal_due_diligence_items").insert(checklist);
   await createDealActivity({ deal_id: deal.id, actor, activity_type: "created", summary: "Created deal intake packet.", field_changes: clean as unknown as Record<string, unknown> });
+  await syncDealSellerContact(deal, actor);
   return { data: deal, error: checklistError?.message ?? null };
 }
 
@@ -639,7 +717,9 @@ export async function updateDeal(
     .single();
   if (error || !data) return { data: null, error: error?.message ?? "Deal update failed" };
   await createDealActivity({ deal_id: id, actor, activity_type: current?.status !== clean.status ? "status-change" : "updated", summary: current?.status !== clean.status ? `Status changed to ${clean.status}.` : "Updated deal details.", field_changes: diffDeal(current, clean) });
-  return { data: normalizeDeal(data as Record<string, unknown>), error: null };
+  const deal = normalizeDeal(data as Record<string, unknown>);
+  await syncDealSellerContact(deal, actor);
+  return { data: deal, error: null };
 }
 
 export async function updateChecklistItemStatus(

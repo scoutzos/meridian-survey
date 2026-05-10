@@ -23,6 +23,9 @@ export interface VaDailyBrief extends VaDailyBriefInput {
   reviewed_by: string | null;
   reviewed_at: string | null;
   review_note: string | null;
+  revised_at?: string | null;
+  revised_by?: string | null;
+  revision_note?: string | null;
   created_at: string;
   updated_at: string;
   deleted_at: string | null;
@@ -117,6 +120,46 @@ export async function createVaDailyBrief(
   const { data, error } = await supabase
     .from("meridian_va_daily_briefs")
     .insert({ ...row, submitted_by: actor })
+    .select()
+    .single();
+  return { data: (data as VaDailyBrief) ?? null, error: error?.message ?? null };
+}
+
+export async function updateVaDailyBrief(
+  briefId: string,
+  input: VaDailyBriefInput,
+  actor: string,
+  revisionNote = "",
+): Promise<{ data: VaDailyBrief | null; error: string | null }> {
+  const row = cleanInput(input);
+  if (!row.work_date) return { data: null, error: "Work date is required." };
+  if (!row.activities_completed) return { data: null, error: "Activities completed is required." };
+  const now = new Date().toISOString();
+
+  if (!supabase) {
+    const rows = localGet<VaDailyBrief[]>(LOCAL_BRIEFS, []);
+    const nextRows = rows.map(brief => brief.id === briefId ? {
+      ...brief,
+      ...row,
+      revised_at: now,
+      revised_by: actor,
+      revision_note: revisionNote.trim() || null,
+      updated_at: now,
+    } : brief);
+    localSet(LOCAL_BRIEFS, nextRows);
+    return { data: nextRows.find(brief => brief.id === briefId) ?? null, error: null };
+  }
+
+  const { data, error } = await supabase
+    .from("meridian_va_daily_briefs")
+    .update({
+      ...row,
+      revised_at: now,
+      revised_by: actor,
+      revision_note: revisionNote.trim() || null,
+      updated_at: now,
+    })
+    .eq("id", briefId)
     .select()
     .single();
   return { data: (data as VaDailyBrief) ?? null, error: error?.message ?? null };

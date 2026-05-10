@@ -9,8 +9,10 @@ import {
   createCrmContact,
   createDispositionCampaign,
   fetchCrmDashboardData,
+  linkContactToOpportunity,
   type CrmDashboardData,
   type CrmContactType,
+  type OpportunityContactRole,
 } from "@/lib/crm";
 import type { CommunicationEvent } from "@/lib/communications";
 
@@ -20,6 +22,7 @@ type CrmView = "inbox" | "deals" | "buyers" | "dispo" | "records";
 const EMPTY_DATA: CrmDashboardData = {
   deals: [],
   contacts: [],
+  opportunityContacts: [],
   properties: [],
   buyers: [],
   campaigns: [],
@@ -56,6 +59,7 @@ export default function CrmPage() {
   const [buyerDraft, setBuyerDraft] = useState({ buyer_name: "", buyer_type: "", markets: "", max_price: "", buy_box: "", notes: "" });
   const [campaignDraft, setCampaignDraft] = useState({ campaign_name: "", owner: "", notes: "" });
   const [offerDraft, setOfferDraft] = useState({ buyer_name: "", offer_amount: "", earnest_money: "", close_date: "", notes: "" });
+  const [linkDraft, setLinkDraft] = useState({ contact_id: "", role: "seller" as OpportunityContactRole, notes: "" });
 
   const reload = useCallback(async () => {
     setLoading(true);
@@ -77,6 +81,11 @@ export default function CrmPage() {
   const unmatchedMessages = useMemo(() => data.communications.filter(event => event.direction === "inbound" && !event.matched_deal_id && !event.matched_lead_id), [data.communications]);
   const hotDeals = useMemo(() => data.deals.filter(deal => deal.urgency === "hot" || deal.analysis.recommendation === "Strong Review"), [data.deals]);
   const selectedCampaigns = useMemo(() => selectedDeal ? data.campaigns.filter(campaign => campaign.deal_id === selectedDeal.id) : [], [data.campaigns, selectedDeal]);
+  const opportunityCountByContact = useMemo(() => data.opportunityContacts.reduce<Record<string, number>>((acc, link) => {
+    acc[link.contact_id] = (acc[link.contact_id] ?? 0) + 1;
+    return acc;
+  }, {}), [data.opportunityContacts]);
+  const selectedOpportunityContacts = useMemo(() => selectedDeal ? data.opportunityContacts.filter(link => link.deal_id === selectedDeal.id) : [], [data.opportunityContacts, selectedDeal]);
 
   if (!user) return null;
 
@@ -129,6 +138,22 @@ export default function CrmPage() {
     if (error) { setMessage(error); return; }
     setOfferDraft({ buyer_name: "", offer_amount: "", earnest_money: "", close_date: "", notes: "" });
     setMessage("Buyer offer recorded.");
+    await reload();
+  };
+
+  const linkContact = async () => {
+    if (!selectedDeal) { setMessage("Select an opportunity first."); return; }
+    if (!linkDraft.contact_id) { setMessage("Choose a CRM contact to link."); return; }
+    const { error } = await linkContactToOpportunity({
+      deal_id: selectedDeal.id,
+      contact_id: linkDraft.contact_id,
+      role: linkDraft.role,
+      is_primary: linkDraft.role === "seller" || linkDraft.role === "owner",
+      relationship_notes: linkDraft.notes,
+    }, user);
+    if (error) { setMessage(error); return; }
+    setLinkDraft({ contact_id: "", role: "seller", notes: "" });
+    setMessage("Contact linked to opportunity.");
     await reload();
   };
 
@@ -239,7 +264,7 @@ export default function CrmPage() {
               <>
                 <strong>{contact.display_name}</strong>
                 <span>{statusLabel(contact.contact_type)} · {contact.phone || contact.email || "No phone/email"}</span>
-                <span>{contact.county || "County pending"} · SMS {statusLabel(contact.sms_opt_status)}</span>
+                <span>{opportunityCountByContact[contact.id] ?? 0} linked opportunit{(opportunityCountByContact[contact.id] ?? 0) === 1 ? "y" : "ies"} · SMS {statusLabel(contact.sms_opt_status)}</span>
               </>
             )} />
             <CrmList title="Properties" items={data.properties} render={property => (
@@ -274,6 +299,14 @@ export default function CrmPage() {
             <DecisionMetric label="Exit target" value={money(selectedAnalysis.disposition.targetResale)} />
             <DecisionMetric label="Confidence" value={selectedAnalysis.disposition.exitConfidence} />
           </div>
+          <div style={{ borderTop: "1px solid rgba(247,242,232,0.16)", marginTop: 14, paddingTop: 12 }}>
+            <p style={{ ...miniLabel, color: "rgba(247,242,232,0.58)" }}>Linked CRM contacts</p>
+            <p style={{ color: "rgba(247,242,232,0.72)", fontSize: 12, lineHeight: 1.45, marginTop: 5 }}>
+              {selectedOpportunityContacts.length
+                ? `${selectedOpportunityContacts.length} contact${selectedOpportunityContacts.length === 1 ? "" : "s"} attached to this opportunity.`
+                : "No CRM contacts linked yet."}
+            </p>
+          </div>
           <button onClick={() => router.push(`/opportunity?deal=${selectedDeal.id}`)} style={{ ...primaryButton, width: "100%", marginTop: 14, background: "var(--bone)", color: "var(--obsidian)", borderColor: "var(--bone)" }}>Open shared file</button>
         </div>
       ) : (
@@ -293,6 +326,22 @@ export default function CrmPage() {
           <textarea rows={3} placeholder="Buy box" value={buyerDraft.buy_box} onChange={e => setBuyerDraft({ ...buyerDraft, buy_box: e.target.value })} />
           <button onClick={createBuyer} style={primaryButton}>Create Buyer</button>
         </QuickCreate>
+      )}
+
+      {(view === "dispo" || view === "deals" || view === "records") && selectedDeal && (
+        <>
+          <QuickCreate title="Link contact">
+            <select value={linkDraft.contact_id} onChange={e => setLinkDraft({ ...linkDraft, contact_id: e.target.value })}>
+              <option value="">Choose CRM contact</option>
+              {data.contacts.map(contact => <option key={contact.id} value={contact.id}>{contact.display_name}</option>)}
+            </select>
+            <select value={linkDraft.role} onChange={e => setLinkDraft({ ...linkDraft, role: e.target.value as OpportunityContactRole })}>
+              {["seller", "owner", "co-owner", "buyer", "agent", "broker", "builder", "neighbor", "title", "lender", "attorney", "other"].map(role => <option key={role} value={role}>{statusLabel(role)}</option>)}
+            </select>
+            <textarea rows={2} placeholder="Relationship notes" value={linkDraft.notes} onChange={e => setLinkDraft({ ...linkDraft, notes: e.target.value })} />
+            <button onClick={linkContact} style={primaryButton}>Link To Opportunity</button>
+          </QuickCreate>
+        </>
       )}
 
       {(view === "dispo" || view === "deals") && selectedDeal && (

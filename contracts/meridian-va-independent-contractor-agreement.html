@@ -1,0 +1,401 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Meridian Collective Group - Virtual Assistant Independent Contractor Agreement</title>
+  <style>
+    @page {
+      size: Letter;
+      margin: 0.62in 0.62in 0.68in;
+    }
+
+    :root {
+      --ink: #171b18;
+      --muted: #5e655f;
+      --deep: #0c0f0d;
+      --bone: #f4efe6;
+      --paper: #fffdf8;
+      --brass: #b08954;
+      --brass-light: #c9a878;
+      --line: #ded5c6;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: var(--paper);
+      color: var(--ink);
+      font-family: "Avenir Next", "Inter", "Helvetica Neue", Arial, sans-serif;
+      font-size: 9.55pt;
+      line-height: 1.46;
+    }
+
+    .cover {
+      min-height: 9.72in;
+      display: flex;
+      flex-direction: column;
+      border: 1px solid var(--line);
+      background:
+        linear-gradient(90deg, rgba(176, 137, 84, 0.14), transparent 18%, transparent 82%, rgba(176, 137, 84, 0.14)),
+        var(--paper);
+    }
+
+    .hero {
+      background: var(--deep);
+      color: var(--bone);
+      padding: 0.42in 0.5in 0.36in;
+      text-align: center;
+      border-bottom: 5px solid var(--brass);
+    }
+
+    .brand-mark {
+      width: 2.45in;
+      height: auto;
+      margin-bottom: 0.05in;
+    }
+
+    .kicker {
+      color: var(--brass-light);
+      font-size: 7.8pt;
+      font-weight: 700;
+      letter-spacing: 2.3pt;
+      text-transform: uppercase;
+      margin-top: 0.06in;
+    }
+
+    h1 {
+      margin: 0.2in 0 0;
+      font-family: Georgia, "Times New Roman", serif;
+      font-size: 22pt;
+      font-weight: 400;
+      letter-spacing: 0.2pt;
+      line-height: 1.08;
+    }
+
+    .subhead {
+      margin: 0.12in auto 0;
+      max-width: 5.7in;
+      color: #d8cfbd;
+      font-size: 9.2pt;
+    }
+
+    .meta {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.14in 0.22in;
+      padding: 0.38in 0.48in 0.2in;
+    }
+
+    .field {
+      min-height: 0.44in;
+      border-bottom: 1px solid var(--line);
+      padding-bottom: 0.06in;
+    }
+
+    .label {
+      display: block;
+      color: var(--brass);
+      font-size: 7.2pt;
+      font-weight: 800;
+      letter-spacing: 1.4pt;
+      text-transform: uppercase;
+    }
+
+    .value {
+      display: block;
+      margin-top: 0.05in;
+      color: var(--ink);
+      font-size: 10.2pt;
+    }
+
+    .note {
+      margin: 0.12in 0.48in 0;
+      padding: 0.16in 0.18in;
+      border-left: 4px solid var(--brass);
+      background: #f8f3ea;
+      color: #3a3f3a;
+      font-size: 8.8pt;
+    }
+
+    .content {
+      padding: 0.24in 0.48in 0.4in;
+    }
+
+    h2 {
+      break-after: avoid;
+      margin: 0.16in 0 0.055in;
+      color: var(--deep);
+      font-size: 9.8pt;
+      font-weight: 800;
+      letter-spacing: 0.8pt;
+      text-transform: uppercase;
+    }
+
+    p {
+      margin: 0 0 0.08in;
+    }
+
+    ul {
+      margin: 0.02in 0 0.1in 0.18in;
+      padding: 0;
+    }
+
+    li {
+      margin: 0 0 0.03in;
+      padding-left: 0.02in;
+    }
+
+    .clause {
+      break-inside: avoid;
+      page-break-inside: avoid;
+    }
+
+    .two-col {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.18in;
+    }
+
+    .signature-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.3in;
+      margin-top: 0.24in;
+      break-inside: avoid;
+    }
+
+    .signature-card {
+      border: 1px solid var(--line);
+      padding: 0.16in;
+      min-height: 1.68in;
+      background: #fffaf1;
+    }
+
+    .signature-card h3 {
+      margin: 0 0 0.2in;
+      color: var(--brass);
+      font-size: 8pt;
+      letter-spacing: 1.5pt;
+      text-transform: uppercase;
+    }
+
+    .sig-line {
+      border-bottom: 1px solid #8d887e;
+      margin-top: 0.25in;
+      height: 0.18in;
+    }
+
+    .sig-label {
+      margin-top: 0.035in;
+      color: var(--muted);
+      font-size: 7.4pt;
+      text-transform: uppercase;
+      letter-spacing: 0.7pt;
+    }
+
+    .footer {
+      margin-top: auto;
+      padding: 0.12in 0.48in 0.18in;
+      color: var(--muted);
+      font-size: 7.2pt;
+      text-align: center;
+      border-top: 1px solid var(--line);
+    }
+
+    .page-break {
+      break-before: page;
+      page-break-before: always;
+    }
+  </style>
+</head>
+<body>
+  <main class="cover">
+    <section class="hero">
+      <img class="brand-mark" src="../public/logos/meridian-collective-transparent.svg" alt="Meridian Collective Group" />
+      <div class="kicker">Independent Contractor Agreement</div>
+      <h1>Virtual Assistant Agreement</h1>
+      <p class="subhead">Prepared for a virtual assistant engagement supporting Meridian Collective Group operations, administrative workflows, lead management, and related business functions.</p>
+    </section>
+
+    <section class="meta" aria-label="Agreement details">
+      <div class="field">
+        <span class="label">Effective Date</span>
+        <span class="value">____________________________________</span>
+      </div>
+      <div class="field">
+        <span class="label">Company</span>
+        <span class="value">Meridian Collective Group</span>
+      </div>
+      <div class="field">
+        <span class="label">Company Representative</span>
+        <span class="value">____________________________________</span>
+      </div>
+      <div class="field">
+        <span class="label">Contractor Name</span>
+        <span class="value">____________________________________</span>
+      </div>
+      <div class="field">
+        <span class="label">Contractor Email</span>
+        <span class="value">____________________________________</span>
+      </div>
+      <div class="field">
+        <span class="label">Phone / WhatsApp</span>
+        <span class="value">____________________________________</span>
+      </div>
+    </section>
+
+    <p class="note">This agreement is a business template and should be reviewed by qualified counsel before use, especially for restrictive covenants, worker classification, wage rules, and international contractor issues.</p>
+
+    <section class="content">
+      <div class="clause">
+        <h2>1. Engagement & Role</h2>
+        <p>Company engages Contractor as an independent contractor virtual assistant to provide administrative, operational, marketing, CRM, lead management, scheduling, inbox support, data entry, social media support, and other virtual assistant services assigned by Company.</p>
+        <p>Contractor is not an employee, partner, agent, or legal representative of Company and has no authority to bind Company unless expressly authorized in writing.</p>
+      </div>
+
+      <div class="clause">
+        <h2>2. Compensation & Pay Increase</h2>
+        <p>Contractor will be paid <strong>$4.50 USD per hour</strong> for the first ninety (90) days of the engagement.</p>
+        <p>Contractor's hourly rate will increase to <strong>$7.00 USD per hour</strong> upon the earlier of: (a) completion of the first ninety (90) days of satisfactory work; or (b) Company's closing of its first transaction/deal after Contractor's start date.</p>
+        <p>Payment will be made biweekly based on approved, accurately tracked hours and completed work. Contractor must submit time records and task summaries in the format requested by Company. Overtime or additional hours require prior written approval.</p>
+      </div>
+
+      <div class="clause">
+        <h2>3. Advance Against Final Pay</h2>
+        <p>Company agrees to advance Contractor one (1) week of pay at the beginning of the engagement in the amount of $________________.</p>
+        <p>This advance is not a bonus. It is an advance against Contractor's final payout. Upon termination, resignation, or completion of the engagement, Company may deduct the advance from any final amounts owed to Contractor.</p>
+        <p>If Contractor's final approved pay is less than the advance amount, Contractor agrees to repay the remaining balance within seven (7) days of written request.</p>
+      </div>
+
+      <div class="two-col">
+        <div class="clause">
+          <h2>4. Trial Period</h2>
+          <p>The first ten (10) working days will be a trial period. Company may continue, modify, or end the engagement after the trial period at its sole discretion.</p>
+        </div>
+
+        <div class="clause">
+          <h2>5. Work Schedule & Availability</h2>
+          <p>Contractor may work up to _____ hours per day / _____ hours per week unless additional hours are approved in writing. Contractor may work from their own location and time zone, provided assigned deadlines are met.</p>
+        </div>
+      </div>
+
+      <div class="clause">
+        <h2>6. Scope of Work</h2>
+        <ul>
+          <li>CRM updates, lead entry, and lead management support</li>
+          <li>Calendar coordination, email support, and message handling</li>
+          <li>Social media scheduling, engagement, and administrative marketing support</li>
+          <li>Property, lead, vendor, and market research</li>
+          <li>Document organization, data entry, reporting, and task tracking</li>
+          <li>Client follow-up tasks approved by Company</li>
+          <li>Other virtual assistant tasks assigned by Company</li>
+        </ul>
+      </div>
+
+      <div class="clause">
+        <h2>7. Performance Expectations</h2>
+        <p>Contractor agrees to perform all work accurately, professionally, timely, and with attention to detail. Incomplete, inaccurate, late, careless, or unauthorized work may be returned for correction and may result in reduced hours, withheld approval of time, removal from assignments, or termination.</p>
+      </div>
+    </section>
+  </main>
+
+  <main class="cover page-break">
+    <section class="content">
+      <div class="clause">
+        <h2>8. Tools, Accounts & Security</h2>
+        <p>Company may provide Contractor access to Company systems, CRMs, email accounts, social media accounts, documents, passwords, client information, vendor information, and other business tools.</p>
+        <ul>
+          <li>Contractor must use Company accounts only for authorized business purposes.</li>
+          <li>Contractor must keep all login credentials confidential and may not share access with anyone.</li>
+          <li>Contractor must use reasonable security practices, including two-factor authentication when available.</li>
+          <li>Contractor must immediately report suspected unauthorized access, lost devices, data exposure, or security incidents.</li>
+          <li>Contractor must return, delete, or surrender Company information upon request or termination.</li>
+        </ul>
+      </div>
+
+      <div class="clause">
+        <h2>9. Confidentiality</h2>
+        <p>Contractor will have access to confidential and proprietary Company information, including but not limited to client information, leads, prospects, pricing, scripts, systems, processes, marketing strategies, vendor information, login credentials, documents, communications, and business plans.</p>
+        <p>Contractor agrees not to disclose, copy, misuse, sell, share, or use confidential information for any purpose outside authorized Company work. This obligation continues after the agreement ends.</p>
+      </div>
+
+      <div class="clause">
+        <h2>10. Intellectual Property & Work Product</h2>
+        <p>All work product created for Company, including documents, spreadsheets, reports, databases, captions, social media content, templates, workflows, research, lists, automations, and other materials, belongs exclusively to Company.</p>
+        <p>To the extent ownership does not automatically transfer, Contractor assigns all rights, title, and interest in the work product to Company.</p>
+      </div>
+
+      <div class="clause">
+        <h2>11. Non-Solicitation, Non-Circumvention & Limited Non-Compete</h2>
+        <p>During the term of this agreement and for twelve (12) months after termination, Contractor may not directly or indirectly solicit, divert, contact for personal business, accept business from, or bypass Company with respect to any Company client, lead, prospect, vendor, agent, partner, investor, or business opportunity learned through Contractor's work with Company.</p>
+        <p>Contractor also agrees that, during the term of this agreement and for twelve (12) months after termination, Contractor will not provide the same or substantially similar virtual assistant, lead management, CRM, client support, marketing support, or administrative services to any direct competitor of Company with whom Contractor had contact, gained confidential information about, or supported through Company work.</p>
+        <p>This restriction is intended to be limited to protecting Company's confidential information, client relationships, leads, business opportunities, and goodwill. It does not prevent Contractor from earning a living generally or working in unrelated industries or roles.</p>
+      </div>
+
+      <div class="two-col">
+        <div class="clause">
+          <h2>12. No Benefits; Taxes</h2>
+          <p>Contractor is responsible for all taxes, insurance, equipment, internet, workspace, and government obligations in Contractor's jurisdiction. Company will not provide employee benefits, paid leave, health insurance, retirement benefits, unemployment insurance, workers' compensation, or tax withholding unless required by law.</p>
+        </div>
+
+        <div class="clause">
+          <h2>13. Expenses</h2>
+          <p>Contractor may not incur expenses on behalf of Company unless approved in writing in advance. Approved expenses must be supported by receipts.</p>
+        </div>
+      </div>
+
+      <div class="clause">
+        <h2>14. Termination</h2>
+        <p>Either party may terminate this agreement at any time with written notice. Company may terminate immediately for confidentiality violations, security concerns, misconduct, poor performance, unauthorized account use, dishonesty, missed deadlines, abandonment of work, or breach of this agreement.</p>
+        <p>Upon termination, Contractor must stop using Company systems and return or delete all Company materials upon request. Any outstanding advance may be deducted from Contractor's final payout.</p>
+      </div>
+
+      <div class="clause">
+        <h2>15. Independent Contractor Relationship</h2>
+        <p>Contractor controls the manner and means of performing services, subject to Company's right to approve deliverables, set business priorities, protect confidential information, and require deadlines. Nothing in this agreement creates an employment relationship.</p>
+      </div>
+
+      <div class="clause">
+        <h2>16. Governing Law & Dispute Resolution</h2>
+        <p>This agreement will be governed by the laws of the State of Georgia. Any dispute will be resolved by binding arbitration in Fulton County, Georgia, unless Company elects to seek injunctive relief for confidentiality, intellectual property, non-solicitation, non-circumvention, non-compete, or security violations.</p>
+      </div>
+
+      <div class="clause">
+        <h2>17. Electronic Signature</h2>
+        <p>This agreement may be signed electronically by DocuSign, Adobe Sign, PDF signature, email confirmation, or similar electronic means.</p>
+      </div>
+
+      <section class="signature-grid">
+        <div class="signature-card">
+          <h3>Company</h3>
+          <p><strong>Meridian Collective Group</strong></p>
+          <div class="sig-line"></div>
+          <div class="sig-label">Signature</div>
+          <div class="sig-line"></div>
+          <div class="sig-label">Name / Title</div>
+          <div class="sig-line"></div>
+          <div class="sig-label">Date</div>
+        </div>
+
+        <div class="signature-card">
+          <h3>Contractor</h3>
+          <p><strong>Virtual Assistant</strong></p>
+          <div class="sig-line"></div>
+          <div class="sig-label">Signature</div>
+          <div class="sig-line"></div>
+          <div class="sig-label">Name</div>
+          <div class="sig-line"></div>
+          <div class="sig-label">Date</div>
+        </div>
+      </section>
+    </section>
+
+    <footer class="footer">
+      Meridian Collective Group · Disciplined investing. Honest partnership. Lasting value.
+    </footer>
+  </main>
+</body>
+</html>
