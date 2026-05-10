@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   calculateDealAnalysis,
@@ -72,6 +72,9 @@ function OpportunityContent() {
   const [offers, setOffers] = useState<BuyerOffer[]>([]);
   const [buyers, setBuyers] = useState<CrmBuyer[]>([]);
   const [loading, setLoading] = useState(true);
+  const [smsDraft, setSmsDraft] = useState("");
+  const [smsSending, setSmsSending] = useState(false);
+  const [smsMessage, setSmsMessage] = useState("");
 
   useEffect(() => {
     const current = localStorage.getItem("meridian_user");
@@ -119,37 +122,74 @@ function OpportunityContent() {
     return buyers.filter(buyer => buyer.markets.some(market => county.includes(market.toLowerCase()) || market.toLowerCase().includes(county))).slice(0, 6);
   }, [buyers, selectedDeal, selectedLead]);
 
-  useEffect(() => {
+  const loadFileDetails = useCallback(async () => {
     if (!selectedLead && !selectedDeal) return;
-    async function loadFileDetails() {
-      const leadId = selectedLead?.id ?? null;
-      const dealId = selectedDeal?.id ?? null;
-      const [leadActivityRows, leadComms, dealActivityRows, dealComms, checklistRows, voteRows, attachmentRows, agreementRow] = await Promise.all([
-        leadId ? fetchImportedLandLeadActivities(leadId, 80) : Promise.resolve([]),
-        leadId ? fetchCommunicationEvents({ leadId, limit: 50 }) : Promise.resolve([]),
-        dealId ? fetchDealActivity(dealId) : Promise.resolve([]),
-        dealId ? fetchCommunicationEvents({ dealId, limit: 50 }) : Promise.resolve([]),
-        dealId ? fetchDealChecklist(dealId) : Promise.resolve([]),
-        dealId ? fetchDealVotes(dealId) : Promise.resolve([]),
-        dealId ? fetchDealAttachments(dealId) : Promise.resolve([]),
-        dealId ? fetchDealAgreement(dealId) : Promise.resolve(null),
-      ]);
-      setLeadActivities(leadActivityRows);
-      setDealActivity(dealActivityRows);
-      setCommunications([...leadComms, ...dealComms].sort((a, b) => (b.provider_created_at || b.created_at).localeCompare(a.provider_created_at || a.created_at)));
-      setChecklist(checklistRows);
-      setVotes(voteRows);
-      setAttachments(attachmentRows);
-      setAgreement(agreementRow);
-    }
-    void loadFileDetails();
+    const leadId = selectedLead?.id ?? null;
+    const dealId = selectedDeal?.id ?? null;
+    const [leadActivityRows, leadComms, dealActivityRows, dealComms, checklistRows, voteRows, attachmentRows, agreementRow] = await Promise.all([
+      leadId ? fetchImportedLandLeadActivities(leadId, 80) : Promise.resolve([]),
+      leadId ? fetchCommunicationEvents({ leadId, limit: 50 }) : Promise.resolve([]),
+      dealId ? fetchDealActivity(dealId) : Promise.resolve([]),
+      dealId ? fetchCommunicationEvents({ dealId, limit: 50 }) : Promise.resolve([]),
+      dealId ? fetchDealChecklist(dealId) : Promise.resolve([]),
+      dealId ? fetchDealVotes(dealId) : Promise.resolve([]),
+      dealId ? fetchDealAttachments(dealId) : Promise.resolve([]),
+      dealId ? fetchDealAgreement(dealId) : Promise.resolve(null),
+    ]);
+    setLeadActivities(leadActivityRows);
+    setDealActivity(dealActivityRows);
+    setCommunications([...leadComms, ...dealComms].sort((a, b) => (b.provider_created_at || b.created_at).localeCompare(a.provider_created_at || a.created_at)));
+    setChecklist(checklistRows);
+    setVotes(voteRows);
+    setAttachments(attachmentRows);
+    setAgreement(agreementRow);
   }, [selectedDeal, selectedLead]);
+
+  useEffect(() => {
+    void loadFileDetails();
+  }, [loadFileDetails]);
 
   if (!user) return null;
 
   const title = selectedDeal?.title || selectedLead?.property_address || selectedLead?.parcel_id || selectedLead?.owner_name || "Opportunity file";
   const clearedChecklist = checklist.filter(item => item.status === "cleared" || item.status === "not-applicable").length;
   const approvedVotes = votes.filter(vote => ["make-offer", "counter", "urgent-review"].includes(vote.vote)).length;
+  const sellerPhone = selectedDeal?.seller_phone || selectedLead?.phone || selectedLead?.phone_2 || "";
+  const smsDisabled = smsSending || !sellerPhone || selectedLead?.sms_opt_status === "opted-out";
+
+  const sendOpportunitySms = async () => {
+    if (!sellerPhone) { setSmsMessage("This file does not have a seller phone number yet."); return; }
+    if (selectedLead?.sms_opt_status === "opted-out") { setSmsMessage("This seller has opted out. Do not text this number."); return; }
+    const body = smsDraft.trim();
+    if (!body) { setSmsMessage("Write a text message before sending."); return; }
+    setSmsSending(true);
+    setSmsMessage("");
+    try {
+      const response = await fetch("/api/sakari/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          toNumber: sellerPhone,
+          message: body,
+          actor: user,
+          leadId: selectedLead?.id ?? null,
+          dealId: selectedDeal?.id ?? null,
+        }),
+      });
+      const result = await response.json().catch(() => ({})) as { error?: string };
+      if (!response.ok || result.error) {
+        setSmsMessage(`SMS failed: ${result.error || response.statusText}`);
+        return;
+      }
+      setSmsDraft("");
+      setSmsMessage("SMS sent and added to this file.");
+      await loadFileDetails();
+    } catch (error) {
+      setSmsMessage(`SMS failed: ${error instanceof Error ? error.message : "Unknown error"}`);
+    } finally {
+      setSmsSending(false);
+    }
+  };
 
   return (
     <div className="opportunity-page" style={{ minHeight: "100vh", background: "linear-gradient(180deg, #f8f2e7 0%, #efe6d6 100%)", padding: "72px 20px 96px", color: "var(--ink)" }}>
@@ -165,6 +205,7 @@ function OpportunityContent() {
             </p>
           </div>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+            <button onClick={() => document.getElementById("opportunity-sms")?.focus()} style={secondaryButton}>Send Text</button>
             <button onClick={() => router.push("/va")} style={secondaryButton}>VA Desk</button>
             <button onClick={() => router.push(selectedDeal ? `/deals?deal=${selectedDeal.id}` : "/deals")} style={secondaryButton}>Deal Desk</button>
             <button onClick={() => router.push("/crm")} style={primaryButton}>CRM</button>
@@ -301,6 +342,43 @@ function OpportunityContent() {
                 </p>
               </section>
 
+              <section style={panel}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "start", marginBottom: 8 }}>
+                  <div>
+                    <p style={eyebrowSmall}>Text seller</p>
+                    <h3 style={{ ...sectionTitle, fontSize: 20 }}>Send from this file</h3>
+                  </div>
+                  <span style={pill}>{sellerPhone || "No phone"}</span>
+                </div>
+                <textarea
+                  id="opportunity-sms"
+                  rows={4}
+                  value={smsDraft}
+                  onChange={e => setSmsDraft(e.target.value)}
+                  placeholder="Type the SMS to send through Sakari."
+                  disabled={!sellerPhone}
+                  style={textareaStyle}
+                />
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", marginTop: 8 }}>
+                  <span style={{ color: "var(--muted)", fontSize: 12 }}>{smsDraft.trim().length} chars</span>
+                  <button
+                    onClick={sendOpportunitySms}
+                    disabled={smsDisabled}
+                    style={{ ...primaryButton, opacity: smsDisabled ? 0.6 : 1 }}
+                  >
+                    {smsSending ? "Sending..." : "Send SMS"}
+                  </button>
+                </div>
+                {selectedLead?.sms_opt_status === "opted-out" && <p style={{ ...bodyText, color: "#8d3f31", marginTop: 8 }}>Seller opted out. Do not text.</p>}
+                {smsMessage && <p style={{ ...bodyText, marginTop: 8 }}>{smsMessage}</p>}
+                {communications[0] && (
+                  <div style={{ borderTop: "1px solid var(--fog)", marginTop: 10, paddingTop: 10 }}>
+                    <p style={miniLabel}>Latest message</p>
+                    <p style={{ ...bodyText, marginTop: 5 }}>{communications[0].body || communications[0].status || communications[0].provider_event_type}</p>
+                  </div>
+                )}
+              </section>
+
               <CrmList title="Buyer matches" empty="No buyer matches yet." items={matchedBuyers} render={buyer => (
                 <>
                   <strong>{buyer.buyer_name}</strong>
@@ -430,3 +508,4 @@ const pill: React.CSSProperties = { border: "1px solid var(--fog)", borderRadius
 const hotPill: React.CSSProperties = { ...pill, color: "var(--obsidian)", borderColor: "rgba(176,137,84,0.5)", background: "rgba(176,137,84,0.14)" };
 const primaryButton: React.CSSProperties = { border: "1px solid var(--obsidian)", background: "var(--obsidian)", color: "var(--bone)", borderRadius: 8, padding: "10px 12px", fontSize: 11, textTransform: "uppercase", letterSpacing: "0.12em", cursor: "pointer", textDecoration: "none" };
 const secondaryButton: React.CSSProperties = { border: "1px solid var(--fog)", background: "var(--surface)", color: "var(--obsidian)", borderRadius: 8, padding: "8px 10px", fontSize: 11, textTransform: "uppercase", letterSpacing: "0.12em", cursor: "pointer", textDecoration: "none" };
+const textareaStyle: React.CSSProperties = { width: "100%", minHeight: 104, border: "1px solid var(--fog)", borderRadius: 8, padding: 10, background: "var(--surface)", color: "var(--ink)", fontSize: 13, lineHeight: 1.45, resize: "vertical", fontFamily: "var(--font-body)" };
