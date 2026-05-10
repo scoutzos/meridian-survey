@@ -51,6 +51,12 @@ export interface ImportedLandLead {
   outreach_count?: number;
   last_activity_at?: string | null;
   last_activity_type?: string | null;
+  sms_opt_status?: "unknown" | "opted-in" | "opted-out";
+  last_sms_at?: string | null;
+  last_sms_direction?: "inbound" | "outbound" | null;
+  last_sms_body?: string | null;
+  sakari_contact_id?: string | null;
+  sakari_conversation_id?: string | null;
   notes: string | null;
   raw_data: Record<string, unknown>;
   uploaded_by: string | null;

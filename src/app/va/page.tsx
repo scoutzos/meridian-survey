@@ -41,6 +41,7 @@ import {
   type LandLeadBatch,
   type LandLeadImportPreview,
 } from "@/lib/land-leads";
+import { fetchCommunicationEvents, type CommunicationEvent } from "@/lib/communications";
 import {
   createVaDailyBrief,
   fetchVaDailyBriefs,
@@ -353,6 +354,7 @@ export default function VaPage() {
   const [selectedImportedLeadId, setSelectedImportedLeadId] = useState<string | null>(null);
   const [selectedBatchId, setSelectedBatchId] = useState<string | null>(null);
   const [leadActivities, setLeadActivities] = useState<ImportedLandLeadActivity[]>([]);
+  const [communicationEvents, setCommunicationEvents] = useState<CommunicationEvent[]>([]);
   const [importPreview, setImportPreview] = useState<LandLeadImportPreview | null>(null);
   const [importStep, setImportStep] = useState<ImportStep>("upload");
   const [importStage, setImportStage] = useState<ImportStage>("idle");
@@ -482,8 +484,14 @@ export default function VaPage() {
   }, [selected]);
 
   useEffect(() => {
-    if (!selectedImportedLeadId) { setLeadActivities([]); return; }
-    void fetchImportedLandLeadActivities(selectedImportedLeadId).then(setLeadActivities);
+    if (!selectedImportedLeadId) { setLeadActivities([]); setCommunicationEvents([]); return; }
+    void Promise.all([
+      fetchImportedLandLeadActivities(selectedImportedLeadId),
+      fetchCommunicationEvents({ leadId: selectedImportedLeadId, limit: 30 }),
+    ]).then(([activities, comms]) => {
+      setLeadActivities(activities);
+      setCommunicationEvents(comms);
+    });
   }, [selectedImportedLeadId]);
 
   if (!user) return null;
@@ -711,13 +719,13 @@ export default function VaPage() {
     const date = briefDraft.work_date;
     const sameDay = (iso?: string | null) => !!iso && iso.slice(0, 10) === date;
     const ownDeals = deals.filter(deal => deal.created_by === user || deal.submitted_by === user || deal.assigned_to === user);
-    const touchedImportedLeads = importedLeads.filter(lead => sameDay(lead.last_activity_at));
+    const touchedImportedLeads = importedLeads.filter(lead => sameDay(lead.last_activity_at) || sameDay(lead.last_sms_at));
     setBriefDraft(prev => ({
       ...prev,
       leads_added: ownDeals.filter(deal => sameDay(deal.created_at)).length,
       leads_updated: ownDeals.filter(deal => sameDay(deal.updated_at)).length + touchedImportedLeads.length,
-      outreach_sent: touchedImportedLeads.filter(lead => ["called", "texted", "emailed", "left-voicemail"].includes(lead.last_activity_type || "")).length,
-      seller_replies: touchedImportedLeads.filter(lead => lead.status === "interested").length,
+      outreach_sent: touchedImportedLeads.filter(lead => ["called", "texted", "emailed", "left-voicemail"].includes(lead.last_activity_type || "") || lead.last_sms_direction === "outbound").length,
+      seller_replies: touchedImportedLeads.filter(lead => lead.status === "interested" || lead.last_sms_direction === "inbound").length,
       calls_completed: touchedImportedLeads.filter(lead => lead.last_activity_type === "called" || lead.last_activity_type === "left-voicemail").length,
       deals_submitted: ownDeals.filter(deal => deal.status === "under-review" && sameDay(deal.updated_at)).length,
       checklist_items_cleared: checklist.filter(item => sameDay(item.updated_at) && (item.status === "cleared" || item.status === "not-applicable") && item.updated_by === user).length,
@@ -1346,6 +1354,8 @@ export default function VaPage() {
                       <p><strong>Mailing:</strong> {selectedImportedLead.mailing_address || "N/A"}</p>
                       <p><strong>Phone:</strong> {[selectedImportedLead.phone, selectedImportedLead.phone_2].filter(Boolean).join(" / ") || "N/A"}</p>
                       <p><strong>Email:</strong> {selectedImportedLead.email || "N/A"}</p>
+                      <p><strong>SMS:</strong> {statusLabel(selectedImportedLead.sms_opt_status || "unknown")}{selectedImportedLead.last_sms_at ? ` · Last ${selectedImportedLead.last_sms_direction || "SMS"} ${formatDate(selectedImportedLead.last_sms_at)}` : ""}</p>
+                      {selectedImportedLead.last_sms_body && <p><strong>Last SMS:</strong> {selectedImportedLead.last_sms_body}</p>}
                       <p><strong>Zoning / use:</strong> {[selectedImportedLead.zoning, selectedImportedLead.land_use].filter(Boolean).join(" / ") || "N/A"}</p>
                       <p><strong>Flags:</strong> Land locked {String(selectedImportedLead.raw_data?.["Land Locked"] ?? selectedImportedLead.raw_data?.["Tag:Land Locked"] ?? "N/A")} · Flood {String(selectedImportedLead.raw_data?.["Flood Zone Percent"] ?? "0")} · Wetlands {String(selectedImportedLead.raw_data?.["Wetlands Percent"] ?? "0")}</p>
                     </div>
@@ -1371,6 +1381,21 @@ export default function VaPage() {
                       </div>
                       <textarea rows={3} value={activityDraft.summary} onChange={e => setActivityDraft({ ...activityDraft, summary: e.target.value })} placeholder="What happened? Include seller response, wrong number, voicemail, follow-up notes, or next action." style={{ marginTop: 8 }} />
                       <button onClick={logLeadActivity} style={{ ...secondaryButton, marginTop: 8 }}>Save Activity</button>
+                    </div>
+                    <div style={{ borderTop: "1px solid var(--fog)", paddingTop: 12, marginTop: 12 }}>
+                      <p style={eyebrowSmall}>Sakari SMS</p>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 220, overflow: "auto", marginBottom: 12 }}>
+                        {communicationEvents.map(event => (
+                          <div key={event.id} style={{ border: "1px solid var(--fog)", borderRadius: 8, padding: 8, background: "var(--surface)" }}>
+                            <strong style={{ display: "block", color: "var(--obsidian)", fontSize: 12 }}>
+                              {event.direction === "inbound" ? "SMS Received" : event.direction === "outbound" ? "SMS Sent" : "SMS Status"} · {formatDate(event.provider_created_at || event.created_at)}
+                            </strong>
+                            <p style={{ color: "var(--muted)", fontSize: 12, marginTop: 4 }}>{event.body || event.status || event.provider_event_type}</p>
+                            <p style={{ ...miniLabel, marginTop: 6 }}>{event.status || event.provider_event_type}</p>
+                          </div>
+                        ))}
+                        {communicationEvents.length === 0 && <p style={{ fontSize: 12, color: "var(--muted)" }}>No Sakari messages matched to this lead yet.</p>}
+                      </div>
                     </div>
                     <div style={{ borderTop: "1px solid var(--fog)", paddingTop: 12, marginTop: 12 }}>
                       <p style={eyebrowSmall}>Activity history</p>
