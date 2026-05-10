@@ -38,6 +38,7 @@ import { saveGeneratedMemo } from "@/lib/governance";
 import { supabase } from "@/lib/supabase";
 import { MEMBERS } from "@/data/questions";
 import { isVaUser } from "@/lib/identity";
+import { fetchCommunicationEvents, type CommunicationEvent } from "@/lib/communications";
 
 const DISPLAY_FONT = "var(--font-display)";
 
@@ -214,6 +215,7 @@ export default function DealsPage() {
   const [votes, setVotes] = useState<DealVote[]>([]);
   const [activity, setActivity] = useState<DealActivity[]>([]);
   const [attachments, setAttachments] = useState<DealAttachment[]>([]);
+  const [communicationEvents, setCommunicationEvents] = useState<CommunicationEvent[]>([]);
   const [agreement, setAgreement] = useState<DealAgreement | null>(null);
   const [agreementDraft, setAgreementDraft] = useState<DealAgreementInput>(emptyAgreementDraft());
   const [loading, setLoading] = useState(true);
@@ -223,6 +225,8 @@ export default function DealsPage() {
   const [memoSaving, setMemoSaving] = useState(false);
   const [agreementSaving, setAgreementSaving] = useState(false);
   const [voteNote, setVoteNote] = useState("");
+  const [smsDraft, setSmsDraft] = useState("");
+  const [smsSending, setSmsSending] = useState(false);
   const [draft, setDraft] = useState(EMPTY_DRAFT);
   const [editingDealId, setEditingDealId] = useState<string | null>(null);
 
@@ -251,6 +255,7 @@ export default function DealsPage() {
       setVotes([]);
       setActivity([]);
       setAttachments([]);
+      setCommunicationEvents([]);
       setAgreement(null);
       setAgreementDraft(emptyAgreementDraft());
       return;
@@ -259,6 +264,7 @@ export default function DealsPage() {
     void fetchDealVotes(selected.id).then(setVotes);
     void fetchDealActivity(selected.id).then(setActivity);
     void fetchDealAttachments(selected.id).then(setAttachments);
+    void fetchCommunicationEvents({ dealId: selected.id, limit: 30 }).then(setCommunicationEvents);
     void fetchDealAgreement(selected.id).then(row => {
       setAgreement(row);
       setAgreementDraft(row ?? emptyAgreementDraft(selected.id));
@@ -363,6 +369,37 @@ export default function DealsPage() {
     const { error } = await updateChecklistItemStatus(item.id, status, user);
     if (error) { alert(error); return; }
     setChecklist(prev => prev.map(i => i.id === item.id ? { ...i, status, updated_by: user, updated_at: new Date().toISOString() } : i));
+  };
+
+  const sendSmsFromDeal = async () => {
+    if (!selected) return;
+    const toNumber = selected.seller_phone?.trim();
+    if (!toNumber) { alert("This deal does not have a seller phone number."); return; }
+    const message = smsDraft.trim();
+    if (!message) { alert("Write a text message before sending."); return; }
+    setSmsSending(true);
+    try {
+      const response = await fetch("/api/sakari/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          toNumber,
+          message,
+          actor: user,
+          dealId: selected.id,
+        }),
+      });
+      const result = await response.json().catch(() => ({})) as { error?: string };
+      if (!response.ok || result.error) {
+        alert(`SMS failed: ${result.error || response.statusText}`);
+        return;
+      }
+      setSmsDraft("");
+      setCommunicationEvents(await fetchCommunicationEvents({ dealId: selected.id, limit: 30 }));
+      setActivity(await fetchDealActivity(selected.id));
+    } finally {
+      setSmsSending(false);
+    }
   };
 
   const handleVote = async (vote: DealVoteOption) => {
@@ -841,6 +878,61 @@ export default function DealsPage() {
                     )}
                   </div>
                 )}
+              </section>
+
+              <section style={panel}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "baseline", marginBottom: 12 }}>
+                  <div>
+                    <p style={eyebrowSmall}>Seller communications</p>
+                    <h2 style={sectionTitle}>SMS thread</h2>
+                  </div>
+                  <span style={pill}>{selected.seller_phone || "No seller phone"}</span>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 300px", gap: 12 }} className="two-col">
+                  <div style={subPanel}>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 280, overflow: "auto" }}>
+                      {communicationEvents.length === 0 && <p style={{ fontSize: 12, color: "var(--muted)" }}>No Sakari messages are attached to this deal yet.</p>}
+                      {communicationEvents.map(event => (
+                        <div key={event.id} style={{
+                          border: "1px solid var(--fog)",
+                          borderRadius: 8,
+                          padding: 10,
+                          background: event.direction === "inbound" ? "rgba(176,137,84,0.08)" : "var(--surface)",
+                        }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap", marginBottom: 5 }}>
+                            <strong style={{ color: "var(--obsidian)", fontSize: 12 }}>
+                              {event.direction === "inbound" ? "Seller reply" : event.direction === "outbound" ? "Meridian sent" : "Sakari update"}
+                            </strong>
+                            <span style={miniLabel}>{formatDate(event.provider_created_at || event.created_at)}</span>
+                          </div>
+                          <p style={{ color: "var(--ink)", fontSize: 13, lineHeight: 1.45 }}>{event.body || event.status || event.provider_event_type}</p>
+                          <p style={{ fontSize: 11, color: "var(--muted)", marginTop: 6 }}>{event.status || event.provider_event_type}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  <div style={subPanel}>
+                    <p style={eyebrowSmall}>Member reply</p>
+                    <textarea
+                      rows={5}
+                      value={smsDraft}
+                      onChange={e => setSmsDraft(e.target.value)}
+                      placeholder="Type a seller reply to send through Sakari."
+                      disabled={!selected.seller_phone}
+                      style={{ marginTop: 8 }}
+                    />
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", marginTop: 8 }}>
+                      <span style={{ fontSize: 11, color: "var(--muted)" }}>{smsDraft.trim().length} chars</span>
+                      <button
+                        onClick={sendSmsFromDeal}
+                        disabled={smsSending || !selected.seller_phone}
+                        style={{ ...primaryButton, opacity: smsSending || !selected.seller_phone ? 0.55 : 1 }}
+                      >
+                        {smsSending ? "Sending..." : "Send SMS"}
+                      </button>
+                    </div>
+                  </div>
+                </div>
               </section>
 
               {(attachments.length > 0 || activity.length > 0) && (

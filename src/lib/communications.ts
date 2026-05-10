@@ -398,6 +398,15 @@ export async function sendSakariSms(args: {
       })
       .eq("id", args.leadId);
   }
+  if (args.dealId) {
+    await createDealActivity({
+      deal_id: args.dealId,
+      actor: args.actor,
+      activity_type: "updated",
+      summary: `SMS sent from Meridian · "${args.message}"`,
+      field_changes: { communication_event_id: (saved as CommunicationEvent).id, provider: "sakari", direction: "outbound" },
+    });
+  }
 
   return { event: saved as CommunicationEvent, error: null };
 }

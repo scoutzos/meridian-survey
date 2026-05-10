@@ -34,6 +34,7 @@ import {
   fetchPendingDealVotes,
   type PendingDealVote,
 } from "@/lib/deal-votes";
+import { fetchCommunicationEvents, type CommunicationEvent } from "@/lib/communications";
 import {
   fetchReimbursements,
   type Reimbursement,
@@ -121,6 +122,7 @@ export default function DashboardPage() {
   const [pendingCandidateVotes, setPendingCandidateVotes] = useState<MembershipCandidate[]>([]);
   const [pendingProposalVotes, setPendingProposalVotes] = useState<PendingExpenseProposalVote[]>([]);
   const [pendingDealVotes, setPendingDealVotes] = useState<PendingDealVote[]>([]);
+  const [communicationEvents, setCommunicationEvents] = useState<CommunicationEvent[]>([]);
   const [loaded, setLoaded] = useState(false);
 
   const surveys = useMemo(() => getAllSurveys(), []);
@@ -162,6 +164,7 @@ export default function DashboardPage() {
         candidateVoteRows,
         proposalVoteRows,
         dealVoteRows,
+        communicationRows,
       ] = await Promise.all([
         fetchActionItems(),
         fetchNextMeeting(),
@@ -174,6 +177,7 @@ export default function DashboardPage() {
         fetchPendingMembershipCandidateVotes(u),
         fetchPendingExpenseProposalVotes(u),
         fetchPendingDealVotes(u),
+        fetchCommunicationEvents({ limit: 30 }),
       ]);
 
       setActionItems(items);
@@ -184,6 +188,7 @@ export default function DashboardPage() {
       setPendingCandidateVotes(candidateVoteRows);
       setPendingProposalVotes(proposalVoteRows);
       setPendingDealVotes(dealVoteRows);
+      setCommunicationEvents(communicationRows);
       setReimbursements(reimbursementRows);
       setDecisions(hub.decisions.slice(0, 4));
 
@@ -303,6 +308,8 @@ export default function DashboardPage() {
   const openCapitalCalls = capitalCalls.filter(c => !c.deleted_at && c.status === "open");
   const suggestedCapitalCalls = capitalCalls.filter(c => !c.deleted_at && c.status === "suggested");
   const hotDeals = deals.filter(d => d.urgency === "hot" || d.analysis?.recommendation === "Strong Review").slice(0, 3);
+  const sellerReplies = communicationEvents.filter(event => event.direction === "inbound");
+  const unmatchedSellerReplies = sellerReplies.filter(event => !event.matched_lead_id && !event.matched_deal_id);
   const activeProjects = projects.filter(p => !["sold", "passed"].includes(p.status)).slice(0, 3);
   const pendingReimbursements = reimbursements.filter(r => r.status === "submitted" || r.status === "approved");
   const incompleteSurveys = progress.filter(p => p.status !== "Completed");
@@ -310,7 +317,7 @@ export default function DashboardPage() {
   const surveyTotal = progress.reduce((sum, p) => sum + p.total, 0);
   const surveyPct = surveyTotal > 0 ? Math.round((surveyAnswered / surveyTotal) * 100) : 0;
   const taskInboxCount = pendingVotes.length + myItems.length + openCapitalCalls.length + suggestedCapitalCalls.length + incompleteSurveys.length;
-  const attentionCount = taskInboxCount;
+  const attentionCount = taskInboxCount + unmatchedSellerReplies.length;
 
   const activity = [
     ...notifications.slice(0, 4).map(n => ({
@@ -519,6 +526,31 @@ export default function DashboardPage() {
             ))}
           </Panel>
 
+          <Panel title="Seller Communications" cta={{ label: "Deal desk", onClick: () => router.push("/deals") }}>
+            {sellerReplies.length === 0 && <EmptyText>No seller texts have arrived yet.</EmptyText>}
+            {unmatchedSellerReplies.length > 0 && (
+              <div style={{ ...listItemStyle, borderColor: "rgba(176,137,84,0.45)", background: "rgba(176,137,84,0.08)" }}>
+                <p style={{ fontSize: 14, fontWeight: 800, color: obsidian, marginBottom: 3 }}>
+                  {unmatchedSellerReplies.length} unmatched seller repl{unmatchedSellerReplies.length === 1 ? "y" : "ies"}
+                </p>
+                <p style={{ fontSize: 12, color: ink, opacity: 0.7, lineHeight: 1.45 }}>
+                  Needs matching to an imported lead or a new deal draft.
+                </p>
+              </div>
+            )}
+            {sellerReplies.slice(0, 4).map(event => (
+              <SignalItem
+                key={event.id}
+                label={event.matched_deal_id ? "Matched deal" : event.matched_lead_id ? "Matched lead" : "Unmatched"}
+                title={event.contact_name || event.contact_number || event.from_number || "Unknown sender"}
+                detail={event.body || event.status || event.provider_event_type}
+                onClick={() => router.push(event.matched_deal_id ? `/deals?deal=${event.matched_deal_id}` : "/deals")}
+              />
+            ))}
+          </Panel>
+        </section>
+
+        <section className="dashboard-two-col" style={{ marginBottom: 28 }}>
           <Panel title="Recent Group Activity" cta={{ label: "Hub", onClick: () => router.push("/hub") }}>
             {activity.length === 0 && <EmptyText>No recent activity yet.</EmptyText>}
             {activity.map(item => (
