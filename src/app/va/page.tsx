@@ -28,6 +28,13 @@ import {
 import { createActionItem } from "@/lib/action-items";
 import { createNotification } from "@/lib/operations";
 import {
+  fetchImportedLandLeads,
+  importLandLeadsFromCsv,
+  leadToDealDraft,
+  updateImportedLandLeadStatus,
+  type ImportedLandLead,
+} from "@/lib/land-leads";
+import {
   createVaDailyBrief,
   fetchVaDailyBriefs,
   type VaDailyBrief,
@@ -90,10 +97,11 @@ const REVIEW_INTENTS: Array<{ value: DealReviewIntent; label: string; descriptio
   { value: "blocked-decision", label: "Blocked / Needs Decision", description: "Escalate a blocker or decision before more work continues." },
 ];
 
-type VaTab = "leads" | "follow-ups" | "diligence" | "brief";
+type VaTab = "leads" | "imports" | "follow-ups" | "diligence" | "brief";
 
 const TABS: Array<{ value: VaTab; label: string }> = [
   { value: "leads", label: "Leads" },
+  { value: "imports", label: "Imports" },
   { value: "follow-ups", label: "Follow-ups" },
   { value: "diligence", label: "Diligence" },
   { value: "brief", label: "Daily Brief" },
@@ -302,8 +310,13 @@ export default function VaPage() {
   const [attachmentDraft, setAttachmentDraft] = useState(EMPTY_ATTACHMENT);
   const [briefDraft, setBriefDraft] = useState<VaDailyBriefInput>(EMPTY_BRIEF);
   const [briefs, setBriefs] = useState<VaDailyBrief[]>([]);
+  const [importedLeads, setImportedLeads] = useState<ImportedLandLead[]>([]);
+  const [leadSearch, setLeadSearch] = useState("");
+  const [uploadSource, setUploadSource] = useState("Land Portal");
+  const [uploadCampaign, setUploadCampaign] = useState("");
   const [saving, setSaving] = useState(false);
   const [briefSaving, setBriefSaving] = useState(false);
+  const [importing, setImporting] = useState(false);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
   const [activeTab, setActiveTab] = useState<VaTab>("leads");
@@ -311,13 +324,14 @@ export default function VaPage() {
 
   const reload = useCallback(async (memberName = user) => {
     setLoading(true);
-    const [rows, briefRows] = await Promise.all([fetchDeals(), fetchVaDailyBriefs(8)]);
+    const [rows, briefRows, importRows] = await Promise.all([fetchDeals(), fetchVaDailyBriefs(8), fetchImportedLandLeads()]);
     const activeRows = rows.filter(deal =>
       !["closed", "active-project", "stabilized", "sold"].includes(deal.status)
       && (!memberName || deal.created_by === memberName || deal.submitted_by === memberName || deal.assigned_to === memberName)
     );
     setDeals(activeRows);
     setBriefs(briefRows);
+    setImportedLeads(importRows);
     setSelectedId(prev => prev && activeRows.some(d => d.id === prev) ? prev : activeRows[0]?.id ?? null);
     setLoading(false);
   }, [user]);
@@ -337,6 +351,22 @@ export default function VaPage() {
   const followUpsDue = useMemo(() => deals.filter(deal => isDueTodayOrPast(deal.next_follow_up_date, today)), [deals, today]);
   const draftLeads = useMemo(() => deals.filter(deal => deal.status === "lead"), [deals]);
   const submittedDeals = useMemo(() => deals.filter(deal => deal.status === "under-review"), [deals]);
+  const interestedLeads = useMemo(() => importedLeads.filter(lead => lead.status === "interested"), [importedLeads]);
+  const filteredImportedLeads = useMemo(() => {
+    const query = leadSearch.trim().toLowerCase();
+    const rows = importedLeads.filter(lead => lead.status !== "converted");
+    if (!query) return rows.slice(0, 80);
+    return rows.filter(lead => [
+      lead.owner_name,
+      lead.phone,
+      lead.phone_2,
+      lead.property_address,
+      lead.parcel_id,
+      lead.county,
+      lead.city,
+      lead.campaign_source,
+    ].filter(Boolean).join(" ").toLowerCase().includes(query)).slice(0, 80);
+  }, [importedLeads, leadSearch]);
   const blockedItems = useMemo(() => checklist.filter(item => item.status === "blocked"), [checklist]);
   const portalStats = useMemo(() => ({
     addedToday: deals.filter(deal => isSameDay(deal.created_at, today)).length,
@@ -425,6 +455,14 @@ export default function VaPage() {
     setSaving(false);
     if (result.error && !result.data) { setMessage(result.error); return; }
     if (!result.data) { setMessage("Deal could not be saved."); return; }
+    const matchingLead = importedLeads.find(lead =>
+      lead.status === "interested"
+      && ((payload.parcel_id && lead.parcel_id === payload.parcel_id) || (payload.seller_phone && (lead.phone === payload.seller_phone || lead.phone_2 === payload.seller_phone)))
+    );
+    if (matchingLead) {
+      await updateImportedLandLeadStatus(matchingLead.id, "converted", result.data.id);
+      setImportedLeads(await fetchImportedLandLeads());
+    }
     if (status === "under-review") {
       if (shouldNotifyMembers) {
         const errors = await notifyMembersForReview(result.data, user, result.data.review_intent === "ready-for-vote");
@@ -466,6 +504,47 @@ export default function VaPage() {
       setAttachments(prev => [data, ...prev]);
       setAttachmentDraft(EMPTY_ATTACHMENT());
       setMessage("Attachment added.");
+    }
+  };
+
+  const handleLeadCsvUpload = async (file: File | null) => {
+    if (!file) return;
+    setImporting(true);
+    setMessage("");
+    const text = await file.text();
+    const result = await importLandLeadsFromCsv({
+      csvText: text,
+      filename: file.name,
+      sourceSystem: uploadSource,
+      campaignSource: uploadCampaign,
+      actor: user,
+    });
+    setImporting(false);
+    if (result.error) { setMessage(result.error); return; }
+    setImportedLeads(await fetchImportedLandLeads());
+    setMessage(`Imported ${result.leads.length} lead${result.leads.length === 1 ? "" : "s"} from ${file.name}.`);
+    setActiveTab("imports");
+  };
+
+  const loadImportedLead = async (lead: ImportedLandLead, markInterested = true) => {
+    const imported = leadToDealDraft(lead);
+    setSelectedId(null);
+    setChecklist([]);
+    setAttachments([]);
+    setDraft({
+      ...EMPTY_DRAFT,
+      ...imported,
+      linksText: imported.linksText ?? "",
+      submitted_by: user,
+      assigned_to: user,
+      source: imported.source || lead.source_system,
+      campaign_source: imported.campaign_source || lead.campaign_source || "",
+    });
+    setActiveTab("leads");
+    setMessage("Imported lead loaded into the deal form.");
+    if (markInterested && lead.status !== "interested") {
+      await updateImportedLandLeadStatus(lead.id, "interested", lead.deal_id);
+      setImportedLeads(await fetchImportedLandLeads());
     }
   };
 
@@ -549,7 +628,7 @@ export default function VaPage() {
           <ShiftCard label="Leads added" value={String(portalStats.addedToday)} />
           <ShiftCard label="Leads updated" value={String(portalStats.updatedToday)} />
           <ShiftCard label="Under review" value={String(submittedDeals.length)} />
-          <ShiftCard label="Queue total" value={String(deals.length)} />
+          <ShiftCard label="Interested imports" value={String(interestedLeads.length)} tone={interestedLeads.length ? "hot" : "calm"} />
         </div>
       </section>
 
@@ -820,6 +899,78 @@ export default function VaPage() {
                   </button>
                 </div>
               </aside>
+            </div>
+          </section>
+          )}
+
+          {activeTab === "imports" && (
+          <section style={panel}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12, flexWrap: "wrap", marginBottom: 12 }}>
+              <div>
+                <p style={eyebrowSmall}>Land lists</p>
+                <h2 style={sectionTitle}>Upload & search imported leads</h2>
+              </div>
+              <span style={pill}>{importedLeads.length} imported</span>
+            </div>
+            <div style={{ ...subPanel, marginBottom: 12 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "180px minmax(0, 1fr) 190px", gap: 10 }} className="three-col">
+                <div>
+                  <label style={label}>Source</label>
+                  <select value={uploadSource} onChange={e => setUploadSource(e.target.value)}>
+                    <option>Land Portal</option>
+                    <option>Land Insights</option>
+                    <option>County Export</option>
+                    <option>Skip Trace List</option>
+                    <option>Other Land List</option>
+                  </select>
+                </div>
+                <div>
+                  <label style={label}>Campaign / list name</label>
+                  <input value={uploadCampaign} onChange={e => setUploadCampaign(e.target.value)} placeholder="Example: Fulton infill lots May 2026" />
+                </div>
+                <div>
+                  <label style={label}>CSV upload</label>
+                  <input
+                    type="file"
+                    accept=".csv,text/csv"
+                    disabled={importing}
+                    onChange={e => { void handleLeadCsvUpload(e.target.files?.[0] ?? null); e.currentTarget.value = ""; }}
+                  />
+                </div>
+              </div>
+              <p style={{ fontSize: 12, color: "var(--muted)", marginTop: 10, lineHeight: 1.45 }}>
+                The importer recognizes common columns like owner, seller, phone, property address, parcel/APN, county, acreage, asking price, value, zoning, land use, and property URL.
+              </p>
+            </div>
+
+            <div style={{ marginBottom: 12 }}>
+              <label style={label}>Search imported list</label>
+              <input value={leadSearch} onChange={e => setLeadSearch(e.target.value)} placeholder="Search owner, phone, parcel, address, county, city, or campaign" />
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 10 }} className="two-col">
+              {filteredImportedLeads.map(lead => (
+                <div key={lead.id} style={subPanel}>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginBottom: 8 }}>
+                    <strong style={{ color: "var(--obsidian)", fontSize: 14 }}>{lead.owner_name || "Owner unknown"}</strong>
+                    <span style={lead.status === "interested" ? hotPill : pill}>{statusLabel(lead.status)}</span>
+                  </div>
+                  <p style={{ fontSize: 12, color: "var(--muted)", lineHeight: 1.45 }}>
+                    {lead.property_address || "No property address"}{lead.parcel_id ? ` · ${lead.parcel_id}` : ""}
+                  </p>
+                  <p style={{ fontSize: 12, color: "var(--muted)", lineHeight: 1.45, marginTop: 4 }}>
+                    {lead.phone || lead.phone_2 || "No phone"}{lead.acreage ? ` · ${lead.acreage} acres` : ""}{lead.county ? ` · ${lead.county}` : ""}
+                  </p>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
+                    <button onClick={() => loadImportedLead(lead, true)} style={primaryButton}>Use Lead</button>
+                    <button onClick={async () => { await updateImportedLandLeadStatus(lead.id, "contacted", lead.deal_id); setImportedLeads(await fetchImportedLandLeads()); }} style={secondaryButton}>Contacted</button>
+                    <button onClick={async () => { await updateImportedLandLeadStatus(lead.id, "passed", lead.deal_id); setImportedLeads(await fetchImportedLandLeads()); }} style={secondaryButton}>Pass</button>
+                  </div>
+                </div>
+              ))}
+              {filteredImportedLeads.length === 0 && (
+                <p style={{ fontSize: 13, color: "var(--muted)" }}>No imported leads match this search yet.</p>
+              )}
             </div>
           </section>
           )}
