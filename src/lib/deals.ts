@@ -7,6 +7,7 @@ export type DealReviewIntent = "needs-info-review" | "ready-for-vote" | "blocked
 export type ChecklistStatus = "open" | "in-review" | "cleared" | "blocked" | "not-applicable";
 export type DealVoteOption = "pass" | "needs-more-info" | "schedule-call" | "make-offer" | "counter" | "urgent-review";
 export type DealAgreementStatus = "draft" | "ready-for-review" | "approved" | "signed" | "superseded";
+export type DispositionStatus = "not-started" | "exit-strategy-set" | "buyer-list-built" | "marketed" | "buyer-interest" | "offer-received" | "buyer-under-contract" | "closing-scheduled" | "closed" | "fell-through";
 
 export interface DealInput {
   title: string;
@@ -41,6 +42,21 @@ export interface DealInput {
   last_submitted_at?: string | null;
   review_round?: number;
   last_review_notification_at?: string | null;
+  disposition_status?: DispositionStatus | null;
+  exit_strategy?: string | null;
+  target_buyer_type?: string | null;
+  target_resale_price?: number | null;
+  minimum_acceptable_price?: number | null;
+  best_buyer_offer?: number | null;
+  buyer_demand_evidence?: string | null;
+  disposition_owner?: string | null;
+  disposition_next_step?: string | null;
+  closing_costs_estimate?: number | null;
+  holding_costs_estimate?: number | null;
+  marketing_costs_estimate?: number | null;
+  desired_minimum_spread?: number | null;
+  risk_buffer?: number | null;
+  calculator_notes?: string | null;
 }
 
 export interface Deal extends DealInput {
@@ -69,6 +85,26 @@ export interface DealAnalysis {
   missingInfo: string[];
   maxAllowableOffer: number | null;
   confidence: "Low" | "Medium" | "High";
+  acquisition: {
+    targetResale: number | null;
+    totalCosts: number;
+    desiredSpread: number;
+    riskBuffer: number;
+    recommendedOffer: number | null;
+    maxOffer: number | null;
+    projectedSpreadAtAsk: number | null;
+  };
+  disposition: {
+    status: DispositionStatus | null;
+    exitStrategy: string | null;
+    targetBuyerType: string | null;
+    targetResale: number | null;
+    minimumAcceptable: number | null;
+    bestBuyerOffer: number | null;
+    projectedNetAtTarget: number | null;
+    projectedNetAtBestOffer: number | null;
+    exitConfidence: "Low" | "Medium" | "High";
+  };
 }
 
 export interface DealDueDiligenceItem {
@@ -173,8 +209,17 @@ function num(v: unknown): number | null {
 
 export function calculateDealAnalysis(input: DealInput): DealAnalysis {
   const asking = num(input.asking_price);
-  const arv = num(input.arv);
+  const targetResale = num(input.target_resale_price) ?? num(input.arv);
+  const arv = targetResale;
   const repairs = num(input.repair_estimate) ?? 0;
+  const closingCosts = num(input.closing_costs_estimate) ?? 0;
+  const holdingCosts = num(input.holding_costs_estimate) ?? 0;
+  const marketingCosts = num(input.marketing_costs_estimate) ?? 0;
+  const totalCosts = repairs + closingCosts + holdingCosts + marketingCosts;
+  const desiredSpread = num(input.desired_minimum_spread) ?? (input.property_type === "land" ? 15_000 : 20_000);
+  const riskBuffer = num(input.risk_buffer) ?? (targetResale ? targetResale * 0.05 : 0);
+  const bestBuyerOffer = num(input.best_buyer_offer);
+  const minimumAcceptable = num(input.minimum_acceptable_price) ?? (targetResale ? targetResale - riskBuffer : null);
   const acreage = num(input.acreage);
   const isLand = input.property_type === "land";
   const riskFlags: string[] = [];
@@ -185,6 +230,10 @@ export function calculateDealAnalysis(input: DealInput): DealAnalysis {
 
   if (!asking) missingInfo.push("Seller asking price");
   if (!input.address && !input.parcel_id) missingInfo.push("Address or parcel ID");
+  if (!input.exit_strategy?.trim()) missingInfo.push("Disposition exit strategy");
+  if (!input.target_buyer_type?.trim()) missingInfo.push("Target buyer type");
+  if (!targetResale) missingInfo.push("Target resale / buyer price");
+  if (!input.buyer_demand_evidence?.trim()) riskFlags.push("Buyer demand evidence is not documented yet.");
 
   if (isLand) {
     if (!acreage) missingInfo.push("Acreage or lot dimensions");
@@ -194,15 +243,19 @@ export function calculateDealAnalysis(input: DealInput): DealAnalysis {
     if (!arv) missingInfo.push("Estimated resale, builder, or finished-lot value");
 
     const pricePerAcre = asking && acreage ? asking / acreage : null;
-    maxAllowableOffer = arv ? arv * 0.55 : null;
+    maxAllowableOffer = arv ? Math.max(0, arv - totalCosts - desiredSpread - riskBuffer) : null;
     const spread = asking && maxAllowableOffer ? maxAllowableOffer - asking : null;
+    const projectedSpreadAtAsk = asking && arv ? arv - asking - totalCosts : null;
 
     metrics.push(
       { label: "Asking price", value: money(asking) },
       { label: "Acres", value: acreage ? String(acreage) : "—" },
       { label: "Price / acre", value: money(pricePerAcre) },
       { label: "Est. exit value", value: money(arv) },
+      { label: "Total costs", value: money(totalCosts) },
+      { label: "Target spread", value: money(desiredSpread) },
       { label: "Land MAO", value: money(maxAllowableOffer), tone: maxAllowableOffer && asking && maxAllowableOffer >= asking ? "good" : "warn" },
+      { label: "Spread @ ask", value: money(projectedSpreadAtAsk), tone: projectedSpreadAtAsk !== null && projectedSpreadAtAsk >= desiredSpread ? "good" : "warn" },
     );
 
     if (!input.utilities?.trim()) riskFlags.push("Utility availability is not confirmed.");
@@ -216,16 +269,20 @@ export function calculateDealAnalysis(input: DealInput): DealAnalysis {
     if (!arv) missingInfo.push("ARV or stabilized value");
     if (!input.repair_estimate && input.property_type !== "rental") missingInfo.push("Repair estimate");
 
-    maxAllowableOffer = arv ? arv * 0.7 - repairs : null;
+    maxAllowableOffer = arv ? Math.min(arv * 0.7 - repairs, arv - totalCosts - desiredSpread - riskBuffer) : null;
     const spread = asking && maxAllowableOffer ? maxAllowableOffer - asking : null;
-    const margin = arv && asking ? ((arv - asking - repairs) / arv) * 100 : null;
+    const projectedSpreadAtAsk = asking && arv ? arv - asking - totalCosts : null;
+    const margin = arv && asking ? ((arv - asking - totalCosts) / arv) * 100 : null;
 
     metrics.push(
       { label: "Asking price", value: money(asking) },
       { label: "ARV/value", value: money(arv) },
       { label: "Repairs", value: money(repairs) },
+      { label: "Total costs", value: money(totalCosts) },
+      { label: "Target spread", value: money(desiredSpread) },
       { label: "MAO", value: money(maxAllowableOffer), tone: maxAllowableOffer && asking && maxAllowableOffer >= asking ? "good" : "warn" },
       { label: "Gross margin", value: margin === null ? "—" : pct(margin), tone: margin !== null && margin >= 20 ? "good" : "warn" },
+      { label: "Spread @ ask", value: money(projectedSpreadAtAsk), tone: projectedSpreadAtAsk !== null && projectedSpreadAtAsk >= desiredSpread ? "good" : "warn" },
     );
 
     if (repairs > 0 && arv && repairs / arv > 0.35) riskFlags.push("Repair estimate is high relative to value.");
@@ -237,14 +294,44 @@ export function calculateDealAnalysis(input: DealInput): DealAnalysis {
   }
 
   const known = [asking, arv, input.address || input.parcel_id, input.source, input.notes].filter(Boolean).length;
-  const confidence: DealAnalysis["confidence"] = missingInfo.length <= 1 && known >= 4 ? "High" : missingInfo.length <= 3 ? "Medium" : "Low";
+  const exitKnown = [input.exit_strategy, input.target_buyer_type, input.buyer_demand_evidence, minimumAcceptable || bestBuyerOffer].filter(Boolean).length;
+  const confidence: DealAnalysis["confidence"] = missingInfo.length <= 1 && known >= 4 && exitKnown >= 3 ? "High" : missingInfo.length <= 4 ? "Medium" : "Low";
+  const exitConfidence: DealAnalysis["disposition"]["exitConfidence"] = exitKnown >= 4 ? "High" : exitKnown >= 2 ? "Medium" : "Low";
   if (missingInfo.length >= 4 && recommendation === "Strong Review") recommendation = "Review With Caution";
 
   const summary = isLand
-    ? `${recommendation}: land value depends on buildability, access, utilities, and comp support. Verify the checklist before making a firm offer.`
-    : `${recommendation}: pricing should be validated against ARV, repair scope, holding costs, and exit strategy before the group approves an offer.`;
+    ? `${recommendation}: buy decision depends on buildability plus disposition confidence. Verify access, utilities, comps, buyer demand, and spread before making a firm offer.`
+    : `${recommendation}: pricing should be validated against ARV, repair scope, holding costs, buyer demand, and exit strategy before the group approves an offer.`;
 
-  return { recommendation, summary, metrics, riskFlags, missingInfo, maxAllowableOffer, confidence };
+  return {
+    recommendation,
+    summary,
+    metrics,
+    riskFlags,
+    missingInfo,
+    maxAllowableOffer,
+    confidence,
+    acquisition: {
+      targetResale: arv,
+      totalCosts,
+      desiredSpread,
+      riskBuffer,
+      recommendedOffer: maxAllowableOffer ? Math.max(0, maxAllowableOffer - riskBuffer) : null,
+      maxOffer: maxAllowableOffer,
+      projectedSpreadAtAsk: asking && arv ? arv - asking - totalCosts : null,
+    },
+    disposition: {
+      status: input.disposition_status ?? null,
+      exitStrategy: input.exit_strategy?.trim() || null,
+      targetBuyerType: input.target_buyer_type?.trim() || null,
+      targetResale: arv,
+      minimumAcceptable,
+      bestBuyerOffer,
+      projectedNetAtTarget: asking && arv ? arv - asking - totalCosts : null,
+      projectedNetAtBestOffer: asking && bestBuyerOffer ? bestBuyerOffer - asking - totalCosts : null,
+      exitConfidence,
+    },
+  };
 }
 
 type ChecklistSeed = Omit<DealDueDiligenceItem, "id" | "deal_id" | "created_at" | "updated_at" | "updated_by">;
@@ -297,7 +384,7 @@ function normalizeDeal(row: Record<string, unknown>): Deal {
   return {
     ...(row as unknown as Deal),
     links: Array.isArray(row.links) ? row.links as string[] : [],
-    analysis: (row.analysis && typeof row.analysis === "object" ? row.analysis : calculateDealAnalysis(row as unknown as DealInput)) as DealAnalysis,
+    analysis: calculateDealAnalysis(row as unknown as DealInput),
   };
 }
 
@@ -327,6 +414,21 @@ function cleanDealInput(input: DealInput): DealInput {
     last_submitted_at: input.last_submitted_at || null,
     review_round: input.review_round ?? 0,
     last_review_notification_at: input.last_review_notification_at || null,
+    disposition_status: input.disposition_status || "not-started",
+    exit_strategy: input.exit_strategy?.trim() || null,
+    target_buyer_type: input.target_buyer_type?.trim() || null,
+    target_resale_price: num(input.target_resale_price),
+    minimum_acceptable_price: num(input.minimum_acceptable_price),
+    best_buyer_offer: num(input.best_buyer_offer),
+    buyer_demand_evidence: input.buyer_demand_evidence?.trim() || null,
+    disposition_owner: input.disposition_owner?.trim() || null,
+    disposition_next_step: input.disposition_next_step?.trim() || null,
+    closing_costs_estimate: num(input.closing_costs_estimate),
+    holding_costs_estimate: num(input.holding_costs_estimate),
+    marketing_costs_estimate: num(input.marketing_costs_estimate),
+    desired_minimum_spread: num(input.desired_minimum_spread),
+    risk_buffer: num(input.risk_buffer),
+    calculator_notes: input.calculator_notes?.trim() || null,
   };
 }
 
@@ -338,6 +440,9 @@ function diffDeal(before: Deal | null, after: DealInput): Record<string, { befor
     "road_frontage", "utilities", "notes", "submitted_by", "assigned_to", "next_follow_up_date",
     "lead_temperature", "campaign_source", "review_intent", "submission_summary", "requested_next_step",
     "submit_uncertainties", "first_submitted_at", "last_submitted_at", "review_round", "last_review_notification_at",
+    "disposition_status", "exit_strategy", "target_buyer_type", "target_resale_price", "minimum_acceptable_price",
+    "best_buyer_offer", "buyer_demand_evidence", "disposition_owner", "disposition_next_step", "closing_costs_estimate",
+    "holding_costs_estimate", "marketing_costs_estimate", "desired_minimum_spread", "risk_buffer", "calculator_notes",
   ];
   return keys.reduce<Record<string, { before: unknown; after: unknown }>>((acc, key) => {
     const left = before[key] ?? null;

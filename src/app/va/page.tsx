@@ -19,6 +19,7 @@ import {
   type DealAttachment,
   type DealAttachmentType,
   type DealInput,
+  type DispositionStatus,
   type DealPropertyType,
   type DealReviewIntent,
   type DealStatus,
@@ -105,6 +106,19 @@ const REVIEW_INTENTS: Array<{ value: DealReviewIntent; label: string; descriptio
   { value: "blocked-decision", label: "Blocked / Needs Decision", description: "Escalate a blocker or decision before more work continues." },
 ];
 
+const DISPOSITION_STATUSES: Array<{ value: DispositionStatus; label: string }> = [
+  { value: "not-started", label: "Not Started" },
+  { value: "exit-strategy-set", label: "Exit Strategy Set" },
+  { value: "buyer-list-built", label: "Buyer List Built" },
+  { value: "marketed", label: "Marketed" },
+  { value: "buyer-interest", label: "Buyer Interest" },
+  { value: "offer-received", label: "Offer Received" },
+  { value: "buyer-under-contract", label: "Buyer Under Contract" },
+  { value: "closing-scheduled", label: "Closing Scheduled" },
+  { value: "closed", label: "Closed" },
+  { value: "fell-through", label: "Fell Through" },
+];
+
 type VaTab = "leads" | "imports" | "follow-ups" | "diligence" | "brief";
 
 const TABS: Array<{ value: VaTab; label: string }> = [
@@ -178,6 +192,21 @@ const EMPTY_DRAFT: DealInput & { linksText: string } = {
   last_submitted_at: null,
   review_round: 0,
   last_review_notification_at: null,
+  disposition_status: "not-started",
+  exit_strategy: "",
+  target_buyer_type: "",
+  target_resale_price: null,
+  minimum_acceptable_price: null,
+  best_buyer_offer: null,
+  buyer_demand_evidence: "",
+  disposition_owner: "",
+  disposition_next_step: "",
+  closing_costs_estimate: null,
+  holding_costs_estimate: null,
+  marketing_costs_estimate: null,
+  desired_minimum_spread: null,
+  risk_buffer: null,
+  calculator_notes: "",
   linksText: "",
 };
 
@@ -275,6 +304,21 @@ function draftFromDeal(deal: Deal): DealInput & { linksText: string } {
     last_submitted_at: deal.last_submitted_at ?? null,
     review_round: deal.review_round ?? 0,
     last_review_notification_at: deal.last_review_notification_at ?? null,
+    disposition_status: deal.disposition_status ?? "not-started",
+    exit_strategy: deal.exit_strategy ?? "",
+    target_buyer_type: deal.target_buyer_type ?? "",
+    target_resale_price: deal.target_resale_price ?? null,
+    minimum_acceptable_price: deal.minimum_acceptable_price ?? null,
+    best_buyer_offer: deal.best_buyer_offer ?? null,
+    buyer_demand_evidence: deal.buyer_demand_evidence ?? "",
+    disposition_owner: deal.disposition_owner ?? "",
+    disposition_next_step: deal.disposition_next_step ?? "",
+    closing_costs_estimate: deal.closing_costs_estimate ?? null,
+    holding_costs_estimate: deal.holding_costs_estimate ?? null,
+    marketing_costs_estimate: deal.marketing_costs_estimate ?? null,
+    desired_minimum_spread: deal.desired_minimum_spread ?? null,
+    risk_buffer: deal.risk_buffer ?? null,
+    calculator_notes: deal.calculator_notes ?? "",
     linksText: deal.links.join("\n"),
   };
 }
@@ -312,6 +356,21 @@ function buildPayload(draft: DealInput & { linksText: string }, status: DealStat
     last_submitted_at: draft.last_submitted_at || null,
     review_round: draft.review_round ?? 0,
     last_review_notification_at: draft.last_review_notification_at || null,
+    disposition_status: draft.disposition_status || "not-started",
+    exit_strategy: draft.exit_strategy?.trim() || null,
+    target_buyer_type: draft.target_buyer_type?.trim() || null,
+    target_resale_price: draft.target_resale_price ?? null,
+    minimum_acceptable_price: draft.minimum_acceptable_price ?? null,
+    best_buyer_offer: draft.best_buyer_offer ?? null,
+    buyer_demand_evidence: draft.buyer_demand_evidence?.trim() || null,
+    disposition_owner: draft.disposition_owner?.trim() || null,
+    disposition_next_step: draft.disposition_next_step?.trim() || null,
+    closing_costs_estimate: draft.closing_costs_estimate ?? null,
+    holding_costs_estimate: draft.holding_costs_estimate ?? null,
+    marketing_costs_estimate: draft.marketing_costs_estimate ?? null,
+    desired_minimum_spread: draft.desired_minimum_spread ?? null,
+    risk_buffer: draft.risk_buffer ?? null,
+    calculator_notes: draft.calculator_notes?.trim() || null,
     links: draft.linksText.split(/\r?\n/).map(l => l.trim()).filter(Boolean),
   };
 }
@@ -491,6 +550,8 @@ export default function VaPage() {
     { label: "Seller contact", done: !!(liveInput.seller_name || liveInput.seller_phone) },
     { label: "Asking price", done: typeof liveInput.asking_price === "number" && Number.isFinite(liveInput.asking_price) },
     { label: liveInput.property_type === "land" ? "Exit value or comp support" : "ARV or value", done: typeof liveInput.arv === "number" && Number.isFinite(liveInput.arv) },
+    { label: "Disposition thesis", done: !!(liveInput.exit_strategy && liveInput.target_buyer_type && liveInput.buyer_demand_evidence) },
+    { label: "Calculator assumptions", done: typeof liveInput.desired_minimum_spread === "number" || typeof liveInput.minimum_acceptable_price === "number" },
     { label: "Notes added", done: !!liveInput.notes },
     { label: "Link or attachment", done: (liveInput.links?.length ?? 0) > 0 || attachments.length > 0 },
   ], [attachments.length, liveInput]);
@@ -1194,6 +1255,49 @@ export default function VaPage() {
                   <NumberField label="Repairs/site" value={draft.repair_estimate} onChange={v => setDraft({ ...draft, repair_estimate: v })} />
                   <NumberField label="Acres" value={draft.acreage} onChange={v => setDraft({ ...draft, acreage: v })} />
                 </div>
+                <div style={subPanel}>
+                  <p style={eyebrowSmall}>Connected acquisition + disposition calculator</p>
+                  <div style={twoCol} className="two-col">
+                    <div>
+                      <label style={label}>Exit strategy</label>
+                      <input value={draft.exit_strategy ?? ""} onChange={e => setDraft({ ...draft, exit_strategy: e.target.value })} placeholder="Assignment, retail resale, neighbor sale, builder exit" />
+                    </div>
+                    <div>
+                      <label style={label}>Disposition status</label>
+                      <select value={draft.disposition_status ?? "not-started"} onChange={e => setDraft({ ...draft, disposition_status: e.target.value as DispositionStatus })}>
+                        {DISPOSITION_STATUSES.map(status => <option key={status.value} value={status.value}>{status.label}</option>)}
+                      </select>
+                    </div>
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, marginTop: 10 }} className="number-grid">
+                    <NumberField label="Target resale" value={draft.target_resale_price} onChange={v => setDraft({ ...draft, target_resale_price: v, arv: v ?? draft.arv })} />
+                    <NumberField label="Minimum sale" value={draft.minimum_acceptable_price} onChange={v => setDraft({ ...draft, minimum_acceptable_price: v })} />
+                    <NumberField label="Best buyer offer" value={draft.best_buyer_offer} onChange={v => setDraft({ ...draft, best_buyer_offer: v })} />
+                    <NumberField label="Target spread" value={draft.desired_minimum_spread} onChange={v => setDraft({ ...draft, desired_minimum_spread: v })} />
+                    <NumberField label="Closing costs" value={draft.closing_costs_estimate} onChange={v => setDraft({ ...draft, closing_costs_estimate: v })} />
+                    <NumberField label="Holding costs" value={draft.holding_costs_estimate} onChange={v => setDraft({ ...draft, holding_costs_estimate: v })} />
+                    <NumberField label="Marketing costs" value={draft.marketing_costs_estimate} onChange={v => setDraft({ ...draft, marketing_costs_estimate: v })} />
+                    <NumberField label="Risk buffer" value={draft.risk_buffer} onChange={v => setDraft({ ...draft, risk_buffer: v })} />
+                  </div>
+                  <div style={twoCol} className="two-col">
+                    <div>
+                      <label style={label}>Target buyer type</label>
+                      <input value={draft.target_buyer_type ?? ""} onChange={e => setDraft({ ...draft, target_buyer_type: e.target.value })} placeholder="Builder, neighbor, investor, developer" />
+                    </div>
+                    <div>
+                      <label style={label}>Disposition owner</label>
+                      <input value={draft.disposition_owner ?? ""} onChange={e => setDraft({ ...draft, disposition_owner: e.target.value })} placeholder="Member or VA owner" />
+                    </div>
+                  </div>
+                  <div style={{ marginTop: 10 }}>
+                    <label style={label}>Buyer demand evidence</label>
+                    <textarea rows={2} value={draft.buyer_demand_evidence ?? ""} onChange={e => setDraft({ ...draft, buyer_demand_evidence: e.target.value })} placeholder="Buyer list, comp support, nearby builders, neighbor interest, active buyer replies." />
+                  </div>
+                  <div style={{ marginTop: 10 }}>
+                    <label style={label}>Disposition next step / calculator notes</label>
+                    <textarea rows={2} value={draft.disposition_next_step ?? draft.calculator_notes ?? ""} onChange={e => setDraft({ ...draft, disposition_next_step: e.target.value, calculator_notes: e.target.value })} placeholder="What must happen next to validate or execute the exit." />
+                  </div>
+                </div>
                 {draft.property_type === "land" && (
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }} className="three-col">
                     <div>
@@ -1241,6 +1345,18 @@ export default function VaPage() {
                       {liveAnalysis.missingInfo.length ? liveAnalysis.missingInfo.join(", ") : "Core information present."}
                     </p>
                   </div>
+                </div>
+                <div style={subPanel}>
+                  <p style={eyebrowSmall}>Member decision math</p>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                    <MiniStat label="Recommended offer" value={liveAnalysis.acquisition.recommendedOffer ? `$${liveAnalysis.acquisition.recommendedOffer.toLocaleString()}` : "N/A"} />
+                    <MiniStat label="Max offer" value={liveAnalysis.acquisition.maxOffer ? `$${liveAnalysis.acquisition.maxOffer.toLocaleString()}` : "N/A"} />
+                    <MiniStat label="Spread @ ask" value={liveAnalysis.acquisition.projectedSpreadAtAsk !== null ? `$${liveAnalysis.acquisition.projectedSpreadAtAsk.toLocaleString()}` : "N/A"} />
+                    <MiniStat label="Exit confidence" value={liveAnalysis.disposition.exitConfidence} />
+                  </div>
+                  <p style={{ fontSize: 12, color: "var(--muted)", lineHeight: 1.5, marginTop: 10 }}>
+                    {liveAnalysis.disposition.exitStrategy || "Exit strategy pending"} · {liveAnalysis.disposition.targetBuyerType || "Buyer type pending"}
+                  </p>
                 </div>
                 <div style={subPanel}>
                   <p style={eyebrowSmall}>Ready to submit?</p>

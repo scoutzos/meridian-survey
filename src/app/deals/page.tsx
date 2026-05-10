@@ -119,6 +119,21 @@ const EMPTY_DRAFT: DealInput & { linksText: string } = {
   last_submitted_at: null,
   review_round: 0,
   last_review_notification_at: null,
+  disposition_status: "not-started",
+  exit_strategy: "",
+  target_buyer_type: "",
+  target_resale_price: null,
+  minimum_acceptable_price: null,
+  best_buyer_offer: null,
+  buyer_demand_evidence: "",
+  disposition_owner: "",
+  disposition_next_step: "",
+  closing_costs_estimate: null,
+  holding_costs_estimate: null,
+  marketing_costs_estimate: null,
+  desired_minimum_spread: null,
+  risk_buffer: null,
+  calculator_notes: "",
   linksText: "",
 };
 
@@ -202,6 +217,21 @@ function draftFromDeal(deal: Deal): DealInput & { linksText: string } {
     last_submitted_at: deal.last_submitted_at ?? null,
     review_round: deal.review_round ?? 0,
     last_review_notification_at: deal.last_review_notification_at ?? null,
+    disposition_status: deal.disposition_status ?? "not-started",
+    exit_strategy: deal.exit_strategy ?? "",
+    target_buyer_type: deal.target_buyer_type ?? "",
+    target_resale_price: deal.target_resale_price ?? null,
+    minimum_acceptable_price: deal.minimum_acceptable_price ?? null,
+    best_buyer_offer: deal.best_buyer_offer ?? null,
+    buyer_demand_evidence: deal.buyer_demand_evidence ?? "",
+    disposition_owner: deal.disposition_owner ?? "",
+    disposition_next_step: deal.disposition_next_step ?? "",
+    closing_costs_estimate: deal.closing_costs_estimate ?? null,
+    holding_costs_estimate: deal.holding_costs_estimate ?? null,
+    marketing_costs_estimate: deal.marketing_costs_estimate ?? null,
+    desired_minimum_spread: deal.desired_minimum_spread ?? null,
+    risk_buffer: deal.risk_buffer ?? null,
+    calculator_notes: deal.calculator_notes ?? "",
     linksText: deal.links.join("\n"),
   };
 }
@@ -481,7 +511,18 @@ export default function DealsPage() {
       `- Asking: ${money(deal.asking_price ?? null)}`,
       `- Target value / ARV: ${money(deal.arv ?? null)}`,
       `- Repair or site estimate: ${money(deal.repair_estimate ?? null)}`,
+      `- Estimated total costs: ${money(deal.analysis?.acquisition.totalCosts ?? null)}`,
+      `- Recommended offer: ${money(deal.analysis?.acquisition.recommendedOffer ?? null)}`,
       `- Max allowable offer: ${money(deal.analysis?.maxAllowableOffer ?? null)}`,
+      `- Target resale: ${money(deal.analysis?.disposition.targetResale ?? null)}`,
+      `- Minimum acceptable sale: ${money(deal.analysis?.disposition.minimumAcceptable ?? null)}`,
+      `- Projected spread at ask: ${money(deal.analysis?.acquisition.projectedSpreadAtAsk ?? null)}`,
+      "",
+      "Disposition",
+      `- Exit strategy: ${deal.exit_strategy || "Pending"}`,
+      `- Target buyer: ${deal.target_buyer_type || "Pending"}`,
+      `- Evidence: ${deal.buyer_demand_evidence || "Pending"}`,
+      `- Next step: ${deal.disposition_next_step || "Pending"}`,
       "",
       "Risk Flags",
       risks,
@@ -816,6 +857,42 @@ export default function DealsPage() {
                   <Stat label="Submitted by" value={selected.submitted_by || selected.created_by || "Unknown"} />
                   <Stat label="Temperature" value={selected.lead_temperature ? statusLabel(selected.lead_temperature) : "Unset"} />
                   <Stat label="Follow-up" value={selected.next_follow_up_date || "Not set"} />
+                </div>
+
+                <div style={{ ...subPanel, marginTop: 14 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
+                    <div>
+                      <p style={eyebrowSmall}>Acquisition + disposition calculator</p>
+                      <h3 style={{ fontFamily: DISPLAY_FONT, color: "var(--obsidian)", fontSize: 24, fontWeight: 500 }}>
+                        Vote with exit confidence
+                      </h3>
+                    </div>
+                    <span style={pill}>Exit confidence: {selected.analysis.disposition.exitConfidence}</span>
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10 }} className="number-grid">
+                    <Stat label="Recommended offer" value={money(selected.analysis.acquisition.recommendedOffer)} />
+                    <Stat label="Max offer" value={money(selected.analysis.acquisition.maxOffer)} />
+                    <Stat label="Target resale" value={money(selected.analysis.disposition.targetResale)} />
+                    <Stat label="Spread @ ask" value={money(selected.analysis.acquisition.projectedSpreadAtAsk)} />
+                    <Stat label="Minimum sale" value={money(selected.analysis.disposition.minimumAcceptable)} />
+                    <Stat label="Best buyer offer" value={money(selected.analysis.disposition.bestBuyerOffer)} />
+                    <Stat label="Net @ best offer" value={money(selected.analysis.disposition.projectedNetAtBestOffer)} />
+                    <Stat label="Total costs" value={money(selected.analysis.acquisition.totalCosts)} />
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 12 }} className="two-col">
+                    <div>
+                      <p style={miniLabel}>Disposition thesis</p>
+                      <p style={{ fontSize: 13, color: "var(--ink)", lineHeight: 1.55 }}>
+                        {selected.exit_strategy || "Exit strategy pending."}{selected.target_buyer_type ? ` Target buyer: ${selected.target_buyer_type}.` : ""}
+                      </p>
+                    </div>
+                    <div>
+                      <p style={miniLabel}>Buyer demand evidence</p>
+                      <p style={{ fontSize: 13, color: "var(--ink)", lineHeight: 1.55, whiteSpace: "pre-wrap" }}>
+                        {selected.buyer_demand_evidence || "No buyer demand evidence documented yet."}
+                      </p>
+                    </div>
+                  </div>
                 </div>
 
                 {(selected.submission_summary || selected.requested_next_step || selected.review_intent || selected.submit_uncertainties) && (
