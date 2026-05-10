@@ -708,6 +708,7 @@ export default function VaPage() {
 
   const startNew = () => {
     setSelectedId(null);
+    setSelectedImportedLeadId(null);
     setChecklist([]);
     setAttachments([]);
     setDraft(EMPTY_DRAFT);
@@ -716,6 +717,13 @@ export default function VaPage() {
     setMessage("");
     setActiveTab("leads");
     setNotifyReviewUpdate(false);
+  };
+
+  const openDealBrief = (deal: Deal) => {
+    setSelectedImportedLeadId(null);
+    setSelectedId(deal.id);
+    setMessage("");
+    setActiveTab("leads");
   };
 
   const saveDeal = async (status: DealStatus) => {
@@ -848,7 +856,7 @@ export default function VaPage() {
     if (preview.error) { setMessage(preview.error); return; }
     setImportPreview(preview);
     setImportStep("preview");
-    setMessage(`Preview ready. Review the import preview card and click Confirm Import to save ${preview.usableLeads} usable leads.`);
+    setMessage(`Preview ready. Meridian found ${preview.safeToImport} new lead${preview.safeToImport === 1 ? "" : "s"} to import and ${preview.skippedDuplicates} overlap${preview.skippedDuplicates === 1 ? "" : "s"} to skip.`);
     setActiveTab("imports");
   };
 
@@ -883,7 +891,8 @@ export default function VaPage() {
       setImportStep("work");
       setImportStage("done");
       setMessage([
-        `Imported ${result.importedCount ?? importPreview.usableLeads} lead${(result.importedCount ?? importPreview.usableLeads) === 1 ? "" : "s"} from ${importPreview.filename}.`,
+        `Imported ${result.importedCount ?? importPreview.safeToImport} new lead${(result.importedCount ?? importPreview.safeToImport) === 1 ? "" : "s"} from ${importPreview.filename}.`,
+        importPreview.skippedDuplicates ? `Skipped ${importPreview.skippedDuplicates} overlapping record${importPreview.skippedDuplicates === 1 ? "" : "s"} already in Meridian.` : "",
         result.warning || "",
       ].filter(Boolean).join(" "));
       setActiveTab("imports");
@@ -1316,7 +1325,7 @@ export default function VaPage() {
               return (
                 <button
                   key={deal.id}
-                  onClick={() => { setSelectedId(deal.id); setMessage(""); }}
+                  onClick={() => { setSelectedImportedLeadId(null); setSelectedId(deal.id); setMessage(""); }}
                   style={{
                     textAlign: "left",
                     background: active ? "rgba(176,137,84,0.16)" : "var(--surface)",
@@ -1345,7 +1354,7 @@ export default function VaPage() {
             <h3 style={{ ...sectionTitle, fontSize: 18 }}>Follow-ups</h3>
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               {deals.filter(deal => deal.next_follow_up_date).slice(0, 6).map(deal => (
-                <button key={`follow-${deal.id}`} onClick={() => setSelectedId(deal.id)} style={{
+                <button key={`follow-${deal.id}`} onClick={() => { setSelectedImportedLeadId(null); setSelectedId(deal.id); }} style={{
                   textAlign: "left",
                   background: "var(--surface)",
                   border: "1px solid var(--fog)",
@@ -1374,7 +1383,7 @@ export default function VaPage() {
               </div>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                 <button onClick={() => setActiveTab("imports")} style={secondaryButton}>Work imports</button>
-                <button onClick={() => setActiveTab("leads")} style={secondaryButton}>Build brief</button>
+                <button onClick={() => draftLeads[0] ? openDealBrief(draftLeads[0]) : setActiveTab("leads")} style={secondaryButton}>Build brief</button>
                 <button onClick={() => setActiveTab("brief")} style={primaryButton}>End shift</button>
               </div>
             </div>
@@ -1409,7 +1418,17 @@ export default function VaPage() {
                       title={deal.seller_name || deal.title}
                       detail={`${deal.next_follow_up_date || "Due"} · ${deal.seller_phone || deal.address || "No phone/location"}`}
                       actionLabel="Open brief"
-                      onAction={() => { setSelectedId(deal.id); setActiveTab("leads"); }}
+                      onAction={() => openDealBrief(deal)}
+                    />
+                  ))}
+                  {draftLeads.slice(0, 5).map(deal => (
+                    <WorkQueueCard
+                      key={`draft-${deal.id}`}
+                      eyebrow="Draft deal"
+                      title={deal.title}
+                      detail={`${deal.seller_name || "Seller pending"} · ${deal.address || deal.parcel_id || "No location"} · ${deal.analysis?.recommendation ?? "Needs Review"}`}
+                      actionLabel="Open draft"
+                      onAction={() => openDealBrief(deal)}
                     />
                   ))}
                   {interestedLeads.slice(0, 5).map(lead => (
@@ -1420,7 +1439,7 @@ export default function VaPage() {
                       detail={`${lead.property_address || lead.parcel_id || "No address"} · Score ${lead.lead_score ?? 0}`}
                       tone="hot"
                       actionLabel="Work lead"
-                      onAction={() => setSelectedImportedLeadId(lead.id)}
+                      onAction={() => { setSelectedId(null); setSelectedImportedLeadId(lead.id); }}
                     />
                   ))}
                   {priorityImportedLeads.map(lead => (
@@ -1430,10 +1449,10 @@ export default function VaPage() {
                       title={lead.owner_name || "Owner unknown"}
                       detail={`${lead.phone || lead.phone_2 || "No phone"} · ${lead.property_address || lead.parcel_id || "No address"} · Score ${lead.lead_score ?? 0}`}
                       actionLabel="Select"
-                      onAction={() => setSelectedImportedLeadId(lead.id)}
+                      onAction={() => { setSelectedId(null); setSelectedImportedLeadId(lead.id); }}
                     />
                   ))}
-                  {!unmatchedSms.length && !followUpsDue.length && !interestedLeads.length && !priorityImportedLeads.length && (
+                  {!unmatchedSms.length && !followUpsDue.length && !draftLeads.length && !interestedLeads.length && !priorityImportedLeads.length && (
                     <p style={{ color: "var(--muted)", fontSize: 13, lineHeight: 1.5 }}>No VA queue items yet. Import a list or create a lead to start the day.</p>
                   )}
                 </div>
@@ -1542,7 +1561,7 @@ export default function VaPage() {
                     <p style={{ color: "var(--muted)", fontSize: 13, lineHeight: 1.5 }}>{selected.submission_summary || selected.notes || "No VA summary yet."}</p>
                     <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                       <button onClick={() => router.push(`/opportunity?deal=${selected.id}`)} style={secondaryButton}>Open shared file</button>
-                      <button onClick={() => setActiveTab("leads")} style={primaryButton}>Edit deal brief</button>
+                      <button onClick={() => openDealBrief(selected)} style={primaryButton}>Edit deal brief</button>
                       <button onClick={() => saveDeal("under-review")} disabled={saving} style={{ ...secondaryButton, opacity: saving ? 0.6 : 1 }}>Submit for review</button>
                     </div>
                   </div>
@@ -2004,19 +2023,49 @@ export default function VaPage() {
                   </div>
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                     <button onClick={() => { setImportPreview(null); setImportStep("upload"); }} style={secondaryButton}>Cancel</button>
-                    <button onClick={confirmLeadImport} disabled={importing} style={{ ...primaryButton, opacity: importing ? 0.6 : 1 }}>
-                      {importing ? "Importing..." : `Import ${importPreview.usableLeads} Leads`}
+                    <button onClick={confirmLeadImport} disabled={importing || importPreview.safeToImport === 0} style={{ ...primaryButton, opacity: importing || importPreview.safeToImport === 0 ? 0.6 : 1 }}>
+                      {importing ? "Importing..." : `Import ${importPreview.safeToImport} New Leads`}
                     </button>
                   </div>
                 </div>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 8 }} className="number-grid">
                   <MiniStat label="Rows" value={String(importPreview.rowsFound)} />
                   <MiniStat label="Usable" value={String(importPreview.usableLeads)} />
+                  <MiniStat label="New to save" value={String(importPreview.safeToImport)} />
+                  <MiniStat label="Exact match" value={String(importPreview.exactDuplicates)} />
+                  <MiniStat label="Possible match" value={String(importPreview.possibleDuplicates - importPreview.exactDuplicates)} />
+                  <MiniStat label="Converted" value={String(importPreview.alreadyConverted)} />
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8, marginTop: 8 }} className="number-grid">
                   <MiniStat label="No phone" value={String(importPreview.missingPhone)} />
                   <MiniStat label="No owner" value={String(importPreview.missingOwner)} />
-                  <MiniStat label="Duplicates" value={String(importPreview.possibleDuplicates + importPreview.alreadyConverted)} />
+                  <MiniStat label="Skipped" value={String(importPreview.skippedDuplicates)} />
                   <MiniStat label="Avg score" value={String(importPreview.averageScore)} />
                 </div>
+                {importPreview.skippedDuplicates > 0 && (
+                  <div style={{ ...subPanel, marginTop: 12, background: "rgba(176,137,84,0.10)", borderColor: "var(--brass)" }}>
+                    <p style={eyebrowSmall}>Overlap review</p>
+                    <p style={{ color: "var(--muted)", fontSize: 12, lineHeight: 1.5, marginBottom: 10 }}>
+                      Meridian will skip overlapping Land Insights/Land Portal records by default. Review these matches before deciding whether to update an existing lead.
+                    </p>
+                    <div style={{ display: "grid", gap: 8 }}>
+                      {importPreview.duplicateMatches.map(match => (
+                        <div key={`${match.duplicateOf}-${match.incomingLabel}`} style={{ border: "1px solid var(--fog)", borderRadius: 8, padding: 10, background: "var(--surface)" }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap", marginBottom: 5 }}>
+                            <strong style={{ color: "var(--obsidian)", fontSize: 13 }}>{match.incomingLabel}</strong>
+                            <span style={match.confidence === "already-converted" ? hotPill : pill}>{statusLabel(match.confidence)}</span>
+                          </div>
+                          <p style={{ color: "var(--muted)", fontSize: 12, lineHeight: 1.45 }}>
+                            Existing: {match.existingLabel} · {match.existingStatus ? statusLabel(match.existingStatus) : "Status unknown"}{match.existingDealId ? " · already has deal" : ""}
+                          </p>
+                          <p style={{ color: "var(--muted)", fontSize: 12, lineHeight: 1.45, marginTop: 4 }}>
+                            Why: {match.reasons.join(", ")}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
                 <div style={{ overflowX: "auto", marginTop: 12 }}>
                   <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
                     <thead>
@@ -2288,7 +2337,7 @@ export default function VaPage() {
               {(followUpsDue.length ? followUpsDue : deals.filter(deal => deal.next_follow_up_date).slice(0, 8)).map(deal => (
                 <button
                   key={deal.id}
-                  onClick={() => { setSelectedId(deal.id); setActiveTab("leads"); }}
+                  onClick={() => openDealBrief(deal)}
                   style={{
                     ...subPanel,
                     textAlign: "left",
@@ -2591,12 +2640,24 @@ function WorkQueueCard({
   tone?: "calm" | "hot";
 }) {
   return (
-    <div style={{ border: tone === "hot" ? "1px solid var(--brass)" : "1px solid var(--fog)", borderRadius: 8, padding: 10, background: tone === "hot" ? "rgba(176,137,84,0.12)" : "var(--surface)" }}>
+    <button
+      type="button"
+      onClick={onAction}
+      style={{
+        border: tone === "hot" ? "1px solid var(--brass)" : "1px solid var(--fog)",
+        borderRadius: 8,
+        padding: 10,
+        background: tone === "hot" ? "rgba(176,137,84,0.12)" : "var(--surface)",
+        textAlign: "left",
+        cursor: "pointer",
+        width: "100%",
+      }}
+    >
       <p style={miniLabel}>{overline}</p>
       <strong style={{ display: "block", color: "var(--obsidian)", fontSize: 13, lineHeight: 1.25 }}>{title}</strong>
       <p style={{ color: "var(--muted)", fontSize: 12, lineHeight: 1.4, margin: "5px 0 8px" }}>{detail}</p>
-      <button onClick={onAction} style={{ ...secondaryButton, minHeight: 34, padding: "7px 9px" }}>{actionLabel}</button>
-    </div>
+      <span style={{ ...secondaryButton, display: "inline-flex", alignItems: "center", minHeight: 34, padding: "7px 9px" }}>{actionLabel}</span>
+    </button>
   );
 }
 

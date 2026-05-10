@@ -75,15 +75,29 @@ export interface LandLeadImportPreview {
   filename: string;
   rowsFound: number;
   usableLeads: number;
+  safeToImport: number;
   missingPhone: number;
   missingOwner: number;
+  exactDuplicates: number;
   possibleDuplicates: number;
   alreadyConverted: number;
+  skippedDuplicates: number;
   averageScore: number;
   sampleLeads: Array<Omit<ImportedLandLead, "id" | "created_at" | "updated_at">>;
   duplicateKeys: string[];
+  duplicateMatches: LeadDuplicateMatch[];
   csvText: string;
   error: string | null;
+}
+
+export interface LeadDuplicateMatch {
+  confidence: "exact" | "possible" | "already-converted";
+  incomingLabel: string;
+  existingLabel: string;
+  duplicateOf: string | null;
+  existingStatus: ImportedLandLead["status"] | null;
+  existingDealId: string | null;
+  reasons: string[];
 }
 
 export interface ImportedLandLeadActivity {
@@ -162,13 +176,74 @@ function duplicateKey(lead: Pick<ImportedLandLead, "parcel_id" | "property_addre
   ].filter(Boolean).join("|").toLowerCase().replace(/\s+/g, " ").trim();
 }
 
-function strongDuplicateMatch(a: Pick<ImportedLandLead, "parcel_id" | "property_address" | "phone" | "phone_2">, b: Pick<ImportedLandLead, "parcel_id" | "property_address" | "phone" | "phone_2">): boolean {
-  const parcelMatch = !!a.parcel_id && !!b.parcel_id && a.parcel_id.toLowerCase() === b.parcel_id.toLowerCase();
-  const addressMatch = !!a.property_address && !!b.property_address && a.property_address.toLowerCase() === b.property_address.toLowerCase();
-  const phones = [a.phone, a.phone_2].filter(Boolean).map(v => String(v).replace(/\D/g, ""));
-  const otherPhones = [b.phone, b.phone_2].filter(Boolean).map(v => String(v).replace(/\D/g, ""));
-  const phoneMatch = phones.some(phone => phone.length >= 7 && otherPhones.includes(phone));
-  return parcelMatch || addressMatch || phoneMatch;
+function normalizeText(value: string | null | undefined): string {
+  return (value ?? "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+}
+
+function normalizeParcel(value: string | null | undefined): string {
+  return (value ?? "").toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+function normalizePhone(value: string | null | undefined): string {
+  const digits = (value ?? "").replace(/\D/g, "");
+  return digits.length > 10 ? digits.slice(-10) : digits;
+}
+
+function normalizeUrl(value: string | null | undefined): string {
+  try {
+    const url = new URL(value ?? "");
+    url.hash = "";
+    url.search = "";
+    return `${url.hostname}${url.pathname}`.toLowerCase().replace(/\/+$/g, "");
+  } catch {
+    return normalizeText(value);
+  }
+}
+
+function leadLabel(lead: Pick<ImportedLandLead, "owner_name" | "property_address" | "parcel_id" | "phone" | "phone_2">): string {
+  return lead.property_address || lead.parcel_id || lead.owner_name || lead.phone || lead.phone_2 || "Unknown lead";
+}
+
+function duplicateReasons(
+  a: Pick<ImportedLandLead, "parcel_id" | "property_address" | "phone" | "phone_2" | "owner_name" | "mailing_address" | "county" | "acreage" | "property_url">,
+  b: Pick<ImportedLandLead, "parcel_id" | "property_address" | "phone" | "phone_2" | "owner_name" | "mailing_address" | "county" | "acreage" | "property_url">,
+): string[] {
+  const reasons: string[] = [];
+  const parcelA = normalizeParcel(a.parcel_id);
+  const parcelB = normalizeParcel(b.parcel_id);
+  const addressA = normalizeText(a.property_address);
+  const addressB = normalizeText(b.property_address);
+  const urlA = normalizeUrl(a.property_url);
+  const urlB = normalizeUrl(b.property_url);
+  const ownerA = normalizeText(a.owner_name);
+  const ownerB = normalizeText(b.owner_name);
+  const mailingA = normalizeText(a.mailing_address);
+  const mailingB = normalizeText(b.mailing_address);
+  const countyA = normalizeText(a.county);
+  const countyB = normalizeText(b.county);
+  const phones = [normalizePhone(a.phone), normalizePhone(a.phone_2)].filter(phone => phone.length >= 7);
+  const otherPhones = [normalizePhone(b.phone), normalizePhone(b.phone_2)].filter(phone => phone.length >= 7);
+  const acreageMatch = typeof a.acreage === "number"
+    && typeof b.acreage === "number"
+    && Math.abs(a.acreage - b.acreage) <= 0.02;
+
+  if (parcelA && parcelA === parcelB) reasons.push("same parcel/APN");
+  if (addressA && addressA === addressB) reasons.push("same property address");
+  if (urlA && urlA === urlB) reasons.push("same property link");
+  if (phones.some(phone => otherPhones.includes(phone))) reasons.push("same phone");
+  if (ownerA && ownerA === ownerB && countyA && countyA === countyB) reasons.push("same owner and county");
+  if (ownerA && ownerA === ownerB && mailingA && mailingA === mailingB) reasons.push("same owner mailing address");
+  if (ownerA && ownerA === ownerB && countyA && countyA === countyB && acreageMatch) reasons.push("same owner, county, and acreage");
+
+  return reasons;
+}
+
+function matchConfidence(reasons: string[], matched: ImportedLandLead): LeadDuplicateMatch["confidence"] | null {
+  if (!reasons.length) return null;
+  if (matched.status === "converted" || !!matched.deal_id) return "already-converted";
+  if (reasons.some(reason => ["same parcel/APN", "same property address", "same property link"].includes(reason))) return "exact";
+  if (reasons.includes("same phone") && reasons.some(reason => reason.includes("owner") || reason.includes("county"))) return "exact";
+  return "possible";
 }
 
 function scoreLead(row: Record<string, string>, lead: Pick<ImportedLandLead, "phone" | "phone_2" | "email" | "property_address" | "parcel_id" | "acreage" | "market_value" | "land_use">): { lead_score: number; score_reasons: string[] } {
@@ -308,22 +383,60 @@ function normalizeLead(row: Record<string, string>, sourceSystem: string, campai
   return { ...base, ...scoreLead(row, base) };
 }
 
+function findDuplicateMatch(
+  lead: Omit<ImportedLandLead, "id" | "created_at" | "updated_at">,
+  existing: ImportedLandLead[],
+): { lead: ImportedLandLead | null; confidence: LeadDuplicateMatch["confidence"] | null; reasons: string[] } {
+  let best: { lead: ImportedLandLead | null; confidence: LeadDuplicateMatch["confidence"] | null; reasons: string[]; score: number } = { lead: null, confidence: null, reasons: [], score: 0 };
+  existing.forEach(row => {
+    const reasons = duplicateReasons(lead, row);
+    const confidence = matchConfidence(reasons, row);
+    const score = reasons.length + (confidence === "exact" ? 10 : confidence === "already-converted" ? 20 : 0);
+    if (confidence && score > best.score) best = { lead: row, confidence, reasons, score };
+  });
+  return { lead: best.lead, confidence: best.confidence, reasons: best.reasons };
+}
+
 function applyDuplicateMetadata<T extends Omit<ImportedLandLead, "id" | "created_at" | "updated_at">>(leads: T[], existing: ImportedLandLead[]): T[] {
-  const seen = new Map<string, { id: string | null; converted: boolean }>();
+  const seen = new Map<string, { id: string | null; converted: boolean; label: string }>();
   existing.forEach(lead => {
     const key = duplicateKey(lead);
-    if (key) seen.set(key, { id: lead.id, converted: lead.status === "converted" || !!lead.deal_id });
+    if (key) seen.set(key, { id: lead.id, converted: lead.status === "converted" || !!lead.deal_id, label: leadLabel(lead) });
   });
   return leads.map(lead => {
     const exact = seen.get(duplicateKey(lead));
-    const fuzzy = exact ? null : existing.find(row => strongDuplicateMatch(lead, row));
-    const converted = exact?.converted || fuzzy?.status === "converted" || !!fuzzy?.deal_id;
+    const duplicate = exact ? null : findDuplicateMatch(lead, existing);
+    const fuzzy = duplicate?.lead ?? null;
+    const converted = exact?.converted || duplicate?.confidence === "already-converted";
     const duplicate_of = exact?.id || fuzzy?.id || null;
     const duplicate_status = duplicate_of ? (converted ? "already-converted" : "possible-duplicate") : "new";
     const next = { ...lead, duplicate_status, duplicate_of } as T;
     const key = duplicateKey(next);
-    if (key && !seen.has(key)) seen.set(key, { id: null, converted: false });
+    if (key && !seen.has(key)) seen.set(key, { id: null, converted: false, label: leadLabel(next) });
     return next;
+  });
+}
+
+function buildDuplicateMatches(leads: Array<Omit<ImportedLandLead, "id" | "created_at" | "updated_at">>, existing: ImportedLandLead[]): LeadDuplicateMatch[] {
+  return leads.flatMap(lead => {
+    if (lead.duplicate_status === "new") return [];
+    const matched = lead.duplicate_of
+      ? existing.find(row => row.id === lead.duplicate_of) ?? null
+      : findDuplicateMatch(lead, existing).lead;
+    if (!matched) return [];
+    const reasons = duplicateReasons(lead, matched);
+    const confidence = lead.duplicate_status === "already-converted"
+      ? "already-converted"
+      : matchConfidence(reasons, matched) ?? "possible";
+    return [{
+      confidence,
+      incomingLabel: leadLabel(lead),
+      existingLabel: leadLabel(matched),
+      duplicateOf: matched.id,
+      existingStatus: matched.status,
+      existingDealId: matched.deal_id,
+      reasons: reasons.length ? reasons : ["matches an existing import fingerprint"],
+    }];
   });
 }
 
@@ -395,23 +508,32 @@ export async function previewLandLeadsCsv(args: {
 }): Promise<LandLeadImportPreview> {
   const rows = parseCsv(args.csvText);
   if (rows.length === 0) {
-    return { filename: args.filename, rowsFound: 0, usableLeads: 0, missingPhone: 0, missingOwner: 0, possibleDuplicates: 0, alreadyConverted: 0, averageScore: 0, sampleLeads: [], duplicateKeys: [], csvText: args.csvText, error: "No lead rows found. Upload a CSV with a header row." };
+    return { filename: args.filename, rowsFound: 0, usableLeads: 0, safeToImport: 0, missingPhone: 0, missingOwner: 0, exactDuplicates: 0, possibleDuplicates: 0, alreadyConverted: 0, skippedDuplicates: 0, averageScore: 0, sampleLeads: [], duplicateKeys: [], duplicateMatches: [], csvText: args.csvText, error: "No lead rows found. Upload a CSV with a header row." };
   }
   const existing = await fetchImportedLandLeads(5000);
   const normalized = applyDuplicateMetadata(rows.map(row => normalizeLead(row, args.sourceSystem, args.campaignSource?.trim() || null, args.actor, null)), existing);
   const usable = normalized.filter(lead => lead.owner_name || lead.phone || lead.phone_2 || lead.parcel_id || lead.property_address);
   const scores = usable.map(lead => lead.lead_score ?? 0);
+  const duplicateMatches = buildDuplicateMatches(usable, existing);
+  const exactDuplicates = duplicateMatches.filter(match => match.confidence === "exact").length;
+  const possibleDuplicates = usable.filter(lead => lead.duplicate_status === "possible-duplicate").length;
+  const alreadyConverted = usable.filter(lead => lead.duplicate_status === "already-converted").length;
+  const skippedDuplicates = possibleDuplicates + alreadyConverted;
   return {
     filename: args.filename,
     rowsFound: rows.length,
     usableLeads: usable.length,
+    safeToImport: usable.filter(lead => lead.duplicate_status === "new").length,
     missingPhone: usable.filter(lead => !lead.phone && !lead.phone_2).length,
     missingOwner: usable.filter(lead => !lead.owner_name).length,
-    possibleDuplicates: usable.filter(lead => lead.duplicate_status === "possible-duplicate").length,
-    alreadyConverted: usable.filter(lead => lead.duplicate_status === "already-converted").length,
+    exactDuplicates,
+    possibleDuplicates,
+    alreadyConverted,
+    skippedDuplicates,
     averageScore: scores.length ? Math.round(scores.reduce((sum, score) => sum + score, 0) / scores.length) : 0,
     sampleLeads: usable.slice(0, 5),
     duplicateKeys: usable.filter(lead => lead.duplicate_status !== "new").slice(0, 10).map(duplicateKey),
+    duplicateMatches: duplicateMatches.slice(0, 12),
     csvText: args.csvText,
     error: null,
   };
@@ -447,7 +569,8 @@ export async function importLandLeadsFromCsv(args: {
     const batch: LandLeadBatch = { ...batchSeed, ...enhancedBatchFields, id: `lead-batch-${Date.now()}`, created_at: now };
     const existing = localGet<ImportedLandLead[]>(LOCAL_LEADS, []);
     const normalized = applyDuplicateMetadata(rows.map(row => normalizeLead(row, batch.source_system, batch.campaign_source, args.actor, batch.id)), existing);
-    const leads = normalized.map((lead, index): ImportedLandLead => ({
+    const safeInserts = normalized.filter(lead => lead.duplicate_status === "new");
+    const leads = safeInserts.map((lead, index): ImportedLandLead => ({
       ...lead,
       id: `${batch.id}-${index}`,
       created_at: now,
@@ -480,7 +603,8 @@ export async function importLandLeadsFromCsv(args: {
   if (!batch) return { batch: null, leads: [], error: "Could not create import batch." };
 
   const existing = await fetchImportedLandLeads(5000);
-  const inserts = applyDuplicateMetadata(rows.map(row => normalizeLead(row, batch.source_system, batch.campaign_source, args.actor, batch.id)), existing);
+  const normalized = applyDuplicateMetadata(rows.map(row => normalizeLead(row, batch.source_system, batch.campaign_source, args.actor, batch.id)), existing);
+  const inserts = normalized.filter(lead => lead.duplicate_status === "new");
   const enhanced = await insertLeadRowsInChunks(inserts);
   if (enhanced.error && isSchemaMismatch(enhanced.error)) {
     const legacy = await insertLeadRowsInChunks(inserts, true);
