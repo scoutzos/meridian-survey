@@ -1,0 +1,432 @@
+"use client";
+
+import { Suspense, useEffect, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import {
+  calculateDealAnalysis,
+  fetchDealActivity,
+  fetchDealAgreement,
+  fetchDealAttachments,
+  fetchDealChecklist,
+  fetchDealVotes,
+  fetchDeals,
+  type Deal,
+  type DealActivity,
+  type DealAgreement,
+  type DealAttachment,
+  type DealDueDiligenceItem,
+  type DealVote,
+} from "@/lib/deals";
+import {
+  fetchImportedLandLeadActivities,
+  fetchImportedLandLeads,
+  type ImportedLandLead,
+  type ImportedLandLeadActivity,
+} from "@/lib/land-leads";
+import { fetchCommunicationEvents, type CommunicationEvent } from "@/lib/communications";
+import { fetchCrmDashboardData, type BuyerOffer, type CrmBuyer, type DispositionCampaign } from "@/lib/crm";
+
+const DISPLAY_FONT = "var(--font-display)";
+
+function money(n: number | null | undefined): string {
+  if (typeof n !== "number" || !Number.isFinite(n)) return "N/A";
+  return n.toLocaleString(undefined, { style: "currency", currency: "USD", maximumFractionDigits: 0 });
+}
+
+function formatDate(iso: string | null | undefined): string {
+  if (!iso) return "No date";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleDateString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+}
+
+function statusLabel(value: string | null | undefined): string {
+  if (!value) return "Not Set";
+  return value.split("-").map(part => part.charAt(0).toUpperCase() + part.slice(1)).join(" ");
+}
+
+export default function OpportunityPage() {
+  return (
+    <Suspense fallback={<main style={{ maxWidth: 1280, margin: "0 auto", padding: "84px 20px 100px" }}>Loading file...</main>}>
+      <OpportunityContent />
+    </Suspense>
+  );
+}
+
+function OpportunityContent() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const dealParam = searchParams.get("deal");
+  const leadParam = searchParams.get("lead");
+  const [user, setUser] = useState<string | null>(null);
+  const [deals, setDeals] = useState<Deal[]>([]);
+  const [leads, setLeads] = useState<ImportedLandLead[]>([]);
+  const [leadActivities, setLeadActivities] = useState<ImportedLandLeadActivity[]>([]);
+  const [dealActivity, setDealActivity] = useState<DealActivity[]>([]);
+  const [communications, setCommunications] = useState<CommunicationEvent[]>([]);
+  const [checklist, setChecklist] = useState<DealDueDiligenceItem[]>([]);
+  const [votes, setVotes] = useState<DealVote[]>([]);
+  const [attachments, setAttachments] = useState<DealAttachment[]>([]);
+  const [agreement, setAgreement] = useState<DealAgreement | null>(null);
+  const [campaigns, setCampaigns] = useState<DispositionCampaign[]>([]);
+  const [offers, setOffers] = useState<BuyerOffer[]>([]);
+  const [buyers, setBuyers] = useState<CrmBuyer[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const current = localStorage.getItem("meridian_user");
+    if (!current) { router.push("/"); return; }
+    setUser(current);
+  }, [router]);
+
+  useEffect(() => {
+    if (!user) return;
+    async function load() {
+      setLoading(true);
+      const [dealRows, leadRows, crmRows] = await Promise.all([
+        fetchDeals(),
+        fetchImportedLandLeads(1500),
+        fetchCrmDashboardData(),
+      ]);
+      setDeals(dealRows);
+      setLeads(leadRows);
+      setCampaigns(crmRows.campaigns);
+      setOffers(crmRows.offers);
+      setBuyers(crmRows.buyers);
+      setLoading(false);
+    }
+    void load();
+  }, [user]);
+
+  const selectedLead = useMemo(() => {
+    if (leadParam) return leads.find(lead => lead.id === leadParam) ?? null;
+    if (dealParam) return leads.find(lead => lead.deal_id === dealParam) ?? null;
+    return leads.find(lead => lead.deal_id) ?? leads[0] ?? null;
+  }, [dealParam, leadParam, leads]);
+
+  const selectedDeal = useMemo(() => {
+    if (dealParam) return deals.find(deal => deal.id === dealParam) ?? null;
+    if (selectedLead?.deal_id) return deals.find(deal => deal.id === selectedLead.deal_id) ?? null;
+    return deals[0] ?? null;
+  }, [dealParam, deals, selectedLead]);
+
+  const analysis = useMemo(() => selectedDeal ? selectedDeal.analysis ?? calculateDealAnalysis(selectedDeal) : null, [selectedDeal]);
+  const relatedCampaigns = useMemo(() => selectedDeal ? campaigns.filter(campaign => campaign.deal_id === selectedDeal.id) : [], [campaigns, selectedDeal]);
+  const relatedOffers = useMemo(() => selectedDeal ? offers.filter(offer => offer.deal_id === selectedDeal.id) : [], [offers, selectedDeal]);
+  const matchedBuyers = useMemo(() => {
+    if (!selectedDeal) return buyers.slice(0, 6);
+    const county = selectedLead?.county?.toLowerCase() || selectedDeal.address?.toLowerCase() || "";
+    return buyers.filter(buyer => buyer.markets.some(market => county.includes(market.toLowerCase()) || market.toLowerCase().includes(county))).slice(0, 6);
+  }, [buyers, selectedDeal, selectedLead]);
+
+  useEffect(() => {
+    if (!selectedLead && !selectedDeal) return;
+    async function loadFileDetails() {
+      const leadId = selectedLead?.id ?? null;
+      const dealId = selectedDeal?.id ?? null;
+      const [leadActivityRows, leadComms, dealActivityRows, dealComms, checklistRows, voteRows, attachmentRows, agreementRow] = await Promise.all([
+        leadId ? fetchImportedLandLeadActivities(leadId, 80) : Promise.resolve([]),
+        leadId ? fetchCommunicationEvents({ leadId, limit: 50 }) : Promise.resolve([]),
+        dealId ? fetchDealActivity(dealId) : Promise.resolve([]),
+        dealId ? fetchCommunicationEvents({ dealId, limit: 50 }) : Promise.resolve([]),
+        dealId ? fetchDealChecklist(dealId) : Promise.resolve([]),
+        dealId ? fetchDealVotes(dealId) : Promise.resolve([]),
+        dealId ? fetchDealAttachments(dealId) : Promise.resolve([]),
+        dealId ? fetchDealAgreement(dealId) : Promise.resolve(null),
+      ]);
+      setLeadActivities(leadActivityRows);
+      setDealActivity(dealActivityRows);
+      setCommunications([...leadComms, ...dealComms].sort((a, b) => (b.provider_created_at || b.created_at).localeCompare(a.provider_created_at || a.created_at)));
+      setChecklist(checklistRows);
+      setVotes(voteRows);
+      setAttachments(attachmentRows);
+      setAgreement(agreementRow);
+    }
+    void loadFileDetails();
+  }, [selectedDeal, selectedLead]);
+
+  if (!user) return null;
+
+  const title = selectedDeal?.title || selectedLead?.property_address || selectedLead?.parcel_id || selectedLead?.owner_name || "Opportunity file";
+  const clearedChecklist = checklist.filter(item => item.status === "cleared" || item.status === "not-applicable").length;
+  const approvedVotes = votes.filter(vote => ["make-offer", "counter", "urgent-review"].includes(vote.vote)).length;
+
+  return (
+    <div className="opportunity-page" style={{ minHeight: "100vh", background: "linear-gradient(180deg, #f8f2e7 0%, #efe6d6 100%)", padding: "72px 20px 96px", color: "var(--ink)" }}>
+      <div style={{ maxWidth: 1360, margin: "0 auto" }}>
+        <header style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", gap: 18, alignItems: "end", marginBottom: 16 }} className="topbar">
+          <div>
+            <p style={eyebrow}>One Main File</p>
+            <h1 style={{ fontFamily: DISPLAY_FONT, fontSize: "clamp(32px, 4vw, 46px)", lineHeight: 0.96, fontWeight: 500, color: "var(--obsidian)" }}>
+              {title}
+            </h1>
+            <p style={{ color: "var(--muted)", fontSize: 14, maxWidth: 780, marginTop: 8 }}>
+              This is the shared record from imported lead to VA work, deal brief, calculator, member review, buyer outreach, offers, and close.
+            </p>
+          </div>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+            <button onClick={() => router.push("/va")} style={secondaryButton}>VA Desk</button>
+            <button onClick={() => router.push(selectedDeal ? `/deals?deal=${selectedDeal.id}` : "/deals")} style={secondaryButton}>Deal Desk</button>
+            <button onClick={() => router.push("/crm")} style={primaryButton}>CRM</button>
+          </div>
+        </header>
+
+        <section style={summaryStrip} className="summary-strip">
+          <SummaryMetric label="Lead status" value={statusLabel(selectedLead?.status || selectedDeal?.status)} />
+          <SummaryMetric label="Calculator" value={analysis?.recommendation || "Needs Info"} tone={analysis?.recommendation === "Strong Review" ? "hot" : "calm"} />
+          <SummaryMetric label="Checklist" value={checklist.length ? `${clearedChecklist}/${checklist.length}` : "Not Started"} />
+          <SummaryMetric label="Votes" value={votes.length ? `${approvedVotes}/${votes.length} support` : "No Votes"} />
+          <SummaryMetric label="Best Offer" value={money(analysis?.disposition.bestBuyerOffer ?? relatedOffers[0]?.offer_amount)} tone={relatedOffers.length ? "hot" : "calm"} />
+        </section>
+
+        {loading && <div style={panel}>Loading opportunity file...</div>}
+        {!loading && !selectedLead && !selectedDeal && (
+          <div style={panel}>
+            <p style={eyebrowSmall}>No file selected</p>
+            <h2 style={sectionTitle}>Start from the VA Desk or CRM</h2>
+            <p style={bodyText}>Upload or select a land lead, then open its shared file. Once a lead becomes a deal, this same file carries the member packet and disposition work.</p>
+          </div>
+        )}
+
+        {!loading && (selectedLead || selectedDeal) && (
+          <div style={{ display: "grid", gridTemplateColumns: "270px minmax(0, 1fr) 340px", gap: 14 }} className="opportunity-grid">
+            <aside style={panel}>
+              <p style={eyebrowSmall}>File path</p>
+              <h2 style={smallHeading}>Where this stands</h2>
+              <div style={{ display: "grid", gap: 8, marginTop: 12 }}>
+                <PathStep label="Imported lead" detail={selectedLead ? selectedLead.source_system : "No source lead linked"} state={selectedLead ? "done" : "open"} />
+                <PathStep label="VA work" detail={`${leadActivities.length} lead activities · ${communications.length} messages`} state={leadActivities.length || communications.length ? "done" : "open"} />
+                <PathStep label="Deal brief" detail={selectedDeal ? statusLabel(selectedDeal.status) : "Not converted yet"} state={selectedDeal ? "done" : "open"} />
+                <PathStep label="Calculator" detail={analysis?.recommendation || "Needs deal numbers"} state={analysis ? "done" : "open"} />
+                <PathStep label="Member review" detail={votes.length ? `${votes.length} vote records` : "No member votes yet"} state={votes.length ? "done" : selectedDeal?.status === "under-review" ? "active" : "open"} />
+                <PathStep label="Disposition" detail={`${relatedCampaigns.length} campaigns · ${relatedOffers.length} offers`} state={relatedCampaigns.length || relatedOffers.length ? "active" : "open"} />
+              </div>
+            </aside>
+
+            <main style={{ display: "grid", gap: 14 }}>
+              <section style={panel}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "start", marginBottom: 12 }}>
+                  <div>
+                    <p style={eyebrowSmall}>Shared summary</p>
+                    <h2 style={sectionTitle}>What everyone should know</h2>
+                  </div>
+                  <span style={selectedDeal?.urgency === "hot" || selectedLead?.status === "interested" ? hotPill : pill}>
+                    {selectedDeal?.urgency ? statusLabel(selectedDeal.urgency) : statusLabel(selectedLead?.status)}
+                  </span>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }} className="two-col">
+                  <InfoBlock title="Seller / owner">
+                    <InfoLine label="Name" value={selectedDeal?.seller_name || selectedLead?.owner_name || "Unknown"} />
+                    <InfoLine label="Phone" value={selectedDeal?.seller_phone || selectedLead?.phone || selectedLead?.phone_2 || "Missing"} />
+                    <InfoLine label="Email" value={selectedLead?.email || "Missing"} />
+                    <InfoLine label="Next follow-up" value={selectedDeal?.next_follow_up_date || selectedLead?.next_follow_up_date || "Not set"} />
+                  </InfoBlock>
+                  <InfoBlock title="Property">
+                    <InfoLine label="Address" value={selectedDeal?.address || selectedLead?.property_address || "Missing"} />
+                    <InfoLine label="Parcel" value={selectedDeal?.parcel_id || selectedLead?.parcel_id || "Missing"} />
+                    <InfoLine label="County" value={selectedLead?.county || "Check notes"} />
+                    <InfoLine label="Acreage" value={String(selectedDeal?.acreage ?? selectedLead?.acreage ?? "Missing")} />
+                  </InfoBlock>
+                </div>
+                <div style={{ ...subPanel, marginTop: 12 }}>
+                  <p style={eyebrowSmall}>VA notes to members</p>
+                  <p style={bodyText}>{selectedDeal?.submission_summary || selectedDeal?.notes || selectedLead?.notes || "No summary has been added yet."}</p>
+                  {selectedDeal?.requested_next_step && <p style={{ ...bodyText, marginTop: 8 }}><strong>Requested next step:</strong> {selectedDeal.requested_next_step}</p>}
+                  {selectedDeal?.submit_uncertainties && <p style={{ ...bodyText, marginTop: 8 }}><strong>Open questions:</strong> {selectedDeal.submit_uncertainties}</p>}
+                </div>
+              </section>
+
+              <section style={panel}>
+                <p style={eyebrowSmall}>Calculator + decision packet</p>
+                <h2 style={sectionTitle}>{analysis?.recommendation || "Calculator starts after conversion"}</h2>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8, marginTop: 12 }} className="number-grid">
+                  <MiniStat label="Asking" value={money(selectedDeal?.asking_price ?? selectedLead?.asking_price)} />
+                  <MiniStat label="Target resale" value={money(analysis?.disposition.targetResale ?? selectedDeal?.target_resale_price ?? selectedLead?.market_value)} />
+                  <MiniStat label="Recommended offer" value={money(analysis?.acquisition.recommendedOffer)} />
+                  <MiniStat label="Max offer" value={money(analysis?.acquisition.maxOffer)} />
+                  <MiniStat label="Spread @ ask" value={money(analysis?.acquisition.projectedSpreadAtAsk)} />
+                  <MiniStat label="Minimum sale" value={money(analysis?.disposition.minimumAcceptable)} />
+                  <MiniStat label="Exit confidence" value={analysis?.disposition.exitConfidence || "N/A"} />
+                  <MiniStat label="Status" value={statusLabel(selectedDeal?.disposition_status)} />
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 12 }} className="two-col">
+                  <InfoBlock title="Missing or risky">
+                    {(analysis?.missingInfo.length ? analysis.missingInfo : ["No calculator issues available yet."]).map(item => <p key={item} style={bodyText}>• {item}</p>)}
+                    {analysis?.riskFlags.map(item => <p key={item} style={bodyText}>• {item}</p>)}
+                  </InfoBlock>
+                  <InfoBlock title="Diligence">
+                    <p style={bodyText}>{checklist.length ? `${clearedChecklist} of ${checklist.length} checklist items cleared.` : "Checklist will appear after a deal brief is saved."}</p>
+                    <p style={{ ...bodyText, marginTop: 6 }}>{attachments.length} research attachment{attachments.length === 1 ? "" : "s"} linked.</p>
+                    <p style={{ ...bodyText, marginTop: 6 }}>Agreement: {agreement ? statusLabel(agreement.status) : "Not started"}</p>
+                  </InfoBlock>
+                </div>
+              </section>
+
+              <section style={panel}>
+                <p style={eyebrowSmall}>Communication + activity timeline</p>
+                <h2 style={sectionTitle}>What happened so far</h2>
+                <div style={{ display: "grid", gap: 8, marginTop: 12, maxHeight: 420, overflow: "auto" }}>
+                  {[...communications.map(event => ({ id: `comm-${event.id}`, at: event.provider_created_at || event.created_at, title: event.direction === "inbound" ? "Seller message received" : "Message sent", body: event.body || event.status || event.provider_event_type })),
+                    ...leadActivities.map(activity => ({ id: `lead-${activity.id}`, at: activity.created_at, title: statusLabel(activity.activity_type), body: activity.summary })),
+                    ...dealActivity.map(activity => ({ id: `deal-${activity.id}`, at: activity.created_at, title: statusLabel(activity.activity_type), body: activity.summary })),
+                  ].sort((a, b) => b.at.localeCompare(a.at)).map(item => (
+                    <div key={item.id} style={timelineItem}>
+                      <span style={timelineDot} />
+                      <div>
+                        <strong style={{ color: "var(--obsidian)", fontSize: 13 }}>{item.title}</strong>
+                        <p style={{ color: "var(--muted)", fontSize: 12, marginTop: 3 }}>{formatDate(item.at)}</p>
+                        <p style={{ ...bodyText, marginTop: 5 }}>{item.body}</p>
+                      </div>
+                    </div>
+                  ))}
+                  {communications.length + leadActivities.length + dealActivity.length === 0 && <p style={bodyText}>No activity has been logged yet.</p>}
+                </div>
+              </section>
+            </main>
+
+            <aside style={{ display: "grid", gap: 12, alignContent: "start" }}>
+              <section style={darkPanel}>
+                <p style={{ ...eyebrowSmall, color: "var(--brass)" }}>Next best action</p>
+                <h3 style={{ fontFamily: DISPLAY_FONT, color: "var(--bone)", fontSize: 24, fontWeight: 500, marginTop: 6 }}>
+                  {!selectedDeal ? "Convert or pass the lead" : selectedDeal.status === "under-review" ? "Members review the packet" : relatedCampaigns.length ? "Work disposition" : "Choose the next stage"}
+                </h3>
+                <p style={{ color: "rgba(247,242,232,0.72)", fontSize: 13, lineHeight: 1.5, marginTop: 8 }}>
+                  {!selectedDeal
+                    ? "The VA should finish seller notes, property facts, and outreach history before turning this into a member packet."
+                    : selectedDeal.status === "under-review"
+                      ? "Members should review the VA summary, calculator, risks, communications, and vote or request more information."
+                      : relatedCampaigns.length
+                        ? "Track buyer outreach, offers, and final exit decision here."
+                        : "Use the calculator and communication history to decide whether to submit, pass, or launch disposition."}
+                </p>
+              </section>
+
+              <CrmList title="Buyer matches" empty="No buyer matches yet." items={matchedBuyers} render={buyer => (
+                <>
+                  <strong>{buyer.buyer_name}</strong>
+                  <span>{buyer.markets.join(", ") || buyer.buyer_type || "Market pending"}</span>
+                  <span>Max {money(buyer.max_price)} · {statusLabel(buyer.relationship_strength)}</span>
+                </>
+              )} />
+
+              <CrmList title="Disposition campaigns" empty="No campaign started yet." items={relatedCampaigns} render={campaign => (
+                <>
+                  <strong>{campaign.campaign_name}</strong>
+                  <span>{statusLabel(campaign.status)} · Target {money(campaign.target_price)}</span>
+                  <span>{campaign.owner || "Owner pending"}</span>
+                </>
+              )} />
+
+              <CrmList title="Offers" empty="No buyer offers recorded yet." items={relatedOffers} render={offer => (
+                <>
+                  <strong>{offer.buyer_name}</strong>
+                  <span>{money(offer.offer_amount)} · {statusLabel(offer.status)}</span>
+                  <span>{offer.close_date ? `Close ${formatDate(offer.close_date)}` : "Close date pending"}</span>
+                </>
+              )} />
+
+              <CrmList title="Member votes" empty="No member votes yet." items={votes} render={vote => (
+                <>
+                  <strong>{vote.member_name}</strong>
+                  <span>{statusLabel(vote.vote)}</span>
+                  <span>{vote.note || "No note"}</span>
+                </>
+              )} />
+            </aside>
+          </div>
+        )}
+      </div>
+      <style jsx global>{`
+        .opportunity-page button { font: inherit; }
+        @media (max-width: 1080px) {
+          .opportunity-grid { grid-template-columns: 1fr !important; }
+          .topbar { grid-template-columns: 1fr !important; }
+        }
+        @media (max-width: 760px) {
+          .summary-strip, .two-col, .number-grid { grid-template-columns: 1fr !important; }
+        }
+      `}</style>
+    </div>
+  );
+}
+
+function SummaryMetric({ label, value, tone = "calm" }: { label: string; value: string; tone?: "calm" | "hot" }) {
+  return (
+    <div style={{ borderRight: "1px solid rgba(247,242,232,0.14)", padding: "2px 14px" }}>
+      <p style={{ ...miniLabel, color: "rgba(247,242,232,0.58)" }}>{label}</p>
+      <strong style={{ display: "block", color: tone === "hot" ? "var(--brass)" : "var(--bone)", fontSize: 18, marginTop: 5 }}>{value}</strong>
+    </div>
+  );
+}
+
+function PathStep({ label, detail, state }: { label: string; detail: string; state: "done" | "active" | "open" }) {
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "22px minmax(0, 1fr)", gap: 8, alignItems: "start" }}>
+      <span style={{ width: 14, height: 14, borderRadius: 999, marginTop: 3, background: state === "done" ? "var(--brass)" : state === "active" ? "var(--obsidian)" : "transparent", border: state === "open" ? "1px solid var(--fog)" : "1px solid transparent" }} />
+      <div>
+        <strong style={{ color: "var(--obsidian)", fontSize: 13 }}>{label}</strong>
+        <p style={{ color: "var(--muted)", fontSize: 12, lineHeight: 1.4, marginTop: 2 }}>{detail}</p>
+      </div>
+    </div>
+  );
+}
+
+function InfoBlock({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div style={subPanel}>
+      <p style={eyebrowSmall}>{title}</p>
+      <div style={{ display: "grid", gap: 5, marginTop: 8 }}>{children}</div>
+    </div>
+  );
+}
+
+function InfoLine({ label, value }: { label: string; value: string }) {
+  return (
+    <p style={{ display: "flex", justifyContent: "space-between", gap: 10, color: "var(--muted)", fontSize: 12, lineHeight: 1.45 }}>
+      <span>{label}</span>
+      <strong style={{ color: "var(--obsidian)", textAlign: "right", fontWeight: 700 }}>{value}</strong>
+    </p>
+  );
+}
+
+function MiniStat({ label, value }: { label: string; value: string }) {
+  return (
+    <div style={subPanel}>
+      <p style={miniLabel}>{label}</p>
+      <strong style={{ color: "var(--obsidian)", fontSize: 14 }}>{value}</strong>
+    </div>
+  );
+}
+
+function CrmList<T extends { id: string }>({ title, items, empty, render }: { title: string; items: T[]; empty: string; render: (item: T) => React.ReactNode }) {
+  return (
+    <section style={panel}>
+      <p style={eyebrowSmall}>{title}</p>
+      <div style={{ display: "grid", gap: 8, marginTop: 8 }}>
+        {items.map(item => (
+          <div key={item.id} style={{ display: "grid", gap: 3, borderBottom: "1px solid var(--fog)", paddingBottom: 8, color: "var(--muted)", fontSize: 12 }}>
+            {render(item)}
+          </div>
+        ))}
+        {items.length === 0 && <p style={bodyText}>{empty}</p>}
+      </div>
+    </section>
+  );
+}
+
+const summaryStrip: React.CSSProperties = { display: "grid", gridTemplateColumns: "repeat(5, 1fr)", background: "var(--obsidian)", border: "1px solid rgba(20,17,13,0.86)", borderRadius: 8, padding: "14px 2px", marginBottom: 14, boxShadow: "0 14px 36px rgba(20,17,13,0.13)" };
+const panel: React.CSSProperties = { background: "rgba(255,252,245,0.78)", border: "1px solid var(--fog)", borderRadius: 8, padding: 14, boxShadow: "0 10px 28px rgba(20,17,13,0.06)" };
+const subPanel: React.CSSProperties = { background: "var(--surface)", border: "1px solid var(--fog)", borderRadius: 8, padding: 12 };
+const darkPanel: React.CSSProperties = { background: "linear-gradient(180deg, #1b1712 0%, #2c241a 100%)", border: "1px solid rgba(27,23,18,0.8)", borderRadius: 8, padding: 14, boxShadow: "0 16px 34px rgba(20,17,13,0.16)" };
+const timelineItem: React.CSSProperties = { display: "grid", gridTemplateColumns: "18px minmax(0, 1fr)", gap: 8, border: "1px solid var(--fog)", borderRadius: 8, padding: 10, background: "var(--surface)" };
+const timelineDot: React.CSSProperties = { width: 10, height: 10, borderRadius: 999, background: "var(--brass)", marginTop: 4 };
+const bodyText: React.CSSProperties = { color: "var(--ink)", fontSize: 13, lineHeight: 1.55, whiteSpace: "pre-wrap" };
+const eyebrow: React.CSSProperties = { fontSize: 11, letterSpacing: 2, textTransform: "uppercase", color: "var(--brass)", fontWeight: 700, marginBottom: 8 };
+const eyebrowSmall: React.CSSProperties = { fontSize: 10, letterSpacing: "0.18em", textTransform: "uppercase", color: "var(--brass)", fontWeight: 700 };
+const miniLabel: React.CSSProperties = { fontSize: 10, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--muted)", fontWeight: 700 };
+const sectionTitle: React.CSSProperties = { fontFamily: DISPLAY_FONT, color: "var(--obsidian)", fontSize: 22, fontWeight: 500, letterSpacing: 0 };
+const smallHeading: React.CSSProperties = { fontFamily: DISPLAY_FONT, color: "var(--obsidian)", fontSize: 22, fontWeight: 500, letterSpacing: 0, marginTop: 3 };
+const pill: React.CSSProperties = { border: "1px solid var(--fog)", borderRadius: 999, color: "var(--muted)", fontSize: 10, fontWeight: 800, padding: "5px 8px", textTransform: "uppercase", letterSpacing: "0.08em", background: "var(--surface)" };
+const hotPill: React.CSSProperties = { ...pill, color: "var(--obsidian)", borderColor: "rgba(176,137,84,0.5)", background: "rgba(176,137,84,0.14)" };
+const primaryButton: React.CSSProperties = { border: "1px solid var(--obsidian)", background: "var(--obsidian)", color: "var(--bone)", borderRadius: 8, padding: "10px 12px", fontSize: 11, textTransform: "uppercase", letterSpacing: "0.12em", cursor: "pointer", textDecoration: "none" };
+const secondaryButton: React.CSSProperties = { border: "1px solid var(--fog)", background: "var(--surface)", color: "var(--obsidian)", borderRadius: 8, padding: "8px 10px", fontSize: 11, textTransform: "uppercase", letterSpacing: "0.12em", cursor: "pointer", textDecoration: "none" };

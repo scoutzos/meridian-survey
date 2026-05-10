@@ -829,6 +829,9 @@ export default function DealsPage() {
                     <button onClick={() => startEdit(selected)} style={secondaryButton}>
                       Edit Deal
                     </button>
+                    <button onClick={() => router.push(`/opportunity?deal=${selected.id}`)} style={secondaryButton}>
+                      Shared File
+                    </button>
                     <button
                       onClick={handleConvertToProject}
                       disabled={converting || !canConvert}

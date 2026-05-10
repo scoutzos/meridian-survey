@@ -274,7 +274,7 @@ export default function CrmPage() {
             <DecisionMetric label="Exit target" value={money(selectedAnalysis.disposition.targetResale)} />
             <DecisionMetric label="Confidence" value={selectedAnalysis.disposition.exitConfidence} />
           </div>
-          <button onClick={() => router.push(`/deals?deal=${selectedDeal.id}`)} style={{ ...primaryButton, width: "100%", marginTop: 14, background: "var(--bone)", color: "var(--obsidian)", borderColor: "var(--bone)" }}>Open full packet</button>
+          <button onClick={() => router.push(`/opportunity?deal=${selectedDeal.id}`)} style={{ ...primaryButton, width: "100%", marginTop: 14, background: "var(--bone)", color: "var(--obsidian)", borderColor: "var(--bone)" }}>Open shared file</button>
         </div>
       ) : (
         <div style={panel}>

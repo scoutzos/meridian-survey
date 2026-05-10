@@ -1384,6 +1384,11 @@ export default function VaPage() {
                   )}
                 </div>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 8 }}>
+                  {selected && (
+                    <button onClick={() => router.push(`/opportunity?deal=${selected.id}`)} style={secondaryButton}>
+                      Open Shared File
+                    </button>
+                  )}
                   <button onClick={() => saveDeal(draft.status ?? "lead")} disabled={saving} style={{ ...secondaryButton, opacity: saving ? 0.6 : 1 }}>
                     {saving ? "Saving..." : "Save Updates"}
                   </button>
@@ -1765,6 +1770,7 @@ export default function VaPage() {
                     <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 14 }}>
                       {selectedImportedLead.property_url && <a href={selectedImportedLead.property_url} target="_blank" rel="noreferrer" style={secondaryButton}>Open Parcel</a>}
                       {typeof selectedImportedLead.raw_data?.["Google Map"] === "string" && <a href={selectedImportedLead.raw_data["Google Map"]} target="_blank" rel="noreferrer" style={secondaryButton}>Map</a>}
+                      <button onClick={() => router.push(`/opportunity?lead=${selectedImportedLead.id}`)} style={secondaryButton}>Open File</button>
                       <button onClick={() => loadImportedLead(selectedImportedLead, true)} style={primaryButton}>Use Lead</button>
                       <button onClick={async () => { await updateImportedLandLeadStatus(selectedImportedLead.id, "passed", selectedImportedLead.deal_id); setImportedLeads(await fetchImportedLandLeads(500)); }} style={secondaryButton}>Pass</button>
                     </div>
