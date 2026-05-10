@@ -373,6 +373,9 @@ export default function VaPage() {
   const [uploadCampaign, setUploadCampaign] = useState("");
   const [activityDraft, setActivityDraft] = useState<{ activityType: ImportedLandLeadActivity["activity_type"]; summary: string; nextFollowUpDate: string }>({ activityType: "called", summary: "", nextFollowUpDate: "" });
   const [smsDraft, setSmsDraft] = useState("");
+  const [bulkSmsDraft, setBulkSmsDraft] = useState("");
+  const [bulkSmsSending, setBulkSmsSending] = useState(false);
+  const [bulkSmsPreviewOpen, setBulkSmsPreviewOpen] = useState(false);
   const [draftCommunicationEventId, setDraftCommunicationEventId] = useState<string | null>(null);
   const [smsSending, setSmsSending] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -454,6 +457,18 @@ export default function VaPage() {
     });
     return rows.sort((a, b) => (b.lead_score ?? 0) - (a.lead_score ?? 0)).slice(0, 120);
   }, [importedLeads, leadFilter, leadSearch, maxAcreage, minAcreage, selectedBatchId]);
+  const bulkEligibleLeads = useMemo(() => {
+    const recentCutoff = Date.now() - (7 * 24 * 60 * 60 * 1000);
+    return filteredImportedLeads.filter(lead => {
+      if (!lead.phone && !lead.phone_2) return false;
+      if (lead.sms_opt_status === "opted-out") return false;
+      if (lead.status === "passed" || lead.status === "converted") return false;
+      if (lead.duplicate_status && lead.duplicate_status !== "new") return false;
+      if (lead.last_sms_direction === "outbound" && lead.last_sms_at && new Date(lead.last_sms_at).getTime() > recentCutoff) return false;
+      return true;
+    });
+  }, [filteredImportedLeads]);
+  const bulkExcludedCount = filteredImportedLeads.length - bulkEligibleLeads.length;
   const batchLeads = useMemo(() => selectedBatchId ? importedLeads.filter(lead => lead.batch_id === selectedBatchId) : importedLeads, [importedLeads, selectedBatchId]);
   const nextBestLead = useMemo(() => filteredImportedLeads.find(lead => lead.status === "new" || lead.status === "contacted") ?? filteredImportedLeads[0] ?? null, [filteredImportedLeads]);
   const importStats = useMemo(() => ({
@@ -768,6 +783,54 @@ export default function VaPage() {
       setMessage(`SMS failed: ${error instanceof Error ? error.message : "Unknown error"}`);
     } finally {
       setSmsSending(false);
+    }
+  };
+
+  const sendBulkSms = async () => {
+    const body = bulkSmsDraft.trim();
+    if (!body) { setMessage("Write a bulk SMS message before sending."); return; }
+    if (bulkEligibleLeads.length === 0) { setMessage("No eligible leads in the current filtered list."); return; }
+    const confirmText = `Send this SMS to ${bulkEligibleLeads.length} seller${bulkEligibleLeads.length === 1 ? "" : "s"} from the current filtered list?`;
+    if (!window.confirm(confirmText)) return;
+    setBulkSmsSending(true);
+    setMessage("");
+    try {
+      const response = await fetch("/api/sakari/bulk-send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          actor: user,
+          message: body,
+          recipients: bulkEligibleLeads.map(lead => ({
+            leadId: lead.id,
+            toNumber: lead.phone || lead.phone_2,
+            label: lead.owner_name,
+          })),
+        }),
+      });
+      const result = await response.json().catch(() => ({})) as { sent?: number; error?: string };
+      if (!response.ok || result.error) {
+        setMessage(`Bulk SMS failed: ${result.error || response.statusText}`);
+        return;
+      }
+      setBulkSmsDraft("");
+      setBulkSmsPreviewOpen(false);
+      const [leadRows, unmatchedRows] = await Promise.all([
+        fetchImportedLandLeads(1500),
+        fetchCommunicationEvents({ unmatched: true, limit: 25 }),
+      ]);
+      setImportedLeads(leadRows);
+      setUnmatchedSms(unmatchedRows);
+      setBriefDraft(prev => ({
+        ...prev,
+        outreach_sent: (prev.outreach_sent ?? 0) + (result.sent ?? bulkEligibleLeads.length),
+        activities_completed: appendBriefText(prev.activities_completed, `Bulk SMS sent to ${result.sent ?? bulkEligibleLeads.length} seller${(result.sent ?? bulkEligibleLeads.length) === 1 ? "" : "s"} from ${selectedBatch?.campaign_source || selectedBatch?.original_filename || "current filtered land list"}.`),
+      }));
+      setMessage(`Bulk SMS sent to ${result.sent ?? bulkEligibleLeads.length} seller${(result.sent ?? bulkEligibleLeads.length) === 1 ? "" : "s"}.`);
+    } catch (error) {
+      setMessage(`Bulk SMS failed: ${error instanceof Error ? error.message : "Unknown error"}`);
+    } finally {
+      setBulkSmsSending(false);
     }
   };
 
@@ -1253,6 +1316,57 @@ export default function VaPage() {
               <ShiftCard label="Interested" value={String(importStats.interested)} tone={importStats.interested ? "hot" : "calm"} />
               <ShiftCard label="Duplicates" value={String(importStats.duplicates)} />
               <ShiftCard label="Converted" value={String(importStats.converted)} />
+            </div>
+
+            <div style={{ ...subPanel, marginBottom: 12 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "baseline", marginBottom: 10 }}>
+                <div>
+                  <p style={eyebrowSmall}>Bulk SMS campaign</p>
+                  <h3 style={{ ...sectionTitle, fontSize: 20 }}>{bulkEligibleLeads.length} eligible in current view</h3>
+                  <p style={{ color: "var(--muted)", fontSize: 12, marginTop: 4 }}>
+                    Excludes opt-outs, no-phone leads, passed/converted leads, duplicates, and leads texted in the last 7 days. {bulkExcludedCount > 0 ? `${bulkExcludedCount} filtered lead${bulkExcludedCount === 1 ? "" : "s"} excluded.` : ""}
+                  </p>
+                </div>
+                <button onClick={() => setBulkSmsPreviewOpen(prev => !prev)} style={secondaryButton}>
+                  {bulkSmsPreviewOpen ? "Hide Campaign" : "Prepare Bulk SMS"}
+                </button>
+              </div>
+              {bulkSmsPreviewOpen && (
+                <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 320px", gap: 12 }} className="two-col">
+                  <div>
+                    <label style={label}>Message template</label>
+                    <textarea
+                      rows={5}
+                      value={bulkSmsDraft}
+                      onChange={e => setBulkSmsDraft(e.target.value)}
+                      placeholder="Example: Hi, this is Meridian. I saw your property and wanted to see if you would consider an offer."
+                    />
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap", alignItems: "center", marginTop: 8 }}>
+                      <span style={{ color: "var(--muted)", fontSize: 12 }}>{bulkSmsDraft.trim().length} chars · {Math.max(1, Math.ceil(bulkSmsDraft.trim().length / 160))} segment estimate</span>
+                      <button
+                        onClick={sendBulkSms}
+                        disabled={bulkSmsSending || !bulkSmsDraft.trim() || bulkEligibleLeads.length === 0}
+                        style={{ ...primaryButton, opacity: bulkSmsSending || !bulkSmsDraft.trim() || bulkEligibleLeads.length === 0 ? 0.55 : 1 }}
+                      >
+                        {bulkSmsSending ? "Sending..." : `Send To ${bulkEligibleLeads.length}`}
+                      </button>
+                    </div>
+                  </div>
+                  <div style={{ border: "1px solid var(--fog)", borderRadius: 8, padding: 10, background: "var(--surface)" }}>
+                    <p style={eyebrowSmall}>Recipient preview</p>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 190, overflow: "auto", marginTop: 8 }}>
+                      {bulkEligibleLeads.slice(0, 12).map(lead => (
+                        <div key={lead.id} style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 12, borderBottom: "1px solid var(--fog)", paddingBottom: 5 }}>
+                          <span style={{ color: "var(--obsidian)", fontWeight: 700 }}>{lead.owner_name || "Owner unknown"}</span>
+                          <span style={{ color: "var(--muted)" }}>{lead.phone || lead.phone_2}</span>
+                        </div>
+                      ))}
+                      {bulkEligibleLeads.length > 12 && <p style={{ color: "var(--muted)", fontSize: 12 }}>+ {bulkEligibleLeads.length - 12} more</p>}
+                      {bulkEligibleLeads.length === 0 && <p style={{ color: "var(--muted)", fontSize: 12 }}>No eligible recipients in this filtered view.</p>}
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
 
             {unmatchedSms.length > 0 && (

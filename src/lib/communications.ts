@@ -410,3 +410,101 @@ export async function sendSakariSms(args: {
 
   return { event: saved as CommunicationEvent, error: null };
 }
+
+export async function sendSakariBulkSms(args: {
+  recipients: Array<{ toNumber: string; leadId: string; label?: string | null }>;
+  message: string;
+  actor: string;
+}): Promise<{ sent: number; events: CommunicationEvent[]; error: string | null }> {
+  const accountId = process.env.SAKARI_ACCOUNT_ID;
+  if (!accountId) return { sent: 0, events: [], error: "Missing SAKARI_ACCOUNT_ID in Vercel." };
+  const cleanRecipients = args.recipients
+    .map(recipient => ({ ...recipient, toNumber: recipient.toNumber.trim() }))
+    .filter(recipient => recipient.toNumber && recipient.leadId);
+  if (cleanRecipients.length === 0) return { sent: 0, events: [], error: "No eligible recipients were provided." };
+  if (cleanRecipients.length > 500) return { sent: 0, events: [], error: "Bulk sends are limited to 500 recipients at a time." };
+
+  const { token, error: tokenError } = await getSakariToken();
+  if (tokenError || !token) return { sent: 0, events: [], error: tokenError ?? "Could not authenticate with Sakari." };
+
+  const groupId = process.env.SAKARI_GROUP_ID;
+  const body: Record<string, unknown> = {
+    contacts: cleanRecipients.map(recipient => ({ mobile: { number: recipient.toNumber, country: "US" } })),
+    template: args.message,
+    type: "SMS",
+  };
+  if (groupId) body.phoneNumberFilter = { group: { id: groupId } };
+
+  const response = await fetch(`https://api.sakari.io/v1/accounts/${accountId}/messages`, {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) return { sent: 0, events: [], error: `Sakari bulk send failed: ${JSON.stringify(data).slice(0, 320)}` };
+
+  const messages = (((data as Record<string, unknown>).data as Record<string, unknown> | undefined)?.messages as Array<Record<string, unknown>> | undefined) ?? [];
+  const now = new Date().toISOString();
+  const rows = cleanRecipients.map((recipient, index) => {
+    const message = messages[index];
+    return {
+      provider: "sakari",
+      provider_event_type: "message-sent",
+      provider_message_id: text(message?.id) || `bulk-${Date.now()}-${index}`,
+      provider_contact_id: text(nested(message, ["contact", "id"])),
+      provider_conversation_id: null,
+      direction: "outbound" as const,
+      channel: "sms",
+      from_number: null,
+      to_number: recipient.toNumber,
+      contact_number: recipient.toNumber,
+      contact_name: recipient.label || null,
+      body: args.message,
+      status: text(message?.status) || "sent",
+      media: [],
+      raw_payload: data as Record<string, unknown>,
+      matched_lead_id: recipient.leadId,
+      matched_deal_id: null,
+      provider_created_at: text(nested(message, ["created", "at"])) || now,
+    };
+  });
+
+  if (!supabase) {
+    const events = rows.map((row, index) => ({ ...row, id: `comm-${Date.now()}-${index}`, created_at: now }));
+    localSet(LOCAL_COMMS, [...events, ...localGet<CommunicationEvent[]>(LOCAL_COMMS, [])]);
+    return { sent: events.length, events, error: null };
+  }
+
+  const { data: saved, error } = await supabase
+    .from("meridian_communication_events")
+    .upsert(rows, { onConflict: "provider,provider_message_id,provider_event_type" })
+    .select();
+  if (error || !saved) return { sent: 0, events: [], error: error?.message ?? "Bulk SMS sent, but Meridian could not save the events." };
+
+  const db = supabase;
+  await Promise.all(cleanRecipients.map(recipient => Promise.all([
+    createImportedLandLeadActivity({
+      leadId: recipient.leadId,
+      actor: args.actor,
+      activityType: "texted",
+      summary: `Bulk SMS sent from Meridian · "${args.message}"`,
+    }),
+    db
+      .from("meridian_imported_land_leads")
+      .update({
+        last_sms_at: now,
+        last_sms_direction: "outbound",
+        last_sms_body: args.message,
+        status: "contacted",
+        updated_at: now,
+      })
+      .eq("id", recipient.leadId)
+      .neq("status", "interested"),
+  ])));
+
+  return { sent: (saved as CommunicationEvent[]).length, events: saved as CommunicationEvent[], error: null };
+}
