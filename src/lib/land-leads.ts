@@ -90,6 +90,11 @@ function pick(row: Record<string, string>, aliases: string[]): string | null {
   return null;
 }
 
+function noteLine(row: Record<string, string>, label: string, aliases: string[]): string {
+  const value = pick(row, aliases);
+  return value ? `${label}: ${value}` : "";
+}
+
 export function parseCsv(text: string): Record<string, string>[] {
   const rows: string[][] = [];
   let field = "";
@@ -134,10 +139,10 @@ function normalizeLead(row: Record<string, string>, sourceSystem: string, campai
   const zip = pick(row, ["zip", "zipcode", "postal code", "property zip"]);
   const county = pick(row, ["county", "property county"]);
   const parcel = pick(row, ["parcel id", "parcel", "apn", "tax id", "tax parcel", "pin"]);
-  const owner = pick(row, ["owner", "owner name", "seller", "seller name", "name"]);
+  const owner = pick(row, ["owner", "owner name", "owner names", "owner name(s)", "seller", "seller name", "name", "full name"]);
   const phone = pick(row, ["phone", "phone 1", "primary phone", "seller phone", "mobile", "cell"]);
   const phone2 = pick(row, ["phone 2", "secondary phone", "alternate phone", "alt phone"]);
-  const value = parseNumber(pick(row, ["market value", "estimated value", "value", "land value", "total value"]));
+  const value = parseNumber(pick(row, ["market value", "estimated value", "value", "land value", "land price", "price", "total value"]));
   return {
     batch_id: batchId,
     source_system: sourceSystem,
@@ -152,14 +157,14 @@ function normalizeLead(row: Record<string, string>, sourceSystem: string, campai
     city,
     state,
     zip,
-    mailing_address: pick(row, ["mailing address", "owner mailing address", "mail address"]),
-    acreage: parseNumber(pick(row, ["acreage", "acres", "lot size acres", "land acres"])),
-    asking_price: parseNumber(pick(row, ["asking price", "ask", "list price", "price"])),
-    assessed_value: parseNumber(pick(row, ["assessed value", "tax assessed value", "assessment"])),
+    mailing_address: pick(row, ["mailing address", "owner mailing address", "mail address", "mail", "mailing"]),
+    acreage: parseNumber(pick(row, ["acreage", "calculated acreage", "calculated a", "acres", "lot size acres", "land acres"])),
+    asking_price: parseNumber(pick(row, ["asking price", "ask", "list price", "seller price"])),
+    assessed_value: parseNumber(pick(row, ["assessed value", "tax assessed value", "assessment", "improvement value"])),
     market_value: value,
     zoning: pick(row, ["zoning", "zone", "zoning code"]),
     land_use: pick(row, ["land use", "property use", "use code", "property type"]),
-    property_url: pick(row, ["url", "link", "property url", "listing url", "map link"]),
+    property_url: pick(row, ["url", "link", "property url", "listing url", "land insights url", "data link", "parcel link", "map link", "google maps", "earth"]),
     status: "new",
     deal_id: null,
     notes: pick(row, ["notes", "remarks", "comments"]),
@@ -270,9 +275,14 @@ export function leadToDealDraft(lead: ImportedLandLead): Partial<DealInput> & { 
       lead.mailing_address ? `Owner mailing address: ${lead.mailing_address}` : "",
       lead.email ? `Email: ${lead.email}` : "",
       lead.phone_2 ? `Alt phone: ${lead.phone_2}` : "",
+      noteLine(lead.raw_data as Record<string, string>, "Property tax", ["property tax", "tax amount", "annual tax"]),
+      noteLine(lead.raw_data as Record<string, string>, "Wetlands", ["wetlands", "wetland"]),
+      noteLine(lead.raw_data as Record<string, string>, "Flood", ["flood", "flood zone", "floodplain"]),
+      noteLine(lead.raw_data as Record<string, string>, "School district", ["school district", "district"]),
+      noteLine(lead.raw_data as Record<string, string>, "Google map", ["google maps", "map", "maps"]),
+      noteLine(lead.raw_data as Record<string, string>, "Earth link", ["earth", "google earth"]),
     ].filter(Boolean).join("\n"),
     campaign_source: lead.campaign_source || "",
     linksText: lead.property_url || "",
   };
 }
-

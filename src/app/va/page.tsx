@@ -509,6 +509,10 @@ export default function VaPage() {
 
   const handleLeadCsvUpload = async (file: File | null) => {
     if (!file) return;
+    if (file.name.toLowerCase().endsWith(".numbers")) {
+      setMessage("Apple Numbers files need to be exported to CSV first: File > Export To > CSV, then upload the .csv here.");
+      return;
+    }
     setImporting(true);
     setMessage("");
     const text = await file.text();
@@ -939,7 +943,7 @@ export default function VaPage() {
                 </div>
               </div>
               <p style={{ fontSize: 12, color: "var(--muted)", marginTop: 10, lineHeight: 1.45 }}>
-                The importer recognizes common columns like owner, seller, phone, property address, parcel/APN, county, acreage, asking price, value, zoning, land use, and property URL.
+                The importer recognizes Land Portal and Land Insights CSV columns like APN, owner name(s), mail, address, city, state, ZIP, county, acreage, price/value, property tax, email, maps, and property URL. Apple Numbers files should be exported to CSV before upload.
               </p>
             </div>
 
