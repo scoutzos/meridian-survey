@@ -28,11 +28,19 @@ import {
 import { createActionItem } from "@/lib/action-items";
 import { createNotification } from "@/lib/operations";
 import {
+  createImportedLandLeadActivity,
+  fetchImportedLandLeadActivities,
+  fetchLandLeadBatches,
   fetchImportedLandLeads,
   importLandLeadsFromCsv,
   leadToDealDraft,
+  previewLandLeadsCsv,
+  updateLandLeadBatch,
   updateImportedLandLeadStatus,
+  type ImportedLandLeadActivity,
   type ImportedLandLead,
+  type LandLeadBatch,
+  type LandLeadImportPreview,
 } from "@/lib/land-leads";
 import {
   createVaDailyBrief,
@@ -105,6 +113,35 @@ const TABS: Array<{ value: VaTab; label: string }> = [
   { value: "follow-ups", label: "Follow-ups" },
   { value: "diligence", label: "Diligence" },
   { value: "brief", label: "Daily Brief" },
+];
+
+const IMPORT_STATUS_FILTERS = [
+  { value: "all", label: "All" },
+  { value: "new", label: "New" },
+  { value: "contacted", label: "Contacted" },
+  { value: "interested", label: "Interested" },
+  { value: "passed", label: "Passed" },
+  { value: "duplicates", label: "Duplicates" },
+  { value: "has-phone", label: "Has phone" },
+  { value: "no-phone", label: "No phone" },
+  { value: "landlocked", label: "Land locked" },
+  { value: "flood", label: "Flood" },
+  { value: "wetlands", label: "Wetlands" },
+  { value: "score-60", label: "Score 60+" },
+] as const;
+
+type ImportStatusFilter = typeof IMPORT_STATUS_FILTERS[number]["value"];
+
+const LEAD_ACTIVITY_TYPES: Array<{ value: ImportedLandLeadActivity["activity_type"]; label: string }> = [
+  { value: "called", label: "Called" },
+  { value: "texted", label: "Texted" },
+  { value: "emailed", label: "Emailed" },
+  { value: "left-voicemail", label: "Left voicemail" },
+  { value: "wrong-number", label: "Wrong number" },
+  { value: "interested", label: "Interested" },
+  { value: "not-interested", label: "Not interested" },
+  { value: "follow-up-set", label: "Follow-up set" },
+  { value: "note", label: "Note" },
 ];
 
 const EMPTY_DRAFT: DealInput & { linksText: string } = {
@@ -311,9 +348,17 @@ export default function VaPage() {
   const [briefDraft, setBriefDraft] = useState<VaDailyBriefInput>(EMPTY_BRIEF);
   const [briefs, setBriefs] = useState<VaDailyBrief[]>([]);
   const [importedLeads, setImportedLeads] = useState<ImportedLandLead[]>([]);
+  const [leadBatches, setLeadBatches] = useState<LandLeadBatch[]>([]);
+  const [selectedImportedLeadId, setSelectedImportedLeadId] = useState<string | null>(null);
+  const [leadActivities, setLeadActivities] = useState<ImportedLandLeadActivity[]>([]);
+  const [importPreview, setImportPreview] = useState<LandLeadImportPreview | null>(null);
   const [leadSearch, setLeadSearch] = useState("");
+  const [leadFilter, setLeadFilter] = useState<ImportStatusFilter>("all");
+  const [minAcreage, setMinAcreage] = useState("");
+  const [maxAcreage, setMaxAcreage] = useState("");
   const [uploadSource, setUploadSource] = useState("Land Portal");
   const [uploadCampaign, setUploadCampaign] = useState("");
+  const [activityDraft, setActivityDraft] = useState<{ activityType: ImportedLandLeadActivity["activity_type"]; summary: string; nextFollowUpDate: string }>({ activityType: "called", summary: "", nextFollowUpDate: "" });
   const [saving, setSaving] = useState(false);
   const [briefSaving, setBriefSaving] = useState(false);
   const [importing, setImporting] = useState(false);
@@ -324,7 +369,7 @@ export default function VaPage() {
 
   const reload = useCallback(async (memberName = user) => {
     setLoading(true);
-    const [rows, briefRows, importRows] = await Promise.all([fetchDeals(), fetchVaDailyBriefs(8), fetchImportedLandLeads()]);
+    const [rows, briefRows, importRows, batchRows] = await Promise.all([fetchDeals(), fetchVaDailyBriefs(8), fetchImportedLandLeads(500), fetchLandLeadBatches()]);
     const activeRows = rows.filter(deal =>
       !["closed", "active-project", "stabilized", "sold"].includes(deal.status)
       && (!memberName || deal.created_by === memberName || deal.submitted_by === memberName || deal.assigned_to === memberName)
@@ -332,6 +377,7 @@ export default function VaPage() {
     setDeals(activeRows);
     setBriefs(briefRows);
     setImportedLeads(importRows);
+    setLeadBatches(batchRows);
     setSelectedId(prev => prev && activeRows.some(d => d.id === prev) ? prev : activeRows[0]?.id ?? null);
     setLoading(false);
   }, [user]);
@@ -352,11 +398,25 @@ export default function VaPage() {
   const draftLeads = useMemo(() => deals.filter(deal => deal.status === "lead"), [deals]);
   const submittedDeals = useMemo(() => deals.filter(deal => deal.status === "under-review"), [deals]);
   const interestedLeads = useMemo(() => importedLeads.filter(lead => lead.status === "interested"), [importedLeads]);
+  const selectedImportedLead = useMemo(() => importedLeads.find(lead => lead.id === selectedImportedLeadId) ?? null, [importedLeads, selectedImportedLeadId]);
   const filteredImportedLeads = useMemo(() => {
     const query = leadSearch.trim().toLowerCase();
-    const rows = importedLeads.filter(lead => lead.status !== "converted");
-    if (!query) return rows.slice(0, 80);
-    return rows.filter(lead => [
+    const min = toNumber(minAcreage);
+    const max = toNumber(maxAcreage);
+    const rows = importedLeads.filter(lead => {
+      if (lead.status === "converted") return false;
+      if (leadFilter === "duplicates" && lead.duplicate_status === "new") return false;
+      if (leadFilter === "has-phone" && !lead.phone && !lead.phone_2) return false;
+      if (leadFilter === "no-phone" && (lead.phone || lead.phone_2)) return false;
+      if (leadFilter === "score-60" && (lead.lead_score ?? 0) < 60) return false;
+      if (leadFilter === "landlocked" && !String(lead.raw_data?.["Land Locked"] ?? lead.raw_data?.["Tag:Land Locked"] ?? "").toLowerCase().startsWith("y")) return false;
+      if (leadFilter === "flood" && !(toNumber(String(lead.raw_data?.["Flood Zone Percent"] ?? "")) ?? 0)) return false;
+      if (leadFilter === "wetlands" && !(toNumber(String(lead.raw_data?.["Wetlands Percent"] ?? "")) ?? 0)) return false;
+      if (["new", "contacted", "interested", "passed"].includes(leadFilter) && lead.status !== leadFilter) return false;
+      if (min !== null && (lead.acreage ?? 0) < min) return false;
+      if (max !== null && (lead.acreage ?? 0) > max) return false;
+      if (!query) return true;
+      return [
       lead.owner_name,
       lead.phone,
       lead.phone_2,
@@ -365,8 +425,18 @@ export default function VaPage() {
       lead.county,
       lead.city,
       lead.campaign_source,
-    ].filter(Boolean).join(" ").toLowerCase().includes(query)).slice(0, 80);
-  }, [importedLeads, leadSearch]);
+      ].filter(Boolean).join(" ").toLowerCase().includes(query);
+    });
+    return rows.sort((a, b) => (b.lead_score ?? 0) - (a.lead_score ?? 0)).slice(0, 120);
+  }, [importedLeads, leadFilter, leadSearch, maxAcreage, minAcreage]);
+  const importStats = useMemo(() => ({
+    newRows: importedLeads.filter(lead => lead.status === "new").length,
+    contacted: importedLeads.filter(lead => lead.status === "contacted").length,
+    interested: importedLeads.filter(lead => lead.status === "interested").length,
+    duplicates: importedLeads.filter(lead => lead.duplicate_status && lead.duplicate_status !== "new").length,
+    converted: importedLeads.filter(lead => lead.status === "converted").length,
+    avgScore: importedLeads.length ? Math.round(importedLeads.reduce((sum, lead) => sum + (lead.lead_score ?? 0), 0) / importedLeads.length) : 0,
+  }), [importedLeads]);
   const blockedItems = useMemo(() => checklist.filter(item => item.status === "blocked"), [checklist]);
   const portalStats = useMemo(() => ({
     addedToday: deals.filter(deal => isSameDay(deal.created_at, today)).length,
@@ -402,6 +472,11 @@ export default function VaPage() {
       setAttachments(files);
     });
   }, [selected]);
+
+  useEffect(() => {
+    if (!selectedImportedLeadId) { setLeadActivities([]); return; }
+    void fetchImportedLandLeadActivities(selectedImportedLeadId).then(setLeadActivities);
+  }, [selectedImportedLeadId]);
 
   if (!user) return null;
 
@@ -455,12 +530,18 @@ export default function VaPage() {
     setSaving(false);
     if (result.error && !result.data) { setMessage(result.error); return; }
     if (!result.data) { setMessage("Deal could not be saved."); return; }
-    const matchingLead = importedLeads.find(lead =>
+    const matchingLead = importedLeads.find(lead => lead.id === selectedImportedLeadId) ?? importedLeads.find(lead =>
       lead.status === "interested"
       && ((payload.parcel_id && lead.parcel_id === payload.parcel_id) || (payload.seller_phone && (lead.phone === payload.seller_phone || lead.phone_2 === payload.seller_phone)))
     );
     if (matchingLead) {
       await updateImportedLandLeadStatus(matchingLead.id, "converted", result.data.id);
+      await createImportedLandLeadActivity({
+        leadId: matchingLead.id,
+        actor: user,
+        activityType: "converted",
+        summary: `Converted to deal packet: ${result.data.title}`,
+      });
       setImportedLeads(await fetchImportedLandLeads());
     }
     if (status === "under-review") {
@@ -516,7 +597,7 @@ export default function VaPage() {
     setImporting(true);
     setMessage("");
     const text = await file.text();
-    const result = await importLandLeadsFromCsv({
+    const preview = await previewLandLeadsCsv({
       csvText: text,
       filename: file.name,
       sourceSystem: uploadSource,
@@ -524,9 +605,29 @@ export default function VaPage() {
       actor: user,
     });
     setImporting(false);
+    if (preview.error) { setMessage(preview.error); return; }
+    setImportPreview(preview);
+    setMessage(`Preview ready: ${preview.usableLeads} usable leads, ${preview.possibleDuplicates + preview.alreadyConverted} duplicates flagged.`);
+    setActiveTab("imports");
+  };
+
+  const confirmLeadImport = async () => {
+    if (!importPreview) return;
+    setImporting(true);
+    const result = await importLandLeadsFromCsv({
+      csvText: importPreview.csvText,
+      filename: importPreview.filename,
+      sourceSystem: uploadSource,
+      campaignSource: uploadCampaign,
+      actor: user,
+    });
+    setImporting(false);
     if (result.error) { setMessage(result.error); return; }
-    setImportedLeads(await fetchImportedLandLeads());
-    setMessage(`Imported ${result.leads.length} lead${result.leads.length === 1 ? "" : "s"} from ${file.name}.`);
+    const [leadRows, batchRows] = await Promise.all([fetchImportedLandLeads(500), fetchLandLeadBatches()]);
+    setImportedLeads(leadRows);
+    setLeadBatches(batchRows);
+    setImportPreview(null);
+    setMessage(`Imported ${result.leads.length} lead${result.leads.length === 1 ? "" : "s"} from ${importPreview.filename}.`);
     setActiveTab("imports");
   };
 
@@ -545,6 +646,7 @@ export default function VaPage() {
       campaign_source: imported.campaign_source || lead.campaign_source || "",
     });
     setActiveTab("leads");
+    setSelectedImportedLeadId(lead.id);
     setMessage("Imported lead loaded into the deal form.");
     if (markInterested && lead.status !== "interested") {
       await updateImportedLandLeadStatus(lead.id, "interested", lead.deal_id);
@@ -552,14 +654,36 @@ export default function VaPage() {
     }
   };
 
+  const logLeadActivity = async () => {
+    if (!selectedImportedLead) { setMessage("Select an imported lead first."); return; }
+    const summary = activityDraft.summary.trim() || LEAD_ACTIVITY_TYPES.find(type => type.value === activityDraft.activityType)?.label || "Activity logged";
+    const { error } = await createImportedLandLeadActivity({
+      leadId: selectedImportedLead.id,
+      actor: user,
+      activityType: activityDraft.activityType,
+      summary,
+      nextFollowUpDate: activityDraft.nextFollowUpDate || null,
+    });
+    if (error) { setMessage(error); return; }
+    const [leadRows, activityRows] = await Promise.all([fetchImportedLandLeads(500), fetchImportedLandLeadActivities(selectedImportedLead.id)]);
+    setImportedLeads(leadRows);
+    setLeadActivities(activityRows);
+    setActivityDraft({ activityType: "called", summary: "", nextFollowUpDate: "" });
+    setMessage("Lead activity logged.");
+  };
+
   const autofillBriefStats = () => {
     const date = briefDraft.work_date;
     const sameDay = (iso?: string | null) => !!iso && iso.slice(0, 10) === date;
     const ownDeals = deals.filter(deal => deal.created_by === user || deal.submitted_by === user || deal.assigned_to === user);
+    const touchedImportedLeads = importedLeads.filter(lead => sameDay(lead.last_activity_at));
     setBriefDraft(prev => ({
       ...prev,
       leads_added: ownDeals.filter(deal => sameDay(deal.created_at)).length,
-      leads_updated: ownDeals.filter(deal => sameDay(deal.updated_at)).length,
+      leads_updated: ownDeals.filter(deal => sameDay(deal.updated_at)).length + touchedImportedLeads.length,
+      outreach_sent: touchedImportedLeads.filter(lead => ["called", "texted", "emailed", "left-voicemail"].includes(lead.last_activity_type || "")).length,
+      seller_replies: touchedImportedLeads.filter(lead => lead.status === "interested").length,
+      calls_completed: touchedImportedLeads.filter(lead => lead.last_activity_type === "called" || lead.last_activity_type === "left-voicemail").length,
       deals_submitted: ownDeals.filter(deal => deal.status === "under-review" && sameDay(deal.updated_at)).length,
       checklist_items_cleared: checklist.filter(item => sameDay(item.updated_at) && (item.status === "cleared" || item.status === "not-applicable") && item.updated_by === user).length,
     }));
@@ -914,7 +1038,14 @@ export default function VaPage() {
                 <p style={eyebrowSmall}>Land lists</p>
                 <h2 style={sectionTitle}>Upload & search imported leads</h2>
               </div>
-              <span style={pill}>{importedLeads.length} imported</span>
+              <span style={pill}>{importedLeads.length} imported · Avg score {importStats.avgScore}</span>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 8, marginBottom: 12 }} className="number-grid">
+              <ShiftCard label="New" value={String(importStats.newRows)} />
+              <ShiftCard label="Contacted" value={String(importStats.contacted)} />
+              <ShiftCard label="Interested" value={String(importStats.interested)} tone={importStats.interested ? "hot" : "calm"} />
+              <ShiftCard label="Duplicates" value={String(importStats.duplicates)} />
+              <ShiftCard label="Converted" value={String(importStats.converted)} />
             </div>
             <div style={{ ...subPanel, marginBottom: 12 }}>
               <div style={{ display: "grid", gridTemplateColumns: "180px minmax(0, 1fr) 190px", gap: 10 }} className="three-col">
@@ -947,34 +1078,181 @@ export default function VaPage() {
               </p>
             </div>
 
-            <div style={{ marginBottom: 12 }}>
-              <label style={label}>Search imported list</label>
-              <input value={leadSearch} onChange={e => setLeadSearch(e.target.value)} placeholder="Search owner, phone, parcel, address, county, city, or campaign" />
-            </div>
-
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 10 }} className="two-col">
-              {filteredImportedLeads.map(lead => (
-                <div key={lead.id} style={subPanel}>
-                  <div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginBottom: 8 }}>
-                    <strong style={{ color: "var(--obsidian)", fontSize: 14 }}>{lead.owner_name || "Owner unknown"}</strong>
-                    <span style={lead.status === "interested" ? hotPill : pill}>{statusLabel(lead.status)}</span>
+            {importPreview && (
+              <div style={{ ...subPanel, marginBottom: 12, borderColor: "var(--brass)" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "baseline", marginBottom: 10 }}>
+                  <div>
+                    <p style={eyebrowSmall}>Import preview</p>
+                    <h3 style={{ ...sectionTitle, fontSize: 20 }}>{importPreview.filename}</h3>
                   </div>
-                  <p style={{ fontSize: 12, color: "var(--muted)", lineHeight: 1.45 }}>
-                    {lead.property_address || "No property address"}{lead.parcel_id ? ` · ${lead.parcel_id}` : ""}
-                  </p>
-                  <p style={{ fontSize: 12, color: "var(--muted)", lineHeight: 1.45, marginTop: 4 }}>
-                    {lead.phone || lead.phone_2 || "No phone"}{lead.acreage ? ` · ${lead.acreage} acres` : ""}{lead.county ? ` · ${lead.county}` : ""}
-                  </p>
-                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
-                    <button onClick={() => loadImportedLead(lead, true)} style={primaryButton}>Use Lead</button>
-                    <button onClick={async () => { await updateImportedLandLeadStatus(lead.id, "contacted", lead.deal_id); setImportedLeads(await fetchImportedLandLeads()); }} style={secondaryButton}>Contacted</button>
-                    <button onClick={async () => { await updateImportedLandLeadStatus(lead.id, "passed", lead.deal_id); setImportedLeads(await fetchImportedLandLeads()); }} style={secondaryButton}>Pass</button>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    <button onClick={() => setImportPreview(null)} style={secondaryButton}>Cancel</button>
+                    <button onClick={confirmLeadImport} disabled={importing} style={{ ...primaryButton, opacity: importing ? 0.6 : 1 }}>
+                      {importing ? "Importing..." : "Confirm Import"}
+                    </button>
                   </div>
                 </div>
-              ))}
-              {filteredImportedLeads.length === 0 && (
-                <p style={{ fontSize: 13, color: "var(--muted)" }}>No imported leads match this search yet.</p>
-              )}
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 8 }} className="number-grid">
+                  <MiniStat label="Rows" value={String(importPreview.rowsFound)} />
+                  <MiniStat label="Usable" value={String(importPreview.usableLeads)} />
+                  <MiniStat label="No phone" value={String(importPreview.missingPhone)} />
+                  <MiniStat label="No owner" value={String(importPreview.missingOwner)} />
+                  <MiniStat label="Duplicates" value={String(importPreview.possibleDuplicates + importPreview.alreadyConverted)} />
+                  <MiniStat label="Avg score" value={String(importPreview.averageScore)} />
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 8, marginTop: 10 }} className="two-col">
+                  {importPreview.sampleLeads.map((lead, index) => (
+                    <div key={`${lead.parcel_id}-${index}`} style={{ border: "1px solid var(--fog)", borderRadius: 8, padding: 10, background: "var(--surface)" }}>
+                      <strong style={{ color: "var(--obsidian)", fontSize: 13 }}>{lead.owner_name || "Owner unknown"}</strong>
+                      <p style={{ color: "var(--muted)", fontSize: 12, marginTop: 4 }}>{lead.property_address || lead.parcel_id || "No parcel address"} · Score {lead.lead_score ?? 0}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div style={{ ...subPanel, marginBottom: 12 }}>
+              <p style={eyebrowSmall}>Batch workflow</p>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }} className="three-col">
+                {leadBatches.slice(0, 6).map(batch => (
+                  <div key={batch.id} style={{ border: "1px solid var(--fog)", borderRadius: 8, padding: 10, background: "var(--surface)" }}>
+                    <strong style={{ display: "block", color: "var(--obsidian)", fontSize: 13 }}>{batch.campaign_source || batch.original_filename || batch.source_system}</strong>
+                    <p style={{ color: "var(--muted)", fontSize: 12, margin: "4px 0 8px" }}>{batch.row_count} rows · {statusLabel(batch.status || "not-started")}</p>
+                    <select
+                      value={batch.status || "not-started"}
+                      onChange={async e => {
+                        await updateLandLeadBatch(batch.id, { status: e.target.value as LandLeadBatch["status"], assigned_to: user });
+                        setLeadBatches(await fetchLandLeadBatches());
+                      }}
+                    >
+                      <option value="not-started">Not Started</option>
+                      <option value="in-progress">In Progress</option>
+                      <option value="completed">Completed</option>
+                    </select>
+                  </div>
+                ))}
+                {leadBatches.length === 0 && <p style={{ fontSize: 13, color: "var(--muted)" }}>No import batches yet.</p>}
+              </div>
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 0.95fr) minmax(320px, 1.05fr)", gap: 12 }} className="va-form-grid">
+              <div>
+                <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 160px", gap: 8, marginBottom: 8 }} className="two-col">
+                  <div>
+                    <label style={label}>Search imported list</label>
+                    <input value={leadSearch} onChange={e => setLeadSearch(e.target.value)} placeholder="Search owner, phone, parcel, address, county, city, or campaign" />
+                  </div>
+                  <div>
+                    <label style={label}>Filter</label>
+                    <select value={leadFilter} onChange={e => setLeadFilter(e.target.value as ImportStatusFilter)}>
+                      {IMPORT_STATUS_FILTERS.map(filter => <option key={filter.value} value={filter.value}>{filter.label}</option>)}
+                    </select>
+                  </div>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 12 }} className="two-col">
+                  <input value={minAcreage} onChange={e => setMinAcreage(e.target.value)} placeholder="Min acreage" />
+                  <input value={maxAcreage} onChange={e => setMaxAcreage(e.target.value)} placeholder="Max acreage" />
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 760, overflow: "auto", paddingRight: 2 }}>
+                  {filteredImportedLeads.map(lead => (
+                    <button
+                      key={lead.id}
+                      onClick={() => setSelectedImportedLeadId(lead.id)}
+                      style={{
+                        ...subPanel,
+                        textAlign: "left",
+                        cursor: "pointer",
+                        background: selectedImportedLeadId === lead.id ? "rgba(176,137,84,0.14)" : "var(--bone)",
+                      }}
+                    >
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginBottom: 8 }}>
+                        <strong style={{ color: "var(--obsidian)", fontSize: 14 }}>{lead.owner_name || "Owner unknown"}</strong>
+                        <span style={lead.status === "interested" ? hotPill : pill}>Score {lead.lead_score ?? 0}</span>
+                      </div>
+                      <p style={{ fontSize: 12, color: "var(--muted)", lineHeight: 1.45 }}>
+                        {lead.property_address || "No property address"}{lead.parcel_id ? ` · ${lead.parcel_id}` : ""}
+                      </p>
+                      <p style={{ fontSize: 12, color: "var(--muted)", lineHeight: 1.45, marginTop: 4 }}>
+                        {lead.phone || lead.phone_2 || "No phone"}{lead.acreage ? ` · ${lead.acreage} acres` : ""}{lead.county ? ` · ${lead.county}` : ""}
+                      </p>
+                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8 }}>
+                        <span style={lead.status === "interested" ? hotPill : pill}>{statusLabel(lead.status)}</span>
+                        {lead.duplicate_status && lead.duplicate_status !== "new" && <span style={pill}>{statusLabel(lead.duplicate_status)}</span>}
+                        {!!lead.outreach_count && <span style={pill}>{lead.outreach_count} touches</span>}
+                      </div>
+                    </button>
+                  ))}
+                  {filteredImportedLeads.length === 0 && (
+                    <p style={{ fontSize: 13, color: "var(--muted)" }}>No imported leads match this search yet.</p>
+                  )}
+                </div>
+              </div>
+
+              <aside style={subPanel}>
+                {!selectedImportedLead && <p style={{ fontSize: 13, color: "var(--muted)" }}>Select a lead to review details, log outreach, or convert it to a deal packet.</p>}
+                {selectedImportedLead && (
+                  <div>
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "baseline", marginBottom: 10 }}>
+                      <div>
+                        <p style={eyebrowSmall}>Lead detail</p>
+                        <h3 style={{ ...sectionTitle, fontSize: 22 }}>{selectedImportedLead.owner_name || "Owner unknown"}</h3>
+                      </div>
+                      <span style={selectedImportedLead.status === "interested" ? hotPill : pill}>{statusLabel(selectedImportedLead.status)}</span>
+                    </div>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 12 }} className="two-col">
+                      <MiniStat label="Score" value={String(selectedImportedLead.lead_score ?? 0)} />
+                      <MiniStat label="Touches" value={String(selectedImportedLead.outreach_count ?? 0)} />
+                      <MiniStat label="Acreage" value={selectedImportedLead.acreage ? String(selectedImportedLead.acreage) : "N/A"} />
+                      <MiniStat label="Value" value={selectedImportedLead.market_value ? `$${selectedImportedLead.market_value.toLocaleString()}` : "N/A"} />
+                    </div>
+                    <div style={{ display: "grid", gap: 8, fontSize: 13, color: "var(--ink)", marginBottom: 12 }}>
+                      <p><strong>Parcel:</strong> {selectedImportedLead.parcel_id || "N/A"}</p>
+                      <p><strong>Address:</strong> {selectedImportedLead.property_address || "N/A"}</p>
+                      <p><strong>Mailing:</strong> {selectedImportedLead.mailing_address || "N/A"}</p>
+                      <p><strong>Phone:</strong> {[selectedImportedLead.phone, selectedImportedLead.phone_2].filter(Boolean).join(" / ") || "N/A"}</p>
+                      <p><strong>Email:</strong> {selectedImportedLead.email || "N/A"}</p>
+                      <p><strong>Zoning / use:</strong> {[selectedImportedLead.zoning, selectedImportedLead.land_use].filter(Boolean).join(" / ") || "N/A"}</p>
+                      <p><strong>Flags:</strong> Land locked {String(selectedImportedLead.raw_data?.["Land Locked"] ?? selectedImportedLead.raw_data?.["Tag:Land Locked"] ?? "N/A")} · Flood {String(selectedImportedLead.raw_data?.["Flood Zone Percent"] ?? "0")} · Wetlands {String(selectedImportedLead.raw_data?.["Wetlands Percent"] ?? "0")}</p>
+                    </div>
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 14 }}>
+                      {selectedImportedLead.property_url && <a href={selectedImportedLead.property_url} target="_blank" rel="noreferrer" style={secondaryButton}>Open Parcel</a>}
+                      {typeof selectedImportedLead.raw_data?.["Google Map"] === "string" && <a href={selectedImportedLead.raw_data["Google Map"]} target="_blank" rel="noreferrer" style={secondaryButton}>Map</a>}
+                      <button onClick={() => loadImportedLead(selectedImportedLead, true)} style={primaryButton}>Use Lead</button>
+                      <button onClick={async () => { await updateImportedLandLeadStatus(selectedImportedLead.id, "passed", selectedImportedLead.deal_id); setImportedLeads(await fetchImportedLandLeads(500)); }} style={secondaryButton}>Pass</button>
+                    </div>
+                    {!!selectedImportedLead.score_reasons?.length && (
+                      <div style={{ marginBottom: 14 }}>
+                        <p style={miniLabel}>Score reasons</p>
+                        <p style={{ fontSize: 12, color: "var(--muted)", lineHeight: 1.5 }}>{selectedImportedLead.score_reasons.join(", ")}</p>
+                      </div>
+                    )}
+                    <div style={{ borderTop: "1px solid var(--fog)", paddingTop: 12 }}>
+                      <p style={eyebrowSmall}>Log outreach</p>
+                      <div style={{ display: "grid", gridTemplateColumns: "160px minmax(0, 1fr)", gap: 8 }} className="two-col">
+                        <select value={activityDraft.activityType} onChange={e => setActivityDraft({ ...activityDraft, activityType: e.target.value as ImportedLandLeadActivity["activity_type"] })}>
+                          {LEAD_ACTIVITY_TYPES.map(type => <option key={type.value} value={type.value}>{type.label}</option>)}
+                        </select>
+                        <input value={activityDraft.nextFollowUpDate} onChange={e => setActivityDraft({ ...activityDraft, nextFollowUpDate: e.target.value })} type="date" />
+                      </div>
+                      <textarea rows={3} value={activityDraft.summary} onChange={e => setActivityDraft({ ...activityDraft, summary: e.target.value })} placeholder="What happened? Include seller response, wrong number, voicemail, follow-up notes, or next action." style={{ marginTop: 8 }} />
+                      <button onClick={logLeadActivity} style={{ ...secondaryButton, marginTop: 8 }}>Save Activity</button>
+                    </div>
+                    <div style={{ borderTop: "1px solid var(--fog)", paddingTop: 12, marginTop: 12 }}>
+                      <p style={eyebrowSmall}>Activity history</p>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 220, overflow: "auto" }}>
+                        {leadActivities.map(activity => (
+                          <div key={activity.id} style={{ border: "1px solid var(--fog)", borderRadius: 8, padding: 8, background: "var(--surface)" }}>
+                            <strong style={{ display: "block", color: "var(--obsidian)", fontSize: 12 }}>{statusLabel(activity.activity_type)} · {formatDate(activity.created_at)}</strong>
+                            <p style={{ color: "var(--muted)", fontSize: 12, marginTop: 4 }}>{activity.summary}</p>
+                            {activity.next_follow_up_date && <p style={{ ...miniLabel, marginTop: 6 }}>Follow up {activity.next_follow_up_date}</p>}
+                          </div>
+                        ))}
+                        {leadActivities.length === 0 && <p style={{ fontSize: 12, color: "var(--muted)" }}>No activity logged for this lead yet.</p>}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </aside>
             </div>
           </section>
           )}
@@ -1205,6 +1483,15 @@ function ShiftCard({ label: text, value, tone = "calm" }: { label: string; value
     }}>
       <p style={{ fontSize: 10, color: "var(--muted)", fontWeight: 700, letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: 5 }}>{text}</p>
       <p style={{ fontSize: 24, fontWeight: 800, color: "var(--obsidian)", lineHeight: 1 }}>{value}</p>
+    </div>
+  );
+}
+
+function MiniStat({ label: text, value }: { label: string; value: string }) {
+  return (
+    <div style={miniStat}>
+      <span>{text}</span>
+      <strong>{value}</strong>
     </div>
   );
 }

@@ -8,6 +8,12 @@ export interface LandLeadBatch {
   campaign_source: string | null;
   row_count: number;
   uploaded_by: string | null;
+  status?: "not-started" | "in-progress" | "completed";
+  assigned_to?: string | null;
+  started_at?: string | null;
+  completed_at?: string | null;
+  import_summary?: Record<string, unknown>;
+  notes?: string | null;
   created_at: string;
 }
 
@@ -36,6 +42,15 @@ export interface ImportedLandLead {
   property_url: string | null;
   status: "new" | "contacted" | "interested" | "converted" | "passed";
   deal_id: string | null;
+  duplicate_status?: "new" | "possible-duplicate" | "already-converted";
+  duplicate_of?: string | null;
+  lead_score?: number;
+  score_reasons?: string[];
+  assigned_to?: string | null;
+  next_follow_up_date?: string | null;
+  outreach_count?: number;
+  last_activity_at?: string | null;
+  last_activity_type?: string | null;
   notes: string | null;
   raw_data: Record<string, unknown>;
   uploaded_by: string | null;
@@ -49,8 +64,34 @@ export interface LeadImportResult {
   error: string | null;
 }
 
+export interface LandLeadImportPreview {
+  filename: string;
+  rowsFound: number;
+  usableLeads: number;
+  missingPhone: number;
+  missingOwner: number;
+  possibleDuplicates: number;
+  alreadyConverted: number;
+  averageScore: number;
+  sampleLeads: Array<Omit<ImportedLandLead, "id" | "created_at" | "updated_at">>;
+  duplicateKeys: string[];
+  csvText: string;
+  error: string | null;
+}
+
+export interface ImportedLandLeadActivity {
+  id: string;
+  lead_id: string;
+  actor: string | null;
+  activity_type: "called" | "texted" | "emailed" | "left-voicemail" | "wrong-number" | "interested" | "not-interested" | "follow-up-set" | "note" | "converted";
+  summary: string;
+  next_follow_up_date: string | null;
+  created_at: string;
+}
+
 const LOCAL_BATCHES = "meridian_land_lead_batches_local";
 const LOCAL_LEADS = "meridian_imported_land_leads_local";
+const LOCAL_ACTIVITIES = "meridian_imported_land_lead_activities_local";
 
 function localGet<T>(key: string, fallback: T): T {
   if (typeof window === "undefined") return fallback;
@@ -66,6 +107,16 @@ function parseNumber(value: unknown): number | null {
   if (typeof value !== "string" || !value.trim()) return null;
   const parsed = Number(value.replace(/[$,\s]/g, ""));
   return Number.isFinite(parsed) ? parsed : null;
+}
+
+function boolish(value: unknown): boolean {
+  const text = clean(value)?.toLowerCase();
+  return !!text && !["n", "no", "false", "0", "none"].includes(text);
+}
+
+function hasPositiveNumber(value: unknown): boolean {
+  const parsed = parseNumber(value);
+  return typeof parsed === "number" && parsed > 0;
 }
 
 function clean(value: unknown): string | null {
@@ -93,6 +144,48 @@ function pick(row: Record<string, string>, aliases: string[]): string | null {
 function noteLine(row: Record<string, string>, label: string, aliases: string[]): string {
   const value = pick(row, aliases);
   return value ? `${label}: ${value}` : "";
+}
+
+function duplicateKey(lead: Pick<ImportedLandLead, "parcel_id" | "property_address" | "phone" | "phone_2" | "owner_name">): string {
+  return [
+    lead.parcel_id,
+    lead.property_address,
+    lead.phone || lead.phone_2,
+    lead.owner_name,
+  ].filter(Boolean).join("|").toLowerCase().replace(/\s+/g, " ").trim();
+}
+
+function strongDuplicateMatch(a: Pick<ImportedLandLead, "parcel_id" | "property_address" | "phone" | "phone_2">, b: Pick<ImportedLandLead, "parcel_id" | "property_address" | "phone" | "phone_2">): boolean {
+  const parcelMatch = !!a.parcel_id && !!b.parcel_id && a.parcel_id.toLowerCase() === b.parcel_id.toLowerCase();
+  const addressMatch = !!a.property_address && !!b.property_address && a.property_address.toLowerCase() === b.property_address.toLowerCase();
+  const phones = [a.phone, a.phone_2].filter(Boolean).map(v => String(v).replace(/\D/g, ""));
+  const otherPhones = [b.phone, b.phone_2].filter(Boolean).map(v => String(v).replace(/\D/g, ""));
+  const phoneMatch = phones.some(phone => phone.length >= 7 && otherPhones.includes(phone));
+  return parcelMatch || addressMatch || phoneMatch;
+}
+
+function scoreLead(row: Record<string, string>, lead: Pick<ImportedLandLead, "phone" | "phone_2" | "email" | "property_address" | "parcel_id" | "acreage" | "market_value" | "land_use">): { lead_score: number; score_reasons: string[] } {
+  let score = 20;
+  const reasons: string[] = [];
+  const add = (points: number, reason: string) => { score += points; reasons.push(reason); };
+  const subtract = (points: number, reason: string) => { score -= points; reasons.push(reason); };
+
+  if (lead.phone || lead.phone_2) add(15, "Phone present");
+  if (lead.email) add(5, "Email present");
+  if (lead.parcel_id) add(8, "APN present");
+  if (lead.property_address) add(8, "Parcel address present");
+  if (typeof lead.acreage === "number" && lead.acreage >= 0.25 && lead.acreage <= 10) add(8, "Usable acreage range");
+  if (lead.market_value) add(8, "Value estimate present");
+  if ((lead.land_use || "").toLowerCase().includes("vacant")) add(8, "Vacant land");
+  if (hasPositiveNumber(pick(row, ["road frontage ft", "road frontage"]))) add(8, "Road frontage");
+  if (["high", "medium"].includes((pick(row, ["selleriq"]) || "").toLowerCase())) add(5, "SellerIQ signal");
+  if (boolish(pick(row, ["land locked", "tag land locked"]))) subtract(20, "Land locked");
+  if (hasPositiveNumber(pick(row, ["flood zone percent", "flood zone", "flood"]))) subtract(10, "Flood flag");
+  if (hasPositiveNumber(pick(row, ["wetlands percent", "wetlands", "tag wetlands"]))) subtract(10, "Wetlands flag");
+  if (boolish(pick(row, ["tag bad topography"]))) subtract(8, "Bad topography flag");
+  if (!lead.phone && !lead.phone_2 && !lead.email) subtract(12, "No direct contact");
+
+  return { lead_score: Math.max(0, Math.min(100, score)), score_reasons: reasons };
 }
 
 const HEADER_HINTS = new Set([
@@ -170,7 +263,7 @@ function normalizeLead(row: Record<string, string>, sourceSystem: string, campai
   const phone = pick(row, ["phone", "phone 1", "primary phone", "seller phone", "mobile", "cell"]);
   const phone2 = pick(row, ["phone 2", "secondary phone", "alternate phone", "alt phone"]);
   const value = parseNumber(pick(row, ["market value estimate", "market total parcel value", "market value", "estimated value", "value", "total parcel value", "land value", "land price", "price", "total value"]));
-  return {
+  const base = {
     batch_id: batchId,
     source_system: sourceSystem,
     campaign_source: campaignSource,
@@ -192,11 +285,69 @@ function normalizeLead(row: Record<string, string>, sourceSystem: string, campai
     zoning: pick(row, ["zoning", "zone", "zoning code"]),
     land_use: pick(row, ["land use description", "land use", "property use", "use code", "property type"]),
     property_url: pick(row, ["url", "link", "property url", "listing url", "land insights url", "data link", "parcel link", "map link", "google maps", "earth"]),
-    status: "new",
+    status: "new" as const,
     deal_id: null,
+    duplicate_status: "new" as const,
+    duplicate_of: null,
+    assigned_to: actor,
+    next_follow_up_date: null,
+    outreach_count: 0,
+    last_activity_at: null,
+    last_activity_type: null,
     notes: pick(row, ["notes", "remarks", "comments"]),
     raw_data: row,
     uploaded_by: actor,
+  };
+  return { ...base, ...scoreLead(row, base) };
+}
+
+function applyDuplicateMetadata<T extends Omit<ImportedLandLead, "id" | "created_at" | "updated_at">>(leads: T[], existing: ImportedLandLead[]): T[] {
+  const seen = new Map<string, { id: string | null; converted: boolean }>();
+  existing.forEach(lead => {
+    const key = duplicateKey(lead);
+    if (key) seen.set(key, { id: lead.id, converted: lead.status === "converted" || !!lead.deal_id });
+  });
+  return leads.map(lead => {
+    const exact = seen.get(duplicateKey(lead));
+    const fuzzy = exact ? null : existing.find(row => strongDuplicateMatch(lead, row));
+    const converted = exact?.converted || fuzzy?.status === "converted" || !!fuzzy?.deal_id;
+    const duplicate_of = exact?.id || fuzzy?.id || null;
+    const duplicate_status = duplicate_of ? (converted ? "already-converted" : "possible-duplicate") : "new";
+    const next = { ...lead, duplicate_status, duplicate_of } as T;
+    const key = duplicateKey(next);
+    if (key && !seen.has(key)) seen.set(key, { id: null, converted: false });
+    return next;
+  });
+}
+
+export async function previewLandLeadsCsv(args: {
+  csvText: string;
+  filename: string;
+  sourceSystem: string;
+  campaignSource?: string | null;
+  actor: string;
+}): Promise<LandLeadImportPreview> {
+  const rows = parseCsv(args.csvText);
+  if (rows.length === 0) {
+    return { filename: args.filename, rowsFound: 0, usableLeads: 0, missingPhone: 0, missingOwner: 0, possibleDuplicates: 0, alreadyConverted: 0, averageScore: 0, sampleLeads: [], duplicateKeys: [], csvText: args.csvText, error: "No lead rows found. Upload a CSV with a header row." };
+  }
+  const existing = await fetchImportedLandLeads(5000);
+  const normalized = applyDuplicateMetadata(rows.map(row => normalizeLead(row, args.sourceSystem, args.campaignSource?.trim() || null, args.actor, null)), existing);
+  const usable = normalized.filter(lead => lead.owner_name || lead.phone || lead.phone_2 || lead.parcel_id || lead.property_address);
+  const scores = usable.map(lead => lead.lead_score ?? 0);
+  return {
+    filename: args.filename,
+    rowsFound: rows.length,
+    usableLeads: usable.length,
+    missingPhone: usable.filter(lead => !lead.phone && !lead.phone_2).length,
+    missingOwner: usable.filter(lead => !lead.owner_name).length,
+    possibleDuplicates: usable.filter(lead => lead.duplicate_status === "possible-duplicate").length,
+    alreadyConverted: usable.filter(lead => lead.duplicate_status === "already-converted").length,
+    averageScore: scores.length ? Math.round(scores.reduce((sum, score) => sum + score, 0) / scores.length) : 0,
+    sampleLeads: usable.slice(0, 5),
+    duplicateKeys: usable.filter(lead => lead.duplicate_status !== "new").slice(0, 10).map(duplicateKey),
+    csvText: args.csvText,
+    error: null,
   };
 }
 
@@ -216,18 +367,26 @@ export async function importLandLeadsFromCsv(args: {
     campaign_source: args.campaignSource?.trim() || null,
     row_count: rows.length,
     uploaded_by: args.actor,
+    assigned_to: args.actor,
+    status: "not-started" as const,
+    import_summary: {
+      rows_found: rows.length,
+      imported_at: now,
+    },
   };
 
   if (!supabase) {
     const batch: LandLeadBatch = { ...batchSeed, id: `lead-batch-${Date.now()}`, created_at: now };
-    const leads = rows.map((row, index): ImportedLandLead => ({
-      ...normalizeLead(row, batch.source_system, batch.campaign_source, args.actor, batch.id),
+    const existing = localGet<ImportedLandLead[]>(LOCAL_LEADS, []);
+    const normalized = applyDuplicateMetadata(rows.map(row => normalizeLead(row, batch.source_system, batch.campaign_source, args.actor, batch.id)), existing);
+    const leads = normalized.map((lead, index): ImportedLandLead => ({
+      ...lead,
       id: `${batch.id}-${index}`,
       created_at: now,
       updated_at: now,
     }));
     localSet(LOCAL_BATCHES, [batch, ...localGet<LandLeadBatch[]>(LOCAL_BATCHES, [])]);
-    localSet(LOCAL_LEADS, [...leads, ...localGet<ImportedLandLead[]>(LOCAL_LEADS, [])]);
+    localSet(LOCAL_LEADS, [...leads, ...existing]);
     return { batch, leads, error: null };
   }
 
@@ -239,13 +398,29 @@ export async function importLandLeadsFromCsv(args: {
   if (batchError || !batchData) return { batch: null, leads: [], error: batchError?.message ?? "Could not create import batch." };
 
   const batch = batchData as LandLeadBatch;
-  const inserts = rows.map(row => normalizeLead(row, batch.source_system, batch.campaign_source, args.actor, batch.id));
+  const existing = await fetchImportedLandLeads(5000);
+  const inserts = applyDuplicateMetadata(rows.map(row => normalizeLead(row, batch.source_system, batch.campaign_source, args.actor, batch.id)), existing);
   const { data, error } = await supabase
     .from("meridian_imported_land_leads")
     .insert(inserts)
     .select();
   if (error || !data) return { batch, leads: [], error: error?.message ?? "Could not import lead rows." };
   return { batch, leads: data as ImportedLandLead[], error: null };
+}
+
+export async function fetchLandLeadBatches(limit = 30): Promise<LandLeadBatch[]> {
+  if (!supabase) {
+    return localGet<LandLeadBatch[]>(LOCAL_BATCHES, [])
+      .sort((a, b) => b.created_at.localeCompare(a.created_at))
+      .slice(0, limit);
+  }
+  const { data, error } = await supabase
+    .from("meridian_land_lead_import_batches")
+    .select("*")
+    .order("created_at", { ascending: false })
+    .limit(limit);
+  if (error || !data) return [];
+  return data as LandLeadBatch[];
 }
 
 export async function fetchImportedLandLeads(limit = 250): Promise<ImportedLandLead[]> {
@@ -275,6 +450,93 @@ export async function updateImportedLandLeadStatus(id: string, status: ImportedL
     .update({ status, deal_id: dealId ?? null, updated_at: now })
     .eq("id", id);
   return { error: error?.message ?? null };
+}
+
+export async function updateLandLeadBatch(id: string, patch: Partial<Pick<LandLeadBatch, "status" | "assigned_to" | "notes">>): Promise<{ error: string | null }> {
+  const now = new Date().toISOString();
+  const row = {
+    ...patch,
+    started_at: patch.status === "in-progress" ? now : undefined,
+    completed_at: patch.status === "completed" ? now : undefined,
+  };
+  if (!supabase) {
+    const batches = localGet<LandLeadBatch[]>(LOCAL_BATCHES, []);
+    localSet(LOCAL_BATCHES, batches.map(batch => batch.id === id ? { ...batch, ...row } : batch));
+    return { error: null };
+  }
+  const { error } = await supabase
+    .from("meridian_land_lead_import_batches")
+    .update(row)
+    .eq("id", id);
+  return { error: error?.message ?? null };
+}
+
+export async function createImportedLandLeadActivity(args: {
+  leadId: string;
+  actor: string;
+  activityType: ImportedLandLeadActivity["activity_type"];
+  summary: string;
+  nextFollowUpDate?: string | null;
+}): Promise<{ data: ImportedLandLeadActivity | null; error: string | null }> {
+  const now = new Date().toISOString();
+  const row = {
+    lead_id: args.leadId,
+    actor: args.actor,
+    activity_type: args.activityType,
+    summary: args.summary.trim() || statusLabel(args.activityType),
+    next_follow_up_date: args.nextFollowUpDate || null,
+  };
+  if (!supabase) {
+    const activity: ImportedLandLeadActivity = { ...row, id: `lead-activity-${Date.now()}`, created_at: now };
+    localSet(LOCAL_ACTIVITIES, [activity, ...localGet<ImportedLandLeadActivity[]>(LOCAL_ACTIVITIES, [])]);
+    const leads = localGet<ImportedLandLead[]>(LOCAL_LEADS, []);
+    localSet(LOCAL_LEADS, leads.map(lead => {
+      if (lead.id !== args.leadId) return lead;
+      const outreach = ["called", "texted", "emailed", "left-voicemail"].includes(args.activityType);
+      const nextStatus = args.activityType === "interested" ? "interested"
+        : args.activityType === "not-interested" ? "passed"
+          : lead.status === "new" && ["called", "texted", "emailed", "left-voicemail", "wrong-number", "follow-up-set"].includes(args.activityType) ? "contacted"
+            : lead.status;
+      return {
+        ...lead,
+        status: nextStatus,
+        outreach_count: (lead.outreach_count ?? 0) + (outreach ? 1 : 0),
+        last_activity_at: now,
+        last_activity_type: args.activityType,
+        next_follow_up_date: args.nextFollowUpDate || lead.next_follow_up_date || null,
+        updated_at: now,
+      };
+    }));
+    return { data: activity, error: null };
+  }
+  const { data, error } = await supabase
+    .from("meridian_imported_land_lead_activities")
+    .insert(row)
+    .select()
+    .single();
+  return { data: data as ImportedLandLeadActivity | null, error: error?.message ?? null };
+}
+
+export async function fetchImportedLandLeadActivities(leadId?: string, limit = 80): Promise<ImportedLandLeadActivity[]> {
+  if (!supabase) {
+    return localGet<ImportedLandLeadActivity[]>(LOCAL_ACTIVITIES, [])
+      .filter(row => !leadId || row.lead_id === leadId)
+      .sort((a, b) => b.created_at.localeCompare(a.created_at))
+      .slice(0, limit);
+  }
+  let query = supabase
+    .from("meridian_imported_land_lead_activities")
+    .select("*")
+    .order("created_at", { ascending: false })
+    .limit(limit);
+  if (leadId) query = query.eq("lead_id", leadId);
+  const { data, error } = await query;
+  if (error || !data) return [];
+  return data as ImportedLandLeadActivity[];
+}
+
+function statusLabel(value: string): string {
+  return value.split("-").map(part => part.charAt(0).toUpperCase() + part.slice(1)).join(" ");
 }
 
 export function leadToDealDraft(lead: ImportedLandLead): Partial<DealInput> & { linksText?: string } {

@@ -27,6 +27,12 @@ import {
   type VaDailyBrief,
   type VaDailyBriefReview,
 } from "@/lib/va-briefs";
+import {
+  fetchLandLeadBatches,
+  fetchImportedLandLeads,
+  type ImportedLandLead,
+  type LandLeadBatch,
+} from "@/lib/land-leads";
 import { isVaUser } from "@/lib/identity";
 
 const DISPLAY_FONT = "var(--font-display)";
@@ -62,6 +68,8 @@ export default function OperationsPage() {
   const [scenarios, setScenarios] = useState<DealScenario[]>([]);
   const [vaBriefs, setVaBriefs] = useState<VaDailyBrief[]>([]);
   const [vaBriefReviews, setVaBriefReviews] = useState<VaDailyBriefReview[]>([]);
+  const [landLeadBatches, setLandLeadBatches] = useState<LandLeadBatch[]>([]);
+  const [importedLeads, setImportedLeads] = useState<ImportedLandLead[]>([]);
   const [briefReviewNotes, setBriefReviewNotes] = useState<Record<string, string>>({});
   const [eventDraft, setEventDraft] = useState({ title: "", event_date: "", event_type: "deadline", assigned_to: "", notes: "", project_id: "" });
   const [reimbursementDraft, setReimbursementDraft] = useState({ member_name: "", amount: "", vendor: "", category: "Project", expense_date: "", receipt_url: "", notes: "", project_id: "" });
@@ -81,16 +89,28 @@ export default function OperationsPage() {
       fetchDistributions(),
       fetchScenarios(),
       fetchVaDailyBriefs(12),
-    ]).then(([projectRows, eventRows, reimbursementRows, distributionRows, scenarioRows, briefRows]) => {
+      fetchLandLeadBatches(12),
+      fetchImportedLandLeads(250),
+    ]).then(([projectRows, eventRows, reimbursementRows, distributionRows, scenarioRows, briefRows, batchRows, leadRows]) => {
       setProjects(projectRows);
       setEvents(eventRows);
       setReimbursements(reimbursementRows);
       setDistributions(distributionRows);
       setScenarios(scenarioRows);
       setVaBriefs(briefRows);
+      setLandLeadBatches(batchRows);
+      setImportedLeads(leadRows);
       void fetchVaDailyBriefReviews(briefRows.map(brief => brief.id)).then(setVaBriefReviews);
     });
   }, [router]);
+
+  const leadReviewStats = useMemo(() => ({
+    imported: importedLeads.length,
+    interested: importedLeads.filter(lead => lead.status === "interested").length,
+    converted: importedLeads.filter(lead => lead.status === "converted").length,
+    duplicates: importedLeads.filter(lead => lead.duplicate_status && lead.duplicate_status !== "new").length,
+    averageScore: importedLeads.length ? Math.round(importedLeads.reduce((sum, lead) => sum + (lead.lead_score ?? 0), 0) / importedLeads.length) : 0,
+  }), [importedLeads]);
 
   const scenarioPreview = useMemo(() => calculateScenario({
     purchase_price: toNumber(scenarioDraft.purchase_price),
@@ -280,6 +300,53 @@ export default function OperationsPage() {
               </div>
             </article>
           ))}
+        </div>
+      </section>
+
+      <section style={{ ...panel, marginBottom: 18 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12, flexWrap: "wrap", marginBottom: 12 }}>
+          <div>
+            <p style={eyebrow}>Imported Land Lists</p>
+            <h2 style={sectionTitle}>VA lead progress</h2>
+          </div>
+          <span style={comingSoonPill}>Member review</span>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 10, marginBottom: 14 }} className="stat-grid">
+          <MiniStat label="Imported" value={String(leadReviewStats.imported)} />
+          <MiniStat label="Interested" value={String(leadReviewStats.interested)} />
+          <MiniStat label="Converted" value={String(leadReviewStats.converted)} />
+          <MiniStat label="Duplicates" value={String(leadReviewStats.duplicates)} />
+          <MiniStat label="Avg score" value={String(leadReviewStats.averageScore)} />
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 0.9fr) minmax(0, 1.1fr)", gap: 12 }} className="brief-grid">
+          <div>
+            <p style={briefLabel}>Recent batches</p>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {landLeadBatches.slice(0, 5).map(batch => (
+                <div key={batch.id} style={{ background: "var(--bone)", border: "1px solid var(--fog)", borderRadius: 8, padding: 10 }}>
+                  <strong style={{ color: "var(--obsidian)", fontSize: 13 }}>{batch.campaign_source || batch.original_filename || batch.source_system}</strong>
+                  <p style={rowMeta}>{batch.row_count} rows · {labelize(batch.status || "not-started")} · {batch.assigned_to || batch.uploaded_by || "Unassigned"}</p>
+                </div>
+              ))}
+              {landLeadBatches.length === 0 && <p style={{ color: "var(--muted)", fontSize: 13 }}>No imported land batches yet.</p>}
+            </div>
+          </div>
+          <div>
+            <p style={briefLabel}>Interested sellers</p>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {importedLeads.filter(lead => lead.status === "interested").slice(0, 6).map(lead => (
+                <div key={lead.id} style={{ background: "var(--bone)", border: "1px solid var(--fog)", borderRadius: 8, padding: 10 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
+                    <strong style={{ color: "var(--obsidian)", fontSize: 13 }}>{lead.owner_name || "Owner unknown"}</strong>
+                    <span style={smallPill}>Score {lead.lead_score ?? 0}</span>
+                  </div>
+                  <p style={rowMeta}>{lead.property_address || lead.parcel_id || "No address"} · {lead.phone || lead.phone_2 || "No phone"}</p>
+                  <p style={rowMeta}>{lead.last_activity_type ? `Last touch: ${labelize(lead.last_activity_type)}` : "No outreach logged"}{lead.deal_id ? " · Deal packet created" : ""}</p>
+                </div>
+              ))}
+              {importedLeads.filter(lead => lead.status === "interested").length === 0 && <p style={{ color: "var(--muted)", fontSize: 13 }}>No interested imported sellers yet.</p>}
+            </div>
+          </div>
         </div>
       </section>
 
