@@ -1419,8 +1419,11 @@ export default function VaPage() {
                       title={lead.owner_name || "Owner unknown"}
                       detail={`${lead.property_address || lead.parcel_id || "No address"} · Score ${lead.lead_score ?? 0}`}
                       tone="hot"
-                      actionLabel="Work lead"
-                      onAction={() => setSelectedImportedLeadId(lead.id)}
+                      actionLabel="Text / work"
+                      onAction={() => {
+                        setSelectedImportedLeadId(lead.id);
+                        window.setTimeout(() => document.getElementById("va-workdesk-sms")?.focus(), 80);
+                      }}
                     />
                   ))}
                   {priorityImportedLeads.map(lead => (
@@ -1429,8 +1432,11 @@ export default function VaPage() {
                       eyebrow={statusLabel(lead.status)}
                       title={lead.owner_name || "Owner unknown"}
                       detail={`${lead.phone || lead.phone_2 || "No phone"} · ${lead.property_address || lead.parcel_id || "No address"} · Score ${lead.lead_score ?? 0}`}
-                      actionLabel="Select"
-                      onAction={() => setSelectedImportedLeadId(lead.id)}
+                      actionLabel="Text lead"
+                      onAction={() => {
+                        setSelectedImportedLeadId(lead.id);
+                        window.setTimeout(() => document.getElementById("va-workdesk-sms")?.focus(), 80);
+                      }}
                     />
                   ))}
                   {!unmatchedSms.length && !followUpsDue.length && !interestedLeads.length && !priorityImportedLeads.length && (
@@ -1479,7 +1485,43 @@ export default function VaPage() {
                     </div>
                     <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                       <button onClick={() => router.push(`/opportunity?lead=${selectedImportedLead.id}`)} style={secondaryButton}>Open file</button>
+                      <button
+                        onClick={() => document.getElementById("va-workdesk-sms")?.focus()}
+                        disabled={!selectedImportedLead.phone && !selectedImportedLead.phone_2}
+                        style={{ ...secondaryButton, opacity: !selectedImportedLead.phone && !selectedImportedLead.phone_2 ? 0.55 : 1 }}
+                      >
+                        Send text
+                      </button>
                       <button onClick={() => loadImportedLead(selectedImportedLead, true)} style={primaryButton}>Convert to deal brief</button>
+                    </div>
+                    <div style={{ ...subPanel, background: "var(--surface)", borderColor: selectedImportedLead.sms_opt_status === "opted-out" ? "#e3b2a9" : "var(--brass)" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap", marginBottom: 8 }}>
+                        <div>
+                          <p style={eyebrowSmall}>Send text to lead</p>
+                          <p style={{ margin: "3px 0 0", color: "var(--muted)", fontSize: 13 }}>
+                            {selectedImportedLead.phone || selectedImportedLead.phone_2 || "No phone on this lead"} · SMS {statusLabel(selectedImportedLead.sms_opt_status || "unknown")}
+                          </p>
+                        </div>
+                        <button
+                          onClick={sendSmsToLead}
+                          disabled={smsSending || (!selectedImportedLead.phone && !selectedImportedLead.phone_2) || selectedImportedLead.sms_opt_status === "opted-out"}
+                          style={{ ...primaryButton, opacity: smsSending || (!selectedImportedLead.phone && !selectedImportedLead.phone_2) || selectedImportedLead.sms_opt_status === "opted-out" ? 0.6 : 1 }}
+                        >
+                          {smsSending ? "Sending..." : "Send SMS"}
+                        </button>
+                      </div>
+                      <textarea
+                        id="va-workdesk-sms"
+                        rows={3}
+                        value={smsDraft}
+                        onChange={e => setSmsDraft(e.target.value)}
+                        placeholder="Type the SMS to send through Sakari."
+                        disabled={!selectedImportedLead.phone && !selectedImportedLead.phone_2}
+                      />
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginTop: 6, color: "var(--muted)", fontSize: 12 }}>
+                        <span>{smsDraft.trim().length} chars</span>
+                        {selectedImportedLead.sms_opt_status === "opted-out" && <span>Seller opted out. Do not text.</span>}
+                      </div>
                     </div>
                     <div style={{ ...subPanel, background: "var(--surface)" }}>
                       <p style={eyebrowSmall}>Disposition</p>
@@ -1492,7 +1534,7 @@ export default function VaPage() {
                       </div>
                       <button onClick={applyLeadDisposition} style={{ ...primaryButton, marginTop: 8 }}>Save Disposition</button>
                     </div>
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }} className="two-col">
+                    <div>
                       <div>
                         <p style={eyebrowSmall}>Log activity</p>
                         <div style={{ display: "grid", gridTemplateColumns: "150px 1fr", gap: 8 }} className="two-col">
@@ -1503,17 +1545,6 @@ export default function VaPage() {
                         </div>
                         <textarea rows={3} value={activityDraft.summary} onChange={e => setActivityDraft({ ...activityDraft, summary: e.target.value })} placeholder="What happened? What is the next step?" style={{ marginTop: 8 }} />
                         <button onClick={logLeadActivity} style={{ ...secondaryButton, marginTop: 8 }}>Save activity</button>
-                      </div>
-                      <div>
-                        <p style={eyebrowSmall}>Text seller</p>
-                        <textarea rows={3} value={smsDraft} onChange={e => setSmsDraft(e.target.value)} placeholder="Type SMS to send through Sakari." disabled={!selectedImportedLead.phone && !selectedImportedLead.phone_2} />
-                        <button
-                          onClick={sendSmsToLead}
-                          disabled={smsSending || (!selectedImportedLead.phone && !selectedImportedLead.phone_2) || selectedImportedLead.sms_opt_status === "opted-out"}
-                          style={{ ...primaryButton, marginTop: 8, opacity: smsSending || selectedImportedLead.sms_opt_status === "opted-out" ? 0.6 : 1 }}
-                        >
-                          {smsSending ? "Sending..." : "Send SMS"}
-                        </button>
                       </div>
                     </div>
                     <div style={{ borderTop: "1px solid var(--fog)", paddingTop: 12 }}>
