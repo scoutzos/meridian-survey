@@ -82,6 +82,15 @@ const ATTACHMENT_TYPES: Array<{ value: DealAttachmentType; label: string }> = [
   { value: "other", label: "Other" },
 ];
 
+type VaTab = "leads" | "follow-ups" | "diligence" | "brief";
+
+const TABS: Array<{ value: VaTab; label: string }> = [
+  { value: "leads", label: "Leads" },
+  { value: "follow-ups", label: "Follow-ups" },
+  { value: "diligence", label: "Diligence" },
+  { value: "brief", label: "Daily Brief" },
+];
+
 const EMPTY_DRAFT: DealInput & { linksText: string } = {
   title: "",
   source: "VA intake",
@@ -154,6 +163,14 @@ function formatDate(iso: string): string {
   } catch {
     return iso;
   }
+}
+
+function isSameDay(iso: string | null | undefined, date: string): boolean {
+  return !!iso && iso.slice(0, 10) === date;
+}
+
+function isDueTodayOrPast(date: string | null | undefined, today: string): boolean {
+  return !!date && date <= today;
 }
 
 function draftFromDeal(deal: Deal): DealInput & { linksText: string } {
@@ -252,6 +269,7 @@ export default function VaPage() {
   const [briefSaving, setBriefSaving] = useState(false);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
+  const [activeTab, setActiveTab] = useState<VaTab>("leads");
 
   const reload = useCallback(async (memberName = user) => {
     setLoading(true);
@@ -277,6 +295,26 @@ export default function VaPage() {
   const liveInput = useMemo(() => buildPayload(draft, draft.status ?? "lead"), [draft]);
   const liveAnalysis = useMemo(() => calculateDealAnalysis(liveInput), [liveInput]);
   const liveChecklist = useMemo(() => generateDueDiligenceChecklist(liveInput), [liveInput]);
+  const today = useMemo(() => new Date().toISOString().slice(0, 10), []);
+  const followUpsDue = useMemo(() => deals.filter(deal => isDueTodayOrPast(deal.next_follow_up_date, today)), [deals, today]);
+  const draftLeads = useMemo(() => deals.filter(deal => deal.status === "lead"), [deals]);
+  const submittedDeals = useMemo(() => deals.filter(deal => deal.status === "under-review"), [deals]);
+  const blockedItems = useMemo(() => checklist.filter(item => item.status === "blocked"), [checklist]);
+  const portalStats = useMemo(() => ({
+    addedToday: deals.filter(deal => isSameDay(deal.created_at, today)).length,
+    updatedToday: deals.filter(deal => isSameDay(deal.updated_at, today)).length,
+    submittedToday: deals.filter(deal => deal.status === "under-review" && isSameDay(deal.updated_at, today)).length,
+    briefSubmitted: briefs.some(brief => brief.work_date === today),
+  }), [briefs, deals, today]);
+  const readinessItems = useMemo(() => [
+    { label: "Address or parcel", done: !!(liveInput.address || liveInput.parcel_id) },
+    { label: "Seller contact", done: !!(liveInput.seller_name || liveInput.seller_phone) },
+    { label: "Asking price", done: typeof liveInput.asking_price === "number" && Number.isFinite(liveInput.asking_price) },
+    { label: liveInput.property_type === "land" ? "Exit value or comp support" : "ARV or value", done: typeof liveInput.arv === "number" && Number.isFinite(liveInput.arv) },
+    { label: "Notes added", done: !!liveInput.notes },
+    { label: "Link or attachment", done: (liveInput.links?.length ?? 0) > 0 || attachments.length > 0 },
+  ], [attachments.length, liveInput]);
+  const readyCount = readinessItems.filter(item => item.done).length;
 
   useEffect(() => {
     if (!selected) {
@@ -301,6 +339,7 @@ export default function VaPage() {
     setDraft(EMPTY_DRAFT);
     setAttachmentDraft(EMPTY_ATTACHMENT());
     setMessage("");
+    setActiveTab("leads");
   };
 
   const saveDeal = async (status: DealStatus) => {
@@ -404,6 +443,42 @@ export default function VaPage() {
         </div>
       )}
 
+      <section style={{ ...panel, marginBottom: 16 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 14, flexWrap: "wrap", alignItems: "flex-start", marginBottom: 14 }}>
+          <div>
+            <p style={eyebrowSmall}>Today&apos;s work</p>
+            <h2 style={sectionTitle}>Shift dashboard</h2>
+          </div>
+          <span style={portalStats.briefSubmitted ? hotPill : pill}>
+            {portalStats.briefSubmitted ? "Brief submitted" : "Brief pending"}
+          </span>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10 }} className="number-grid">
+          <ShiftCard label="Follow-ups due" value={String(followUpsDue.length)} tone={followUpsDue.length ? "hot" : "calm"} />
+          <ShiftCard label="Draft leads" value={String(draftLeads.length)} />
+          <ShiftCard label="Submitted today" value={String(portalStats.submittedToday)} />
+          <ShiftCard label="Blocked items" value={String(blockedItems.length)} tone={blockedItems.length ? "hot" : "calm"} />
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, marginTop: 10 }} className="number-grid">
+          <ShiftCard label="Leads added" value={String(portalStats.addedToday)} />
+          <ShiftCard label="Leads updated" value={String(portalStats.updatedToday)} />
+          <ShiftCard label="Under review" value={String(submittedDeals.length)} />
+          <ShiftCard label="Queue total" value={String(deals.length)} />
+        </div>
+      </section>
+
+      <div style={{ ...panel, padding: 8, marginBottom: 16, display: "flex", gap: 8, flexWrap: "wrap" }}>
+        {TABS.map(tab => (
+          <button
+            key={tab.value}
+            onClick={() => setActiveTab(tab.value)}
+            style={activeTab === tab.value ? tabActive : tabButton}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
       <div style={{ display: "grid", gridTemplateColumns: "330px minmax(0, 1fr)", gap: 18 }} className="va-workspace">
         <aside style={panel}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 12 }}>
@@ -467,6 +542,7 @@ export default function VaPage() {
         </aside>
 
         <main style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          {activeTab === "leads" && (
           <section style={panel}>
             <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1.1fr) minmax(300px, 0.9fr)", gap: 18 }} className="va-form-grid">
               <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
@@ -596,24 +672,89 @@ export default function VaPage() {
                   </div>
                 </div>
                 <div style={subPanel}>
-                  <p style={eyebrowSmall}>Generated diligence</p>
+                  <p style={eyebrowSmall}>Ready to submit?</p>
                   <p style={{ fontSize: 13, color: "var(--muted)", marginBottom: 10 }}>
-                    {selected ? `${cleared}/${checklist.length} cleared · ${blocked} blocked` : `${liveChecklist.length} items will be created when saved.`}
+                    {readyCount}/{readinessItems.length} quality checks complete. Finish the missing items before sending to members when possible.
                   </p>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 340, overflow: "auto" }}>
-                    {selected ? checklist.map(item => (
-                      <div key={item.id} style={{ border: "1px solid var(--fog)", borderRadius: 8, padding: 10, background: "var(--surface)" }}>
-                        <p style={{ fontSize: 13, fontWeight: 700, color: "var(--obsidian)", marginBottom: 4 }}>{item.title}</p>
-                        <p style={{ fontSize: 11, color: "var(--muted)", lineHeight: 1.4 }}>{item.required_evidence}</p>
-                        <select value={item.status} onChange={e => updateChecklist(item, e.target.value as ChecklistStatus)} style={{ marginTop: 8 }}>
-                          {CHECKLIST_STATUSES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
-                        </select>
+                  <div style={{ display: "grid", gap: 8 }}>
+                    {readinessItems.map(item => (
+                      <div key={item.label} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: item.done ? "var(--obsidian)" : "var(--muted)" }}>
+                        <span style={item.done ? readyDot : openDot} />
+                        {item.label}
                       </div>
-                    )) : liveChecklist.map((item, index) => (
-                      <div key={item.sort_order} style={{ border: "1px solid var(--fog)", borderRadius: 8, padding: 10, background: "var(--surface)" }}>
-                        <p style={{ fontSize: 13, fontWeight: 700, color: "var(--obsidian)", marginBottom: 4 }}>{item.title}</p>
-                        <p style={{ fontSize: 11, color: "var(--muted)", lineHeight: 1.4 }}>{item.required_evidence}</p>
-                        <p style={{ ...miniLabel, marginTop: 8 }}>Item {index + 1}</p>
+                    ))}
+                  </div>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 8 }}>
+                  <button onClick={() => saveDeal(draft.status ?? "lead")} disabled={saving} style={{ ...secondaryButton, opacity: saving ? 0.6 : 1 }}>
+                    {saving ? "Saving..." : "Save Updates"}
+                  </button>
+                  <button onClick={() => saveDeal("lead")} disabled={saving} style={{ ...secondaryButton, opacity: saving ? 0.6 : 1 }}>
+                    Save As Draft Lead
+                  </button>
+                  <button onClick={() => saveDeal("under-review")} disabled={saving} style={{ ...primaryButton, opacity: saving ? 0.6 : 1 }}>
+                    Submit For Member Review
+                  </button>
+                </div>
+              </aside>
+            </div>
+          </section>
+          )}
+
+          {activeTab === "follow-ups" && (
+          <section style={panel}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12, flexWrap: "wrap", marginBottom: 12 }}>
+              <div>
+                <p style={eyebrowSmall}>Next actions</p>
+                <h2 style={sectionTitle}>Follow-up queue</h2>
+              </div>
+              <span style={followUpsDue.length ? hotPill : pill}>{followUpsDue.length} due now</span>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 12 }} className="two-col">
+              {(followUpsDue.length ? followUpsDue : deals.filter(deal => deal.next_follow_up_date).slice(0, 8)).map(deal => (
+                <button
+                  key={deal.id}
+                  onClick={() => { setSelectedId(deal.id); setActiveTab("leads"); }}
+                  style={{
+                    ...subPanel,
+                    textAlign: "left",
+                    cursor: "pointer",
+                    background: selected?.id === deal.id ? "rgba(176,137,84,0.14)" : "var(--bone)",
+                  }}
+                >
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginBottom: 8 }}>
+                    <strong style={{ color: "var(--obsidian)", fontSize: 14 }}>{deal.title}</strong>
+                    <span style={deal.urgency === "hot" ? hotPill : pill}>{deal.next_follow_up_date || "No date"}</span>
+                  </div>
+                  <p style={{ fontSize: 12, color: "var(--muted)", marginBottom: 8 }}>{deal.seller_name || "Seller pending"} · {deal.seller_phone || "Phone pending"}</p>
+                  <p style={{ fontSize: 13, color: "var(--ink)", whiteSpace: "pre-wrap" }}>{deal.notes || "No follow-up notes yet."}</p>
+                </button>
+              ))}
+              {deals.filter(deal => deal.next_follow_up_date).length === 0 && (
+                <p style={{ fontSize: 13, color: "var(--muted)" }}>No follow-ups have been dated yet.</p>
+              )}
+            </div>
+          </section>
+          )}
+
+          {activeTab === "diligence" && (
+          <section style={panel}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12, flexWrap: "wrap", marginBottom: 12 }}>
+              <div>
+                <p style={eyebrowSmall}>Research quality</p>
+                <h2 style={sectionTitle}>Diligence & readiness</h2>
+              </div>
+              <span style={readyCount >= readinessItems.length ? hotPill : pill}>{readyCount}/{readinessItems.length} ready</span>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 0.9fr) minmax(0, 1.1fr)", gap: 14 }} className="two-col">
+              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                <div style={subPanel}>
+                  <p style={eyebrowSmall}>Ready to submit?</p>
+                  <div style={{ display: "grid", gap: 8 }}>
+                    {readinessItems.map(item => (
+                      <div key={item.label} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: item.done ? "var(--obsidian)" : "var(--muted)" }}>
+                        <span style={item.done ? readyDot : openDot} />
+                        {item.label}
                       </div>
                     ))}
                   </div>
@@ -639,21 +780,35 @@ export default function VaPage() {
                     {selected && attachments.length === 0 && <p style={{ fontSize: 12, color: "var(--muted)" }}>No attachments added yet.</p>}
                   </div>
                 </div>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 8 }}>
-                  <button onClick={() => saveDeal(draft.status ?? "lead")} disabled={saving} style={{ ...secondaryButton, opacity: saving ? 0.6 : 1 }}>
-                    {saving ? "Saving..." : "Save Updates"}
-                  </button>
-                  <button onClick={() => saveDeal("lead")} disabled={saving} style={{ ...secondaryButton, opacity: saving ? 0.6 : 1 }}>
-                    Save As Draft Lead
-                  </button>
-                  <button onClick={() => saveDeal("under-review")} disabled={saving} style={{ ...primaryButton, opacity: saving ? 0.6 : 1 }}>
-                    Submit For Member Review
-                  </button>
+              </div>
+              <div style={subPanel}>
+                <p style={eyebrowSmall}>Checklist</p>
+                <p style={{ fontSize: 13, color: "var(--muted)", marginBottom: 10 }}>
+                  {selected ? `${cleared}/${checklist.length} cleared · ${blocked} blocked` : `${liveChecklist.length} items will be created when saved.`}
+                </p>
+                <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 560, overflow: "auto" }}>
+                  {selected ? checklist.map(item => (
+                    <div key={item.id} style={{ border: "1px solid var(--fog)", borderRadius: 8, padding: 10, background: "var(--surface)" }}>
+                      <p style={{ fontSize: 13, fontWeight: 700, color: "var(--obsidian)", marginBottom: 4 }}>{item.title}</p>
+                      <p style={{ fontSize: 11, color: "var(--muted)", lineHeight: 1.4 }}>{item.required_evidence}</p>
+                      <select value={item.status} onChange={e => updateChecklist(item, e.target.value as ChecklistStatus)} style={{ marginTop: 8 }}>
+                        {CHECKLIST_STATUSES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
+                      </select>
+                    </div>
+                  )) : liveChecklist.map((item, index) => (
+                    <div key={item.sort_order} style={{ border: "1px solid var(--fog)", borderRadius: 8, padding: 10, background: "var(--surface)" }}>
+                      <p style={{ fontSize: 13, fontWeight: 700, color: "var(--obsidian)", marginBottom: 4 }}>{item.title}</p>
+                      <p style={{ fontSize: 11, color: "var(--muted)", lineHeight: 1.4 }}>{item.required_evidence}</p>
+                      <p style={{ ...miniLabel, marginTop: 8 }}>Item {index + 1}</p>
+                    </div>
+                  ))}
                 </div>
-              </aside>
+              </div>
             </div>
           </section>
+          )}
 
+          {activeTab === "brief" && (
           <section style={panel}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12, flexWrap: "wrap", marginBottom: 12 }}>
               <div>
@@ -720,6 +875,7 @@ export default function VaPage() {
               </div>
             </div>
           </section>
+          )}
         </main>
       </div>
 
@@ -760,6 +916,21 @@ function NumberField({ label: text, value, onChange }: { label: string; value: n
   );
 }
 
+function ShiftCard({ label: text, value, tone = "calm" }: { label: string; value: string; tone?: "calm" | "hot" }) {
+  return (
+    <div style={{
+      background: tone === "hot" ? "rgba(176,137,84,0.14)" : "var(--surface)",
+      border: tone === "hot" ? "1px solid var(--brass)" : "1px solid var(--fog)",
+      borderRadius: 8,
+      padding: 12,
+      minHeight: 72,
+    }}>
+      <p style={{ fontSize: 10, color: "var(--muted)", fontWeight: 700, letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: 5 }}>{text}</p>
+      <p style={{ fontSize: 24, fontWeight: 800, color: "var(--obsidian)", lineHeight: 1 }}>{value}</p>
+    </div>
+  );
+}
+
 const panel: React.CSSProperties = {
   background: "rgba(255,255,255,0.78)",
   border: "1px solid var(--fog)",
@@ -795,6 +966,28 @@ const secondaryButton: React.CSSProperties = {
   background: "transparent",
   color: "var(--obsidian)",
   border: "1px solid var(--fog)",
+};
+
+const tabButton: React.CSSProperties = {
+  background: "transparent",
+  color: "var(--muted)",
+  border: "1px solid transparent",
+  borderRadius: 6,
+  padding: "10px 13px",
+  minHeight: 40,
+  fontSize: 11,
+  fontWeight: 800,
+  letterSpacing: "0.14em",
+  textTransform: "uppercase",
+  fontFamily: "var(--font-body)",
+  cursor: "pointer",
+};
+
+const tabActive: React.CSSProperties = {
+  ...tabButton,
+  background: "var(--obsidian)",
+  color: "var(--bone)",
+  borderColor: "var(--obsidian)",
 };
 
 const label: React.CSSProperties = {
@@ -854,6 +1047,20 @@ const hotPill: React.CSSProperties = {
   borderColor: "var(--brass)",
   color: "var(--obsidian)",
   background: "rgba(176,137,84,0.14)",
+};
+
+const readyDot: React.CSSProperties = {
+  width: 10,
+  height: 10,
+  borderRadius: 999,
+  background: "var(--brass)",
+  flexShrink: 0,
+};
+
+const openDot: React.CSSProperties = {
+  ...readyDot,
+  background: "transparent",
+  border: "1px solid var(--fog)",
 };
 
 const miniStat: React.CSSProperties = {
