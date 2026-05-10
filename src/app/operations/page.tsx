@@ -28,6 +28,14 @@ import {
   type VaDailyBriefReview,
 } from "@/lib/va-briefs";
 import {
+  approveVaPayPeriod,
+  fetchVaTimeEntries,
+  formatDuration,
+  formatPayPeriod,
+  summarizeVaPayPeriods,
+  type VaTimeEntry,
+} from "@/lib/va-time";
+import {
   fetchLandLeadBatches,
   fetchImportedLandLeads,
   type ImportedLandLead,
@@ -68,6 +76,8 @@ export default function OperationsPage() {
   const [scenarios, setScenarios] = useState<DealScenario[]>([]);
   const [vaBriefs, setVaBriefs] = useState<VaDailyBrief[]>([]);
   const [vaBriefReviews, setVaBriefReviews] = useState<VaDailyBriefReview[]>([]);
+  const [vaTimeEntries, setVaTimeEntries] = useState<VaTimeEntry[]>([]);
+  const [approvingPeriod, setApprovingPeriod] = useState<string | null>(null);
   const [landLeadBatches, setLandLeadBatches] = useState<LandLeadBatch[]>([]);
   const [importedLeads, setImportedLeads] = useState<ImportedLandLead[]>([]);
   const [briefReviewNotes, setBriefReviewNotes] = useState<Record<string, string>>({});
@@ -89,15 +99,17 @@ export default function OperationsPage() {
       fetchDistributions(),
       fetchScenarios(),
       fetchVaDailyBriefs(12),
+      fetchVaTimeEntries(120),
       fetchLandLeadBatches(12),
       fetchImportedLandLeads(250),
-    ]).then(([projectRows, eventRows, reimbursementRows, distributionRows, scenarioRows, briefRows, batchRows, leadRows]) => {
+    ]).then(([projectRows, eventRows, reimbursementRows, distributionRows, scenarioRows, briefRows, timeRows, batchRows, leadRows]) => {
       setProjects(projectRows);
       setEvents(eventRows);
       setReimbursements(reimbursementRows);
       setDistributions(distributionRows);
       setScenarios(scenarioRows);
       setVaBriefs(briefRows);
+      setVaTimeEntries(timeRows);
       setLandLeadBatches(batchRows);
       setImportedLeads(leadRows);
       void fetchVaDailyBriefReviews(briefRows.map(brief => brief.id)).then(setVaBriefReviews);
@@ -112,6 +124,10 @@ export default function OperationsPage() {
     averageScore: importedLeads.length ? Math.round(importedLeads.reduce((sum, lead) => sum + (lead.lead_score ?? 0), 0) / importedLeads.length) : 0,
   }), [importedLeads]);
 
+  const vaPayPeriods = useMemo(() => summarizeVaPayPeriods(vaTimeEntries), [vaTimeEntries]);
+  const vaSubmittedHours = useMemo(() => vaTimeEntries.reduce((sum, entry) => sum + ((entry.status === "submitted" || entry.status === "approved") ? (entry.duration_minutes ?? 0) : 0), 0) / 60, [vaTimeEntries]);
+  const vaSubmittedCost = useMemo(() => vaTimeEntries.reduce((sum, entry) => sum + ((entry.status === "submitted" || entry.status === "approved") ? Number(entry.cost_amount ?? 0) : 0), 0), [vaTimeEntries]);
+
   const scenarioPreview = useMemo(() => calculateScenario({
     purchase_price: toNumber(scenarioDraft.purchase_price),
     rehab_or_site_cost: toNumber(scenarioDraft.rehab_or_site_cost),
@@ -120,6 +136,17 @@ export default function OperationsPage() {
     financing_costs: toNumber(scenarioDraft.financing_costs),
     exit_value: toNumber(scenarioDraft.exit_value),
   }), [scenarioDraft]);
+
+  const approvePeriod = async (periodKey: string) => {
+    if (!user) return;
+    const period = vaPayPeriods.find(row => `${row.operatorName}:${row.periodStart}` === periodKey);
+    if (!period) return;
+    setApprovingPeriod(periodKey);
+    const { error } = await approveVaPayPeriod(period, user);
+    setApprovingPeriod(null);
+    if (error) { alert(error); return; }
+    setVaTimeEntries(await fetchVaTimeEntries(120));
+  };
 
   if (!user) return null;
 
@@ -239,9 +266,58 @@ export default function OperationsPage() {
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12, flexWrap: "wrap", marginBottom: 12 }}>
           <div>
             <p style={eyebrow}>VA Accountability</p>
-            <h2 style={sectionTitle}>Daily briefs</h2>
+            <h2 style={sectionTitle}>Biweekly time and daily briefs</h2>
           </div>
-          <span style={comingSoonPill}>End-of-shift reports</span>
+          <span style={comingSoonPill}>Biweekly payroll</span>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10, marginBottom: 14 }} className="stat-grid">
+          <MiniStat label="Submitted VA hours" value={`${vaSubmittedHours.toFixed(2)} hrs`} />
+          <MiniStat label="Submitted VA cost" value={money(vaSubmittedCost)} />
+          <MiniStat label="Pay periods" value={String(vaPayPeriods.length)} />
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 12, marginBottom: 18 }} className="brief-grid">
+          {vaPayPeriods.length === 0 && <p style={{ color: "var(--muted)", fontSize: 13 }}>No VA time entries have been submitted yet.</p>}
+          {vaPayPeriods.slice(0, 4).map(period => {
+            const periodKey = `${period.operatorName}:${period.periodStart}`;
+            const canApprove = !period.open && !period.approved && period.totalCost > 0;
+            return (
+              <article key={periodKey} style={{ background: "var(--bone)", border: "1px solid var(--fog)", borderRadius: 8, padding: 12 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "baseline", marginBottom: 10 }}>
+                  <div>
+                    <p style={rowTitle}>{formatPayPeriod(period)}</p>
+                    <p style={rowMeta}>{period.operatorName} · {period.entries.length} shift{period.entries.length === 1 ? "" : "s"}</p>
+                  </div>
+                  <span style={smallPill}>{period.approved ? "Approved" : period.open ? "Open" : "Submitted"}</span>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 10 }}>
+                  <MiniStat label="Hours" value={period.totalHours.toFixed(2)} />
+                  <MiniStat label="Cost" value={money(period.totalCost)} />
+                </div>
+                <div style={{ display: "grid", gap: 6, marginBottom: 10 }}>
+                  {period.entries.slice(0, 4).map(entry => (
+                    <div key={entry.id} style={{ display: "flex", justifyContent: "space-between", gap: 10, fontSize: 12, color: "var(--ink)" }}>
+                      <span>{fmtDate(entry.clock_in_at)}{entry.clock_out_at ? ` - ${fmtDate(entry.clock_out_at)}` : " - active"}</span>
+                      <span>{formatDuration(entry.duration_minutes ?? 0)} · {money(Number(entry.cost_amount ?? 0))}</span>
+                    </div>
+                  ))}
+                </div>
+                <button
+                  onClick={() => approvePeriod(periodKey)}
+                  disabled={!canApprove || approvingPeriod === periodKey}
+                  style={{ ...primaryButton, opacity: !canApprove || approvingPeriod === periodKey ? 0.55 : 1, cursor: !canApprove ? "not-allowed" : "pointer" }}
+                >
+                  {period.approved ? "Synced to Expenses" : approvingPeriod === periodKey ? "Approving..." : "Approve + Sync Expense"}
+                </button>
+              </article>
+            );
+          })}
+        </div>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12, flexWrap: "wrap", marginBottom: 12 }}>
+          <div>
+            <p style={eyebrow}>End-of-shift reports</p>
+            <h3 style={{ ...sectionTitle, fontSize: 24 }}>Daily briefs</h3>
+          </div>
+          <span style={comingSoonPill}>Member review</span>
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12 }} className="brief-grid">
           {vaBriefs.length === 0 && <p style={{ color: "var(--muted)", fontSize: 13 }}>No VA daily briefs have been submitted yet.</p>}

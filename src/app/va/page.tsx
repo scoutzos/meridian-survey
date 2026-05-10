@@ -49,6 +49,17 @@ import {
   type VaDailyBrief,
   type VaDailyBriefInput,
 } from "@/lib/va-briefs";
+import {
+  clockInVa,
+  clockOutVa,
+  currentShiftMinutes,
+  fetchOpenVaTimeEntry,
+  fetchVaTimeEntries,
+  formatDuration,
+  getBiweeklyPayPeriod,
+  summarizeVaPayPeriods,
+  type VaTimeEntry,
+} from "@/lib/va-time";
 
 const DISPLAY_FONT = "var(--font-display)";
 
@@ -264,6 +275,10 @@ function formatDate(iso: string): string {
   }
 }
 
+function formatCurrency(value: number): string {
+  return value.toLocaleString(undefined, { style: "currency", currency: "USD", maximumFractionDigits: 2 });
+}
+
 function isSameDay(iso: string | null | undefined, date: string): boolean {
   return !!iso && iso.slice(0, 10) === date;
 }
@@ -415,6 +430,11 @@ export default function VaPage() {
   const [attachmentDraft, setAttachmentDraft] = useState(EMPTY_ATTACHMENT);
   const [briefDraft, setBriefDraft] = useState<VaDailyBriefInput>(EMPTY_BRIEF);
   const [briefs, setBriefs] = useState<VaDailyBrief[]>([]);
+  const [timeEntries, setTimeEntries] = useState<VaTimeEntry[]>([]);
+  const [openShift, setOpenShift] = useState<VaTimeEntry | null>(null);
+  const [shiftNotes, setShiftNotes] = useState("");
+  const [clockBusy, setClockBusy] = useState(false);
+  const [, setClockTick] = useState(0);
   const [importedLeads, setImportedLeads] = useState<ImportedLandLead[]>([]);
   const [leadBatches, setLeadBatches] = useState<LandLeadBatch[]>([]);
   const [selectedImportedLeadId, setSelectedImportedLeadId] = useState<string | null>(null);
@@ -448,9 +468,11 @@ export default function VaPage() {
 
   const reload = useCallback(async (memberName = user) => {
     setLoading(true);
-    const [rows, briefRows, importRows, batchRows, smsRows] = await Promise.all([
+    const [rows, briefRows, timeRows, currentShift, importRows, batchRows, smsRows] = await Promise.all([
       fetchDeals(),
       fetchVaDailyBriefs(8),
+      fetchVaTimeEntries(80),
+      memberName ? fetchOpenVaTimeEntry(memberName) : Promise.resolve(null),
       fetchImportedLandLeads(500),
       fetchLandLeadBatches(),
       fetchCommunicationEvents({ unmatched: true, limit: 25 }),
@@ -461,6 +483,8 @@ export default function VaPage() {
     );
     setDeals(activeRows);
     setBriefs(briefRows);
+    setTimeEntries(timeRows);
+    setOpenShift(currentShift);
     setImportedLeads(importRows);
     setLeadBatches(batchRows);
     setUnmatchedSms(smsRows);
@@ -475,11 +499,29 @@ export default function VaPage() {
     void reload(u);
   }, [router, reload]);
 
+  useEffect(() => {
+    if (!openShift) return;
+    const timer = window.setInterval(() => setClockTick(tick => tick + 1), 30000);
+    return () => window.clearInterval(timer);
+  }, [openShift]);
+
   const selected = useMemo(() => deals.find(deal => deal.id === selectedId) ?? null, [deals, selectedId]);
   const liveInput = useMemo(() => buildPayload(draft, draft.status ?? "lead"), [draft]);
   const liveAnalysis = useMemo(() => calculateDealAnalysis(liveInput), [liveInput]);
   const liveChecklist = useMemo(() => generateDueDiligenceChecklist(liveInput), [liveInput]);
   const today = useMemo(() => new Date().toISOString().slice(0, 10), []);
+  const currentPayPeriod = useMemo(() => getBiweeklyPayPeriod(today), [today]);
+  const payPeriods = useMemo(() => summarizeVaPayPeriods(timeEntries), [timeEntries]);
+  const currentPeriodSummary = useMemo(
+    () => payPeriods.find(period => period.periodStart === currentPayPeriod.periodStart && period.periodEnd === currentPayPeriod.periodEnd) ?? null,
+    [currentPayPeriod, payPeriods],
+  );
+  const todaysSubmittedMinutes = useMemo(() => timeEntries
+    .filter(entry => entry.clock_in_at.slice(0, 10) === briefDraft.work_date && entry.duration_minutes)
+    .reduce((sum, entry) => sum + (entry.duration_minutes ?? 0), 0),
+    [briefDraft.work_date, timeEntries],
+  );
+  const liveShiftMinutes = openShift ? currentShiftMinutes(openShift) : 0;
   const followUpsDue = useMemo(() => deals.filter(deal => isDueTodayOrPast(deal.next_follow_up_date, today)), [deals, today]);
   const draftLeads = useMemo(() => deals.filter(deal => deal.status === "lead"), [deals]);
   const submittedDeals = useMemo(() => deals.filter(deal => deal.status === "under-review"), [deals]);
@@ -948,6 +990,38 @@ export default function VaPage() {
     setMessage("Lead activity logged.");
   };
 
+  const handleClockIn = async () => {
+    if (!user) return;
+    setClockBusy(true);
+    setMessage("");
+    const { data, error } = await clockInVa(user);
+    setClockBusy(false);
+    if (error && !data) { setMessage(error); return; }
+    if (data) setOpenShift(data);
+    void reload(user);
+    setMessage("Clocked in. Your biweekly time period is now tracking.");
+  };
+
+  const handleClockOut = async () => {
+    if (!user || !openShift) return;
+    setClockBusy(true);
+    setMessage("");
+    const { data, error } = await clockOutVa(openShift, shiftNotes);
+    setClockBusy(false);
+    if (error) { setMessage(error); return; }
+    setOpenShift(null);
+    setShiftNotes("");
+    if (data) {
+      setBriefDraft(prev => ({
+        ...prev,
+        work_date: data.clock_in_at.slice(0, 10),
+        hours_worked: Number(((todaysSubmittedMinutes + (data.duration_minutes ?? 0)) / 60).toFixed(2)),
+      }));
+    }
+    void reload(user);
+    setMessage("Clocked out. Submitted time is ready for member review.");
+  };
+
   const autofillBriefStats = () => {
     const date = briefDraft.work_date;
     const sameDay = (iso?: string | null) => !!iso && iso.slice(0, 10) === date;
@@ -962,6 +1036,7 @@ export default function VaPage() {
       calls_completed: touchedImportedLeads.filter(lead => lead.last_activity_type === "called" || lead.last_activity_type === "left-voicemail").length,
       deals_submitted: ownDeals.filter(deal => deal.status === "under-review" && sameDay(deal.updated_at)).length,
       checklist_items_cleared: checklist.filter(item => sameDay(item.updated_at) && (item.status === "cleared" || item.status === "not-applicable") && item.updated_by === user).length,
+      hours_worked: todaysSubmittedMinutes > 0 ? Number((todaysSubmittedMinutes / 60).toFixed(2)) : prev.hours_worked,
     }));
   };
 
@@ -1063,6 +1138,50 @@ export default function VaPage() {
           <span style={portalStats.briefSubmitted ? hotPill : pill}>
             {portalStats.briefSubmitted ? "Brief submitted" : "Brief pending"}
           </span>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 280px", gap: 12, marginBottom: 12 }} className="two-col">
+          <div style={{ background: "rgba(247,242,232,0.08)", border: "1px solid rgba(247,242,232,0.16)", borderRadius: 8, padding: 12 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+              <div>
+                <p style={{ ...eyebrowSmall, color: "var(--brass)", marginBottom: 4 }}>Biweekly pay period</p>
+                <p style={{ color: "var(--bone)", fontSize: 14, fontWeight: 700 }}>
+                  {currentPayPeriod.periodStart} to {currentPayPeriod.periodEnd}
+                </p>
+                <p style={{ color: "rgba(247,242,232,0.68)", fontSize: 12, marginTop: 4 }}>
+                  {currentPeriodSummary ? `${currentPeriodSummary.totalHours.toFixed(2)} hrs submitted · ${formatCurrency(currentPeriodSummary.totalCost)}` : "No submitted time in this period yet"}
+                </p>
+              </div>
+              <div style={{ textAlign: "right" }}>
+                <p style={{ color: "rgba(247,242,232,0.68)", fontSize: 11, textTransform: "uppercase", letterSpacing: "0.12em", marginBottom: 4 }}>
+                  {openShift ? "Clocked in" : "Time clock"}
+                </p>
+                <p style={{ color: "var(--brass)", fontSize: 26, fontWeight: 800, lineHeight: 1 }}>
+                  {openShift ? formatDuration(liveShiftMinutes) : "Ready"}
+                </p>
+              </div>
+            </div>
+            {openShift && (
+              <textarea
+                rows={2}
+                value={shiftNotes}
+                onChange={e => setShiftNotes(e.target.value)}
+                placeholder="Optional shift notes before clocking out."
+                style={{ marginTop: 10, background: "rgba(247,242,232,0.95)" }}
+              />
+            )}
+          </div>
+          <div style={{ display: "grid", gap: 8 }}>
+            <button
+              onClick={openShift ? handleClockOut : handleClockIn}
+              disabled={clockBusy}
+              style={{ ...primaryButton, background: openShift ? "var(--brass)" : "var(--bone)", color: "var(--obsidian)", borderColor: openShift ? "var(--brass)" : "var(--bone)", opacity: clockBusy ? 0.65 : 1 }}
+            >
+              {clockBusy ? "Saving..." : openShift ? "Clock Out" : "Clock In"}
+            </button>
+            <button onClick={() => setActiveTab("brief")} style={{ ...secondaryButton, color: "var(--bone)", borderColor: "rgba(247,242,232,0.22)" }}>
+              End Shift Brief
+            </button>
+          </div>
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10 }} className="number-grid">
           <ShiftCard label="Follow-ups due" value={String(followUpsDue.length)} tone={followUpsDue.length ? "hot" : "calm"} />
@@ -2191,6 +2310,26 @@ export default function VaPage() {
               <button onClick={pullSakariBrief} style={secondaryButton}>
                 Pull Sakari Activity
               </button>
+            </div>
+            <div style={{ ...subPanel, marginTop: 12 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", marginBottom: 8 }}>
+                <div>
+                  <p style={eyebrowSmall}>Time clock</p>
+                  <strong style={{ color: "var(--obsidian)" }}>{briefDraft.work_date}</strong>
+                </div>
+                <span style={pill}>{(todaysSubmittedMinutes / 60).toFixed(2)} submitted hrs</span>
+              </div>
+              <div style={{ display: "grid", gap: 6 }}>
+                {timeEntries.filter(entry => entry.clock_in_at.slice(0, 10) === briefDraft.work_date).slice(0, 4).map(entry => (
+                  <div key={entry.id} style={{ display: "flex", justifyContent: "space-between", gap: 10, fontSize: 12, color: "var(--ink)" }}>
+                    <span>{formatDate(entry.clock_in_at)}{entry.clock_out_at ? ` - ${formatDate(entry.clock_out_at)}` : " - active"}</span>
+                    <span>{formatDuration(entry.duration_minutes ?? currentShiftMinutes(entry))} · {formatCurrency(Number(entry.cost_amount ?? 0))}</span>
+                  </div>
+                ))}
+                {timeEntries.filter(entry => entry.clock_in_at.slice(0, 10) === briefDraft.work_date).length === 0 && (
+                  <p style={{ color: "var(--muted)", fontSize: 12 }}>No clocked shifts for this date yet.</p>
+                )}
+              </div>
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 12 }} className="two-col">
               <div>
