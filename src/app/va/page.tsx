@@ -615,24 +615,30 @@ export default function VaPage() {
     if (!importPreview) return;
     setImporting(true);
     setMessage(`Importing ${importPreview.usableLeads} leads now. Large lists can take a minute; keep this tab open.`);
-    const result = await importLandLeadsFromCsv({
-      csvText: importPreview.csvText,
-      filename: importPreview.filename,
-      sourceSystem: uploadSource,
-      campaignSource: uploadCampaign,
-      actor: user,
-    });
-    setImporting(false);
-    if (result.error) { setMessage(result.error); return; }
-    const [leadRows, batchRows] = await Promise.all([fetchImportedLandLeads(500), fetchLandLeadBatches()]);
-    setImportedLeads(leadRows);
-    setLeadBatches(batchRows);
-    setImportPreview(null);
-    setMessage([
-      `Imported ${result.leads.length} lead${result.leads.length === 1 ? "" : "s"} from ${importPreview.filename}.`,
-      result.warning || "",
-    ].filter(Boolean).join(" "));
-    setActiveTab("imports");
+    try {
+      const result = await importLandLeadsFromCsv({
+        csvText: importPreview.csvText,
+        filename: importPreview.filename,
+        sourceSystem: uploadSource,
+        campaignSource: uploadCampaign,
+        actor: user,
+      });
+      if (result.error) { setMessage(`Import failed: ${result.error}`); return; }
+      const [leadRows, batchRows] = await Promise.all([fetchImportedLandLeads(500), fetchLandLeadBatches()]);
+      setImportedLeads(leadRows);
+      setLeadBatches(batchRows);
+      setImportPreview(null);
+      setMessage([
+        `Imported ${result.leads.length} lead${result.leads.length === 1 ? "" : "s"} from ${importPreview.filename}.`,
+        result.warning || "",
+      ].filter(Boolean).join(" "));
+      setActiveTab("imports");
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : "Unknown upload error.";
+      setMessage(`Import failed before it could finish: ${detail}`);
+    } finally {
+      setImporting(false);
+    }
   };
 
   const loadImportedLead = async (lead: ImportedLandLead, markInterested = true) => {

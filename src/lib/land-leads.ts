@@ -364,21 +364,20 @@ function legacyLeadInsert(lead: Omit<ImportedLandLead, "id" | "created_at" | "up
 async function insertLeadRowsInChunks(
   leads: Array<Omit<ImportedLandLead, "id" | "created_at" | "updated_at">>,
   useLegacyShape = false,
-): Promise<{ data: ImportedLandLead[]; error: { message?: string; code?: string } | null }> {
-  if (!supabase) return { data: [], error: null };
-  const inserted: ImportedLandLead[] = [];
+): Promise<{ count: number; error: { message?: string; code?: string } | null }> {
+  if (!supabase) return { count: 0, error: null };
+  let count = 0;
   const chunkSize = 100;
   for (let index = 0; index < leads.length; index += chunkSize) {
     const chunk = leads.slice(index, index + chunkSize);
     const payload = useLegacyShape ? chunk.map(legacyLeadInsert) : chunk;
-    const { data, error } = await supabase
+    const { error } = await supabase
       .from("meridian_imported_land_leads")
-      .insert(payload)
-      .select();
-    if (error || !data) return { data: inserted, error: error ?? { message: "Could not import lead rows." } };
-    inserted.push(...data as ImportedLandLead[]);
+      .insert(payload);
+    if (error) return { count, error };
+    count += chunk.length;
   }
-  return { data: inserted, error: null };
+  return { count, error: null };
 }
 
 export async function previewLandLeadsCsv(args: {
@@ -482,13 +481,37 @@ export async function importLandLeadsFromCsv(args: {
     if (legacy.error) return { batch, leads: [], error: legacy.error?.message ?? enhanced.error?.message ?? "Could not import lead rows." };
     return {
       batch,
-      leads: legacy.data,
+      leads: inserts.slice(0, legacy.count).map((lead, index) => ({
+        ...legacyLeadInsert(lead),
+        id: `${batch.id}-imported-${index}`,
+        created_at: now,
+        updated_at: now,
+        duplicate_status: lead.duplicate_status,
+        duplicate_of: lead.duplicate_of,
+        lead_score: lead.lead_score,
+        score_reasons: lead.score_reasons,
+        assigned_to: lead.assigned_to,
+        next_follow_up_date: lead.next_follow_up_date,
+        outreach_count: lead.outreach_count,
+        last_activity_at: lead.last_activity_at,
+        last_activity_type: lead.last_activity_type,
+      })),
       error: null,
       warning: warning ?? "Imported with the existing database schema. Run migration 028 to enable scoring, duplicate flags, batch status, and activity logging.",
     };
   }
   if (enhanced.error) return { batch, leads: [], error: enhanced.error?.message ?? "Could not import lead rows." };
-  return { batch, leads: enhanced.data, error: null, warning };
+  return {
+    batch,
+    leads: inserts.slice(0, enhanced.count).map((lead, index) => ({
+      ...lead,
+      id: `${batch.id}-imported-${index}`,
+      created_at: now,
+      updated_at: now,
+    })),
+    error: null,
+    warning,
+  };
 }
 
 export async function fetchLandLeadBatches(limit = 30): Promise<LandLeadBatch[]> {
