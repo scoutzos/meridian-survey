@@ -41,7 +41,7 @@ import {
   type LandLeadBatch,
   type LandLeadImportPreview,
 } from "@/lib/land-leads";
-import { fetchCommunicationEvents, type CommunicationEvent } from "@/lib/communications";
+import { attachCommunicationEventToDeal, attachCommunicationEventToLead, fetchCommunicationEvents, type CommunicationEvent } from "@/lib/communications";
 import {
   createVaDailyBrief,
   fetchVaDailyBriefs,
@@ -355,6 +355,7 @@ export default function VaPage() {
   const [selectedBatchId, setSelectedBatchId] = useState<string | null>(null);
   const [leadActivities, setLeadActivities] = useState<ImportedLandLeadActivity[]>([]);
   const [communicationEvents, setCommunicationEvents] = useState<CommunicationEvent[]>([]);
+  const [unmatchedSms, setUnmatchedSms] = useState<CommunicationEvent[]>([]);
   const [importPreview, setImportPreview] = useState<LandLeadImportPreview | null>(null);
   const [importStep, setImportStep] = useState<ImportStep>("upload");
   const [importStage, setImportStage] = useState<ImportStage>("idle");
@@ -365,6 +366,9 @@ export default function VaPage() {
   const [uploadSource, setUploadSource] = useState("Land Portal");
   const [uploadCampaign, setUploadCampaign] = useState("");
   const [activityDraft, setActivityDraft] = useState<{ activityType: ImportedLandLeadActivity["activity_type"]; summary: string; nextFollowUpDate: string }>({ activityType: "called", summary: "", nextFollowUpDate: "" });
+  const [smsDraft, setSmsDraft] = useState("");
+  const [draftCommunicationEventId, setDraftCommunicationEventId] = useState<string | null>(null);
+  const [smsSending, setSmsSending] = useState(false);
   const [saving, setSaving] = useState(false);
   const [briefSaving, setBriefSaving] = useState(false);
   const [importing, setImporting] = useState(false);
@@ -375,7 +379,13 @@ export default function VaPage() {
 
   const reload = useCallback(async (memberName = user) => {
     setLoading(true);
-    const [rows, briefRows, importRows, batchRows] = await Promise.all([fetchDeals(), fetchVaDailyBriefs(8), fetchImportedLandLeads(500), fetchLandLeadBatches()]);
+    const [rows, briefRows, importRows, batchRows, smsRows] = await Promise.all([
+      fetchDeals(),
+      fetchVaDailyBriefs(8),
+      fetchImportedLandLeads(500),
+      fetchLandLeadBatches(),
+      fetchCommunicationEvents({ unmatched: true, limit: 25 }),
+    ]);
     const activeRows = rows.filter(deal =>
       !["closed", "active-project", "stabilized", "sold"].includes(deal.status)
       && (!memberName || deal.created_by === memberName || deal.submitted_by === memberName || deal.assigned_to === memberName)
@@ -384,6 +394,7 @@ export default function VaPage() {
     setBriefs(briefRows);
     setImportedLeads(importRows);
     setLeadBatches(batchRows);
+    setUnmatchedSms(smsRows);
     setSelectedId(prev => prev && activeRows.some(d => d.id === prev) ? prev : activeRows[0]?.id ?? null);
     setLoading(false);
   }, [user]);
@@ -474,9 +485,11 @@ export default function VaPage() {
       setChecklist([]);
       setAttachments([]);
       setDraft(EMPTY_DRAFT);
+      setDraftCommunicationEventId(null);
       return;
     }
     setDraft(draftFromDeal(selected));
+    setDraftCommunicationEventId(null);
     void Promise.all([fetchDealChecklist(selected.id), fetchDealAttachments(selected.id)]).then(([items, files]) => {
       setChecklist(items);
       setAttachments(files);
@@ -502,6 +515,7 @@ export default function VaPage() {
     setAttachments([]);
     setDraft(EMPTY_DRAFT);
     setAttachmentDraft(EMPTY_ATTACHMENT());
+    setDraftCommunicationEventId(null);
     setMessage("");
     setActiveTab("leads");
     setNotifyReviewUpdate(false);
@@ -559,6 +573,11 @@ export default function VaPage() {
         summary: `Converted to deal packet: ${result.data.title}`,
       });
       setImportedLeads(await fetchImportedLandLeads());
+    }
+    if (draftCommunicationEventId) {
+      await attachCommunicationEventToDeal(draftCommunicationEventId, result.data.id, user);
+      setDraftCommunicationEventId(null);
+      setUnmatchedSms(await fetchCommunicationEvents({ unmatched: true, limit: 25 }));
     }
     if (status === "under-review") {
       if (shouldNotifyMembers) {
@@ -679,6 +698,7 @@ export default function VaPage() {
     setSelectedId(null);
     setChecklist([]);
     setAttachments([]);
+    setDraftCommunicationEventId(null);
     setDraft({
       ...EMPTY_DRAFT,
       ...imported,
@@ -695,6 +715,88 @@ export default function VaPage() {
       await updateImportedLandLeadStatus(lead.id, "interested", lead.deal_id);
       setImportedLeads(await fetchImportedLandLeads());
     }
+  };
+
+  const refreshSelectedLeadMessages = async (leadId: string) => {
+    const [leadRows, activityRows, commRows, unmatchedRows] = await Promise.all([
+      fetchImportedLandLeads(500),
+      fetchImportedLandLeadActivities(leadId),
+      fetchCommunicationEvents({ leadId, limit: 30 }),
+      fetchCommunicationEvents({ unmatched: true, limit: 25 }),
+    ]);
+    setImportedLeads(leadRows);
+    setLeadActivities(activityRows);
+    setCommunicationEvents(commRows);
+    setUnmatchedSms(unmatchedRows);
+  };
+
+  const sendSmsToLead = async () => {
+    if (!selectedImportedLead) { setMessage("Select an imported lead first."); return; }
+    const toNumber = selectedImportedLead.phone || selectedImportedLead.phone_2;
+    if (!toNumber) { setMessage("This lead does not have a phone number."); return; }
+    if (selectedImportedLead.sms_opt_status === "opted-out") { setMessage("This seller has opted out. Do not text this number."); return; }
+    const body = smsDraft.trim();
+    if (!body) { setMessage("Write a text message before sending."); return; }
+    setSmsSending(true);
+    setMessage("");
+    try {
+      const response = await fetch("/api/sakari/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          toNumber,
+          message: body,
+          actor: user,
+          leadId: selectedImportedLead.id,
+        }),
+      });
+      const result = await response.json().catch(() => ({})) as { error?: string };
+      if (!response.ok || result.error) {
+        setMessage(`SMS failed: ${result.error || response.statusText}`);
+        return;
+      }
+      setSmsDraft("");
+      await refreshSelectedLeadMessages(selectedImportedLead.id);
+      setMessage("SMS sent through Sakari.");
+    } catch (error) {
+      setMessage(`SMS failed: ${error instanceof Error ? error.message : "Unknown error"}`);
+    } finally {
+      setSmsSending(false);
+    }
+  };
+
+  const attachUnmatchedSmsToLead = async (event: CommunicationEvent) => {
+    if (!selectedImportedLead) { setMessage("Select the matching imported lead first."); return; }
+    const { error } = await attachCommunicationEventToLead(event.id, selectedImportedLead.id, user);
+    if (error) { setMessage(error); return; }
+    await refreshSelectedLeadMessages(selectedImportedLead.id);
+    setMessage("SMS attached to the selected lead.");
+  };
+
+  const createLeadDraftFromSms = (event: CommunicationEvent) => {
+    setSelectedId(null);
+    setChecklist([]);
+    setAttachments([]);
+    setDraftCommunicationEventId(event.id);
+    setDraft({
+      ...EMPTY_DRAFT,
+      title: `SMS lead · ${event.contact_number || event.from_number || "Unknown number"}`,
+      source: "Sakari SMS",
+      property_type: "land",
+      seller_name: event.contact_name || "",
+      seller_phone: event.contact_number || event.from_number || "",
+      notes: [
+        "Lead started from unmatched Sakari message.",
+        event.body ? `Seller text: ${event.body}` : "",
+        event.provider_created_at ? `Received: ${formatDate(event.provider_created_at)}` : "",
+      ].filter(Boolean).join("\n"),
+      submitted_by: user,
+      assigned_to: user,
+      campaign_source: "Inbound SMS",
+      lead_temperature: event.direction === "inbound" ? "hot" : "warm",
+    });
+    setActiveTab("leads");
+    setMessage("Unmatched SMS loaded as a new lead draft. Add property details before saving.");
   };
 
   const logLeadActivity = async () => {
@@ -1109,6 +1211,33 @@ export default function VaPage() {
               <ShiftCard label="Converted" value={String(importStats.converted)} />
             </div>
 
+            {unmatchedSms.length > 0 && (
+              <div style={{ ...subPanel, marginBottom: 12, borderColor: "var(--brass)" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "baseline", marginBottom: 10 }}>
+                  <div>
+                    <p style={eyebrowSmall}>Unmatched SMS inbox</p>
+                    <h3 style={{ ...sectionTitle, fontSize: 20 }}>{unmatchedSms.length} message{unmatchedSms.length === 1 ? "" : "s"} need matching</h3>
+                  </div>
+                  <button onClick={() => { void fetchCommunicationEvents({ unmatched: true, limit: 25 }).then(setUnmatchedSms); }} style={secondaryButton}>Refresh</button>
+                </div>
+                <div style={{ display: "grid", gap: 8 }}>
+                  {unmatchedSms.slice(0, 5).map(event => (
+                    <div key={event.id} style={{ border: "1px solid var(--fog)", borderRadius: 8, padding: 10, background: "var(--surface)" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", marginBottom: 6 }}>
+                        <strong style={{ color: "var(--obsidian)", fontSize: 13 }}>{event.contact_number || event.from_number || "Unknown number"}</strong>
+                        <span style={pill}>{formatDate(event.provider_created_at || event.created_at)}</span>
+                      </div>
+                      <p style={{ color: "var(--ink)", fontSize: 13, lineHeight: 1.45, marginBottom: 10 }}>{event.body || event.status || event.provider_event_type}</p>
+                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                        <button onClick={() => attachUnmatchedSmsToLead(event)} style={secondaryButton}>Attach To Selected Lead</button>
+                        <button onClick={() => createLeadDraftFromSms(event)} style={primaryButton}>Create New Lead</button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {(importStep === "upload" || (!importPreview && importedLeads.length === 0)) && (
               <div style={{ ...subPanel, marginBottom: 12 }}>
                 <div style={{ display: "grid", gridTemplateColumns: "220px minmax(0, 1fr)", gap: 12 }} className="two-col">
@@ -1384,6 +1513,29 @@ export default function VaPage() {
                     </div>
                     <div style={{ borderTop: "1px solid var(--fog)", paddingTop: 12, marginTop: 12 }}>
                       <p style={eyebrowSmall}>Sakari SMS</p>
+                      <div style={{ border: "1px solid var(--fog)", borderRadius: 8, padding: 10, background: "var(--surface)", marginBottom: 12 }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 8 }}>
+                          <strong style={{ color: "var(--obsidian)", fontSize: 13 }}>Send text</strong>
+                          <span style={pill}>{selectedImportedLead.phone || selectedImportedLead.phone_2 || "No phone"}</span>
+                        </div>
+                        <textarea
+                          rows={3}
+                          value={smsDraft}
+                          onChange={e => setSmsDraft(e.target.value)}
+                          placeholder="Type the SMS to send through Sakari."
+                          disabled={!selectedImportedLead.phone && !selectedImportedLead.phone_2}
+                        />
+                        <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", marginTop: 8 }}>
+                          <span style={{ fontSize: 12, color: "var(--muted)" }}>{smsDraft.trim().length} chars</span>
+                          <button
+                            onClick={sendSmsToLead}
+                            disabled={smsSending || (!selectedImportedLead.phone && !selectedImportedLead.phone_2) || selectedImportedLead.sms_opt_status === "opted-out"}
+                            style={{ ...primaryButton, opacity: smsSending || selectedImportedLead.sms_opt_status === "opted-out" ? 0.6 : 1 }}
+                          >
+                            {smsSending ? "Sending..." : "Send SMS"}
+                          </button>
+                        </div>
+                      </div>
                       <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 220, overflow: "auto", marginBottom: 12 }}>
                         {communicationEvents.map(event => (
                           <div key={event.id} style={{ border: "1px solid var(--fog)", borderRadius: 8, padding: 8, background: "var(--surface)" }}>

@@ -1,4 +1,5 @@
 import { supabase } from "./supabase";
+import { createDealActivity } from "./deals";
 import { createImportedLandLeadActivity, type ImportedLandLeadActivity } from "./land-leads";
 
 export interface CommunicationEvent {
@@ -200,10 +201,14 @@ export async function handleSakariWebhook(body: SakariWebhookBody): Promise<{ ev
   return { event, error: null };
 }
 
-export async function fetchCommunicationEvents(args: { leadId?: string | null; dealId?: string | null; limit?: number } = {}): Promise<CommunicationEvent[]> {
+export async function fetchCommunicationEvents(args: { leadId?: string | null; dealId?: string | null; unmatched?: boolean; limit?: number } = {}): Promise<CommunicationEvent[]> {
   if (!supabase) {
     return localGet<CommunicationEvent[]>(LOCAL_COMMS, [])
-      .filter(event => (!args.leadId || event.matched_lead_id === args.leadId) && (!args.dealId || event.matched_deal_id === args.dealId))
+      .filter(event =>
+        (!args.leadId || event.matched_lead_id === args.leadId)
+        && (!args.dealId || event.matched_deal_id === args.dealId)
+        && (!args.unmatched || (!event.matched_lead_id && !event.matched_deal_id))
+      )
       .slice(0, args.limit ?? 50);
   }
   let query = supabase
@@ -213,7 +218,186 @@ export async function fetchCommunicationEvents(args: { leadId?: string | null; d
     .limit(args.limit ?? 50);
   if (args.leadId) query = query.eq("matched_lead_id", args.leadId);
   if (args.dealId) query = query.eq("matched_deal_id", args.dealId);
+  if (args.unmatched) query = query.is("matched_lead_id", null).is("matched_deal_id", null);
   const { data, error } = await query;
   if (error || !data) return [];
   return data as CommunicationEvent[];
+}
+
+export async function attachCommunicationEventToLead(eventId: string, leadId: string, actor: string): Promise<{ error: string | null }> {
+  if (!supabase) {
+    const rows = localGet<CommunicationEvent[]>(LOCAL_COMMS, []);
+    localSet(LOCAL_COMMS, rows.map(row => row.id === eventId ? { ...row, matched_lead_id: leadId } : row));
+    return { error: null };
+  }
+  const { data: event, error: eventError } = await supabase
+    .from("meridian_communication_events")
+    .select("*")
+    .eq("id", eventId)
+    .single();
+  if (eventError || !event) return { error: eventError?.message ?? "Could not find SMS event." };
+
+  const row = event as CommunicationEvent;
+  const { error } = await supabase
+    .from("meridian_communication_events")
+    .update({ matched_lead_id: leadId })
+    .eq("id", eventId);
+  if (error) return { error: error.message };
+
+  await createImportedLandLeadActivity({
+    leadId,
+    actor,
+    activityType: activityTypeFor(row),
+    summary: activitySummary(row),
+  });
+  await supabase
+    .from("meridian_imported_land_leads")
+    .update({
+      last_sms_at: row.provider_created_at || row.created_at,
+      last_sms_direction: row.direction === "inbound" || row.direction === "outbound" ? row.direction : null,
+      last_sms_body: row.body,
+      sakari_contact_id: row.provider_contact_id,
+      sakari_conversation_id: row.provider_conversation_id,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", leadId);
+  return { error: null };
+}
+
+export async function attachCommunicationEventToDeal(eventId: string, dealId: string, actor: string): Promise<{ error: string | null }> {
+  if (!supabase) {
+    const rows = localGet<CommunicationEvent[]>(LOCAL_COMMS, []);
+    localSet(LOCAL_COMMS, rows.map(row => row.id === eventId ? { ...row, matched_deal_id: dealId } : row));
+    return { error: null };
+  }
+  const { data: event, error: eventError } = await supabase
+    .from("meridian_communication_events")
+    .select("*")
+    .eq("id", eventId)
+    .single();
+  if (eventError || !event) return { error: eventError?.message ?? "Could not find SMS event." };
+
+  const row = event as CommunicationEvent;
+  const { error } = await supabase
+    .from("meridian_communication_events")
+    .update({ matched_deal_id: dealId })
+    .eq("id", eventId);
+  if (error) return { error: error.message };
+
+  await createDealActivity({
+    deal_id: dealId,
+    actor,
+    activity_type: "updated",
+    summary: activitySummary(row),
+    field_changes: { communication_event_id: eventId, provider: row.provider, direction: row.direction },
+  });
+  return { error: null };
+}
+
+async function getSakariToken(): Promise<{ token: string | null; error: string | null }> {
+  const clientId = process.env.SAKARI_CLIENT_ID;
+  const clientSecret = process.env.SAKARI_CLIENT_SECRET;
+  if (!clientId || !clientSecret) return { token: null, error: "Missing SAKARI_CLIENT_ID or SAKARI_CLIENT_SECRET in Vercel." };
+
+  const response = await fetch("https://api.sakari.io/oauth2/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      grant_type: "client_credentials",
+      client_id: clientId,
+      client_secret: clientSecret,
+    }),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) return { token: null, error: `Sakari auth failed: ${JSON.stringify(data).slice(0, 240)}` };
+  return { token: text((data as Record<string, unknown>).access_token), error: null };
+}
+
+export async function sendSakariSms(args: {
+  toNumber: string;
+  message: string;
+  actor: string;
+  leadId?: string | null;
+  dealId?: string | null;
+}): Promise<{ event: CommunicationEvent | null; error: string | null }> {
+  const accountId = process.env.SAKARI_ACCOUNT_ID;
+  if (!accountId) return { event: null, error: "Missing SAKARI_ACCOUNT_ID in Vercel." };
+  const { token, error: tokenError } = await getSakariToken();
+  if (tokenError || !token) return { event: null, error: tokenError ?? "Could not authenticate with Sakari." };
+
+  const groupId = process.env.SAKARI_GROUP_ID;
+  const body: Record<string, unknown> = {
+    contacts: [{ mobile: { number: args.toNumber, country: "US" } }],
+    template: args.message,
+    type: "SMS",
+  };
+  if (groupId) body.phoneNumberFilter = { group: { id: groupId } };
+
+  const response = await fetch(`https://api.sakari.io/v1/accounts/${accountId}/messages`, {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) return { event: null, error: `Sakari send failed: ${JSON.stringify(data).slice(0, 260)}` };
+
+  const message = (((data as Record<string, unknown>).data as Record<string, unknown> | undefined)?.messages as Array<Record<string, unknown>> | undefined)?.[0];
+  const eventRow = {
+    provider: "sakari",
+    provider_event_type: "message-sent",
+    provider_message_id: text(message?.id) || `manual-${Date.now()}`,
+    provider_contact_id: text(nested(message, ["contact", "id"])),
+    provider_conversation_id: null,
+    direction: "outbound" as const,
+    channel: "sms",
+    from_number: null,
+    to_number: args.toNumber,
+    contact_number: args.toNumber,
+    contact_name: null,
+    body: args.message,
+    status: text(message?.status) || "sent",
+    media: [],
+    raw_payload: data as Record<string, unknown>,
+    matched_lead_id: args.leadId || null,
+    matched_deal_id: args.dealId || null,
+    provider_created_at: text(nested(message, ["created", "at"])) || new Date().toISOString(),
+  };
+
+  if (!supabase) {
+    const now = new Date().toISOString();
+    const event: CommunicationEvent = { ...eventRow, id: `comm-${Date.now()}`, created_at: now };
+    localSet(LOCAL_COMMS, [event, ...localGet<CommunicationEvent[]>(LOCAL_COMMS, [])]);
+    return { event, error: null };
+  }
+
+  const { data: saved, error } = await supabase
+    .from("meridian_communication_events")
+    .upsert(eventRow, { onConflict: "provider,provider_message_id,provider_event_type" })
+    .select()
+    .single();
+  if (error || !saved) return { event: null, error: error?.message ?? "SMS sent, but Meridian could not save the event." };
+
+  if (args.leadId) {
+    await createImportedLandLeadActivity({
+      leadId: args.leadId,
+      actor: args.actor,
+      activityType: "texted",
+      summary: `SMS sent from Meridian · "${args.message}"`,
+    });
+    await supabase
+      .from("meridian_imported_land_leads")
+      .update({
+        last_sms_at: eventRow.provider_created_at,
+        last_sms_direction: "outbound",
+        last_sms_body: args.message,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", args.leadId);
+  }
+
+  return { event: saved as CommunicationEvent, error: null };
 }
