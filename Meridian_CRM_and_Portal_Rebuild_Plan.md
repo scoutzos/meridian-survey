@@ -1512,10 +1512,15 @@ Completed in this pass:
   - Member task creation can now link tasks to records in the Document Library.
   - Document-linked task detail shows `Document` as the source context and opens back to `/documents`.
   - This uses the current library records until the larger document ownership/indexing system is upgraded.
+- Continued with Supabase Auth cutover:
+  - Added migration `040_supabase_auth_identity_bridge.sql` with `auth_email`, `auth_user_id`, `auth_provider`, and `auth_migrated_at` fields on `meridian_members`.
+  - Login now uses Supabase Auth automatically for users with `auth_email` populated, while legacy table passwords continue to work for unmigrated users.
+  - Supabase Auth password reset emails are used for migrated users; legacy default-password reset remains for unmigrated users.
+  - Sign out now clears the Meridian local identity and signs out of Supabase Auth when a Supabase session exists.
 
 Remaining:
 
-- Cut over from client-side prototype login to Supabase Auth, then remove prototype anon policies and verify the staged RLS policies with real member and VA users.
+- Create Supabase Auth users for each member/VA, set their `user_metadata.member_name`, populate `meridian_members.auth_email`, then remove prototype anon policies and verify staged RLS with real accounts.
 
 Risk: High if skipped. Members will keep assigning VA work through texts or side conversations, which defeats the purpose of the portal.
 

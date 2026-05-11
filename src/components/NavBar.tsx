@@ -2,7 +2,7 @@
 import { useRouter, usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import type { CSSProperties } from "react";
-import { isVaUser } from "@/lib/identity";
+import { getCurrentMeridianUser, isVaUser, signOutMeridianUser } from "@/lib/identity";
 import Logo from "./Logo";
 
 const crmRoutes = ["/crm", "/va"];
@@ -47,7 +47,7 @@ export default function NavBar() {
   const [crmView, setCrmView] = useState<string | null>(null);
 
   useEffect(() => {
-    setUser(localStorage.getItem("meridian_user"));
+    setUser(getCurrentMeridianUser());
     if (pathname === "/crm") {
       setCrmView(new URLSearchParams(window.location.search).get("view"));
     } else {
@@ -56,6 +56,10 @@ export default function NavBar() {
   }, [pathname]);
 
   const crmShell = !!user && crmRoutes.some(route => pathname === route || pathname.startsWith(route + "/"));
+  const handleSignOut = async () => {
+    await signOutMeridianUser();
+    router.push("/");
+  };
 
   useEffect(() => {
     document.body.classList.toggle("crm-shell-active", crmShell);
@@ -130,7 +134,7 @@ export default function NavBar() {
             <span style={{ display: "block", color: "rgba(237,230,214,0.62)", fontSize: 10, marginBottom: 4 }}>Signed in</span>
             <strong style={{ display: "block", color: "var(--bone)", fontSize: 12 }}>{user}</strong>
             <button
-              onClick={() => { localStorage.removeItem("meridian_user"); router.push("/"); }}
+              onClick={handleSignOut}
               style={{ marginTop: 8, background: "transparent", border: "none", color: "var(--brass)", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.14em" }}
             >
               Sign out
@@ -215,7 +219,7 @@ export default function NavBar() {
           fontWeight: 500,
         }}>{user}</span>
         <button
-          onClick={() => { localStorage.removeItem("meridian_user"); router.push("/"); }}
+          onClick={handleSignOut}
           style={{
             background: "none", border: "none",
             color: "var(--fog)",
