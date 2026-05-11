@@ -161,6 +161,45 @@ function CrmContent() {
     }
   }, [data.deals, searchParams]);
 
+  useEffect(() => {
+    const requestedContact = searchParams.get("contact");
+    const requestedProperty = searchParams.get("property");
+    const requestedBuyer = searchParams.get("buyer");
+    const requestedCampaign = searchParams.get("campaign");
+    const requestedOffer = searchParams.get("offer");
+
+    if (requestedContact && data.contacts.some(contact => contact.id === requestedContact)) {
+      setSelectedContactId(requestedContact);
+      setView("records");
+    }
+
+    if (requestedProperty && data.properties.some(property => property.id === requestedProperty)) {
+      setSelectedPropertyId(requestedProperty);
+      setView("records");
+    }
+
+    if (requestedBuyer && data.buyers.some(buyer => buyer.id === requestedBuyer)) {
+      setSelectedBuyerId(requestedBuyer);
+      setView("buyers");
+    }
+
+    if (requestedCampaign && data.campaigns.some(campaign => campaign.id === requestedCampaign)) {
+      setSelectedCampaignId(requestedCampaign);
+      const campaign = data.campaigns.find(row => row.id === requestedCampaign);
+      if (campaign?.deal_id) setSelectedDealId(campaign.deal_id);
+      setView("dispo");
+    }
+
+    if (requestedOffer && data.offers.some(offer => offer.id === requestedOffer)) {
+      setSelectedOfferId(requestedOffer);
+      const offer = data.offers.find(row => row.id === requestedOffer);
+      if (offer?.deal_id) setSelectedDealId(offer.deal_id);
+      if (offer?.buyer_id) setSelectedBuyerId(offer.buyer_id);
+      if (offer?.disposition_campaign_id) setSelectedCampaignId(offer.disposition_campaign_id);
+      setView("dispo");
+    }
+  }, [data.buyers, data.campaigns, data.contacts, data.offers, data.properties, searchParams]);
+
   const selectedDeal = useMemo(() => data.deals.find(deal => deal.id === selectedDealId) ?? data.deals[0] ?? null, [data.deals, selectedDealId]);
   const selectedContact = useMemo(() => data.contacts.find(contact => contact.id === selectedContactId) ?? data.contacts[0] ?? null, [data.contacts, selectedContactId]);
   const selectedBuyer = useMemo(() => data.buyers.find(buyer => buyer.id === selectedBuyerId) ?? data.buyers[0] ?? null, [data.buyers, selectedBuyerId]);

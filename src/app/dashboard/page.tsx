@@ -346,6 +346,8 @@ export default function DashboardPage() {
   const latestVaBriefReviewedByMe = latestVaBrief ? vaBriefReviews.some(review => review.brief_id === latestVaBrief.id && review.member_name === user) : false;
   const unreviewedVaBriefs = vaBriefs.filter(brief => !vaBriefReviews.some(review => review.brief_id === brief.id && review.member_name === user));
   const operationsCount = openCapitalCalls.length + suggestedCapitalCalls.length + pendingReimbursements.length + unmatchedSellerReplies.length + unreviewedVaBriefs.length;
+  const firstIncompleteSurvey = incompleteSurveys[0];
+  const firstPendingCandidate = pendingCandidateVotes[0];
   const attentionRows = [
     ...pendingVotes.slice(0, 3).map(notice => ({
       id: notice.id,
@@ -361,7 +363,7 @@ export default function DashboardPage() {
       label: item.task_type === "va-work" ? "VA Task" : "Task",
       title: item.title,
       detail: `${item.status === "in-progress" ? "In progress" : "Open"}${formatDueDate(item.due_date) ? ` · Due ${formatDueDate(item.due_date)}` : ""}`,
-      href: "/actions",
+      href: `/actions?task=${item.id}`,
       action: "Open",
       urgent: item.priority === "high" || item.priority === "urgent",
     })),
@@ -379,7 +381,7 @@ export default function DashboardPage() {
       label: "VA Brief",
       title: "Daily brief needs member review",
       detail: latestVaBrief ? `${formatActivityDate(latestVaBrief.work_date)} · ${latestVaBrief.submitted_by}` : "Latest shift summary is waiting.",
-      href: "/operations",
+      href: "/operations?tab=va-briefs",
       action: "Review",
       urgent: true,
     }] : []),
@@ -388,7 +390,7 @@ export default function DashboardPage() {
       label: "Seller Reply",
       title: "Unmatched seller replies",
       detail: `${unmatchedSellerReplies.length} message${unmatchedSellerReplies.length === 1 ? "" : "s"} need CRM matching.`,
-      href: "/crm",
+      href: "/crm?view=inbox",
       action: "Open CRM",
       urgent: true,
     }] : []),
@@ -397,7 +399,7 @@ export default function DashboardPage() {
       label: "Survey",
       title: "Survey answers incomplete",
       detail: `${incompleteSurveys.length} survey${incompleteSurveys.length === 1 ? "" : "s"} still need answers.`,
-      href: "/surveys",
+      href: firstIncompleteSurvey ? `/survey/${firstIncompleteSurvey.surveyId}` : "/surveys",
       action: "Continue",
       urgent: false,
     }] : []),
@@ -405,8 +407,8 @@ export default function DashboardPage() {
   const secondaryTools = [
     { label: "Documents", detail: "Agreements, runbooks, and records", href: "/documents", count: 0 },
     { label: "Meetings", detail: nextMeeting?.meeting_date ? formatMeetingDate(nextMeeting.meeting_date) || "Scheduled" : "Agenda and notes", href: "/meetings", count: nextMeeting?.meeting_date ? 1 : 0 },
-    { label: "Applications", detail: "Candidate/member reviews", href: "/members/candidates", count: pendingCandidateVotes.length },
-    { label: "Surveys", detail: "Formation and member inputs", href: "/surveys", count: incompleteSurveys.length },
+    { label: "Applications", detail: "Candidate/member reviews", href: firstPendingCandidate ? `/members/candidates?candidate=${firstPendingCandidate.id}` : "/members/candidates", count: pendingCandidateVotes.length },
+    { label: "Surveys", detail: "Formation and member inputs", href: firstIncompleteSurvey ? `/survey/${firstIncompleteSurvey.surveyId}` : "/surveys", count: incompleteSurveys.length },
     { label: "Directory", detail: `${memberDirectory.length || MEMBERS.length} member profiles`, href: "/hub", count: memberDirectory.length || MEMBERS.length },
     { label: "Archive", detail: "Announcements and legacy records", href: "/hub", count: decisions.length },
   ];
@@ -416,7 +418,7 @@ export default function DashboardPage() {
       value: taskInboxCount,
       detail: "Votes, tasks, capital items, and surveys waiting.",
       action: "Open Tasks",
-      onAction: () => router.push("/actions"),
+      onAction: () => router.push("/actions?filter=needs-me"),
       tone: taskInboxCount ? "hot" as const : "default" as const,
     },
     {
@@ -432,7 +434,7 @@ export default function DashboardPage() {
       value: operationsCount,
       detail: "VA briefs, money items, reimbursements, and seller replies.",
       action: "Open Ops",
-      onAction: () => router.push("/operations"),
+      onAction: () => router.push(unreviewedVaBriefs.length ? "/operations?tab=va-briefs" : pendingReimbursements.length ? "/operations?tab=finance" : "/operations?tab=overview"),
       tone: operationsCount ? "hot" as const : "default" as const,
     },
     {
@@ -440,7 +442,7 @@ export default function DashboardPage() {
       value: activeProjects.length,
       detail: latestVaBrief && !latestVaBriefReviewedByMe ? "Latest VA brief still needs review." : "Projects and VA updates are connected here.",
       action: latestVaBrief && !latestVaBriefReviewedByMe ? "Review Brief" : "Open Projects",
-      onAction: () => router.push(latestVaBrief && !latestVaBriefReviewedByMe ? "/operations" : "/projects"),
+      onAction: () => router.push(latestVaBrief && !latestVaBriefReviewedByMe ? "/operations?tab=va-briefs" : "/projects"),
       tone: latestVaBrief && !latestVaBriefReviewedByMe ? "hot" as const : "default" as const,
     },
   ];
@@ -542,7 +544,7 @@ export default function DashboardPage() {
         )}
 
         <section className="dashboard-command-layout">
-          <Panel title="Needs My Attention" cta={{ label: "Open tasks", onClick: () => router.push("/actions") }} variant="featured">
+          <Panel title="Needs My Attention" cta={{ label: "Open tasks", onClick: () => router.push("/actions?filter=needs-me") }} variant="featured">
             <p style={{ fontSize: 13, color: ink, opacity: 0.62, marginBottom: 2 }}>
               {attentionRows.length ? `${attentionRows.length} item${attentionRows.length === 1 ? "" : "s"} need a decision, review, or follow-up.` : "No urgent member work is waiting."}
             </p>
@@ -607,7 +609,7 @@ export default function DashboardPage() {
               )}
             </Panel>
 
-            <Panel title="VA Daily Brief" cta={{ label: "Review brief", onClick: () => router.push("/operations") }}>
+            <Panel title="VA Daily Brief" cta={{ label: "Review brief", onClick: () => router.push("/operations?tab=va-briefs") }}>
             {!latestVaBrief ? (
               <EmptyText>No VA daily brief has been submitted yet.</EmptyText>
             ) : (
@@ -651,7 +653,7 @@ export default function DashboardPage() {
         </section>
 
         <section className="dashboard-ops-grid">
-          <Panel title="Money & Approvals" cta={{ label: "Money center", onClick: () => router.push("/tracker") }}>
+          <Panel title="Money & Approvals" cta={{ label: "Money center", onClick: () => router.push("/tracker/planning") }}>
             {myBalance ? (
               <>
                 <MoneyHero value={fmtUSD(myBalance.totalRemaining, { fractionDigits: 2 })} label="My remaining balance" />
@@ -673,7 +675,7 @@ export default function DashboardPage() {
                 label={labelForStatus(project.status)}
                 title={project.name}
                 detail={project.next_step || "Next step pending"}
-                onClick={() => router.push("/projects")}
+                onClick={() => router.push(`/projects?project=${project.id}`)}
               />
             ))}
             {pendingReimbursements.slice(0, 1).map(item => (
@@ -682,12 +684,12 @@ export default function DashboardPage() {
                 label="Finance"
                 title={`${item.member_name} reimbursement`}
                 detail={`${Number(item.amount).toLocaleString(undefined, { style: "currency", currency: "USD", maximumFractionDigits: 0 })} · ${item.vendor || item.category}`}
-                onClick={() => router.push("/operations")}
+                onClick={() => router.push("/operations?tab=finance")}
               />
             ))}
           </Panel>
 
-          <Panel title="Seller Communication Alerts" cta={{ label: "CRM inbox", onClick: () => router.push("/crm") }}>
+          <Panel title="Seller Communication Alerts" cta={{ label: "CRM inbox", onClick: () => router.push("/crm?view=inbox") }}>
             {sellerReplies.length === 0 && <EmptyText>No seller texts have arrived yet.</EmptyText>}
             {unmatchedSellerReplies.length > 0 && (
               <div style={{ ...listItemStyle, borderColor: "rgba(176,137,84,0.45)", background: "rgba(176,137,84,0.08)" }}>

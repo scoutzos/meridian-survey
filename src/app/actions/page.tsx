@@ -52,6 +52,7 @@ const STATUS_LABEL: Record<ActionItemStatus, string> = {
   "done": "Done",
 };
 type TaskFilter = "needs-me" | "votes" | "money" | "surveys" | "actions" | "va" | "assigned-by-me" | "completed";
+const TASK_FILTERS: TaskFilter[] = ["needs-me", "votes", "money", "surveys", "actions", "va", "assigned-by-me", "completed"];
 type LinkType = "general" | "lead" | "deal" | "project" | "meeting" | "document";
 
 interface TaskCard {
@@ -119,10 +120,10 @@ function formatDue(iso: string | null): string | null {
 function taskHref(item: ActionItem): string {
   if (item.source_table === "meridian_deals" && item.source_id) return `/opportunity?deal=${item.source_id}`;
   if (item.source_table === "meridian_imported_land_leads" && item.source_id) return `/opportunity?lead=${item.source_id}`;
-  if (item.source_table === "meridian_buyer_offers" && item.source_id) return "/crm?view=dispo";
-  if (item.source_table === "meridian_projects" && item.source_id) return `/projects`;
-  if (item.source_table === "meeting_notes" && item.source_id) return `/meetings`;
-  if (item.source_table === "document_library" && item.source_id) return "/documents";
+  if (item.source_table === "meridian_buyer_offers" && item.source_id) return `/crm?view=dispo&offer=${item.source_id}`;
+  if (item.source_table === "meridian_projects" && item.source_id) return `/projects?project=${item.source_id}`;
+  if (item.source_table === "meeting_notes" && item.source_id) return `/meetings?note=${item.source_id}`;
+  if (item.source_table === "document_library" && item.source_id) return `/documents?doc=${item.source_id}`;
   if (isVaTask(item)) return "/va";
   return "/actions";
 }
@@ -248,6 +249,15 @@ export default function ActionsPage() {
         assigned_to: VA_ASSIGNEE_LABEL,
         task_type: "va-work",
       }));
+    }
+    const requestedFilter = params.get("filter");
+    if (requestedFilter && TASK_FILTERS.includes(requestedFilter as TaskFilter)) {
+      setFilter(requestedFilter as TaskFilter);
+    }
+    const requestedTask = params.get("task");
+    if (requestedTask) {
+      setSelectedTaskId(requestedTask);
+      setFilter("actions");
     }
     void reload();
   }, [router, reload]);

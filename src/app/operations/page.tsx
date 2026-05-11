@@ -65,6 +65,7 @@ import { createNotification } from "@/lib/operations";
 const DISPLAY_FONT = "var(--font-display)";
 
 type OperationsTab = "overview" | "escalations" | "va-briefs" | "time" | "lead-ops" | "finance" | "calendar" | "scenarios";
+const OPERATIONS_TABS: OperationsTab[] = ["overview", "escalations", "va-briefs", "time", "lead-ops", "finance", "calendar", "scenarios"];
 
 function money(n: number | null | undefined): string {
   if (typeof n !== "number" || !Number.isFinite(n)) return "$0";
@@ -112,9 +113,10 @@ function labelize(value: string): string {
 function actionHref(item: ActionItem): string {
   if (item.source_table === "meridian_deals" && item.source_id) return `/opportunity?deal=${item.source_id}`;
   if (item.source_table === "meridian_imported_land_leads" && item.source_id) return `/opportunity?lead=${item.source_id}`;
-  if (item.source_table === "meridian_projects" && item.source_id) return "/projects";
-  if (item.source_table === "meeting_notes" && item.source_id) return "/meetings";
-  return "/actions";
+  if (item.source_table === "meridian_buyer_offers" && item.source_id) return `/crm?view=dispo&offer=${item.source_id}`;
+  if (item.source_table === "meridian_projects" && item.source_id) return `/projects?project=${item.source_id}`;
+  if (item.source_table === "meeting_notes" && item.source_id) return `/meetings?note=${item.source_id}`;
+  return `/actions?task=${item.id}`;
 }
 
 export default function OperationsPage() {
@@ -153,6 +155,10 @@ export default function OperationsPage() {
     if (!u) { router.push("/"); return; }
     if (isVaUser(u)) { router.push("/va"); return; }
     setUser(u);
+    const requestedTab = new URLSearchParams(window.location.search).get("tab");
+    if (requestedTab && OPERATIONS_TABS.includes(requestedTab as OperationsTab)) {
+      setActiveTab(requestedTab as OperationsTab);
+    }
     setReimbursementDraft(prev => ({ ...prev, member_name: u }));
     void Promise.all([
       fetchProjects(),

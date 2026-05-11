@@ -26,6 +26,7 @@ import {
 const DISPLAY_FONT = "var(--font-display)";
 
 type ProjectTab = "overview" | "risks" | "documents" | "vendors" | "timeline";
+const PROJECT_TABS: ProjectTab[] = ["overview", "risks", "documents", "vendors", "timeline"];
 
 function money(n: number | null | undefined): string {
   if (typeof n !== "number" || !Number.isFinite(n)) return "—";
@@ -64,8 +65,9 @@ export default function ProjectsPage() {
   const reload = useCallback(async () => {
     setLoading(true);
     const rows = await fetchProjects();
+    const requestedProject = new URLSearchParams(window.location.search).get("project");
     setProjects(rows);
-    setSelectedId(prev => prev ?? rows[0]?.id ?? null);
+    setSelectedId(prev => requestedProject && rows.some(project => project.id === requestedProject) ? requestedProject : prev ?? rows[0]?.id ?? null);
     setLoading(false);
   }, []);
 
@@ -73,6 +75,10 @@ export default function ProjectsPage() {
     const u = localStorage.getItem("meridian_user");
     if (!u) { router.push("/"); return; }
     setUser(u);
+    const requestedTab = new URLSearchParams(window.location.search).get("tab");
+    if (requestedTab && PROJECT_TABS.includes(requestedTab as ProjectTab)) {
+      setActiveTab(requestedTab as ProjectTab);
+    }
     void reload();
   }, [router, reload]);
 
