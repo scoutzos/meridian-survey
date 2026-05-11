@@ -6,9 +6,9 @@ import {
   CapitalCall,
   Contribution,
   Expense,
-  MEMBER_COUNT,
   MemberProfile,
   TrackerSettings,
+  activeTrackerMembers,
   computeFundingStatus,
   computeMemberBalances,
   computeTargets,
@@ -17,7 +17,6 @@ import {
   logAudit,
   monthBucket,
 } from "@/lib/tracker";
-import { MEMBERS } from "@/data/questions";
 import TrackerShell, {
   trackerCard,
   trackerBtn,
@@ -71,23 +70,25 @@ export default function TrackerDashboard() {
     setLoading(false);
   }
 
+  const trackerMembers = useMemo(() => activeTrackerMembers(profiles), [profiles]);
+  const memberCount = trackerMembers.length;
+
   const status = useMemo(
-    () => computeFundingStatus(expenses, contributions, calls),
-    [expenses, contributions, calls],
+    () => computeFundingStatus(expenses, contributions, calls, memberCount),
+    [expenses, contributions, calls, memberCount],
   );
 
-  const targets = useMemo(() => computeTargets(expenses, settings), [expenses, settings]);
+  const targets = useMemo(() => computeTargets(expenses, settings, memberCount), [expenses, settings, memberCount]);
 
   const balances = useMemo(() => {
-    const llcOf = (m: string) => profiles.find(p => p.member_name === m)?.llc_name || m;
     return computeMemberBalances({
-      members: MEMBERS.map(m => ({ name: m, llcName: llcOf(m) })),
+      members: trackerMembers,
       expenses,
       contributions,
       capitalCalls: calls,
       settings,
     });
-  }, [profiles, expenses, contributions, calls, settings]);
+  }, [trackerMembers, expenses, contributions, calls, settings]);
 
   if (!user) return null;
   const admin = isAdmin(profiles, user);
@@ -109,7 +110,7 @@ export default function TrackerDashboard() {
       date_called: new Date().toISOString().slice(0, 10),
       reason: `Auto-suggested: cover funding shortfall of ${fmtUSD(status.shortfall)}`,
       total_amount: Number(status.shortfall.toFixed(2)),
-      per_member_amount: MEMBER_COUNT > 0 ? Number((status.shortfall / MEMBER_COUNT).toFixed(2)) : 0,
+      per_member_amount: memberCount > 0 ? Number((status.shortfall / memberCount).toFixed(2)) : 0,
       status: "suggested" as const,
       auto_suggested: true,
       created_by: user,
@@ -161,7 +162,7 @@ export default function TrackerDashboard() {
             </div>
             <div style={{ fontSize: 13, color: "var(--fg)" }}>
               Suggested capital call of <b>{fmtUSD(status.shortfallPerMember, { fractionDigits: 2 })}</b> per member
-              ({MEMBER_COUNT} members) to cover {fmtUSD(status.totalFundingNeed)} of need against {fmtUSD(status.totalDeposits)} deposited.
+              ({memberCount} members) to cover {fmtUSD(status.totalFundingNeed)} of need against {fmtUSD(status.totalDeposits)} deposited.
             </div>
             <div style={{ marginTop: 6, fontSize: 11, color: "var(--muted)" }}>
               The system suggests; the human approves. The call will be created with status &quot;Suggested&quot; for review.
@@ -207,8 +208,8 @@ export default function TrackerDashboard() {
 
       {/* Targets row */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12, marginBottom: 16 }}>
-        <Stat label="Initial target / member" value={fmtUSD(targets.initialTarget)} sub={`(M1 + Pre-formation expenses) ÷ ${MEMBER_COUNT}`} />
-        <Stat label="Monthly dues / member / mo" value={fmtUSD(targets.monthlyTargetPerMonth)} sub={`Total monthly bucket ÷ ${MEMBER_COUNT} ÷ ${Math.max(0, (settings?.months_tracked ?? 3) - 1)} mos`} />
+        <Stat label="Initial target / member" value={fmtUSD(targets.initialTarget)} sub={`(M1 + Pre-formation expenses) ÷ ${memberCount}`} />
+        <Stat label="Monthly dues / member / mo" value={fmtUSD(targets.monthlyTargetPerMonth)} sub={`Total monthly bucket ÷ ${memberCount} ÷ ${Math.max(0, (settings?.months_tracked ?? 3) - 1)} mos`} />
         <Stat label="Months tracked" value={String(settings?.months_tracked ?? 3)} sub={`Start: ${settings?.llc_start_date ?? "not set"}`} />
       </div>
 

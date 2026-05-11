@@ -2,8 +2,9 @@
 
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { MEMBERS } from "@/data/questions";
+import { getAllSurveys } from "@/data/surveys";
 import {
+  admitMembershipCandidate,
   fetchMembershipCandidates,
   fetchMembershipCandidateVotes,
   formatCandidateMoney,
@@ -13,6 +14,8 @@ import {
   type MembershipCandidate,
   type MembershipCandidateVote,
 } from "@/lib/membership-candidates";
+import { supabase } from "@/lib/supabase";
+import { activeTrackerMembers, isAdmin, type MemberProfile } from "@/lib/tracker";
 
 const voteOptions: CandidateVoteDecision[] = ["approve", "discuss", "hold", "decline"];
 type CandidateView = "needs-my-vote" | "started" | "my-votes" | "all";
@@ -52,18 +55,32 @@ function CandidateReviewsContent() {
   const [user, setUser] = useState<string | null>(null);
   const [candidates, setCandidates] = useState<MembershipCandidate[]>([]);
   const [votes, setVotes] = useState<MembershipCandidateVote[]>([]);
+  const [profiles, setProfiles] = useState<MemberProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [admissionName, setAdmissionName] = useState("");
+  const [admissionPassword, setAdmissionPassword] = useState("meridian2026");
+  const [admissionLlcName, setAdmissionLlcName] = useState("");
+  const [admissionAdmin, setAdmissionAdmin] = useState(false);
+  const [assignedSurveyIds, setAssignedSurveyIds] = useState<string[]>(() => getAllSurveys().map(survey => survey.id));
+  const [admitting, setAdmitting] = useState(false);
+  const [admissionMessage, setAdmissionMessage] = useState("");
+
+  const surveys = useMemo(() => getAllSurveys(), []);
 
   async function load() {
-    const [candidateRows, voteRows] = await Promise.all([
+    const [candidateRows, voteRows, profileRows] = await Promise.all([
       fetchMembershipCandidates(),
       fetchMembershipCandidateVotes(),
+      supabase
+        ? supabase.from("tracker_member_profiles").select("*").order("member_name").then(({ data }) => (data as MemberProfile[] | null) ?? [])
+        : Promise.resolve([] as MemberProfile[]),
     ]);
     setCandidates(candidateRows);
     setVotes(voteRows);
+    setProfiles(profileRows);
     setLoading(false);
   }
 
@@ -97,10 +114,25 @@ function CandidateReviewsContent() {
   }, [votes, selectedCandidate]);
 
   const myVote = user ? candidateVotes.find(vote => vote.member_name === user) : undefined;
+  const admin = isAdmin(profiles, user);
+  const votingMembers = activeTrackerMembers(profiles).map(member => member.name);
 
   useEffect(() => {
     setNote(myVote?.note ?? "");
   }, [myVote?.id, myVote?.note]);
+
+  useEffect(() => {
+    if (!selectedCandidate) return;
+    setAdmissionName(candidateDisplayName(selectedCandidate));
+    setAdmissionPassword("meridian2026");
+    setAdmissionLlcName(
+      selectedCandidate.join_as === "Through my LLC"
+        ? selectedCandidate.entity_name || candidateDisplayName(selectedCandidate)
+        : candidateDisplayName(selectedCandidate),
+    );
+    setAdmissionAdmin(false);
+    setAdmissionMessage("");
+  }, [selectedCandidate]);
 
   if (!user) return null;
 
@@ -111,6 +143,26 @@ function CandidateReviewsContent() {
     const result = await voteOnMembershipCandidate(selectedCandidate.id, user, decision, note);
     setSaving(false);
     if (result.error) { setError(result.error); return; }
+    await load();
+  }
+
+  async function admitCandidate() {
+    if (!selectedCandidate || !user) return;
+    setAdmitting(true);
+    setError("");
+    setAdmissionMessage("");
+    const result = await admitMembershipCandidate({
+      candidateId: selectedCandidate.id,
+      memberName: admissionName,
+      password: admissionPassword,
+      llcName: admissionLlcName,
+      isAdmin: admissionAdmin,
+      assignedSurveyIds,
+      actor: user,
+    });
+    setAdmitting(false);
+    if (result.error) { setError(result.error); return; }
+    setAdmissionMessage("Member admitted. Portal access, tracker profile, and survey assignments are live.");
     await load();
   }
 
@@ -282,7 +334,7 @@ function CandidateReviewsContent() {
                   <span>
                     {started
                       ? `started · updated ${formatShortDate(candidate.updated_at)}`
-                      : `${applicantVotes.length}/${MEMBERS.length} votes · ${voted ? "you voted" : "needs your vote"}`}
+                      : `${applicantVotes.length}/${votingMembers.length} votes · ${voted ? "you voted" : "needs your vote"}`}
                   </span>
                 </button>
               );
@@ -302,7 +354,7 @@ function CandidateReviewsContent() {
                 </p>
               </div>
               <div style={selectedCandidate.status === "started" ? startedSummary : voteSummary}>
-                <strong>{selectedCandidate.status === "started" ? "Started" : `${candidateVotes.length}/${MEMBERS.length}`}</strong>
+                <strong>{selectedCandidate.status === "started" ? "Started" : `${candidateVotes.length}/${votingMembers.length}`}</strong>
                 <span>{selectedCandidate.status === "started" ? "not submitted yet" : "member votes"}</span>
               </div>
             </div>
@@ -376,7 +428,7 @@ function CandidateReviewsContent() {
                 {voteOptions.map(decision => <Stat key={decision} label={voteLabel(decision)} value={String(counts[decision])} />)}
               </div>
               <div style={{ display: "grid", gap: 8, marginTop: 16 }}>
-                {MEMBERS.map(member => {
+                {votingMembers.map(member => {
                   const vote = candidateVotes.find(v => v.member_name === member);
                   return (
                     <div key={member} style={voteRow}>
@@ -388,6 +440,78 @@ function CandidateReviewsContent() {
                 })}
               </div>
             </section>
+            )}
+
+            {admin && selectedCandidate.status !== "started" && (
+              <section style={admissionPanel}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 16, flexWrap: "wrap", alignItems: "flex-start" }}>
+                  <div>
+                    <p style={eyebrow}>Admin Admission Workflow</p>
+                    <h3 style={{ fontSize: 18, marginBottom: 6 }}>Give portal access and connect the money tracker</h3>
+                    <p style={muted}>
+                      Use the approved application responses to create the member login, add their LLC to tracker calculations, and assign onboarding surveys.
+                    </p>
+                  </div>
+                  <div style={selectedCandidate.status === "approved" ? approvedBadge : startedSummary}>
+                    <strong>{selectedCandidate.status === "approved" ? "Approved" : `${counts.approve}/${votingMembers.length}`}</strong>
+                    <span>{selectedCandidate.status === "approved" ? "admitted" : "approve votes"}</span>
+                  </div>
+                </div>
+
+                {admissionMessage && <div style={successBox}>{admissionMessage}</div>}
+
+                <div className="admission-grid">
+                  <label style={fieldLabel}>
+                    <span>Portal member name</span>
+                    <input value={admissionName} onChange={e => setAdmissionName(e.target.value)} style={inputStyle} />
+                  </label>
+                  <label style={fieldLabel}>
+                    <span>Temporary password</span>
+                    <input value={admissionPassword} onChange={e => setAdmissionPassword(e.target.value)} style={inputStyle} />
+                  </label>
+                  <label style={fieldLabel}>
+                    <span>LLC / tracker display name</span>
+                    <input value={admissionLlcName} onChange={e => setAdmissionLlcName(e.target.value)} style={inputStyle} />
+                  </label>
+                  <label style={{ ...fieldLabel, justifyContent: "end" }}>
+                    <span>Admin access</span>
+                    <span style={{ display: "flex", alignItems: "center", gap: 8, minHeight: 45 }}>
+                      <input type="checkbox" checked={admissionAdmin} onChange={e => setAdmissionAdmin(e.target.checked)} />
+                      Can edit tracker settings
+                    </span>
+                  </label>
+                </div>
+
+                <div style={{ display: "grid", gap: 8 }}>
+                  <p style={{ ...eyebrow, marginBottom: 0 }}>Assign Surveys</p>
+                  <div className="survey-assignment-grid">
+                    {surveys.map(survey => {
+                      const checked = assignedSurveyIds.includes(survey.id);
+                      return (
+                        <label key={survey.id} style={surveyChoice}>
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={e => setAssignedSurveyIds(prev => e.target.checked ? [...prev, survey.id] : prev.filter(id => id !== survey.id))}
+                          />
+                          <span>
+                            <strong>{survey.title}</strong>
+                            <em>{survey.categories.reduce((sum, category) => sum + category.questions.length, 0)} questions</em>
+                          </span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <button
+                  onClick={admitCandidate}
+                  disabled={admitting || selectedCandidate.status === "approved"}
+                  style={{ ...buttonPrimary, opacity: admitting || selectedCandidate.status === "approved" ? 0.55 : 1, cursor: admitting || selectedCandidate.status === "approved" ? "not-allowed" : "pointer", justifySelf: "start" }}
+                >
+                  {selectedCandidate.status === "approved" ? "Already Admitted" : admitting ? "Admitting..." : "Admit Member"}
+                </button>
+              </section>
             )}
           </section>
         </div>
@@ -411,6 +535,16 @@ function CandidateReviewsContent() {
           display: grid;
           grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
           gap: 14px;
+        }
+        .admission-grid {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 12px;
+        }
+        .survey-assignment-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+          gap: 8px;
         }
         .application-bridge-grid {
           display: grid;
@@ -458,6 +592,7 @@ function CandidateReviewsContent() {
         }
         @media (max-width: 600px) {
           .application-bridge-grid { grid-template-columns: 1fr; }
+          .admission-grid { grid-template-columns: 1fr; }
         }
       `}</style>
     </main>
@@ -639,6 +774,42 @@ const resultsPanel: React.CSSProperties = {
   paddingTop: 18,
 };
 
+const admissionPanel: React.CSSProperties = {
+  marginTop: 18,
+  background: "rgba(201,168,120,0.10)",
+  border: "1px solid rgba(201,168,120,0.28)",
+  borderRadius: 8,
+  padding: 16,
+  display: "grid",
+  gap: 14,
+};
+
+const approvedBadge: React.CSSProperties = {
+  ...voteSummary,
+  background: "rgba(45,106,79,0.14)",
+  color: "#254f3c",
+  border: "1px solid rgba(45,106,79,0.25)",
+};
+
+const fieldLabel: React.CSSProperties = {
+  display: "grid",
+  gap: 5,
+  fontSize: 12,
+  color: "var(--ink)",
+};
+
+const surveyChoice: React.CSSProperties = {
+  display: "flex",
+  gap: 9,
+  alignItems: "flex-start",
+  background: "var(--surface)",
+  border: "1px solid var(--fog)",
+  borderRadius: 8,
+  padding: 10,
+  fontSize: 12,
+  color: "var(--ink)",
+};
+
 const inputStyle: React.CSSProperties = {
   width: "100%",
   border: "1px solid var(--fog)",
@@ -692,6 +863,15 @@ const errorBox: React.CSSProperties = {
   background: "rgba(122,41,53,0.08)",
   border: "1px solid rgba(122,41,53,0.35)",
   color: "#7a2935",
+  borderRadius: 6,
+  padding: 12,
+  fontSize: 13,
+};
+
+const successBox: React.CSSProperties = {
+  background: "rgba(45,106,79,0.08)",
+  border: "1px solid rgba(45,106,79,0.25)",
+  color: "#254f3c",
   borderRadius: 6,
   padding: 12,
   fontSize: 13,

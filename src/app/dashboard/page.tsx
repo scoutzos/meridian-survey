@@ -44,6 +44,7 @@ import {
   computeMemberBalances,
   fetchAll,
   fmtUSD,
+  activeTrackerMembers,
   type CapitalCall,
   type MemberBalance,
 } from "@/lib/tracker";
@@ -216,12 +217,13 @@ export default function DashboardPage() {
       void fetchVaDailyBriefReviews(briefRows.map(brief => brief.id)).then(setVaBriefReviews);
       setReimbursements(reimbursementRows);
       setDecisions(hub.decisions.slice(0, 4));
-      setMemberDirectory(MEMBERS.map(member => {
+      const activeMembers = trackerData ? activeTrackerMembers(trackerData.profiles) : MEMBERS.map(member => ({ name: member, llcName: member }));
+      setMemberDirectory(activeMembers.map(({ name: member, llcName }) => {
         const trackerProfile = trackerData?.profiles.find(profile => profile.member_name === member);
         const hubProfile = hub.profiles[member];
         return {
           name: member,
-          llcName: trackerProfile?.llc_name ?? null,
+          llcName: trackerProfile?.llc_name ?? llcName,
           isAdmin: trackerProfile?.is_admin === true,
           role: hubProfile?.role ?? "",
           contact: hubProfile?.contact ?? "",
@@ -232,10 +234,7 @@ export default function DashboardPage() {
       if (trackerData) {
         setCapitalCalls(trackerData.capitalCalls);
         const balances = computeMemberBalances({
-          members: MEMBERS.map(m => ({
-            name: m,
-            llcName: trackerData.profiles.find(p => p.member_name === m)?.llc_name || m,
-          })),
+          members: activeTrackerMembers(trackerData.profiles),
           expenses: trackerData.expenses,
           contributions: trackerData.contributions,
           capitalCalls: trackerData.capitalCalls,

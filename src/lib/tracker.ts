@@ -86,7 +86,19 @@ export interface AuditLogEntry {
 
 // ---------- constants ------------------------------------------------------
 
-export const MEMBER_COUNT = MEMBERS.length;
+export const MEMBER_COUNT: number = MEMBERS.length;
+
+export function activeTrackerMembers(profiles: MemberProfile[]): { name: string; llcName: string }[] {
+  const rows = new Map<string, { name: string; llcName: string }>();
+  for (const member of MEMBERS) rows.set(member, { name: member, llcName: member });
+  for (const profile of profiles) {
+    rows.set(profile.member_name, {
+      name: profile.member_name,
+      llcName: profile.llc_name || profile.member_name,
+    });
+  }
+  return Array.from(rows.values()).sort((a, b) => a.name.localeCompare(b.name));
+}
 
 export const CONTRIBUTION_TYPE_LABEL: Record<ContributionType, string> = {
   initial_contribution: "Initial",
@@ -132,10 +144,10 @@ export interface Targets {
   memberCount: number;
 }
 
-export function computeTargets(expenses: Expense[], settings: TrackerSettings | null): Targets {
+export function computeTargets(expenses: Expense[], settings: TrackerSettings | null, activeMemberCount = MEMBER_COUNT): Targets {
   const start = settings?.llc_start_date ?? null;
   const monthsTracked = settings?.months_tracked ?? 3;
-  const memberCount = MEMBER_COUNT;
+  const memberCount = activeMemberCount;
 
   let initialBucketSum = 0;
   let monthlyBucketSum = 0;
@@ -184,7 +196,7 @@ export function computeMemberBalances(args: {
 }): MemberBalance[] {
   const { members, expenses, contributions, capitalCalls, settings } = args;
   const start = settings?.llc_start_date ?? null;
-  const targets = computeTargets(expenses, settings);
+  const targets = computeTargets(expenses, settings, members.length);
 
   const openCallsTotal = capitalCalls
     .filter(c => !c.deleted_at && c.status === "open")
@@ -254,6 +266,7 @@ export function computeFundingStatus(
   expenses: Expense[],
   contributions: Contribution[],
   capitalCalls: CapitalCall[],
+  activeMemberCount = MEMBER_COUNT,
 ): FundingStatus {
   const totalExpenses = expenses
     .filter(e => !e.deleted_at)
@@ -272,8 +285,8 @@ export function computeFundingStatus(
     totalDeposits,
     totalFundingNeed,
     shortfall,
-    memberCount: MEMBER_COUNT,
-    shortfallPerMember: MEMBER_COUNT > 0 ? shortfall / MEMBER_COUNT : 0,
+    memberCount: activeMemberCount,
+    shortfallPerMember: activeMemberCount > 0 ? shortfall / activeMemberCount : 0,
   };
 }
 

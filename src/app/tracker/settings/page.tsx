@@ -5,11 +5,11 @@ import { supabase } from "@/lib/supabase";
 import {
   MemberProfile,
   TrackerSettings,
+  activeTrackerMembers,
   isAdmin,
   logAudit,
 } from "@/lib/tracker";
 import { fetchMonetaryDecisions, type MonetaryKind } from "@/lib/decisions";
-import { MEMBERS } from "@/data/questions";
 import TrackerShell, { trackerCard, trackerInput, trackerBtn } from "@/components/TrackerShell";
 
 type DecisionMoney = Awaited<ReturnType<typeof fetchMonetaryDecisions>>;
@@ -56,7 +56,8 @@ export default function TrackerSettingsPage() {
     setMonthsTracked(settingsRow?.months_tracked ?? 3);
     const llcMap: Record<string, string> = {};
     const adminMap: Record<string, boolean> = {};
-    for (const m of MEMBERS) {
+    const memberNames = activeTrackerMembers(profileRows).map(member => member.name);
+    for (const m of memberNames) {
       const row = profileRows.find(r => r.member_name === m);
       llcMap[m] = row?.llc_name ?? "";
       adminMap[m] = row?.is_admin ?? false;
@@ -97,7 +98,7 @@ export default function TrackerSettingsPage() {
       },
     });
 
-    for (const m of MEMBERS) {
+    for (const m of activeTrackerMembers(profiles).map(member => member.name)) {
       const existing = profiles.find(p => p.member_name === m);
       const newLlc = llcNames[m]?.trim() || m;
       const newAdmin = !!adminFlags[m];
@@ -221,7 +222,7 @@ export default function TrackerSettingsPage() {
           Each member is a person in the auth table; their LLC entity name is shown across the tracker. Admin flag controls who can edit other members&apos; data, settings, and approve capital calls.
         </p>
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          {MEMBERS.map(m => (
+          {activeTrackerMembers(profiles).map(member => member.name).map(m => (
             <div
               key={m}
               style={{

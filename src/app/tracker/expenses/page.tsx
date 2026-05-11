@@ -7,12 +7,12 @@ import {
   MemberProfile,
   TrackerSettings,
   EXPENSE_CATEGORIES,
+  activeTrackerMembers,
   fmtUSD,
   isAdmin,
   logAudit,
   monthBucket,
 } from "@/lib/tracker";
-import { MEMBERS } from "@/data/questions";
 import TrackerShell, {
   trackerCard,
   trackerInput,
@@ -83,8 +83,7 @@ export default function ExpensesPage() {
   }
 
   const paidByOptions = useMemo(() => {
-    const llcByName = (m: string) => profiles.find(p => p.member_name === m)?.llc_name || m;
-    const memberOpts = MEMBERS.map(m => ({ value: m, label: llcByName(m) }));
+    const memberOpts = activeTrackerMembers(profiles).map(member => ({ value: member.name, label: member.llcName }));
     const labelOpts = PAID_BY_LABELS.map(l => ({ value: l, label: l }));
     return [...memberOpts, ...labelOpts];
   }, [profiles]);

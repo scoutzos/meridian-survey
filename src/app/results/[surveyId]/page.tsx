@@ -86,6 +86,7 @@ export default function ResultsPage() {
   // since they answered.
   const [savedVersions, setSavedVersions] = useState<Record<string, Set<string>>>({});
   const [memberLogins, setMemberLogins] = useState<Record<string, string | null>>({});
+  const [memberNames, setMemberNames] = useState<string[]>([...MEMBERS]);
   const [activeCategory, setActiveCategory] = useState(0);
   const [showCriticalSummary, setShowCriticalSummary] = useState(false);
   const [showAlignmentSummary, setShowAlignmentSummary] = useState(false);
@@ -121,8 +122,13 @@ export default function ResultsPage() {
       .select("name, last_login")
       .then(({ data: members }) => {
         const logins: Record<string, string | null> = {};
-        for (const m of members || []) logins[m.name] = m.last_login;
+        const names: string[] = [];
+        for (const m of members || []) {
+          logins[m.name] = m.last_login;
+          names.push(m.name);
+        }
         setMemberLogins(logins);
+        if (names.length) setMemberNames(Array.from(new Set([...names, ...MEMBERS])));
       });
   }, [router, surveyId]);
 
@@ -139,7 +145,7 @@ export default function ResultsPage() {
   }
 
   const categories = survey.categories;
-  const membersWithData = MEMBERS.filter(m => allAnswers[m]);
+  const membersWithData = memberNames.filter(m => allAnswers[m]);
 
   // Currency helpers
   const parseCurrency = (val: string | string[] | undefined): number => {
@@ -173,7 +179,7 @@ export default function ResultsPage() {
   const getCurrencyTotals = (qId: string) => {
     const perMember: { name: string; amount: number }[] = [];
     let total = 0;
-    MEMBERS.forEach(m => {
+    memberNames.forEach(m => {
       const amount = parseCurrency(allAnswers[m]?.[qId]);
       if (allAnswers[m]?.[qId]) perMember.push({ name: m, amount });
       total += amount;
@@ -190,7 +196,7 @@ export default function ResultsPage() {
 
   const getOptionTally = (qId: string) => {
     const allSelections: string[][] = [];
-    MEMBERS.forEach(m => {
+    memberNames.forEach(m => {
       const sel = parseSelections(allAnswers[m]?.[qId]);
       if (sel.length > 0) allSelections.push(sel);
     });
@@ -364,7 +370,7 @@ export default function ResultsPage() {
           <p style={{ color: "var(--muted)", fontSize: 13, fontStyle: "italic" }}>No responses yet.</p>
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            {MEMBERS.map(m => {
+            {memberNames.map(m => {
               const raw = allAnswers[m]?.[q.id];
               const selections = parseSelections(raw);
               if (selections.length === 0) return null;
@@ -395,7 +401,7 @@ export default function ResultsPage() {
       <div className="results-card" style={{ background: "var(--surface)", borderRadius: 12, padding: 24, marginBottom: 24 }}>
         <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 16 }}>Response Tracker</h3>
         <div className="response-tracker-grid" style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12 }}>
-          {MEMBERS.map(m => {
+          {memberNames.map(m => {
             const hasResponded = !!allAnswers[m];
             const answerCount = hasResponded ? Object.keys(allAnswers[m]).length : 0;
             const lastLogin = memberLogins[m];
@@ -500,7 +506,7 @@ export default function ResultsPage() {
         <div style={{ flex: "1 1 240px", minWidth: 0 }}>
           <p style={{ fontFamily: "var(--font-body)", fontSize: 11, fontWeight: 500, color: "var(--brass)", textTransform: "uppercase", letterSpacing: "0.22em", marginBottom: 10 }}>{survey.title}</p>
           <h1 style={{ fontFamily: "var(--font-display)", fontSize: 44, fontWeight: 400, letterSpacing: "-0.025em", lineHeight: 1.05, color: "var(--ink)", marginBottom: 8 }}>Survey Results</h1>
-          <p style={{ color: "var(--muted)", fontSize: 14 }}>{membersWithData.length} of {MEMBERS.length} members have responded</p>
+          <p style={{ color: "var(--muted)", fontSize: 14 }}>{membersWithData.length} of {memberNames.length} members have responded</p>
         </div>
         <button onClick={() => router.push(`/survey/${surveyId}`)} style={{
           padding: "12px 20px", minHeight: 44, borderRadius: 4, border: "1px solid var(--ink)",
@@ -564,7 +570,7 @@ export default function ResultsPage() {
                 </tr>
               </thead>
               <tbody>
-                {MEMBERS.map(m => {
+                {memberNames.map(m => {
                   if (!allAnswers[m]) return null;
                   return (
                     <tr key={m} style={{ borderBottom: "1px solid var(--border)" }}>

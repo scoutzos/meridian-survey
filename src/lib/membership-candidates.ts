@@ -1,6 +1,8 @@
 import { MEMBERS } from "@/data/questions";
+import { getAllSurveys } from "@/data/surveys";
 import { supabase } from "./supabase";
 import { createNotification, markNotificationRead } from "./operations";
+import { logAudit } from "./tracker";
 
 export type CandidateStatus = "started" | "under_review" | "approved" | "declined" | "withdrawn";
 export type CandidateVoteDecision = "approve" | "discuss" | "hold" | "decline";
@@ -47,7 +49,24 @@ export type CandidateDraft = Omit<
   "id" | "status" | "submitted_at" | "updated_at"
 >;
 
+export interface MemberAdmissionInput {
+  candidateId: string;
+  memberName: string;
+  password: string;
+  llcName: string;
+  isAdmin: boolean;
+  assignedSurveyIds: string[];
+  actor: string;
+}
+
 export const MEMBERSHIP_CANDIDATE_VOTE = "membership_candidate_vote";
+
+async function fetchActiveMemberNames(): Promise<string[]> {
+  if (!supabase) return [...MEMBERS];
+  const { data, error } = await supabase.from("meridian_members").select("name").order("name");
+  if (error || !data) return [...MEMBERS];
+  return (data as Array<{ name: string }>).map(row => row.name).filter(Boolean);
+}
 
 export function parseMoney(value: string): number | null {
   const cleaned = value.replace(/[$,\s]/g, "");
@@ -153,7 +172,8 @@ export async function createMembershipCandidate(
   if (error || !data) return { data: null, error: error?.message ?? "Could not submit candidate" };
 
   const candidate = data as MembershipCandidate;
-  const noticeResults = await Promise.all(MEMBERS.map(member => createNotification({
+  const activeMembers = await fetchActiveMemberNames();
+  const noticeResults = await Promise.all(activeMembers.map(member => createNotification({
     title: `New member review: ${candidate.full_name}`,
     body: "Review readiness, capital, credit, relationships, and what this applicant can bring to Meridian.",
     priority: "high",
@@ -241,5 +261,93 @@ export async function voteOnMembershipCandidate(
     .is("read_at", null);
 
   await Promise.all((notices ?? []).map(notice => markNotificationRead(notice.id)));
+  return { error: null };
+}
+
+export async function admitMembershipCandidate(input: MemberAdmissionInput): Promise<{ error: string | null }> {
+  if (!supabase) return { error: "Supabase not configured" };
+
+  const memberName = input.memberName.trim();
+  if (!memberName) return { error: "Member name is required" };
+
+  const password = input.password.trim() || "meridian2026";
+  const llcName = input.llcName.trim() || memberName;
+  const now = new Date().toISOString();
+
+  const { data: candidate, error: candidateError } = await supabase
+    .from("membership_candidates")
+    .select("*")
+    .eq("id", input.candidateId)
+    .single();
+  if (candidateError || !candidate) return { error: candidateError?.message ?? "Candidate not found" };
+
+  const { error: memberError } = await supabase
+    .from("meridian_members")
+    .upsert({
+      name: memberName,
+      password,
+      password_changed: false,
+      updated_at: now,
+    }, { onConflict: "name" });
+  if (memberError) return { error: memberError.message };
+
+  const { error: profileError } = await supabase
+    .from("tracker_member_profiles")
+    .upsert({
+      member_name: memberName,
+      llc_name: llcName,
+      is_admin: input.isAdmin,
+      updated_at: now,
+    }, { onConflict: "member_name" });
+  if (profileError) return { error: profileError.message };
+
+  const { error: statusError } = await supabase
+    .from("membership_candidates")
+    .update({ status: "approved" as CandidateStatus, updated_at: now })
+    .eq("id", input.candidateId);
+  if (statusError) return { error: statusError.message };
+
+  await logAudit({
+    actor: input.actor,
+    table_name: "meridian_members",
+    row_id: memberName,
+    action: "create",
+    diff: {
+      source: "membership_candidate_admission",
+      candidate_id: input.candidateId,
+      member_name: memberName,
+      llc_name: llcName,
+      is_admin: input.isAdmin,
+    },
+  });
+
+  const surveys = getAllSurveys().filter(survey => input.assignedSurveyIds.includes(survey.id));
+  const assignmentResults = await Promise.all(surveys.map(survey => createNotification({
+    title: `Survey assigned: ${survey.title}`,
+    body: "Complete this as part of your Meridian member onboarding. Your responses will flow into the portal results and decision tools.",
+    priority: "high",
+    assigned_to: memberName,
+    href: `/survey/${survey.id}`,
+    source_table: "membership_candidates",
+    source_id: input.candidateId,
+    notification_type: "survey_assignment",
+    dedupe: true,
+  }, input.actor)));
+
+  const assignmentError = assignmentResults.find(result => result.error)?.error;
+  if (assignmentError) return { error: `Member admitted, but survey assignments could not be created: ${assignmentError}` };
+
+  await createNotification({
+    title: `${memberName} has portal access`,
+    body: `${memberName} was admitted from the membership application. Tracker balances now include ${llcName}.`,
+    priority: "normal",
+    assigned_to: null,
+    href: `/members/candidates?candidate=${input.candidateId}`,
+    source_table: "membership_candidates",
+    source_id: input.candidateId,
+    notification_type: "member_admitted",
+    dedupe: true,
+  }, input.actor);
+
   return { error: null };
 }
