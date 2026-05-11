@@ -65,6 +65,13 @@ function contactPhoneFor(event: CommunicationEvent): string {
   return last10(event.contact_number || (event.direction === "inbound" ? event.from_number : event.to_number));
 }
 
+function sentByLabel(event: CommunicationEvent): string | null {
+  if (event.direction !== "outbound") return null;
+  const payload = event.raw_payload ?? {};
+  const value = payload.meridian_sent_by || payload.meridian_actor || payload.actor || payload.sent_by;
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
 function buildThreads(events: CommunicationEvent[], leads: ImportedLandLead[]): SmsThread[] {
   const leadById = new Map(leads.map(lead => [lead.id, lead]));
   const leadByPhone = new Map<string, ImportedLandLead>();
@@ -369,7 +376,10 @@ export default function FloatingSmsWindow({
                     .map(event => (
                       <div key={event.id} style={{ ...bubble, ...(event.direction === "outbound" ? outgoing : incoming) }}>
                         <p style={{ margin: 0 }}>{event.body || event.status || "SMS update"}</p>
-                        <span style={bubbleTime}>{formatTime(eventTime(event))}</span>
+                        <span style={bubbleTime}>
+                          {formatTime(eventTime(event))}
+                          {sentByLabel(event) ? ` · Sent by ${sentByLabel(event)}` : event.direction === "outbound" ? " · Sent from Meridian" : ""}
+                        </span>
                       </div>
                     ))}
                   {threadEvents.length === 0 && <p style={emptyText}>No messages in this thread yet.</p>}
