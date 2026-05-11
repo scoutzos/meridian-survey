@@ -1657,6 +1657,7 @@ Completed in this pass:
 - Moved the primary one-to-one SMS workflow into Lead Inbox: conversation queues, seller list, selected seller panel, communication history, text composer, call logging, disposition controls, file opening, and packet creation now live together. Lists remains focused on imports and bulk outreach.
 - Fixed the VA Lists "New Import" action so it clears the selected lead/batch, resets to upload mode, shows an in-page confirmation, and scrolls directly to the CSV chooser instead of appearing to do nothing below the imported-lead list.
 - Added a VA incoming-text stream that loads recent inbound SMS regardless of whether it is matched or unmatched. VA Home now counts incoming texts, and Lead Inbox now shows a visible "Recent incoming texts" panel with matched lead, matched deal, and unmatched status.
+- Moved the VA Lists upload chooser directly under the import steps/stats so clicking "New Import" reveals the CSV picker in the visible area even when hundreds of imported leads already exist.
 
 Risk: Medium.
 

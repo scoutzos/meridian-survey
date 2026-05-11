@@ -2305,6 +2305,59 @@ export default function VaPage() {
               <ShiftCard label="Converted" value={String(importStats.converted)} />
             </div>
 
+            {(importStep === "upload" || (!importPreview && importedLeads.length === 0)) && (
+              <div id="va-list-upload" style={{ ...subPanel, marginBottom: 12, borderColor: "var(--brass)", background: "rgba(176,137,84,0.08)" }}>
+                <div style={{ display: "grid", gridTemplateColumns: "240px minmax(0, 1fr)", gap: 14, alignItems: "stretch" }} className="two-col">
+                  <label style={{
+                    border: "1px dashed var(--brass)",
+                    borderRadius: 8,
+                    minHeight: 156,
+                    display: "grid",
+                    placeItems: "center",
+                    textAlign: "center",
+                    cursor: importing ? "default" : "pointer",
+                    background: "rgba(255,252,245,0.72)",
+                    padding: 16,
+                  }}>
+                    <input
+                      type="file"
+                      accept=".csv,text/csv"
+                      disabled={importing}
+                      onChange={e => { void handleLeadCsvUpload(e.target.files?.[0] ?? null); e.currentTarget.value = ""; }}
+                      style={{ display: "none" }}
+                    />
+                    <span>
+                      <strong style={{ display: "block", color: "var(--obsidian)", fontSize: 16, marginBottom: 6 }}>{importing && importStage === "previewing" ? "Reading CSV..." : "Choose CSV"}</strong>
+                      <span style={{ display: "block", color: "var(--muted)", fontSize: 12, lineHeight: 1.45 }}>Land Portal or Land Insights export</span>
+                    </span>
+                  </label>
+                  <div>
+                    <p style={eyebrowSmall}>New list import</p>
+                    <h3 style={{ ...sectionTitle, fontSize: 22, marginTop: 4 }}>Upload a CSV to preview before saving.</h3>
+                    <div style={{ ...twoCol, marginTop: 12 }} className="two-col">
+                      <div>
+                        <label style={label}>Source</label>
+                        <select value={uploadSource} onChange={e => setUploadSource(e.target.value)}>
+                          <option>Land Portal</option>
+                          <option>Land Insights</option>
+                          <option>County Export</option>
+                          <option>Skip Trace List</option>
+                          <option>Other Land List</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label style={label}>Campaign / list name</label>
+                        <input value={uploadCampaign} onChange={e => setUploadCampaign(e.target.value)} placeholder="Gwinnett County GA Odessa" />
+                      </div>
+                    </div>
+                    <p style={{ fontSize: 12, color: "var(--muted)", marginTop: 12, lineHeight: 1.55 }}>
+                      The file will preview first so you can confirm mapped fields, duplicates, skipped records, and safe-to-import count.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {!loading && importedLeads.length === 0 && (
               <div style={{ ...subPanel, marginBottom: 12, borderColor: "rgba(176,137,84,0.45)", background: "rgba(176,137,84,0.08)" }}>
                 <p style={eyebrowSmall}>First list setup</p>
@@ -2416,57 +2469,6 @@ export default function VaPage() {
                 </aside>
               </div>
             </div>
-
-            {(importStep === "upload" || (!importPreview && importedLeads.length === 0)) && (
-              <div id="va-list-upload" style={{ ...subPanel, marginBottom: 12 }}>
-                <div style={{ display: "grid", gridTemplateColumns: "220px minmax(0, 1fr)", gap: 12 }} className="two-col">
-                  <label style={{
-                    border: "1px dashed var(--brass)",
-                    borderRadius: 8,
-                    minHeight: 156,
-                    display: "grid",
-                    placeItems: "center",
-                    textAlign: "center",
-                    cursor: importing ? "default" : "pointer",
-                    background: "rgba(176,137,84,0.08)",
-                    padding: 16,
-                  }}>
-                    <input
-                      type="file"
-                      accept=".csv,text/csv"
-                      disabled={importing}
-                      onChange={e => { void handleLeadCsvUpload(e.target.files?.[0] ?? null); e.currentTarget.value = ""; }}
-                      style={{ display: "none" }}
-                    />
-                    <span>
-                      <strong style={{ display: "block", color: "var(--obsidian)", fontSize: 15, marginBottom: 6 }}>{importing && importStage === "previewing" ? "Reading CSV..." : "Choose CSV"}</strong>
-                      <span style={{ display: "block", color: "var(--muted)", fontSize: 12, lineHeight: 1.45 }}>Land Portal or Land Insights export</span>
-                    </span>
-                  </label>
-                  <div>
-                    <div style={twoCol} className="two-col">
-                      <div>
-                        <label style={label}>Source</label>
-                        <select value={uploadSource} onChange={e => setUploadSource(e.target.value)}>
-                          <option>Land Portal</option>
-                          <option>Land Insights</option>
-                          <option>County Export</option>
-                          <option>Skip Trace List</option>
-                          <option>Other Land List</option>
-                        </select>
-                      </div>
-                      <div>
-                        <label style={label}>Campaign / list name</label>
-                        <input value={uploadCampaign} onChange={e => setUploadCampaign(e.target.value)} placeholder="Gwinnett County GA Odessa" />
-                      </div>
-                    </div>
-                    <p style={{ fontSize: 12, color: "var(--muted)", marginTop: 12, lineHeight: 1.55 }}>
-                      Import first, then use campaign outreach once the list has eligible seller records.
-                    </p>
-                  </div>
-                </div>
-              </div>
-            )}
 
             <div style={{ ...subPanel, marginBottom: 12 }}>
               <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "baseline", marginBottom: 10 }}>
