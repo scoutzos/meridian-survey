@@ -37,6 +37,7 @@ export default function ExpensesPage() {
   const [profiles, setProfiles] = useState<MemberProfile[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [loading, setLoading] = useState(true);
+  const [message, setMessage] = useState("");
 
   // form
   const [date, setDate] = useState("");
@@ -132,7 +133,7 @@ export default function ExpensesPage() {
     if (!Number.isFinite(amt) || amt < 0) return;
     if (!description.trim() || !category.trim()) return;
     if (!canPayAs(paidBy)) {
-      alert("You can only log expenses paid by your own LLC. Ask an admin for other payers.");
+      setMessage("You can only log expenses paid by your own LLC. Ask an admin for other payers.");
       return;
     }
     const pb = resolvePaidBy(paidBy);
@@ -147,7 +148,7 @@ export default function ExpensesPage() {
       updated_by: user,
     };
     const { data, error } = await supabase.from("tracker_expenses").insert(row).select().single();
-    if (error) { alert(error.message); return; }
+    if (error) { setMessage(error.message); return; }
     await logAudit({
       actor: user,
       table_name: "tracker_expenses",
@@ -156,6 +157,7 @@ export default function ExpensesPage() {
       diff: { after: data },
     });
     setDate(""); setCategory(EXPENSE_CATEGORIES[0]); setDescription(""); setAmount(""); setPaidBy("TBD");
+    setMessage("Expense added.");
     void load();
   }
 
@@ -169,8 +171,14 @@ export default function ExpensesPage() {
     if (!admin) {
       // non-admins can only edit expenses they paid (and not change the payer)
       const orig = expenses.find(e => e.id === editingId);
-      if (!orig || orig.paid_by_member_name !== user) return;
-      if (editDraft.paid_by_member_name !== user) return;
+      if (!orig || orig.paid_by_member_name !== user) {
+        setMessage("You can only edit expenses paid by your own LLC.");
+        return;
+      }
+      if (editDraft.paid_by_member_name !== user) {
+        setMessage("You cannot change this expense to another payer.");
+        return;
+      }
     }
     const before = expenses.find(e => e.id === editingId);
     const update = {
@@ -184,7 +192,7 @@ export default function ExpensesPage() {
       updated_by: user,
     };
     const { error } = await supabase.from("tracker_expenses").update(update).eq("id", editingId);
-    if (error) { alert(error.message); return; }
+    if (error) { setMessage(error.message); return; }
     await logAudit({
       actor: user,
       table_name: "tracker_expenses",
@@ -194,18 +202,22 @@ export default function ExpensesPage() {
     });
     setEditingId(null);
     setEditDraft({});
+    setMessage("Expense updated.");
     void load();
   }
 
   async function deleteExpense(e: Expense) {
     if (!supabase || !user) return;
-    if (!admin && e.paid_by_member_name !== user) return;
+    if (!admin && e.paid_by_member_name !== user) {
+      setMessage("You can only delete expenses paid by your own LLC.");
+      return;
+    }
     if (!confirm(`Delete expense "${e.description}"?`)) return;
     const { error } = await supabase
       .from("tracker_expenses")
       .update({ deleted_at: new Date().toISOString(), updated_by: user })
       .eq("id", e.id);
-    if (error) { alert(error.message); return; }
+    if (error) { setMessage(error.message); return; }
     await logAudit({
       actor: user,
       table_name: "tracker_expenses",
@@ -213,11 +225,17 @@ export default function ExpensesPage() {
       action: "delete",
       diff: { before: e },
     });
+    setMessage("Expense deleted.");
     void load();
   }
 
   return (
     <TrackerShell title="Expenses" subtitle="Log every cost the LLC incurs. Month bucket auto-classifies by date.">
+      {message && (
+        <div style={{ ...trackerCard, marginBottom: 16, padding: "12px 14px", background: "rgba(201,168,120,0.12)", fontSize: 13 }}>
+          {message}
+        </div>
+      )}
       {loading && <div style={{ color: "var(--muted)" }}>Loading…</div>}
 
       <div style={{ ...trackerCard, marginBottom: 16 }}>

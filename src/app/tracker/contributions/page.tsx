@@ -33,6 +33,7 @@ export default function ContributionsPage() {
   const [contributions, setContributions] = useState<Contribution[]>([]);
   const [openCalls, setOpenCalls] = useState<CapitalCall[]>([]);
   const [loading, setLoading] = useState(true);
+  const [message, setMessage] = useState("");
 
   // form
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
@@ -96,7 +97,7 @@ export default function ContributionsPage() {
   async function add() {
     if (!supabase || !user) return;
     if (!allowedMembers.includes(memberName)) {
-      alert("You can only log deposits for your own LLC. Ask an admin for others.");
+      setMessage("You can only log deposits for your own LLC. Ask an admin for others.");
       return;
     }
     const amt = Number(amount.replace(/[$,]/g, ""));
@@ -114,7 +115,7 @@ export default function ContributionsPage() {
       updated_by: user,
     };
     const { data, error } = await supabase.from("tracker_contributions").insert(row).select().single();
-    if (error) { alert(error.message); return; }
+    if (error) { setMessage(error.message); return; }
     await logAudit({
       actor: user,
       table_name: "tracker_contributions",
@@ -123,6 +124,7 @@ export default function ContributionsPage() {
       diff: { after: data },
     });
     setAmount(""); setReference(""); setNotes(""); setRelatedCallId("");
+    setMessage("Deposit logged.");
     void load();
   }
 
@@ -134,7 +136,7 @@ export default function ContributionsPage() {
       .from("tracker_contributions")
       .update({ deleted_at: new Date().toISOString(), updated_by: user })
       .eq("id", c.id);
-    if (error) { alert(error.message); return; }
+    if (error) { setMessage(error.message); return; }
     await logAudit({
       actor: user,
       table_name: "tracker_contributions",
@@ -142,11 +144,17 @@ export default function ContributionsPage() {
       action: "delete",
       diff: { before: c },
     });
+    setMessage("Deposit deleted.");
     void load();
   }
 
   return (
     <TrackerShell title="Contributions" subtitle="Member deposits into the LLC bank account.">
+      {message && (
+        <div style={{ ...trackerCard, marginBottom: 16, padding: "12px 14px", background: "rgba(201,168,120,0.12)", fontSize: 13 }}>
+          {message}
+        </div>
+      )}
       {loading && <div style={{ color: "var(--muted)" }}>Loading…</div>}
 
       <div style={{ ...trackerCard, marginBottom: 16 }}>
