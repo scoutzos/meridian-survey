@@ -55,6 +55,7 @@ import {
   fetchActionItemEvents,
   fetchActionItems,
   isVaTask,
+  updateActionItemStatus,
   type ActionItem,
   type ActionItemEvent,
 } from "@/lib/action-items";
@@ -353,6 +354,10 @@ export default function OperationsPage() {
     if (!note) return;
     const { error } = await addActionItemComment(task.id, user, note);
     if (error) { alert(error); return; }
+    const reopenResult = task.status === "blocked"
+      ? await updateActionItemStatus(task.id, "open", user, "Member responded to blocker.")
+      : { error: null };
+    if (reopenResult.error) { alert(reopenResult.error); return; }
     const now = new Date().toISOString();
     setActionItemEvents(prev => [
       ...prev,
@@ -366,12 +371,28 @@ export default function OperationsPage() {
         created_by: user,
         created_at: now,
       },
+      ...(task.status === "blocked" ? [{
+        id: `local-reopened-${task.id}-${now}`,
+        action_item_id: task.id,
+        event_type: "reopened" as const,
+        previous_status: "blocked" as const,
+        next_status: "open" as const,
+        note: "Member responded to blocker.",
+        created_by: user,
+        created_at: now,
+      }] : []),
     ]);
-    setActionItems(prev => prev.map(item => item.id === task.id ? { ...item, updated_at: now, updated_by: user } : item));
+    setActionItems(prev => prev.map(item => item.id === task.id ? {
+      ...item,
+      status: task.status === "blocked" ? "open" : item.status,
+      blocker_reason: task.status === "blocked" ? null : item.blocker_reason,
+      updated_at: now,
+      updated_by: user,
+    } : item));
     setEscalationResponses(prev => ({ ...prev, [task.id]: "" }));
     await createNotification({
-      title: `Member replied to blocked task: ${task.title}`,
-      body: note,
+      title: `Blocked task reopened: ${task.title}`,
+      body: `${note}\n\nThe task was reopened and is ready to continue.`,
       priority: "high",
       assigned_to: task.assigned_to || VA_ASSIGNEE_LABEL,
       href: "/va",
@@ -487,8 +508,8 @@ export default function OperationsPage() {
                       style={{ ...inputStyle, minHeight: 72, resize: "vertical" }}
                     />
                     <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-                      <p style={rowMeta}>Response is saved to task history and notifies the VA.</p>
-                      <button onClick={() => sendEscalationResponse(task)} disabled={!escalationResponses[task.id]?.trim()} style={primaryButton}>Send Response</button>
+                      <p style={rowMeta}>Response is saved to task history, reopens the task, and notifies the VA.</p>
+                      <button onClick={() => sendEscalationResponse(task)} disabled={!escalationResponses[task.id]?.trim()} style={primaryButton}>Send + Reopen</button>
                     </div>
                   </div>
                 </article>

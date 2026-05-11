@@ -1501,13 +1501,16 @@ Completed in this pass:
   - Member task detail now supports reassignment from the task record.
   - Reassignments are stored as `reassigned` events in task history.
   - New task assignees receive a notification when a task is reassigned to them.
+- Continued with blocker resolution:
+  - Member escalation responses now reopen blocked VA tasks automatically.
+  - The reopen is logged as a task history event after the member response.
+  - The VA notification now states that the blocker was answered and the task is ready to continue.
 
 Remaining:
 
 - Add linked-record selectors for documents once document ownership/indexing is cleaned up.
 - Add notification deduplication/read-state cleanup if blocked-task alerts become too noisy.
 - Cut over from client-side prototype login to Supabase Auth, then remove prototype anon policies and verify the staged RLS policies with real member and VA users.
-- Decide whether a member escalation response should also reopen the task automatically or leave the VA to restart it.
 
 Risk: High if skipped. Members will keep assigning VA work through texts or side conversations, which defeats the purpose of the portal.
 
