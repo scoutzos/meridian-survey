@@ -1646,6 +1646,7 @@ Completed in this pass:
 - Added a direct Member Home "Assign VA Task" entry point that opens My Tasks with the task form already set to Sophie / VA.
 - Added CRM edit/update flows for existing contacts, property records, buyers, disposition campaigns, and buyer offers from the CRM right rail.
 - Added CRM cleanup prompts that flag duplicate contacts, properties, and buyers by phone, email, name, parcel, or address, plus missing-core-field record hygiene prompts.
+- Added an in-app Launch Readiness Tracker to the Document Library so the production QA runbook can be checked off during live testing with pass/fail/reset states and notes.
 
 Risk: Medium.
 
