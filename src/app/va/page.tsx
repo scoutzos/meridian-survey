@@ -1388,6 +1388,7 @@ export default function VaPage() {
         source_table: "action_items",
         source_id: task.id,
         notification_type: "va-task-blocked",
+        dedupe: true,
       }, user)));
     }
     setMessage(status === "done" ? "Task completed and added to the daily brief." : `Task marked ${statusLabel(status)}.`);

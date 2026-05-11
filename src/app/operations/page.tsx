@@ -399,6 +399,7 @@ export default function OperationsPage() {
       source_table: "action_items",
       source_id: task.id,
       notification_type: "va-task-member-response",
+      dedupe: true,
     }, user);
   };
 

@@ -450,6 +450,7 @@ export default function ActionsPage() {
         source_table: "action_items",
         source_id: item.id,
         notification_type: "task-comment",
+        dedupe: item.status === "blocked",
       }, user);
     }
   };
@@ -486,6 +487,7 @@ export default function ActionsPage() {
         source_table: "action_items",
         source_id: item.id,
         notification_type: "task-reassigned",
+        dedupe: true,
       }, user);
     }
   };

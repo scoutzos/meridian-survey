@@ -1505,11 +1505,13 @@ Completed in this pass:
   - Member escalation responses now reopen blocked VA tasks automatically.
   - The reopen is logged as a task history event after the member response.
   - The VA notification now states that the blocker was answered and the task is ready to continue.
+- Continued with notification cleanup:
+  - Added opt-in notification deduplication to the shared notification helper.
+  - Blocked VA task alerts, blocked-task responses, task reassignment alerts, and blocked-task comment alerts now update the existing unread notice instead of stacking duplicates.
 
 Remaining:
 
 - Add linked-record selectors for documents once document ownership/indexing is cleaned up.
-- Add notification deduplication/read-state cleanup if blocked-task alerts become too noisy.
 - Cut over from client-side prototype login to Supabase Auth, then remove prototype anon policies and verify the staged RLS policies with real member and VA users.
 
 Risk: High if skipped. Members will keep assigning VA work through texts or side conversations, which defeats the purpose of the portal.
