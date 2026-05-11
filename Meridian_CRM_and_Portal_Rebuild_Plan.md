@@ -1487,14 +1487,19 @@ Completed in this pass:
   - Added migration `038_action_item_events.sql` for a persistent task event stream.
   - Status changes, completions, blockers, reopen events, creates, and deletes are now logged as task events when the migration is present.
   - The member task detail panel now reads the task event stream and falls back to legacy created/updated/completed fields if no events exist yet.
+- Continued with blocked-task responses:
+  - Members can now reply directly from Operations Escalations when a VA task is blocked.
+  - Escalation responses are stored as `comment` events in task history.
+  - The VA receives a high-priority notification when a member replies to a blocked task.
+  - Operations shows the latest member responses under each blocked VA task.
 
 Remaining:
 
 - Add linked-record selectors for documents once document ownership/indexing is cleaned up.
-- Extend task events to support member comments/replies and reassignment events.
+- Extend task events to support reassignment events and general task comments outside blocked-task escalations.
 - Add notification deduplication/read-state cleanup if blocked-task alerts become too noisy.
 - Cut over from client-side prototype login to Supabase Auth, then remove prototype anon policies and verify the staged RLS policies with real member and VA users.
-- Confirm whether blocked VA tasks should support a one-click member response/comment from Operations or stay routed through Actions.
+- Decide whether a member escalation response should also reopen the task automatically or leave the VA to restart it.
 
 Risk: High if skipped. Members will keep assigning VA work through texts or side conversations, which defeats the purpose of the portal.
 

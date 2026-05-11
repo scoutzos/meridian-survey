@@ -169,6 +169,18 @@ export async function updateActionItemStatus(
   return { error: error?.message ?? null };
 }
 
+export async function addActionItemComment(id: string, actor: string, note: string): Promise<{ error: string | null }> {
+  if (!supabase) return { error: "Supabase not configured" };
+  const trimmed = note.trim();
+  if (!trimmed) return { error: "Comment is required" };
+  await recordActionItemEvent(id, "comment", actor, { note: trimmed });
+  const { error } = await supabase
+    .from("action_items")
+    .update({ updated_at: new Date().toISOString(), updated_by: actor })
+    .eq("id", id);
+  return { error: error?.message ?? null };
+}
+
 export async function deleteActionItem(id: string, actor: string): Promise<{ error: string | null }> {
   if (!supabase) return { error: "Supabase not configured" };
   const { error } = await supabase

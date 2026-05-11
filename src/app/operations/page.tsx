@@ -49,8 +49,17 @@ import {
   type ImportedLandLead,
   type LandLeadBatch,
 } from "@/lib/land-leads";
-import { fetchActionItems, isVaTask, type ActionItem } from "@/lib/action-items";
+import {
+  VA_ASSIGNEE_LABEL,
+  addActionItemComment,
+  fetchActionItemEvents,
+  fetchActionItems,
+  isVaTask,
+  type ActionItem,
+  type ActionItemEvent,
+} from "@/lib/action-items";
 import { isVaUser } from "@/lib/identity";
+import { createNotification } from "@/lib/operations";
 
 const DISPLAY_FONT = "var(--font-display)";
 
@@ -128,6 +137,8 @@ export default function OperationsPage() {
   const [landLeadBatches, setLandLeadBatches] = useState<LandLeadBatch[]>([]);
   const [importedLeads, setImportedLeads] = useState<ImportedLandLead[]>([]);
   const [actionItems, setActionItems] = useState<ActionItem[]>([]);
+  const [actionItemEvents, setActionItemEvents] = useState<ActionItemEvent[]>([]);
+  const [escalationResponses, setEscalationResponses] = useState<Record<string, string>>({});
   const [briefReviewNotes, setBriefReviewNotes] = useState<Record<string, string>>({});
   const [eventDraft, setEventDraft] = useState({ title: "", event_date: "", event_type: "deadline", assigned_to: "", notes: "", project_id: "" });
   const [reimbursementDraft, setReimbursementDraft] = useState({ member_name: "", amount: "", vendor: "", category: "Project", expense_date: "", receipt_url: "", notes: "", project_id: "" });
@@ -165,6 +176,7 @@ export default function OperationsPage() {
       setLandLeadBatches(batchRows);
       setImportedLeads(leadRows);
       setActionItems(actionRows);
+      void fetchActionItemEvents(actionRows.map(item => item.id)).then(setActionItemEvents);
       void fetchVaDailyBriefReviews(briefRows.map(brief => brief.id)).then(setVaBriefReviews);
     });
   }, [router]);
@@ -182,6 +194,13 @@ export default function OperationsPage() {
   const vaSubmittedCost = useMemo(() => vaTimeEntries.reduce((sum, entry) => sum + ((entry.status === "submitted" || entry.status === "approved") ? Number(entry.cost_amount ?? 0) : 0), 0), [vaTimeEntries]);
   const pendingTimeRequests = useMemo(() => vaTimeChangeRequests.filter(request => request.status === "pending"), [vaTimeChangeRequests]);
   const blockedVaTasks = useMemo(() => actionItems.filter(item => isVaTask(item) && item.status === "blocked"), [actionItems]);
+  const actionItemEventsById = useMemo(() => {
+    const out: Record<string, ActionItemEvent[]> = {};
+    for (const event of actionItemEvents) {
+      out[event.action_item_id] = [...(out[event.action_item_id] ?? []), event];
+    }
+    return out;
+  }, [actionItemEvents]);
 
   const scenarioPreview = useMemo(() => calculateScenario({
     purchase_price: toNumber(scenarioDraft.purchase_price),
@@ -328,6 +347,40 @@ export default function OperationsPage() {
     setScenarioDraft({ name: "", strategy: "flip", purchase_price: "", rehab_or_site_cost: "", closing_costs: "", holding_costs: "", financing_costs: "", exit_value: "", expected_rent: "", notes: "", project_id: "" });
   };
 
+  const sendEscalationResponse = async (task: ActionItem) => {
+    if (!user) return;
+    const note = (escalationResponses[task.id] || "").trim();
+    if (!note) return;
+    const { error } = await addActionItemComment(task.id, user, note);
+    if (error) { alert(error); return; }
+    const now = new Date().toISOString();
+    setActionItemEvents(prev => [
+      ...prev,
+      {
+        id: `local-comment-${task.id}-${now}`,
+        action_item_id: task.id,
+        event_type: "comment",
+        previous_status: null,
+        next_status: null,
+        note,
+        created_by: user,
+        created_at: now,
+      },
+    ]);
+    setActionItems(prev => prev.map(item => item.id === task.id ? { ...item, updated_at: now, updated_by: user } : item));
+    setEscalationResponses(prev => ({ ...prev, [task.id]: "" }));
+    await createNotification({
+      title: `Member replied to blocked task: ${task.title}`,
+      body: note,
+      priority: "high",
+      assigned_to: task.assigned_to || VA_ASSIGNEE_LABEL,
+      href: "/va",
+      source_table: "action_items",
+      source_id: task.id,
+      notification_type: "va-task-member-response",
+    }, user);
+  };
+
   const pendingReimbursements = reimbursements.filter(r => r.status === "submitted" || r.status === "approved");
   const unreviewedBriefs = vaBriefs.filter(brief => !vaBriefReviews.some(review => review.brief_id === brief.id && review.member_name === user));
   const activeFinanceItems = pendingReimbursements.length + distributions.filter(distribution => distribution.status !== "paid").length;
@@ -420,7 +473,24 @@ export default function OperationsPage() {
                     </div>
                   </div>
                   <p style={{ ...briefText, marginBottom: 8 }}>{task.blocker_reason || task.description || "No blocker reason added."}</p>
-                  <p style={rowMeta}>Next member action: decide, reply with missing context, or reassign from Actions.</p>
+                  <div style={{ display: "grid", gap: 8, marginTop: 10 }}>
+                    {(actionItemEventsById[task.id] ?? []).filter(event => event.event_type === "comment").slice(-3).map(event => (
+                      <div key={event.id} style={{ background: "var(--surface)", border: "1px solid var(--fog)", borderRadius: 8, padding: 10 }}>
+                        <p style={rowMeta}>{event.created_by || "Member"} · {fmtDateTime(event.created_at)}</p>
+                        <p style={{ ...briefText, marginTop: 4 }}>{event.note}</p>
+                      </div>
+                    ))}
+                    <textarea
+                      value={escalationResponses[task.id] || ""}
+                      onChange={e => setEscalationResponses(prev => ({ ...prev, [task.id]: e.target.value }))}
+                      placeholder="Reply with the decision, missing detail, or next instruction for Sophie..."
+                      style={{ ...inputStyle, minHeight: 72, resize: "vertical" }}
+                    />
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                      <p style={rowMeta}>Response is saved to task history and notifies the VA.</p>
+                      <button onClick={() => sendEscalationResponse(task)} disabled={!escalationResponses[task.id]?.trim()} style={primaryButton}>Send Response</button>
+                    </div>
+                  </div>
                 </article>
               ))}
             </div>
@@ -1023,6 +1093,18 @@ const primaryButton: React.CSSProperties = {
   letterSpacing: "0.18em",
   textTransform: "uppercase",
   cursor: "pointer",
+};
+
+const inputStyle: React.CSSProperties = {
+  width: "100%",
+  border: "1px solid var(--fog)",
+  borderRadius: 8,
+  background: "var(--surface)",
+  color: "var(--ink)",
+  padding: "10px 12px",
+  fontSize: 13,
+  lineHeight: 1.45,
+  outline: "none",
 };
 
 const comingSoonPill: React.CSSProperties = {
