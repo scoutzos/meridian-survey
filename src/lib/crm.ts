@@ -178,6 +178,13 @@ function splitTags(value?: string | null): string[] {
   return (value ?? "").split(",").map(tag => tag.trim()).filter(Boolean);
 }
 
+function cleanNumber(value: string | number | null | undefined): number | null {
+  if (typeof value === "number") return Number.isFinite(value) ? value : null;
+  if (!value) return null;
+  const parsed = Number(String(value).replace(/[$,]/g, ""));
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 export async function fetchCrmDashboardData(): Promise<CrmDashboardData> {
   const [deals, communications] = await Promise.all([
     fetchDeals(),
@@ -398,6 +405,188 @@ export async function createBuyerOffer(input: {
     return { data: item, error: null };
   }
   const { data, error } = await supabase.from("meridian_buyer_offers").insert(row).select().single();
+  return { data: data as BuyerOffer | null, error: error?.message ?? null };
+}
+
+export async function updateCrmContact(
+  id: string,
+  input: Partial<Pick<CrmContact, "contact_type" | "display_name" | "phone" | "phone_2" | "email" | "county" | "state" | "relationship_status" | "sms_opt_status" | "notes">> & {
+    tags?: string[] | string;
+    company_name?: string | null;
+    mailing_address?: string | null;
+  },
+  actor: string,
+): Promise<{ data: CrmContact | null; error: string | null }> {
+  const patch = {
+    contact_type: input.contact_type || "seller",
+    display_name: input.display_name?.trim(),
+    company_name: input.company_name?.trim() || null,
+    phone: input.phone?.trim() || null,
+    phone_2: input.phone_2?.trim() || null,
+    email: input.email?.trim() || null,
+    mailing_address: input.mailing_address?.trim() || null,
+    county: input.county?.trim() || null,
+    state: input.state?.trim() || null,
+    tags: Array.isArray(input.tags) ? input.tags : splitTags(input.tags),
+    relationship_status: input.relationship_status || null,
+    sms_opt_status: input.sms_opt_status || "unknown",
+    notes: input.notes?.trim() || null,
+    updated_at: now(),
+    updated_by: actor,
+  };
+  if (!patch.display_name) return { data: null, error: "Contact name is required." };
+  if (!supabase) {
+    const rows = localGet<CrmContact[]>(LOCAL_CONTACTS, []);
+    const next = rows.map(row => row.id === id ? { ...row, ...patch } as CrmContact : row);
+    localSet(LOCAL_CONTACTS, next);
+    return { data: next.find(row => row.id === id) ?? null, error: null };
+  }
+  const { data, error } = await supabase.from("meridian_crm_contacts").update(patch).eq("id", id).select().single();
+  return { data: data as CrmContact | null, error: error?.message ?? null };
+}
+
+export async function updateCrmProperty(
+  id: string,
+  input: Partial<Pick<CrmProperty, "property_type" | "parcel_id" | "address" | "county" | "city" | "state" | "zip" | "zoning" | "land_use" | "road_frontage" | "utilities" | "notes">> & {
+    acreage?: string | number | null;
+    assessed_value?: string | number | null;
+    market_value?: string | number | null;
+  },
+  actor: string,
+): Promise<{ data: CrmProperty | null; error: string | null }> {
+  const patch = {
+    property_type: input.property_type?.trim() || "land",
+    parcel_id: input.parcel_id?.trim() || null,
+    address: input.address?.trim() || null,
+    county: input.county?.trim() || null,
+    city: input.city?.trim() || null,
+    state: input.state?.trim() || null,
+    zip: input.zip?.trim() || null,
+    acreage: cleanNumber(input.acreage),
+    zoning: input.zoning?.trim() || null,
+    land_use: input.land_use?.trim() || null,
+    road_frontage: input.road_frontage?.trim() || null,
+    utilities: input.utilities?.trim() || null,
+    assessed_value: cleanNumber(input.assessed_value),
+    market_value: cleanNumber(input.market_value),
+    notes: input.notes?.trim() || null,
+    updated_at: now(),
+    updated_by: actor,
+  };
+  if (!patch.parcel_id && !patch.address) return { data: null, error: "Property needs a parcel ID or address." };
+  if (!supabase) {
+    const rows = localGet<CrmProperty[]>(LOCAL_PROPERTIES, []);
+    const next = rows.map(row => row.id === id ? { ...row, ...patch } as CrmProperty : row);
+    localSet(LOCAL_PROPERTIES, next);
+    return { data: next.find(row => row.id === id) ?? null, error: null };
+  }
+  const { data, error } = await supabase.from("meridian_crm_properties").update(patch).eq("id", id).select().single();
+  return { data: data as CrmProperty | null, error: error?.message ?? null };
+}
+
+export async function updateCrmBuyer(
+  id: string,
+  input: Partial<Pick<CrmBuyer, "buyer_name" | "buyer_type" | "proof_of_funds_status" | "relationship_strength" | "buy_box" | "notes">> & {
+    markets?: string[] | string;
+    property_types?: string[] | string;
+    min_price?: string | number | null;
+    max_price?: string | number | null;
+    min_acreage?: string | number | null;
+    max_acreage?: string | number | null;
+  },
+  actor: string,
+): Promise<{ data: CrmBuyer | null; error: string | null }> {
+  const patch = {
+    buyer_name: input.buyer_name?.trim(),
+    buyer_type: input.buyer_type?.trim() || null,
+    markets: Array.isArray(input.markets) ? input.markets : splitTags(input.markets),
+    property_types: Array.isArray(input.property_types) ? input.property_types : splitTags(input.property_types),
+    min_price: cleanNumber(input.min_price),
+    max_price: cleanNumber(input.max_price),
+    min_acreage: cleanNumber(input.min_acreage),
+    max_acreage: cleanNumber(input.max_acreage),
+    proof_of_funds_status: input.proof_of_funds_status || "unknown",
+    relationship_strength: input.relationship_strength || "new",
+    buy_box: input.buy_box?.trim() || null,
+    notes: input.notes?.trim() || null,
+    updated_at: now(),
+    updated_by: actor,
+  };
+  if (!patch.buyer_name) return { data: null, error: "Buyer name is required." };
+  if (!supabase) {
+    const rows = localGet<CrmBuyer[]>(LOCAL_BUYERS, []);
+    const next = rows.map(row => row.id === id ? { ...row, ...patch } as CrmBuyer : row);
+    localSet(LOCAL_BUYERS, next);
+    return { data: next.find(row => row.id === id) ?? null, error: null };
+  }
+  const { data, error } = await supabase.from("meridian_crm_buyers").update(patch).eq("id", id).select().single();
+  return { data: data as CrmBuyer | null, error: error?.message ?? null };
+}
+
+export async function updateDispositionCampaign(
+  id: string,
+  input: Partial<Pick<DispositionCampaign, "campaign_name" | "status" | "exit_strategy" | "target_buyer_type" | "owner" | "notes">> & {
+    target_price?: string | number | null;
+    minimum_price?: string | number | null;
+    channels?: string[] | string;
+    buyer_list_count?: string | number | null;
+  },
+  actor: string,
+): Promise<{ data: DispositionCampaign | null; error: string | null }> {
+  const patch = {
+    campaign_name: input.campaign_name?.trim(),
+    status: input.status || "not-started",
+    exit_strategy: input.exit_strategy?.trim() || null,
+    target_buyer_type: input.target_buyer_type?.trim() || null,
+    target_price: cleanNumber(input.target_price),
+    minimum_price: cleanNumber(input.minimum_price),
+    owner: input.owner?.trim() || actor,
+    channels: Array.isArray(input.channels) ? input.channels : splitTags(input.channels),
+    buyer_list_count: Math.max(0, Math.round(cleanNumber(input.buyer_list_count) ?? 0)),
+    notes: input.notes?.trim() || null,
+    updated_at: now(),
+    updated_by: actor,
+  };
+  if (!patch.campaign_name) return { data: null, error: "Campaign name is required." };
+  if (!supabase) {
+    const rows = localGet<DispositionCampaign[]>(LOCAL_CAMPAIGNS, []);
+    const next = rows.map(row => row.id === id ? { ...row, ...patch } as DispositionCampaign : row);
+    localSet(LOCAL_CAMPAIGNS, next);
+    return { data: next.find(row => row.id === id) ?? null, error: null };
+  }
+  const { data, error } = await supabase.from("meridian_disposition_campaigns").update(patch).eq("id", id).select().single();
+  return { data: data as DispositionCampaign | null, error: error?.message ?? null };
+}
+
+export async function updateBuyerOffer(
+  id: string,
+  input: Partial<Pick<BuyerOffer, "buyer_name" | "close_date" | "contingencies" | "proof_of_funds_status" | "status" | "notes">> & {
+    offer_amount?: string | number | null;
+    earnest_money?: string | number | null;
+  },
+  actor: string,
+): Promise<{ data: BuyerOffer | null; error: string | null }> {
+  const patch = {
+    buyer_name: input.buyer_name?.trim(),
+    offer_amount: cleanNumber(input.offer_amount) ?? 0,
+    earnest_money: cleanNumber(input.earnest_money),
+    close_date: input.close_date || null,
+    contingencies: input.contingencies?.trim() || null,
+    proof_of_funds_status: input.proof_of_funds_status?.trim() || null,
+    status: input.status || "received",
+    notes: input.notes?.trim() || null,
+    updated_at: now(),
+    updated_by: actor,
+  };
+  if (!patch.buyer_name) return { data: null, error: "Buyer name is required." };
+  if (!patch.offer_amount) return { data: null, error: "Offer amount is required." };
+  if (!supabase) {
+    const rows = localGet<BuyerOffer[]>(LOCAL_OFFERS, []);
+    const next = rows.map(row => row.id === id ? { ...row, ...patch } as BuyerOffer : row);
+    localSet(LOCAL_OFFERS, next);
+    return { data: next.find(row => row.id === id) ?? null, error: null };
+  }
+  const { data, error } = await supabase.from("meridian_buyer_offers").update(patch).eq("id", id).select().single();
   return { data: data as BuyerOffer | null, error: error?.message ?? null };
 }
 

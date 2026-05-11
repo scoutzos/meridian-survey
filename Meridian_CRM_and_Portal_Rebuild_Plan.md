@@ -29,7 +29,7 @@ Imported list -> seller outreach -> interested lead -> deal packet -> calculator
 | Documents/Meetings/Decisions | Partial | Pages were reorganized and connected. Needs final feature audit and removal of confusing legacy behavior. |
 | Navigation/IA | Structurally built | Member nav, mobile nav, CRM access, Hub/archive role, and secondary tools are organized. Needs real-user label walkthrough. |
 
-Estimated structural completion: **93%**
+Estimated structural completion: **94%**
 
 ## What Has Been Built In This Rebuild
 
@@ -1644,6 +1644,7 @@ Completed in this pass:
 - Replaced Expense Planning browser alerts with in-page feedback for proposal saves, revisions, offset failures, votes, expense conversion, and generated capital-call suggestions.
 - Verified the member-to-VA task path is already wired: members can assign VA tasks from My Tasks, link them to records, the VA sees them in the VA Desk Today queue, and completed VA tasks count into the daily brief.
 - Added a direct Member Home "Assign VA Task" entry point that opens My Tasks with the task form already set to Sophie / VA.
+- Added CRM edit/update flows for existing contacts, property records, buyers, disposition campaigns, and buyer offers from the CRM right rail.
 
 Risk: Medium.
 
@@ -1668,7 +1669,7 @@ The UI now has a shared conversation panel, shared status language, shared next-
 
 The next implementation should:
 
-1. Add record edit/update actions for contacts, buyers, properties, campaigns, and offers.
-2. Add duplicate detection and merge/cleanup workflows.
-3. Confirm the member-to-VA task flow against real Supabase production users and permissions.
-4. Confirm the CRM detail panels against real Supabase production data and adjust labels/empty states.
+1. Add duplicate detection and merge/cleanup workflows.
+2. Confirm the member-to-VA task flow against real Supabase production users and permissions.
+3. Confirm the CRM edit panels and detail panels against real Supabase production data and adjust labels/empty states.
+4. Run the production QA runbook end-to-end with real imports, Sakari SMS, votes, briefs, and RLS.

@@ -12,7 +12,12 @@ import {
   createDispositionCampaign,
   fetchCrmDashboardData,
   linkContactToOpportunity,
+  updateBuyerOffer,
   updateBuyerOfferStatus,
+  updateCrmBuyer,
+  updateCrmContact,
+  updateCrmProperty,
+  updateDispositionCampaign,
   updateDispositionCampaignStatus,
   type CrmDashboardData,
   type CrmBuyer,
@@ -367,6 +372,41 @@ function CrmContent() {
     await reload();
   };
 
+  const saveContact = async (contact: CrmContact, patch: Parameters<typeof updateCrmContact>[1]) => {
+    const { error } = await updateCrmContact(contact.id, patch, user);
+    if (error) { setMessage(error); return; }
+    setMessage("Contact updated.");
+    await reload();
+  };
+
+  const saveProperty = async (property: CrmProperty, patch: Parameters<typeof updateCrmProperty>[1]) => {
+    const { error } = await updateCrmProperty(property.id, patch, user);
+    if (error) { setMessage(error); return; }
+    setMessage("Property updated.");
+    await reload();
+  };
+
+  const saveBuyer = async (buyer: CrmBuyer, patch: Parameters<typeof updateCrmBuyer>[1]) => {
+    const { error } = await updateCrmBuyer(buyer.id, patch, user);
+    if (error) { setMessage(error); return; }
+    setMessage("Buyer updated.");
+    await reload();
+  };
+
+  const saveCampaign = async (campaign: DispositionCampaign, patch: Parameters<typeof updateDispositionCampaign>[1]) => {
+    const { error } = await updateDispositionCampaign(campaign.id, patch, user);
+    if (error) { setMessage(error); return; }
+    setMessage("Campaign updated.");
+    await reload();
+  };
+
+  const saveOffer = async (offer: BuyerOffer, patch: Parameters<typeof updateBuyerOffer>[1]) => {
+    const { error } = await updateBuyerOffer(offer.id, patch, user);
+    if (error) { setMessage(error); return; }
+    setMessage("Offer updated.");
+    await reload();
+  };
+
   const views: Array<{ id: CrmView; label: string; detail: string; count: number }> = [
     { id: "inbox", label: "Inbox", detail: "Seller replies and unmatched messages", count: unmatchedMessages.length },
     { id: "deals", label: "Deals", detail: "Packets, votes, calculators, approvals", count: data.deals.length },
@@ -604,6 +644,7 @@ function CrmContent() {
     <aside style={{ display: "flex", flexDirection: "column", gap: 12 }}>
       {view === "records" && selectedContact && (
         <ContactDetailCard
+          key={selectedContact.id}
           contact={selectedContact}
           links={data.opportunityContacts.filter(link => link.contact_id === selectedContact.id)}
           deals={data.deals}
@@ -615,26 +656,29 @@ function CrmContent() {
             setSelectedDealId(dealId);
             selectView("deals");
           }}
+          onSave={patch => saveContact(selectedContact, patch)}
         />
       )}
 
       {view === "records" && selectedProperty && (
-        <PropertyDetailCard property={selectedProperty} deals={data.deals.filter(deal => deal.parcel_id === selectedProperty.parcel_id || deal.address === selectedProperty.address)} onOpenDeal={dealId => {
+        <PropertyDetailCard key={selectedProperty.id} property={selectedProperty} deals={data.deals.filter(deal => deal.parcel_id === selectedProperty.parcel_id || deal.address === selectedProperty.address)} onOpenDeal={dealId => {
           setSelectedDealId(dealId);
           selectView("deals");
-        }} />
+        }} onSave={patch => saveProperty(selectedProperty, patch)} />
       )}
 
       {view === "buyers" && selectedBuyer && (
-        <BuyerDetailCard buyer={selectedBuyer} offers={data.offers.filter(offer => offer.buyer_id === selectedBuyer.id || offer.buyer_name === selectedBuyer.buyer_name)} />
+        <BuyerDetailCard key={selectedBuyer.id} buyer={selectedBuyer} offers={data.offers.filter(offer => offer.buyer_id === selectedBuyer.id || offer.buyer_name === selectedBuyer.buyer_name)} onSave={patch => saveBuyer(selectedBuyer, patch)} />
       )}
 
       {view === "dispo" && selectedCampaign && (
         <CampaignDetailCard
+          key={selectedCampaign.id}
           campaign={selectedCampaign}
           offers={data.offers.filter(offer => offer.disposition_campaign_id === selectedCampaign.id || offer.deal_id === selectedCampaign.deal_id)}
           communications={data.communications.filter(event => selectedCampaign.deal_id && event.matched_deal_id === selectedCampaign.deal_id)}
           onChangeStage={status => changeCampaignStage(selectedCampaign, status)}
+          onSave={patch => saveCampaign(selectedCampaign, patch)}
           onOpenDeal={dealId => {
             setSelectedDealId(dealId);
             selectView("deals");
@@ -643,7 +687,7 @@ function CrmContent() {
       )}
 
       {view === "dispo" && selectedOffer && (
-        <OfferDetailCard offer={selectedOffer} onChangeStatus={status => changeOfferStatus(selectedOffer, status)} onOpenDeal={dealId => {
+        <OfferDetailCard key={selectedOffer.id} offer={selectedOffer} onChangeStatus={status => changeOfferStatus(selectedOffer, status)} onSave={patch => saveOffer(selectedOffer, patch)} onOpenDeal={dealId => {
           setSelectedDealId(dealId);
           selectView("deals");
         }} />
@@ -1046,13 +1090,29 @@ function ContactDetailCard({
   deals,
   communications,
   onOpenDeal,
+  onSave,
 }: {
   contact: CrmContact;
   links: CrmDashboardData["opportunityContacts"];
   deals: CrmDashboardData["deals"];
   communications: CommunicationEvent[];
   onOpenDeal: (dealId: string) => void;
+  onSave: (patch: Parameters<typeof updateCrmContact>[1]) => Promise<void>;
 }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState({
+    contact_type: contact.contact_type,
+    display_name: contact.display_name,
+    phone: contact.phone || "",
+    phone_2: contact.phone_2 || "",
+    email: contact.email || "",
+    county: contact.county || "",
+    state: contact.state || "",
+    relationship_status: contact.relationship_status || "new",
+    sms_opt_status: contact.sms_opt_status,
+    tags: contact.tags.join(", "),
+    notes: contact.notes || "",
+  });
   const linkedDeals = links
     .map(link => ({ link, deal: deals.find(deal => deal.id === link.deal_id) ?? null }))
     .filter((item): item is { link: typeof item.link; deal: NonNullable<typeof item.deal> } => !!item.deal);
@@ -1062,6 +1122,34 @@ function ContactDetailCard({
       <p style={eyebrowSmall}>Contact record</p>
       <h3 style={smallHeading}>{contact.display_name}</h3>
       <p style={{ ...bodyText, fontSize: 12, marginTop: 4 }}>{statusLabel(contact.contact_type)} · {statusLabel(contact.relationship_status || "new")} · SMS {statusLabel(contact.sms_opt_status)}</p>
+      <button onClick={() => setEditing(open => !open)} style={{ ...secondaryButton, marginTop: 10 }}>{editing ? "Close Edit" : "Edit Contact"}</button>
+      {editing && (
+        <div style={{ ...subPanel, marginTop: 10 }}>
+          <p style={eyebrowSmall}>Edit contact</p>
+          <div style={{ display: "grid", gap: 8, marginTop: 8 }}>
+            <select value={draft.contact_type} onChange={e => setDraft({ ...draft, contact_type: e.target.value as CrmContactType })}>
+              {["seller", "buyer", "agent", "broker", "builder", "neighbor", "title", "lender", "vendor", "member", "other"].map(type => <option key={type} value={type}>{statusLabel(type)}</option>)}
+            </select>
+            <input value={draft.display_name} onChange={e => setDraft({ ...draft, display_name: e.target.value })} placeholder="Display name" />
+            <input value={draft.phone} onChange={e => setDraft({ ...draft, phone: e.target.value })} placeholder="Primary phone" />
+            <input value={draft.phone_2} onChange={e => setDraft({ ...draft, phone_2: e.target.value })} placeholder="Alt phone" />
+            <input value={draft.email} onChange={e => setDraft({ ...draft, email: e.target.value })} placeholder="Email" />
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+              <input value={draft.county} onChange={e => setDraft({ ...draft, county: e.target.value })} placeholder="County" />
+              <input value={draft.state} onChange={e => setDraft({ ...draft, state: e.target.value })} placeholder="State" />
+            </div>
+            <select value={draft.relationship_status} onChange={e => setDraft({ ...draft, relationship_status: e.target.value as CrmContact["relationship_status"] || "new" })}>
+              {["new", "active", "warm", "nurture", "do-not-contact", "inactive"].map(status => <option key={status} value={status}>{statusLabel(status)}</option>)}
+            </select>
+            <select value={draft.sms_opt_status} onChange={e => setDraft({ ...draft, sms_opt_status: e.target.value as CrmContact["sms_opt_status"] })}>
+              {["unknown", "opted-in", "opted-out"].map(status => <option key={status} value={status}>{statusLabel(status)}</option>)}
+            </select>
+            <input value={draft.tags} onChange={e => setDraft({ ...draft, tags: e.target.value })} placeholder="Tags, comma separated" />
+            <textarea rows={3} value={draft.notes} onChange={e => setDraft({ ...draft, notes: e.target.value })} placeholder="Notes" />
+            <button onClick={async () => { await onSave(draft); setEditing(false); }} style={primaryButton}>Save Contact</button>
+          </div>
+        </div>
+      )}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 12 }}>
         <DetailLine label="Phone" value={contact.phone || contact.phone_2} />
         <DetailLine label="Email" value={contact.email} />
@@ -1103,12 +1191,61 @@ function ContactDetailCard({
   );
 }
 
-function PropertyDetailCard({ property, deals, onOpenDeal }: { property: CrmProperty; deals: CrmDashboardData["deals"]; onOpenDeal: (dealId: string) => void }) {
+function PropertyDetailCard({ property, deals, onOpenDeal, onSave }: { property: CrmProperty; deals: CrmDashboardData["deals"]; onOpenDeal: (dealId: string) => void; onSave: (patch: Parameters<typeof updateCrmProperty>[1]) => Promise<void> }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState({
+    property_type: property.property_type || "land",
+    parcel_id: property.parcel_id || "",
+    address: property.address || "",
+    county: property.county || "",
+    city: property.city || "",
+    state: property.state || "",
+    zip: property.zip || "",
+    acreage: property.acreage?.toString() || "",
+    zoning: property.zoning || "",
+    land_use: property.land_use || "",
+    road_frontage: property.road_frontage || "",
+    utilities: property.utilities || "",
+    assessed_value: property.assessed_value?.toString() || "",
+    market_value: property.market_value?.toString() || "",
+    notes: property.notes || "",
+  });
   return (
     <div style={panel}>
       <p style={eyebrowSmall}>Property record</p>
       <h3 style={smallHeading}>{property.address || property.parcel_id || "Property record"}</h3>
       <p style={{ ...bodyText, fontSize: 12, marginTop: 4 }}>{[property.city, property.county, property.state].filter(Boolean).join(", ") || "Location pending"}</p>
+      <button onClick={() => setEditing(open => !open)} style={{ ...secondaryButton, marginTop: 10 }}>{editing ? "Close Edit" : "Edit Property"}</button>
+      {editing && (
+        <div style={{ ...subPanel, marginTop: 10 }}>
+          <p style={eyebrowSmall}>Edit property</p>
+          <div style={{ display: "grid", gap: 8, marginTop: 8 }}>
+            <input value={draft.parcel_id} onChange={e => setDraft({ ...draft, parcel_id: e.target.value })} placeholder="Parcel ID" />
+            <input value={draft.address} onChange={e => setDraft({ ...draft, address: e.target.value })} placeholder="Address" />
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+              <input value={draft.city} onChange={e => setDraft({ ...draft, city: e.target.value })} placeholder="City" />
+              <input value={draft.county} onChange={e => setDraft({ ...draft, county: e.target.value })} placeholder="County" />
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+              <input value={draft.state} onChange={e => setDraft({ ...draft, state: e.target.value })} placeholder="State" />
+              <input value={draft.zip} onChange={e => setDraft({ ...draft, zip: e.target.value })} placeholder="ZIP" />
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+              <input value={draft.acreage} onChange={e => setDraft({ ...draft, acreage: e.target.value })} placeholder="Acreage" />
+              <input value={draft.zoning} onChange={e => setDraft({ ...draft, zoning: e.target.value })} placeholder="Zoning" />
+            </div>
+            <input value={draft.land_use} onChange={e => setDraft({ ...draft, land_use: e.target.value })} placeholder="Land use" />
+            <input value={draft.utilities} onChange={e => setDraft({ ...draft, utilities: e.target.value })} placeholder="Utilities" />
+            <input value={draft.road_frontage} onChange={e => setDraft({ ...draft, road_frontage: e.target.value })} placeholder="Road frontage" />
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+              <input value={draft.market_value} onChange={e => setDraft({ ...draft, market_value: e.target.value })} placeholder="Market value" />
+              <input value={draft.assessed_value} onChange={e => setDraft({ ...draft, assessed_value: e.target.value })} placeholder="Assessed value" />
+            </div>
+            <textarea rows={3} value={draft.notes} onChange={e => setDraft({ ...draft, notes: e.target.value })} placeholder="Notes" />
+            <button onClick={async () => { await onSave(draft); setEditing(false); }} style={primaryButton}>Save Property</button>
+          </div>
+        </div>
+      )}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 12 }}>
         <DetailLine label="Parcel" value={property.parcel_id} />
         <DetailLine label="Acres" value={property.acreage ?? "N/A"} />
@@ -1140,12 +1277,56 @@ function PropertyDetailCard({ property, deals, onOpenDeal }: { property: CrmProp
   );
 }
 
-function BuyerDetailCard({ buyer, offers }: { buyer: CrmBuyer; offers: BuyerOffer[] }) {
+function BuyerDetailCard({ buyer, offers, onSave }: { buyer: CrmBuyer; offers: BuyerOffer[]; onSave: (patch: Parameters<typeof updateCrmBuyer>[1]) => Promise<void> }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState({
+    buyer_name: buyer.buyer_name,
+    buyer_type: buyer.buyer_type || "",
+    markets: buyer.markets.join(", "),
+    property_types: buyer.property_types.join(", "),
+    min_price: buyer.min_price?.toString() || "",
+    max_price: buyer.max_price?.toString() || "",
+    min_acreage: buyer.min_acreage?.toString() || "",
+    max_acreage: buyer.max_acreage?.toString() || "",
+    proof_of_funds_status: buyer.proof_of_funds_status,
+    relationship_strength: buyer.relationship_strength,
+    buy_box: buyer.buy_box || "",
+    notes: buyer.notes || "",
+  });
   return (
     <div style={panel}>
       <p style={eyebrowSmall}>Buyer record</p>
       <h3 style={smallHeading}>{buyer.buyer_name}</h3>
       <p style={{ ...bodyText, fontSize: 12, marginTop: 4 }}>{buyer.buyer_type || "Buyer type pending"} · {statusLabel(buyer.relationship_strength)} · POF {statusLabel(buyer.proof_of_funds_status)}</p>
+      <button onClick={() => setEditing(open => !open)} style={{ ...secondaryButton, marginTop: 10 }}>{editing ? "Close Edit" : "Edit Buyer"}</button>
+      {editing && (
+        <div style={{ ...subPanel, marginTop: 10 }}>
+          <p style={eyebrowSmall}>Edit buyer</p>
+          <div style={{ display: "grid", gap: 8, marginTop: 8 }}>
+            <input value={draft.buyer_name} onChange={e => setDraft({ ...draft, buyer_name: e.target.value })} placeholder="Buyer name" />
+            <input value={draft.buyer_type} onChange={e => setDraft({ ...draft, buyer_type: e.target.value })} placeholder="Buyer type" />
+            <input value={draft.markets} onChange={e => setDraft({ ...draft, markets: e.target.value })} placeholder="Markets, comma separated" />
+            <input value={draft.property_types} onChange={e => setDraft({ ...draft, property_types: e.target.value })} placeholder="Property types, comma separated" />
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+              <input value={draft.min_price} onChange={e => setDraft({ ...draft, min_price: e.target.value })} placeholder="Min price" />
+              <input value={draft.max_price} onChange={e => setDraft({ ...draft, max_price: e.target.value })} placeholder="Max price" />
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+              <input value={draft.min_acreage} onChange={e => setDraft({ ...draft, min_acreage: e.target.value })} placeholder="Min acreage" />
+              <input value={draft.max_acreage} onChange={e => setDraft({ ...draft, max_acreage: e.target.value })} placeholder="Max acreage" />
+            </div>
+            <select value={draft.proof_of_funds_status} onChange={e => setDraft({ ...draft, proof_of_funds_status: e.target.value as CrmBuyer["proof_of_funds_status"] })}>
+              {["unknown", "requested", "received", "verified", "expired"].map(status => <option key={status} value={status}>{statusLabel(status)}</option>)}
+            </select>
+            <select value={draft.relationship_strength} onChange={e => setDraft({ ...draft, relationship_strength: e.target.value as CrmBuyer["relationship_strength"] })}>
+              {["new", "warm", "active", "preferred", "inactive"].map(status => <option key={status} value={status}>{statusLabel(status)}</option>)}
+            </select>
+            <textarea rows={3} value={draft.buy_box} onChange={e => setDraft({ ...draft, buy_box: e.target.value })} placeholder="Buy box" />
+            <textarea rows={2} value={draft.notes} onChange={e => setDraft({ ...draft, notes: e.target.value })} placeholder="Notes" />
+            <button onClick={async () => { await onSave(draft); setEditing(false); }} style={primaryButton}>Save Buyer</button>
+          </div>
+        </div>
+      )}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 12 }}>
         <DetailLine label="Markets" value={buyer.markets.join(", ") || "N/A"} />
         <DetailLine label="Property types" value={buyer.property_types.join(", ") || "N/A"} />
@@ -1182,14 +1363,29 @@ function CampaignDetailCard({
   offers,
   communications,
   onChangeStage,
+  onSave,
   onOpenDeal,
 }: {
   campaign: DispositionCampaign;
   offers: BuyerOffer[];
   communications: CommunicationEvent[];
   onChangeStage: (status: DispositionCampaign["status"]) => void;
+  onSave: (patch: Parameters<typeof updateDispositionCampaign>[1]) => Promise<void>;
   onOpenDeal: (dealId: string) => void;
 }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState({
+    campaign_name: campaign.campaign_name,
+    status: campaign.status,
+    exit_strategy: campaign.exit_strategy || "",
+    target_buyer_type: campaign.target_buyer_type || "",
+    target_price: campaign.target_price?.toString() || "",
+    minimum_price: campaign.minimum_price?.toString() || "",
+    owner: campaign.owner || "",
+    channels: campaign.channels.join(", "),
+    buyer_list_count: campaign.buyer_list_count.toString(),
+    notes: campaign.notes || "",
+  });
   const touchHistory = [
     ...offers.map(offer => ({
       id: `offer-${offer.id}`,
@@ -1212,6 +1408,31 @@ function CampaignDetailCard({
       <p style={eyebrowSmall}>Disposition campaign</p>
       <h3 style={smallHeading}>{campaign.campaign_name}</h3>
       <p style={{ ...bodyText, fontSize: 12, marginTop: 4 }}>{statusLabel(campaign.status)} · {campaign.owner || "Owner pending"}</p>
+      <button onClick={() => setEditing(open => !open)} style={{ ...secondaryButton, marginTop: 10 }}>{editing ? "Close Edit" : "Edit Campaign"}</button>
+      {editing && (
+        <div style={{ ...subPanel, marginTop: 10 }}>
+          <p style={eyebrowSmall}>Edit campaign</p>
+          <div style={{ display: "grid", gap: 8, marginTop: 8 }}>
+            <input value={draft.campaign_name} onChange={e => setDraft({ ...draft, campaign_name: e.target.value })} placeholder="Campaign name" />
+            <select value={draft.status} onChange={e => setDraft({ ...draft, status: e.target.value as DispositionCampaign["status"] })}>
+              {DISPO_STAGES.map(stage => <option key={stage.id} value={stage.id}>{stage.label}</option>)}
+              <option value="closed">Closed</option>
+              <option value="fell-through">Fell Through</option>
+            </select>
+            <input value={draft.owner} onChange={e => setDraft({ ...draft, owner: e.target.value })} placeholder="Owner" />
+            <input value={draft.exit_strategy} onChange={e => setDraft({ ...draft, exit_strategy: e.target.value })} placeholder="Exit strategy" />
+            <input value={draft.target_buyer_type} onChange={e => setDraft({ ...draft, target_buyer_type: e.target.value })} placeholder="Target buyer type" />
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+              <input value={draft.target_price} onChange={e => setDraft({ ...draft, target_price: e.target.value })} placeholder="Target price" />
+              <input value={draft.minimum_price} onChange={e => setDraft({ ...draft, minimum_price: e.target.value })} placeholder="Minimum price" />
+            </div>
+            <input value={draft.channels} onChange={e => setDraft({ ...draft, channels: e.target.value })} placeholder="Channels, comma separated" />
+            <input value={draft.buyer_list_count} onChange={e => setDraft({ ...draft, buyer_list_count: e.target.value })} placeholder="Buyer list count" />
+            <textarea rows={3} value={draft.notes} onChange={e => setDraft({ ...draft, notes: e.target.value })} placeholder="Notes" />
+            <button onClick={async () => { await onSave(draft); setEditing(false); }} style={primaryButton}>Save Campaign</button>
+          </div>
+        </div>
+      )}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 12 }}>
         <DetailLine label="Target" value={money(campaign.target_price)} />
         <DetailLine label="Minimum" value={money(campaign.minimum_price)} />
@@ -1263,17 +1484,51 @@ function CampaignDetailCard({
 function OfferDetailCard({
   offer,
   onChangeStatus,
+  onSave,
   onOpenDeal,
 }: {
   offer: BuyerOffer;
   onChangeStatus: (status: BuyerOffer["status"]) => void;
+  onSave: (patch: Parameters<typeof updateBuyerOffer>[1]) => Promise<void>;
   onOpenDeal: (dealId: string) => void;
 }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState({
+    buyer_name: offer.buyer_name,
+    offer_amount: offer.offer_amount?.toString() || "",
+    earnest_money: offer.earnest_money?.toString() || "",
+    close_date: offer.close_date || "",
+    contingencies: offer.contingencies || "",
+    proof_of_funds_status: offer.proof_of_funds_status || "",
+    status: offer.status,
+    notes: offer.notes || "",
+  });
   return (
     <div style={panel}>
       <p style={eyebrowSmall}>Buyer offer</p>
       <h3 style={smallHeading}>{offer.buyer_name}</h3>
       <p style={{ ...bodyText, fontSize: 12, marginTop: 4 }}>{money(offer.offer_amount)} · {statusLabel(offer.status)}</p>
+      <button onClick={() => setEditing(open => !open)} style={{ ...secondaryButton, marginTop: 10 }}>{editing ? "Close Edit" : "Edit Offer"}</button>
+      {editing && (
+        <div style={{ ...subPanel, marginTop: 10 }}>
+          <p style={eyebrowSmall}>Edit offer</p>
+          <div style={{ display: "grid", gap: 8, marginTop: 8 }}>
+            <input value={draft.buyer_name} onChange={e => setDraft({ ...draft, buyer_name: e.target.value })} placeholder="Buyer name" />
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+              <input value={draft.offer_amount} onChange={e => setDraft({ ...draft, offer_amount: e.target.value })} placeholder="Offer amount" />
+              <input value={draft.earnest_money} onChange={e => setDraft({ ...draft, earnest_money: e.target.value })} placeholder="Earnest money" />
+            </div>
+            <input type="date" value={draft.close_date} onChange={e => setDraft({ ...draft, close_date: e.target.value })} />
+            <select value={draft.status} onChange={e => setDraft({ ...draft, status: e.target.value as BuyerOffer["status"] })}>
+              {["received", "countered", "accepted", "rejected", "withdrawn", "expired"].map(status => <option key={status} value={status}>{statusLabel(status)}</option>)}
+            </select>
+            <input value={draft.proof_of_funds_status} onChange={e => setDraft({ ...draft, proof_of_funds_status: e.target.value })} placeholder="Proof of funds status" />
+            <textarea rows={2} value={draft.contingencies} onChange={e => setDraft({ ...draft, contingencies: e.target.value })} placeholder="Contingencies" />
+            <textarea rows={3} value={draft.notes} onChange={e => setDraft({ ...draft, notes: e.target.value })} placeholder="Notes" />
+            <button onClick={async () => { await onSave(draft); setEditing(false); }} style={primaryButton}>Save Offer</button>
+          </div>
+        </div>
+      )}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 12 }}>
         <DetailLine label="Earnest" value={money(offer.earnest_money)} />
         <DetailLine label="Close date" value={formatDate(offer.close_date)} />
