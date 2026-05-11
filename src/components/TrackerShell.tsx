@@ -78,11 +78,22 @@ export default function TrackerShell({
     href === "/tracker" ? pathname === "/tracker" : pathname === href || pathname?.startsWith(href + "/");
 
   return (
-    <div style={{ maxWidth: 1100, margin: "0 auto", padding: "24px 16px 100px" }}>
-      <h1 style={{ fontSize: 24, fontWeight: 700, marginBottom: 4 }}>{title}</h1>
-      {subtitle && (
-        <p style={{ color: "var(--muted)", fontSize: 14, marginBottom: 16 }}>{subtitle}</p>
-      )}
+    <div style={{ maxWidth: 1100, margin: "0 auto", padding: "84px 16px 100px" }}>
+      <header style={{ display: "flex", justifyContent: "space-between", gap: 16, alignItems: "flex-end", flexWrap: "wrap", marginBottom: 16 }}>
+        <div>
+          <p style={{ color: "var(--gold)", fontSize: 11, fontWeight: 700, letterSpacing: "0.14em", textTransform: "uppercase", marginBottom: 6 }}>Member Portal</p>
+          <h1 style={{ fontSize: 24, fontWeight: 700, marginBottom: 4 }}>{title}</h1>
+          {subtitle && (
+            <p style={{ color: "var(--muted)", fontSize: 14, maxWidth: 680 }}>{subtitle}</p>
+          )}
+        </div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+          <button onClick={() => router.push("/dashboard")} style={trackerBtnSubtle}>Member Home</button>
+          <button onClick={() => router.push("/operations")} style={trackerBtnSubtle}>Operations</button>
+          <button onClick={() => router.push("/projects")} style={trackerBtnSubtle}>Projects</button>
+          <button onClick={() => router.push("/deals")} style={trackerBtn}>Deal Reviews</button>
+        </div>
+      </header>
       <div
         style={{
           display: "flex",

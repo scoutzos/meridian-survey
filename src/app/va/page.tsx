@@ -26,7 +26,14 @@ import {
   type DealUrgency,
   type DealDueDiligenceItem,
 } from "@/lib/deals";
-import { createActionItem } from "@/lib/action-items";
+import {
+  createActionItem,
+  fetchActionItems,
+  isVaTask,
+  updateActionItemStatus,
+  type ActionItem,
+  type ActionItemStatus,
+} from "@/lib/action-items";
 import { createNotification } from "@/lib/operations";
 import {
   createImportedLandLeadActivity,
@@ -67,6 +74,10 @@ import {
   type VaTimeChangeRequest,
   type VaTimeChangeRequestType,
 } from "@/lib/va-time";
+import ConversationPanel from "@/components/ConversationPanel";
+import { labelForStatus } from "@/lib/status-map";
+import { getLeadNextAction, type WorkflowTone } from "@/lib/workflow-actions";
+import OperatingHeader from "@/components/OperatingHeader";
 
 const DISPLAY_FONT = "var(--font-display)";
 
@@ -264,6 +275,7 @@ const EMPTY_BRIEF = (): VaDailyBriefInput => ({
   seller_replies: null,
   calls_completed: null,
   deals_submitted: null,
+  va_tasks_completed: null,
   checklist_items_cleared: null,
   activities_completed: "",
   follow_ups_needed: "",
@@ -278,7 +290,7 @@ function toNumber(value: string): number | null {
 }
 
 function statusLabel(value: string): string {
-  return value.split("-").map(p => p.charAt(0).toUpperCase() + p.slice(1)).join(" ");
+  return labelForStatus(value);
 }
 
 function addDays(days: number): string {
@@ -291,6 +303,22 @@ function appendBriefText(existing: string | null | undefined, addition: string):
   const current = (existing ?? "").trim();
   if (!addition.trim()) return current;
   return current ? `${current}\n\n${addition.trim()}` : addition.trim();
+}
+
+function taskRecordHref(task: ActionItem): string {
+  if (task.source_table === "meridian_deals" && task.source_id) return `/opportunity?deal=${task.source_id}`;
+  if (task.source_table === "meridian_imported_land_leads" && task.source_id) return `/opportunity?lead=${task.source_id}`;
+  if (task.source_table === "meridian_projects" && task.source_id) return "/projects";
+  if (task.source_table === "meeting_notes" && task.source_id) return "/meetings";
+  return "/actions";
+}
+
+function taskRecordLabel(task: ActionItem): string {
+  if (task.source_table === "meridian_deals") return "Deal";
+  if (task.source_table === "meridian_imported_land_leads") return "Lead";
+  if (task.source_table === "meridian_projects") return "Project";
+  if (task.source_table === "meeting_notes") return "Meeting";
+  return "General";
 }
 
 function formatDate(iso: string): string {
@@ -314,27 +342,8 @@ type ConversationItem = {
   meta?: string;
 };
 
-function sellerActionState(lead: ImportedLandLead): { label: string; detail: string; tone: "calm" | "hot"; primary: string } {
-  if (lead.sms_opt_status === "opted-out") {
-    return { label: "Do Not Contact", detail: "Seller opted out. Keep SMS disabled and log only non-text updates.", tone: "hot", primary: "Log Note" };
-  }
-  if (!lead.phone && !lead.phone_2) {
-    return { label: "Needs Phone", detail: "No phone is available. Use research or skip-trace before outreach.", tone: "calm", primary: "Log Research" };
-  }
-  if (lead.status === "interested") {
-    return { label: "Ready For Packet", detail: "Seller has shown interest. Confirm facts, then build the member packet.", tone: "hot", primary: "Build Packet" };
-  }
-  if (lead.last_sms_direction === "inbound") {
-    return { label: "Seller Replied", detail: "Reply, mark the outcome, or convert if the seller wants an offer.", tone: "hot", primary: "Reply" };
-  }
-  if (lead.next_follow_up_date) {
-    const isDue = lead.next_follow_up_date <= new Date().toISOString().slice(0, 10);
-    return { label: isDue ? "Follow-Up Due" : "Follow-Up Scheduled", detail: `Next follow-up: ${lead.next_follow_up_date}.`, tone: isDue ? "hot" : "calm", primary: isDue ? "Follow Up" : "Review" };
-  }
-  if (lead.last_sms_direction === "outbound") {
-    return { label: "Waiting On Seller", detail: `Last text sent ${lead.last_sms_at ? formatDate(lead.last_sms_at) : "recently"}.`, tone: "calm", primary: "Set Follow-Up" };
-  }
-  return { label: "Needs First Touch", detail: "Start with SMS, a call attempt, or pass if the record is not usable.", tone: "calm", primary: "Send First SMS" };
+function sellerActionState(lead: ImportedLandLead): { label: string; title: string; detail: string; tone: WorkflowTone; primary: string; target: string } {
+  return getLeadNextAction(lead);
 }
 
 function buildConversationItems(communications: CommunicationEvent[], activities: ImportedLandLeadActivity[]): ConversationItem[] {
@@ -501,7 +510,7 @@ async function notifyMembersForReview(deal: Deal, actor: string, shouldCreateVot
       body: message,
       priority: deal.urgency === "hot" ? "urgent" : "high",
       assigned_to: member,
-      href: `/deals?deal=${deal.id}`,
+      href: `/opportunity?deal=${deal.id}`,
       source_table: "meridian_deals",
       source_id: deal.id,
       notification_type: shouldCreateVoteTasks ? "deal_vote" : "deal-review",
@@ -528,6 +537,7 @@ export default function VaPage() {
   const [attachmentDraft, setAttachmentDraft] = useState(EMPTY_ATTACHMENT);
   const [briefDraft, setBriefDraft] = useState<VaDailyBriefInput>(EMPTY_BRIEF);
   const [briefs, setBriefs] = useState<VaDailyBrief[]>([]);
+  const [assignedTasks, setAssignedTasks] = useState<ActionItem[]>([]);
   const [timeEntries, setTimeEntries] = useState<VaTimeEntry[]>([]);
   const [timeChangeRequests, setTimeChangeRequests] = useState<VaTimeChangeRequest[]>([]);
   const [openShift, setOpenShift] = useState<VaTimeEntry | null>(null);
@@ -579,7 +589,7 @@ export default function VaPage() {
 
   const reload = useCallback(async (memberName = user) => {
     setLoading(true);
-    const [rows, briefRows, timeRows, requestRows, currentShift, importRows, batchRows, smsRows] = await Promise.all([
+    const [rows, briefRows, timeRows, requestRows, currentShift, importRows, batchRows, smsRows, taskRows] = await Promise.all([
       fetchDeals(),
       fetchVaDailyBriefs(8),
       fetchVaTimeEntries(80),
@@ -588,6 +598,7 @@ export default function VaPage() {
       fetchImportedLandLeads(500),
       fetchLandLeadBatches(),
       fetchCommunicationEvents({ unmatched: true, limit: 25 }),
+      fetchActionItems(),
     ]);
     const activeRows = rows.filter(deal =>
       !["closed", "active-project", "stabilized", "sold"].includes(deal.status)
@@ -595,6 +606,7 @@ export default function VaPage() {
     );
     setDeals(activeRows);
     setBriefs(briefRows);
+    setAssignedTasks(taskRows.filter(task => isVaTask(task)));
     setTimeEntries(timeRows);
     setTimeChangeRequests(requestRows.filter(request => !memberName || request.operator_name === memberName));
     setOpenShift(currentShift);
@@ -629,6 +641,12 @@ export default function VaPage() {
     [briefDraft.work_date, timeEntries],
   );
   const liveShiftMinutes = openShift ? currentShiftMinutes(openShift) : 0;
+  const openAssignedTasks = useMemo(() => assignedTasks.filter(task => task.status !== "done"), [assignedTasks]);
+  const completedAssignedTasksToday = useMemo(() => assignedTasks.filter(task =>
+    task.status === "done"
+    && task.completed_at
+    && vaDateKey(task.completed_at) === briefDraft.work_date
+  ), [assignedTasks, briefDraft.work_date]);
   const followUpsDue = useMemo(() => deals.filter(deal => isDueTodayOrPast(deal.next_follow_up_date, today)), [deals, today]);
   const draftLeads = useMemo(() => deals.filter(deal => deal.status === "lead"), [deals]);
   const interestedLeads = useMemo(() => importedLeads.filter(lead => lead.status === "interested"), [importedLeads]);
@@ -703,6 +721,13 @@ export default function VaPage() {
     submittedToday: deals.filter(deal => deal.status === "under-review" && isSameDay(deal.updated_at, today)).length,
     briefSubmitted: briefs.some(brief => brief.work_date === today),
   }), [briefs, deals, today]);
+  const tabCounts: Record<VaTab, number> = {
+    today: unmatchedSms.length + followUpsDue.length + interestedLeads.length + openAssignedTasks.length,
+    outreach: unmatchedSms.length + followUpsDue.length,
+    lists: importedLeads.length,
+    packet: deals.length,
+    brief: portalStats.briefSubmitted ? 1 : 0,
+  };
   const readinessItems = useMemo(() => [
     { label: "Address or parcel", done: !!(liveInput.address || liveInput.parcel_id) },
     { label: "Seller contact", done: !!(liveInput.seller_name || liveInput.seller_phone) },
@@ -1283,6 +1308,7 @@ export default function VaPage() {
       seller_replies: brief.seller_replies ?? null,
       calls_completed: brief.calls_completed ?? null,
       deals_submitted: brief.deals_submitted ?? null,
+      va_tasks_completed: brief.va_tasks_completed ?? null,
       checklist_items_cleared: brief.checklist_items_cleared ?? null,
       activities_completed: brief.activities_completed,
       follow_ups_needed: brief.follow_ups_needed ?? "",
@@ -1312,9 +1338,61 @@ export default function VaPage() {
       seller_replies: touchedImportedLeads.filter(lead => lead.status === "interested" || lead.last_sms_direction === "inbound").length,
       calls_completed: touchedImportedLeads.filter(lead => lead.last_activity_type === "called" || lead.last_activity_type === "left-voicemail").length,
       deals_submitted: ownDeals.filter(deal => deal.status === "under-review" && sameDay(deal.updated_at)).length,
+      va_tasks_completed: completedAssignedTasksToday.length,
       checklist_items_cleared: checklist.filter(item => sameDay(item.updated_at) && (item.status === "cleared" || item.status === "not-applicable") && item.updated_by === user).length,
       hours_worked: todaysSubmittedMinutes > 0 ? Number((todaysSubmittedMinutes / 60).toFixed(2)) : prev.hours_worked,
     }));
+  };
+
+  const changeAssignedTaskStatus = async (task: ActionItem, status: ActionItemStatus) => {
+    if (!user) return;
+    const note = status === "blocked" ? window.prompt("What is blocking this task?") ?? "" : "";
+    const { error } = await updateActionItemStatus(task.id, status, user, note);
+    if (error) { setMessage(error); return; }
+    const now = new Date().toISOString();
+    const nextTask = {
+      ...task,
+      status,
+      updated_at: now,
+      updated_by: user,
+      completed_at: status === "done" ? now : null,
+      completed_by: status === "done" ? user : null,
+      blocker_reason: status === "blocked" ? note.trim() || null : null,
+    };
+    setAssignedTasks(prev => prev.map(row => row.id === task.id ? nextTask : row));
+    if (status === "done") {
+      setBriefDraft(prev => ({
+        ...prev,
+        va_tasks_completed: (prev.va_tasks_completed ?? completedAssignedTasksToday.length) + 1,
+        activities_completed: appendBriefText(prev.activities_completed, `Completed member-assigned task: ${task.title}`),
+      }));
+      const doneRecipients = task.created_by ? [task.created_by] : [null];
+      await Promise.all(doneRecipients.map(recipient => createNotification({
+        title: `VA task completed: ${task.title}`,
+        body: `${user} marked this task done. ${taskRecordLabel(task)}.`,
+        priority: "normal",
+        assigned_to: recipient,
+        href: "/actions",
+        source_table: "action_items",
+        source_id: task.id,
+        notification_type: "va-task-completed",
+      }, user)));
+    }
+    if (status === "blocked") {
+      const blockedRecipients = Array.from(new Set([task.created_by, ...MEMBERS].filter(Boolean))) as string[];
+      await Promise.all(blockedRecipients.map(recipient => createNotification({
+        title: `VA task blocked: ${task.title}`,
+        body: `${note.trim() || `${user} marked this task blocked.`} ${taskRecordLabel(task)}.`,
+        priority: "high",
+        assigned_to: recipient,
+        href: "/actions",
+        source_table: "action_items",
+        source_id: task.id,
+        notification_type: "va-task-blocked",
+        dedupe: true,
+      }, user)));
+    }
+    setMessage(status === "done" ? "Task completed and added to the daily brief." : `Task marked ${statusLabel(status)}.`);
   };
 
   const pullSakariBrief = async () => {
@@ -1386,25 +1464,75 @@ export default function VaPage() {
 
   const cleared = checklist.filter(i => i.status === "cleared" || i.status === "not-applicable").length;
   const blocked = checklist.filter(i => i.status === "blocked").length;
+  const vaFlowCards = [
+    {
+      label: "Clock",
+      value: openShift ? formatDuration(liveShiftMinutes) : "Ready",
+      detail: openShift ? "Shift is running" : "Start shift before work",
+      action: openShift ? "Clock Out" : "Clock In",
+      onAction: openShift ? handleClockOut : handleClockIn,
+      hot: !!openShift,
+      disabled: clockBusy,
+    },
+    {
+      label: "List",
+      value: String(importedLeads.length),
+      detail: "Imported leads available",
+      action: "Open Lists",
+      onAction: () => setActiveTab("lists"),
+      hot: importStats.newRows > 0,
+    },
+    {
+      label: "Contact",
+      value: String(workdeskLeadRows.length),
+      detail: "Seller records in queue",
+      action: "Work Queue",
+      onAction: () => setActiveTab("today"),
+      hot: unmatchedSms.length > 0 || followUpsDue.length > 0,
+    },
+    {
+      label: "Packet",
+      value: String(draftLeads.length),
+      detail: "Draft deal briefs",
+      action: "Build Packet",
+      onAction: () => draftLeads[0] ? openDealBrief(draftLeads[0]) : setActiveTab("packet"),
+      hot: interestedLeads.length > 0,
+    },
+    {
+      label: "Brief",
+      value: portalStats.briefSubmitted ? "Done" : "Open",
+      detail: "Member daily summary",
+      action: "End Shift",
+      onAction: () => setActiveTab("brief"),
+      hot: !portalStats.briefSubmitted,
+    },
+  ];
 
   return (
     <div className="va-root" style={{ maxWidth: 1680, margin: "0 auto", padding: "82px 20px 100px" }}>
-      <header style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", gap: 16, flexWrap: "wrap", marginBottom: 24 }}>
-        <div>
-          <h1 style={{ fontFamily: DISPLAY_FONT, fontSize: "clamp(30px, 4vw, 44px)", fontWeight: 500, color: "var(--obsidian)", marginBottom: 3 }}>
-            VA Workdesk
-          </h1>
-          <p style={{ color: "var(--ink)", opacity: 0.66, fontSize: 14, maxWidth: 720 }}>
-            Your daily workspace to manage seller replies, update leads, build deal briefs, and close the shift with a member-ready summary.
-          </p>
-        </div>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+      <OperatingHeader
+        eyebrow="Acquisitions Desk"
+        title="VA Workdesk"
+        subtitle="A focused daily workspace for list imports, seller replies, follow-ups, deal briefs, and the end-of-shift member summary."
+        user={user}
+        mode="va"
+        actions={
+          <>
           <button onClick={() => setActiveTab("lists")} style={secondaryButton}>Import List</button>
           <button onClick={() => selectedImportedLead ? document.getElementById("va-workdesk-note")?.focus() : setActiveTab("today")} style={secondaryButton}>Log Call</button>
           <button onClick={startNew} style={primaryButton}>New Deal Brief</button>
           <button onClick={() => setActiveTab("brief")} style={secondaryButton}>End Shift Brief</button>
-        </div>
-      </header>
+          </>
+        }
+        stats={vaFlowCards.map(card => ({
+          label: card.label,
+          value: card.value,
+          detail: card.detail,
+          action: card.action,
+          onAction: card.disabled ? undefined : card.onAction,
+          tone: card.hot ? "hot" : card.label === "Brief" && portalStats.briefSubmitted ? "good" : "default",
+        }))}
+      />
 
       {message && (
         <div style={{ ...panel, padding: 12, marginBottom: 16, borderColor: message.includes("issue") || message.includes("Add") || message.includes("could") ? "var(--obsidian)" : "var(--brass)" }}>
@@ -1438,7 +1566,7 @@ export default function VaPage() {
         </div>
       </section>}
 
-      <div className="va-tabs" style={{ ...panel, padding: 8, marginBottom: 16, display: activeTab === "today" ? "none" : "flex", gap: 8, flexWrap: "wrap" }}>
+      <div className="va-tabs" style={{ ...panel, padding: 8, marginBottom: 16, display: "flex", gap: 8, flexWrap: "wrap" }}>
         {TABS.map(tab => (
           <button
             key={tab.value}
@@ -1446,6 +1574,9 @@ export default function VaPage() {
             style={activeTab === tab.value ? tabActive : tabButton}
           >
             {tab.label}
+            <span style={activeTab === tab.value ? tabCountActive : tabCount}>
+              {tabCounts[tab.value]}
+            </span>
           </button>
         ))}
       </div>
@@ -1534,9 +1665,10 @@ export default function VaPage() {
                   <div style={{ display: "grid", gap: 8, marginTop: 10 }}>
                     <QueueButton label="New imported leads" detail="Fresh from land lists" count={importStats.newRows} onClick={() => { setActiveTab("lists"); setLeadFilter("new"); }} />
                     <QueueButton label="Seller replies" detail="Unmatched SMS" count={unmatchedSms.length} hot={!!unmatchedSms.length} onClick={() => setActiveTab("outreach")} />
-                    <QueueButton label="Interested sellers" detail="Replied and expressed interest" count={interestedLeads.length} hot={!!interestedLeads.length} onClick={() => setLeadFilter("interested")} />
+                    <QueueButton label="Interested sellers" detail="Replied and expressed interest" count={interestedLeads.length} hot={!!interestedLeads.length} onClick={() => { setLeadFilter("interested"); setActiveTab("lists"); }} />
                     <QueueButton label="Follow-up due" detail="No reply in 24-72 hrs" count={followUpsDue.length} hot={!!followUpsDue.length} onClick={() => setActiveTab("outreach")} />
-                    <QueueButton label="Bad numbers / DNC" detail="Invalid or do not contact" count={importedLeads.filter(lead => lead.status === "passed" || lead.sms_opt_status === "opted-out").length} onClick={() => setLeadFilter("passed")} />
+                    <QueueButton label="Member-assigned tasks" detail="From member portal" count={openAssignedTasks.length} hot={!!openAssignedTasks.length} onClick={() => setActiveTab("today")} />
+                    <QueueButton label="Bad numbers / DNC" detail="Invalid or do not contact" count={importedLeads.filter(lead => lead.status === "passed" || lead.sms_opt_status === "opted-out").length} onClick={() => { setLeadFilter("passed"); setActiveTab("lists"); }} />
                     <QueueButton label="Deal brief drafts" detail="In progress" count={draftLeads.length} onClick={() => draftLeads[0] ? openDealBrief(draftLeads[0]) : setActiveTab("packet")} />
                   </div>
                 </section>
@@ -1546,6 +1678,7 @@ export default function VaPage() {
                     <MiniStat label="Texts sent" value={String(briefDraft.outreach_sent ?? 0)} />
                     <MiniStat label="Replies received" value={String(briefDraft.seller_replies ?? unmatchedSms.length)} />
                     <MiniStat label="Leads updated" value={String(briefDraft.leads_updated ?? portalStats.updatedToday)} />
+                    <MiniStat label="Tasks done" value={String(briefDraft.va_tasks_completed ?? completedAssignedTasksToday.length)} />
                     <MiniStat label="On shift" value={openShift ? formatDuration(liveShiftMinutes) : "Ready"} />
                   </div>
                   <button onClick={openShift ? handleClockOut : handleClockIn} disabled={clockBusy} style={{ ...primaryButton, width: "100%", marginTop: 10, opacity: clockBusy ? 0.65 : 1 }}>
@@ -1605,6 +1738,40 @@ export default function VaPage() {
                 </div>
               </section>
 
+              <section style={subPanel}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", marginBottom: 10 }}>
+                  <div>
+                    <p style={eyebrowSmall}>Member-assigned tasks</p>
+                    <h2 style={{ ...sectionTitle, fontSize: 22 }}>VA work routing</h2>
+                  </div>
+                  <span style={pill}>{openAssignedTasks.length} open</span>
+                </div>
+                <div style={{ display: "grid", gap: 8 }}>
+                  {openAssignedTasks.slice(0, 6).map(task => (
+                    <div key={task.id} style={{ ...subPanel, background: task.status === "blocked" ? "rgba(176,137,84,0.08)" : "var(--bone)" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "start" }}>
+                        <div>
+                          <strong style={{ color: "var(--obsidian)", fontSize: 14 }}>{task.title}</strong>
+                          <p style={{ color: "var(--muted)", fontSize: 12, lineHeight: 1.45, marginTop: 4 }}>{task.description || "No task details added."}</p>
+                          <p style={{ color: "var(--muted)", fontSize: 11, marginTop: 5 }}>
+                            {task.created_by ? `Assigned by ${task.created_by}` : "Assigned"}{task.due_date ? ` · Due ${task.due_date}` : ""} · {taskRecordLabel(task)} · {statusLabel(task.status)}
+                          </p>
+                          {task.blocker_reason && <p style={{ color: "var(--brass)", fontSize: 12, marginTop: 5 }}>Blocked: {task.blocker_reason}</p>}
+                        </div>
+                        <span style={task.priority === "urgent" || task.priority === "high" ? hotPill : pill}>{statusLabel(task.priority || "normal")}</span>
+                      </div>
+                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 10 }}>
+                        {task.status !== "in-progress" && <button onClick={() => changeAssignedTaskStatus(task, "in-progress")} style={secondaryButton}>Start</button>}
+                        <button onClick={() => router.push(taskRecordHref(task))} style={secondaryButton}>Open Record</button>
+                        <button onClick={() => changeAssignedTaskStatus(task, "done")} style={primaryButton}>Done</button>
+                        <button onClick={() => changeAssignedTaskStatus(task, "blocked")} style={secondaryButton}>Blocked</button>
+                      </div>
+                    </div>
+                  ))}
+                  {openAssignedTasks.length === 0 && <p style={{ color: "var(--muted)", fontSize: 13 }}>No member-assigned VA tasks are open.</p>}
+                </div>
+              </section>
+
               <aside style={{ display: "grid", gap: 12, alignContent: "start" }}>
                 {selectedImportedLead ? (
                   <SellerCommandCenter
@@ -1649,11 +1816,12 @@ export default function VaPage() {
                   <button onClick={() => setActiveTab("brief")} style={secondaryButton}>Edit Brief</button>
                 </div>
               </div>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, marginBottom: 10 }} className="number-grid">
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 10, marginBottom: 10 }} className="number-grid">
                 <ShiftCard label="Calls made" value={String(briefDraft.calls_completed ?? 0)} />
                 <ShiftCard label="Texts sent" value={String(briefDraft.outreach_sent ?? 0)} />
                 <ShiftCard label="Replies received" value={String(briefDraft.seller_replies ?? unmatchedSms.length)} tone={unmatchedSms.length ? "hot" : "calm"} />
                 <ShiftCard label="Deals submitted" value={String(briefDraft.deals_submitted ?? portalStats.submittedToday)} />
+                <ShiftCard label="Tasks completed" value={String(briefDraft.va_tasks_completed ?? completedAssignedTasksToday.length)} />
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr) 260px", gap: 12 }} className="workdesk-brief-grid">
                 <div>
@@ -1972,6 +2140,27 @@ export default function VaPage() {
               <ShiftCard label="Duplicates" value={String(importStats.duplicates)} />
               <ShiftCard label="Converted" value={String(importStats.converted)} />
             </div>
+
+            {!loading && importedLeads.length === 0 && (
+              <div style={{ ...subPanel, marginBottom: 12, borderColor: "rgba(176,137,84,0.45)", background: "rgba(176,137,84,0.08)" }}>
+                <p style={eyebrowSmall}>First list setup</p>
+                <h3 style={{ ...sectionTitle, fontSize: 22 }}>Upload a Land Portal or Land Insights CSV to start the VA queue.</h3>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, marginTop: 12 }} className="number-grid">
+                  <div style={subPanel}>
+                    <p style={miniLabel}>1. Choose CSV</p>
+                    <p style={{ color: "var(--muted)", fontSize: 12, lineHeight: 1.45 }}>Use the export from the list source. Owner, phone, parcel, county, acreage, and address will be mapped when available.</p>
+                  </div>
+                  <div style={subPanel}>
+                    <p style={miniLabel}>2. Confirm import</p>
+                    <p style={{ color: "var(--muted)", fontSize: 12, lineHeight: 1.45 }}>Review the preview, skipped rows, duplicate signals, and safe-to-import count before saving the list.</p>
+                  </div>
+                  <div style={subPanel}>
+                    <p style={miniLabel}>3. Work sellers</p>
+                    <p style={{ color: "var(--muted)", fontSize: 12, lineHeight: 1.45 }}>Search, text eligible owners, log outcomes, and convert interested sellers into deal briefs.</p>
+                  </div>
+                </div>
+              </div>
+            )}
 
             <div style={{ ...subPanel, marginBottom: 12 }}>
               <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "baseline", marginBottom: 10 }}>
@@ -2507,6 +2696,7 @@ export default function VaPage() {
               <NumberField label="Seller replies" value={briefDraft.seller_replies} onChange={v => setBriefDraft({ ...briefDraft, seller_replies: v })} />
               <NumberField label="Calls completed" value={briefDraft.calls_completed} onChange={v => setBriefDraft({ ...briefDraft, calls_completed: v })} />
               <NumberField label="Deals submitted" value={briefDraft.deals_submitted} onChange={v => setBriefDraft({ ...briefDraft, deals_submitted: v })} />
+              <NumberField label="VA tasks done" value={briefDraft.va_tasks_completed} onChange={v => setBriefDraft({ ...briefDraft, va_tasks_completed: v })} />
               <NumberField label="Checklist cleared" value={briefDraft.checklist_items_cleared} onChange={v => setBriefDraft({ ...briefDraft, checklist_items_cleared: v })} />
             </div>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
@@ -2665,7 +2855,7 @@ export default function VaPage() {
                       </div>
                     </div>
                     <p style={{ fontSize: 12, color: "var(--muted)", marginBottom: 6 }}>
-                      Leads {brief.leads_added ?? 0} added / {brief.leads_updated ?? 0} updated · Outreach {brief.outreach_sent ?? 0} · Deals submitted {brief.deals_submitted ?? 0}
+                      Leads {brief.leads_added ?? 0} added / {brief.leads_updated ?? 0} updated · Outreach {brief.outreach_sent ?? 0} · Deals submitted {brief.deals_submitted ?? 0} · VA tasks {brief.va_tasks_completed ?? 0}
                     </p>
                     {brief.revised_at && (
                       <p style={{ fontSize: 12, color: "var(--muted)", marginBottom: 6 }}>
@@ -2694,6 +2884,12 @@ export default function VaPage() {
           font-size: 13px;
         }
         textarea { resize: vertical; line-height: 1.45; }
+        .va-flow-strip {
+          display: grid;
+          grid-template-columns: repeat(5, minmax(0, 1fr));
+          gap: 10px;
+          margin-bottom: 16px;
+        }
         @media (max-width: 880px) {
           .va-root { padding-top: 28px !important; }
           .va-tabs {
@@ -2706,6 +2902,14 @@ export default function VaPage() {
           }
           .compact-shift-grid button {
             min-height: 52px !important;
+          }
+          .va-flow-strip {
+            grid-template-columns: 1fr !important;
+          }
+        }
+        @media (min-width: 881px) and (max-width: 1180px) {
+          .va-flow-strip {
+            grid-template-columns: repeat(3, minmax(0, 1fr));
           }
         }
       `}</style>
@@ -2768,7 +2972,33 @@ function SellerCommandCenter({
 }) {
   const action = sellerActionState(lead);
   const conversation = buildConversationItems(communications, activities);
+  const conversationActivities = activities.map(activity => ({
+    id: activity.id,
+    title: statusLabel(activity.activity_type),
+    date: activity.created_at,
+    body: activity.summary,
+    meta: activity.next_follow_up_date ? `Follow up ${activity.next_follow_up_date}` : undefined,
+  }));
   const smsDisabled = smsSending || (!lead.phone && !lead.phone_2) || lead.sms_opt_status === "opted-out";
+  const ownerFirst = (lead.owner_name || "").split(/\s+/).find(Boolean) || "";
+  const propertyHint = lead.property_address ? ` at ${lead.property_address}` : lead.parcel_id ? ` parcel ${lead.parcel_id}` : "";
+  const hasContact = conversation.length > 0 || !!lead.last_activity_type || !!lead.last_sms_at;
+  const hasOutcome = !!lead.last_activity_type || ["contacted", "interested", "passed", "converted"].includes(lead.status);
+  const packetReady = lead.status === "interested" || lead.status === "converted" || action.primary === "Build Packet";
+  const smsTemplates = [
+    {
+      label: "Intro",
+      body: `Hi${ownerFirst ? ` ${ownerFirst}` : ""}, this is Meridian. I was reaching out about your property${propertyHint}. Would you consider selling?`,
+    },
+    {
+      label: "Follow Up",
+      body: `Just following up on your property${propertyHint}. What price would make sense for you?`,
+    },
+    {
+      label: "Next Step",
+      body: "Thanks for the info. I am going to review the property details and follow up with next steps.",
+    },
+  ];
   const primaryAction = action.primary === "Build Packet" ? onBuildPacket : action.primary === "Set Follow-Up"
     ? () => setDispositionDraft({ ...dispositionDraft, disposition: "follow-up", nextFollowUpDate: addDays(2) })
     : undefined;
@@ -2776,10 +3006,10 @@ function SellerCommandCenter({
   return (
     <div style={{ display: "grid", gap: 12 }}>
       <div style={{
-        border: action.tone === "hot" ? "1px solid var(--brass)" : "1px solid var(--fog)",
+        border: action.tone === "hot" || action.tone === "warn" || action.tone === "success" ? "1px solid var(--brass)" : "1px solid var(--fog)",
         borderRadius: 8,
         padding: 12,
-        background: action.tone === "hot" ? "rgba(176,137,84,0.12)" : "var(--surface)",
+        background: action.tone === "hot" || action.tone === "warn" ? "rgba(176,137,84,0.12)" : action.tone === "success" ? "rgba(67,126,74,0.12)" : "var(--surface)",
         display: "flex",
         justifyContent: "space-between",
         gap: 12,
@@ -2789,11 +3019,18 @@ function SellerCommandCenter({
         <div>
           <p style={eyebrowSmall}>Next action</p>
           <h3 style={{ ...sectionTitle, fontSize: 22 }}>{action.label}</h3>
+          <p style={{ color: "var(--obsidian)", fontSize: 13, fontWeight: 800, marginTop: 3 }}>{action.title}</p>
           <p style={{ color: "var(--muted)", fontSize: 12, lineHeight: 1.45, marginTop: 4 }}>{action.detail}</p>
         </div>
         <button onClick={primaryAction || onSendSms} disabled={action.primary.includes("SMS") && smsDisabled} style={{ ...primaryButton, opacity: action.primary.includes("SMS") && smsDisabled ? 0.55 : 1 }}>
           {action.primary}
         </button>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }} className="number-grid">
+        <LeadPathCard label="1. Contact" detail={hasContact ? "Touch logged" : "Call or text seller"} done={hasContact} active={!hasContact} />
+        <LeadPathCard label="2. Outcome" detail={hasOutcome ? statusLabel(lead.last_activity_type || lead.status) : "Log result"} done={hasOutcome} active={hasContact && !hasOutcome} />
+        <LeadPathCard label="3. Packet" detail={packetReady ? "Ready for brief" : "Need interest or facts"} done={packetReady} active={hasOutcome && !packetReady} />
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: compact ? "1fr" : "minmax(0, 1fr) 300px", gap: 12 }} className="two-col">
@@ -2834,21 +3071,15 @@ function SellerCommandCenter({
             <button onClick={onPass} style={secondaryButton}>Pass</button>
           </div>
 
-          <div style={{ borderTop: "1px solid var(--fog)", paddingTop: 12 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "baseline", marginBottom: 10 }}>
-              <div>
-                <p style={eyebrowSmall}>Conversation</p>
-                <h3 style={{ ...sectionTitle, fontSize: 20 }}>Seller timeline</h3>
-              </div>
-              <span style={pill}>{conversation.length} item{conversation.length === 1 ? "" : "s"}</span>
-            </div>
-            <div style={{ display: "grid", gap: 8, maxHeight: compact ? 340 : 520, overflow: "auto" }}>
-              {conversation.map(item => (
-                <ConversationBubble key={item.id} item={item} />
-              ))}
-              {conversation.length === 0 && <p style={{ color: "var(--muted)", fontSize: 13 }}>No communication yet. Start with a text, call, or outcome note.</p>}
-            </div>
-          </div>
+          <ConversationPanel
+            eyebrow="Conversation"
+            title="Seller timeline"
+            subject={[lead.phone, lead.phone_2].filter(Boolean).join(" / ") || "No phone"}
+            communications={communications}
+            activities={conversationActivities}
+            emptyText="No communication yet. Start with a text, call, or outcome note."
+            maxHeight={compact ? 340 : 520}
+          />
         </section>
 
         <aside style={subPanel}>
@@ -2871,6 +3102,18 @@ function SellerCommandCenter({
                 Do not text this seller. Opt-out is recorded.
               </p>
             )}
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
+              {smsTemplates.map(template => (
+                <button
+                  key={template.label}
+                  onClick={() => setSmsDraft(template.body)}
+                  disabled={lead.sms_opt_status === "opted-out" || (!lead.phone && !lead.phone_2)}
+                  style={{ ...secondaryButton, padding: "7px 9px", fontSize: 10, opacity: lead.sms_opt_status === "opted-out" || (!lead.phone && !lead.phone_2) ? 0.55 : 1 }}
+                >
+                  {template.label}
+                </button>
+              ))}
+            </div>
             <textarea
               id="va-workdesk-sms"
               rows={4}
@@ -2888,7 +3131,7 @@ function SellerCommandCenter({
           </div>
 
           <div style={{ borderTop: "1px solid var(--fog)", paddingTop: 12 }}>
-            <p style={eyebrowSmall}>Log outcome</p>
+            <p style={eyebrowSmall}>Log call or text outcome</p>
             <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 8 }}>
               <select value={dispositionDraft.disposition} onChange={e => setDispositionDraft({ ...dispositionDraft, disposition: e.target.value as LeadDisposition })}>
                 {LEAD_DISPOSITIONS.map(item => <option key={item.value} value={item.value}>{item.label}</option>)}
@@ -2914,24 +3157,20 @@ function SellerCommandCenter({
   );
 }
 
-function ConversationBubble({ item }: { item: ConversationItem }) {
-  const isInbound = item.kind === "sms-in";
-  const isOutbound = item.kind === "sms-out";
+function LeadPathCard({ label: text, detail, done, active }: { label: string; detail: string; done: boolean; active: boolean }) {
   return (
     <div style={{
-      border: isInbound ? "1px solid var(--brass)" : "1px solid var(--fog)",
+      border: done || active ? "1px solid var(--brass)" : "1px solid var(--fog)",
       borderRadius: 8,
+      background: done ? "rgba(176,137,84,0.12)" : active ? "rgba(255,252,245,0.9)" : "var(--surface)",
       padding: 10,
-      background: isInbound ? "rgba(176,137,84,0.10)" : isOutbound ? "var(--surface)" : "rgba(255,255,255,0.58)",
-      marginLeft: isOutbound ? 26 : 0,
-      marginRight: isInbound ? 26 : 0,
+      minHeight: 82,
     }}>
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap", marginBottom: 5 }}>
-        <strong style={{ color: "var(--obsidian)", fontSize: 12 }}>{item.title}</strong>
-        <span style={miniLabel}>{formatDate(item.date)}</span>
-      </div>
-      <p style={{ color: "var(--ink)", fontSize: 13, lineHeight: 1.45, whiteSpace: "pre-wrap" }}>{item.body}</p>
-      {item.meta && <p style={{ color: "var(--muted)", fontSize: 11, marginTop: 6 }}>{item.meta}</p>}
+      <p style={miniLabel}>{text}</p>
+      <strong style={{ display: "block", color: done ? "var(--brass)" : "var(--obsidian)", fontSize: 13, marginTop: 6 }}>
+        {done ? "Complete" : active ? "Now" : "Waiting"}
+      </strong>
+      <p style={{ color: "var(--muted)", fontSize: 11, lineHeight: 1.35, marginTop: 4 }}>{detail}</p>
     </div>
   );
 }
@@ -3077,10 +3316,13 @@ const secondaryButton: React.CSSProperties = {
 };
 
 const tabButton: React.CSSProperties = {
-  background: "transparent",
-  color: "var(--muted)",
-  border: "1px solid transparent",
-  borderRadius: 6,
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 8,
+  background: "rgba(255,255,255,0.58)",
+  color: "var(--ink)",
+  border: "1px solid var(--fog)",
+  borderRadius: 999,
   padding: "10px 13px",
   minHeight: 40,
   fontSize: 11,
@@ -3096,6 +3338,25 @@ const tabActive: React.CSSProperties = {
   background: "var(--obsidian)",
   color: "var(--bone)",
   borderColor: "var(--obsidian)",
+};
+
+const tabCount: React.CSSProperties = {
+  minWidth: 22,
+  height: 22,
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  borderRadius: 999,
+  background: "var(--surface)",
+  color: "var(--muted)",
+  fontSize: 10,
+  letterSpacing: 0,
+};
+
+const tabCountActive: React.CSSProperties = {
+  ...tabCount,
+  background: "rgba(237,230,214,0.16)",
+  color: "var(--bone)",
 };
 
 const label: React.CSSProperties = {

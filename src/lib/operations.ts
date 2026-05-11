@@ -99,7 +99,7 @@ export async function fetchNotifications(memberName: string): Promise<Notificati
 }
 
 export async function createNotification(
-  patch: { title: string; body?: string | null; priority?: NotificationPriority; assigned_to?: string | null; href?: string | null; source_table?: string | null; source_id?: string | null; notification_type?: string },
+  patch: { title: string; body?: string | null; priority?: NotificationPriority; assigned_to?: string | null; href?: string | null; source_table?: string | null; source_id?: string | null; notification_type?: string; dedupe?: boolean },
   actor: string,
 ): Promise<{ error: string | null }> {
   const row = {
@@ -115,8 +115,40 @@ export async function createNotification(
   };
   if (!supabase) {
     const now = new Date().toISOString();
-    localSet(LOCAL_NOTIFICATIONS, [{ ...row, id: `notice-${Date.now()}`, read_at: null, created_at: now }, ...localGet<Notification[]>(LOCAL_NOTIFICATIONS, [])]);
+    const existing = localGet<Notification[]>(LOCAL_NOTIFICATIONS, []);
+    if (patch.dedupe) {
+      const matchIndex = existing.findIndex(n =>
+        !n.read_at
+        && n.assigned_to === row.assigned_to
+        && n.notification_type === row.notification_type
+        && n.source_table === row.source_table
+        && n.source_id === row.source_id
+      );
+      if (matchIndex >= 0) {
+        const next = [...existing];
+        next[matchIndex] = { ...next[matchIndex], ...row, created_at: now };
+        localSet(LOCAL_NOTIFICATIONS, next);
+        return { error: null };
+      }
+    }
+    localSet(LOCAL_NOTIFICATIONS, [{ ...row, id: `notice-${Date.now()}`, read_at: null, created_at: now }, ...existing]);
     return { error: null };
+  }
+  if (patch.dedupe) {
+    let query = supabase
+      .from("meridian_notifications")
+      .select("id")
+      .eq("notification_type", row.notification_type)
+      .is("read_at", null)
+      .limit(1);
+    query = row.assigned_to ? query.eq("assigned_to", row.assigned_to) : query.is("assigned_to", null);
+    query = row.source_table ? query.eq("source_table", row.source_table) : query.is("source_table", null);
+    query = row.source_id ? query.eq("source_id", row.source_id) : query.is("source_id", null);
+    const { data: existing } = await query.maybeSingle();
+    if (existing?.id) {
+      const { error } = await supabase.from("meridian_notifications").update(row).eq("id", existing.id);
+      return { error: error?.message ?? null };
+    }
   }
   const { error } = await supabase.from("meridian_notifications").insert(row);
   return { error: error?.message ?? null };
@@ -230,4 +262,3 @@ export async function createProjectDocument(
   const { data, error } = await supabase.from("meridian_project_documents").insert(row).select().single();
   return { data: (data as ProjectDocument) ?? null, error: error?.message ?? null };
 }
-

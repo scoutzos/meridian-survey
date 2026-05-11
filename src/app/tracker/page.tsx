@@ -34,6 +34,7 @@ export default function TrackerDashboard() {
   const [calls, setCalls] = useState<CapitalCall[]>([]);
   const [loading, setLoading] = useState(true);
   const [creatingCall, setCreatingCall] = useState(false);
+  const [message, setMessage] = useState("");
 
   useEffect(() => {
     const u = localStorage.getItem("meridian_user");
@@ -116,7 +117,7 @@ export default function TrackerDashboard() {
     };
     const { data, error } = await supabase.from("tracker_capital_calls").insert(row).select().single();
     setCreatingCall(false);
-    if (error) { alert(error.message); return; }
+    if (error) { setMessage(error.message); return; }
     await logAudit({
       actor: user,
       table_name: "tracker_capital_calls",
@@ -124,11 +125,17 @@ export default function TrackerDashboard() {
       action: "create",
       diff: { after: data, source: "shortfall-suggestion" },
     });
+    setMessage("Suggested capital call created.");
     router.push("/tracker/capital-calls");
   }
 
   return (
-    <TrackerShell title="Contribution Tracker" subtitle="Funding health, expenses, deposits, and per-member balances.">
+    <TrackerShell title="Money Center" subtitle="Funding health, capital calls, expenses, deposits, and per-member balances tied back to operations and approved deals.">
+      {message && (
+        <div style={{ ...trackerCard, marginBottom: 16, padding: "12px 14px", background: "rgba(201,168,120,0.12)", fontSize: 13 }}>
+          {message}
+        </div>
+      )}
       {loading && <div style={{ color: "var(--muted)" }}>Loading…</div>}
 
       {/* Funding shortfall banner */}
@@ -263,6 +270,10 @@ export default function TrackerDashboard() {
         <QuickLink label="Expenses" desc="Log and categorize costs" href="/tracker/expenses" router={router} />
         <QuickLink label="Contributions" desc="Member bank deposits" href="/tracker/contributions" router={router} />
         <QuickLink label="Capital Calls" desc="Approve, close, or dismiss calls" href="/tracker/capital-calls" router={router} />
+        <QuickLink label="Expense Planning" desc="Propose and vote before spend" href="/tracker/planning" router={router} />
+        <QuickLink label="Operations" desc="VA time, reimbursements, scenarios" href="/operations" router={router} />
+        <QuickLink label="Projects" desc="Budgets, docs, vendors, risk" href="/projects" router={router} />
+        <QuickLink label="Deal Reviews" desc="Packets before money moves" href="/deals" router={router} />
       </div>
     </TrackerShell>
   );

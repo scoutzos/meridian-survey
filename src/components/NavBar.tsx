@@ -2,21 +2,18 @@
 import { useRouter, usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import type { CSSProperties } from "react";
-import { isVaUser } from "@/lib/identity";
+import { getCurrentMeridianUser, isVaUser, signOutMeridianUser } from "@/lib/identity";
 import Logo from "./Logo";
 
-const crmRoutes = ["/crm", "/va", "/deals", "/opportunity", "/actions", "/operations", "/meetings"];
+const crmRoutes = ["/crm", "/va"];
 const crmLinks = [
   { href: "/dashboard", label: "Member Portal" },
   { href: "/crm", label: "Command Center" },
   { href: "/va", label: "Lead Inbox" },
-  { href: "/deals", label: "Deal Pipeline" },
+  { href: "/crm?view=deals", label: "Deal Reviews" },
   { href: "/crm?view=buyers", label: "Buyers" },
   { href: "/crm?view=dispo", label: "Disposition" },
   { href: "/crm?view=records", label: "Records" },
-  { href: "/actions", label: "Tasks" },
-  { href: "/operations", label: "Reports" },
-  { href: "/meetings", label: "Meetings" },
 ];
 
 const crmCreateButton: CSSProperties = {
@@ -47,12 +44,23 @@ export default function NavBar() {
   const router = useRouter();
   const pathname = usePathname();
   const [user, setUser] = useState<string | null>(null);
+  const [crmView, setCrmView] = useState<string | null>(null);
+  const [moreOpen, setMoreOpen] = useState(false);
 
   useEffect(() => {
-    setUser(localStorage.getItem("meridian_user"));
+    setUser(getCurrentMeridianUser());
+    if (pathname === "/crm") {
+      setCrmView(new URLSearchParams(window.location.search).get("view"));
+    } else {
+      setCrmView(null);
+    }
   }, [pathname]);
 
   const crmShell = !!user && crmRoutes.some(route => pathname === route || pathname.startsWith(route + "/"));
+  const handleSignOut = async () => {
+    await signOutMeridianUser();
+    router.push("/");
+  };
 
   useEffect(() => {
     document.body.classList.toggle("crm-shell-active", crmShell);
@@ -63,18 +71,20 @@ export default function NavBar() {
 
   const memberLinks = [
     { href: "/dashboard",  label: "Home" },
+    { href: "/actions",    label: "Tasks" },
+    { href: "/deals",      label: "Deal Reviews" },
     { href: "/crm",        label: "CRM" },
     { href: "/tracker",    label: "Money" },
-    { href: "/deals",      label: "Deals" },
+    { href: "/operations", label: "Operations" },
     { href: "/projects",   label: "Projects" },
-    { href: "/operations", label: "Ops" },
-    { href: "/surveys",    label: "Surveys" },
-    { href: "/actions",    label: "Tasks" },
+  ];
+  const secondaryMemberLinks = [
+    { href: "/documents",  label: "Docs" },
     { href: "/meetings",   label: "Meetings" },
     { href: "/dashboard",  label: "My Portal" },
     { href: "/members/candidates", label: "Applications" },
-    { href: "/documents",  label: "Docs" },
     { href: "/decisions",  label: "Decisions" },
+    { href: "/surveys",    label: "Surveys" },
     { href: "/hub",        label: "Hub" },
   ];
   const vaLinks = [
@@ -87,6 +97,7 @@ export default function NavBar() {
     if (pathname === href) return true;
     if (pathname.startsWith(href + "/")) return true;
     if (href === "/surveys" && (pathname.startsWith("/survey/") || pathname.startsWith("/results/"))) return true;
+    if (href === "/deals" && pathname.startsWith("/opportunity")) return true;
     return false;
   };
 
@@ -104,11 +115,19 @@ export default function NavBar() {
           <div style={{ display: "grid", gap: 4 }}>
             {crmLinks.filter(link => !isVaUser(user) || ["/dashboard", "/crm", "/va", "/actions", "/meetings"].some(href => link.href.startsWith(href))).map(link => {
               const baseHref = link.href.split("?")[0];
-              const active = pathname === baseHref || pathname.startsWith(baseHref + "/");
+              const linkView = new URLSearchParams(link.href.split("?")[1] ?? "").get("view");
+              const active = link.href === "/crm"
+                ? pathname === "/crm" && !crmView
+                : linkView
+                  ? pathname === "/crm" && crmView === linkView
+                  : pathname === baseHref || pathname.startsWith(baseHref + "/");
               return (
                 <button
                   key={link.href}
-                  onClick={() => router.push(link.href)}
+                  onClick={() => {
+                    setCrmView(linkView);
+                    router.push(link.href);
+                  }}
                   className={active ? "crm-side-link crm-side-link-active" : "crm-side-link"}
                 >
                   <span>{link.label}</span>
@@ -120,7 +139,7 @@ export default function NavBar() {
             <span style={{ display: "block", color: "rgba(237,230,214,0.62)", fontSize: 10, marginBottom: 4 }}>Signed in</span>
             <strong style={{ display: "block", color: "var(--bone)", fontSize: 12 }}>{user}</strong>
             <button
-              onClick={() => { localStorage.removeItem("meridian_user"); router.push("/"); }}
+              onClick={handleSignOut}
               style={{ marginTop: 8, background: "transparent", border: "none", color: "var(--brass)", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.14em" }}
             >
               Sign out
@@ -151,6 +170,12 @@ export default function NavBar() {
     }}>
       <div style={{ display: "flex", alignItems: "center", gap: 24, flex: 1, minWidth: 0 }}>
         <Logo width={42} onDark style={{ cursor: "pointer", flexShrink: 0 }} onClick={() => router.push(isVaUser(user) ? "/va" : "/dashboard")} />
+        {!isVaUser(user) && (
+          <div style={{ display: "grid", lineHeight: 1.05, flexShrink: 0 }}>
+            <strong style={{ color: "var(--bone)", fontSize: 12, letterSpacing: "0.18em", textTransform: "uppercase" }}>Member</strong>
+            <span style={{ color: "var(--brass)", fontSize: 9, letterSpacing: "0.2em", textTransform: "uppercase" }}>Portal</span>
+          </div>
+        )}
         <div style={{
           display: "flex", alignItems: "center", gap: 2, overflowX: "auto",
           scrollbarWidth: "none",
@@ -160,7 +185,10 @@ export default function NavBar() {
             return (
               <button
                 key={l.href}
-                onClick={() => router.push(l.href)}
+                onClick={() => {
+                  setMoreOpen(false);
+                  router.push(l.href);
+                }}
                 style={{
                   background: "transparent",
                   color: active ? "var(--brass)" : "var(--fog)",
@@ -182,9 +210,80 @@ export default function NavBar() {
               </button>
             );
           })}
+          {!isVaUser(user) && (
+            <div style={{ position: "relative", flexShrink: 0 }}>
+              <button
+                onClick={() => setMoreOpen(open => !open)}
+                style={{
+                  background: moreOpen ? "rgba(201,168,120,0.16)" : "transparent",
+                  color: moreOpen || secondaryMemberLinks.some(l => isActive(l.href)) ? "var(--brass)" : "var(--fog)",
+                  border: "1px solid rgba(214,205,183,0.18)",
+                  borderRadius: 7,
+                  padding: "8px 12px",
+                  fontSize: 11,
+                  fontFamily: "var(--font-body)",
+                  fontWeight: 600,
+                  letterSpacing: "0.18em",
+                  textTransform: "uppercase",
+                  cursor: "pointer",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                More
+              </button>
+              {moreOpen && (
+                <div style={{
+                  position: "absolute",
+                  top: 38,
+                  right: 0,
+                  minWidth: 210,
+                  background: "var(--obsidian)",
+                  border: "1px solid rgba(201,168,120,0.32)",
+                  borderRadius: 10,
+                  padding: 8,
+                  boxShadow: "0 18px 40px rgba(0,0,0,0.22)",
+                  display: "grid",
+                  gap: 2,
+                }}>
+                  {secondaryMemberLinks.map(l => {
+                    const active = isActive(l.href);
+                    return (
+                      <button
+                        key={l.href}
+                        onClick={() => {
+                          setMoreOpen(false);
+                          router.push(l.href);
+                        }}
+                        style={{
+                          background: active ? "rgba(201,168,120,0.16)" : "transparent",
+                          color: active ? "var(--brass)" : "var(--fog)",
+                          border: "none",
+                          borderRadius: 7,
+                          padding: "10px 11px",
+                          textAlign: "left",
+                          fontSize: 11,
+                          fontWeight: active ? 700 : 600,
+                          letterSpacing: "0.12em",
+                          textTransform: "uppercase",
+                          cursor: "pointer",
+                        }}
+                      >
+                        {l.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 16, flexShrink: 0 }}>
+        {!isVaUser(user) && (
+          <button onClick={() => router.push("/va")} style={crmCreateButton}>
+            New Deal Brief
+          </button>
+        )}
         <span style={{
           fontFamily: "var(--font-body)",
           fontSize: 11,
@@ -194,7 +293,7 @@ export default function NavBar() {
           fontWeight: 500,
         }}>{user}</span>
         <button
-          onClick={() => { localStorage.removeItem("meridian_user"); router.push("/"); }}
+          onClick={handleSignOut}
           style={{
             background: "none", border: "none",
             color: "var(--fog)",

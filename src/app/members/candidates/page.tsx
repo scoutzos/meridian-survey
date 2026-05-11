@@ -127,6 +127,8 @@ function CandidateReviewsContent() {
 
   const viewHref = (view: CandidateView) => `/members/candidates?view=${view}`;
   const startedCount = candidates.filter(candidate => candidate.status === "started").length;
+  const submittedCount = candidates.filter(candidate => candidate.status !== "started").length;
+  const needsMyVoteCount = candidates.filter(candidate => candidate.status === "under_review" && !myVotedCandidateIds.has(candidate.id)).length;
 
   return (
     <main style={{ maxWidth: 1180, margin: "0 auto", padding: "84px 20px 100px" }}>
@@ -138,6 +140,36 @@ function CandidateReviewsContent() {
         </div>
         <button onClick={() => router.push("/dashboard")} style={buttonGhost}>Back to Portal</button>
       </header>
+
+      <section className="application-bridge-grid">
+        <button onClick={() => router.push(viewHref("needs-my-vote"))} className="application-bridge-card">
+          <span>Needs My Vote</span>
+          <strong>{needsMyVoteCount}</strong>
+          <p>Submitted applicants waiting for your member review.</p>
+        </button>
+        <button onClick={() => router.push(viewHref("started"))} className="application-bridge-card">
+          <span>Started</span>
+          <strong>{startedCount}</strong>
+          <p>Draft applications visible before member voting opens.</p>
+        </button>
+        <button onClick={() => router.push(viewHref("all"))} className="application-bridge-card">
+          <span>Applicant File</span>
+          <strong>{submittedCount}</strong>
+          <p>Submitted member candidates and vote history.</p>
+        </button>
+        <button onClick={() => router.push("/apply")} className="application-bridge-card">
+          <span>Public Form</span>
+          <strong>Apply</strong>
+          <p>Open the membership readiness and contribution review.</p>
+        </button>
+      </section>
+
+      <section style={systemNote}>
+        <p style={eyebrow}>How this fits</p>
+        <p style={muted}>
+          Membership applications are not separate from the operating system. A submitted application becomes a member review item, votes are recorded here, and the outcome can be referenced from Decisions and the Hub.
+        </p>
+      </section>
 
       <section style={viewPanel}>
         <div>
@@ -380,8 +412,52 @@ function CandidateReviewsContent() {
           grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
           gap: 14px;
         }
+        .application-bridge-grid {
+          display: grid;
+          grid-template-columns: repeat(4, minmax(0, 1fr));
+          gap: 12px;
+          margin-bottom: 16px;
+        }
+        .application-bridge-card {
+          appearance: none;
+          background: var(--surface);
+          border: 1px solid var(--fog);
+          border-radius: 8px;
+          cursor: pointer;
+          min-height: 126px;
+          padding: 16px;
+          text-align: left;
+        }
+        .application-bridge-card span {
+          color: var(--brass);
+          display: block;
+          font-size: 10px;
+          font-weight: 800;
+          letter-spacing: 0.16em;
+          text-transform: uppercase;
+          margin-bottom: 12px;
+        }
+        .application-bridge-card strong {
+          color: var(--obsidian);
+          display: block;
+          font-size: 22px;
+          line-height: 1.2;
+          margin-bottom: 8px;
+        }
+        .application-bridge-card p {
+          color: var(--ink);
+          font-size: 12px;
+          line-height: 1.45;
+          opacity: 0.68;
+        }
+        @media (max-width: 980px) {
+          .application-bridge-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        }
         @media (max-width: 820px) {
           .candidate-layout { grid-template-columns: 1fr; }
+        }
+        @media (max-width: 600px) {
+          .application-bridge-grid { grid-template-columns: 1fr; }
         }
       `}</style>
     </main>
@@ -499,6 +575,14 @@ const viewPanel: React.CSSProperties = {
   gap: 14,
   alignItems: "center",
   flexWrap: "wrap",
+};
+
+const systemNote: React.CSSProperties = {
+  background: "rgba(201,168,120,0.1)",
+  border: "1px solid rgba(201,168,120,0.24)",
+  borderRadius: 8,
+  padding: 16,
+  marginBottom: 18,
 };
 
 const voteSummary: React.CSSProperties = {

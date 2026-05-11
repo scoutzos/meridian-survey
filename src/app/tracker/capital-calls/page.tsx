@@ -34,6 +34,7 @@ export default function CapitalCallsPage() {
   const [profiles, setProfiles] = useState<MemberProfile[]>([]);
   const [calls, setCalls] = useState<CapitalCall[]>([]);
   const [loading, setLoading] = useState(true);
+  const [message, setMessage] = useState("");
 
   // manual create
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
@@ -87,7 +88,7 @@ export default function CapitalCallsPage() {
       updated_by: user,
     };
     const { data, error } = await supabase.from("tracker_capital_calls").insert(row).select().single();
-    if (error) { alert(error.message); return; }
+    if (error) { setMessage(error.message); return; }
     await logAudit({
       actor: user,
       table_name: "tracker_capital_calls",
@@ -96,6 +97,7 @@ export default function CapitalCallsPage() {
       diff: { after: data },
     });
     setReason(""); setTotalAmount("");
+    setMessage("Capital call created.");
     void load();
   }
 
@@ -111,7 +113,7 @@ export default function CapitalCallsPage() {
       update.approved_at = new Date().toISOString();
     }
     const { error } = await supabase.from("tracker_capital_calls").update(update).eq("id", c.id);
-    if (error) { alert(error.message); return; }
+    if (error) { setMessage(error.message); return; }
     await logAudit({
       actor: user,
       table_name: "tracker_capital_calls",
@@ -119,6 +121,7 @@ export default function CapitalCallsPage() {
       action: "update",
       diff: { before: { status: c.status }, after: update },
     });
+    setMessage(`Capital call marked ${CAPITAL_CALL_STATUS_LABEL[status].toLowerCase()}.`);
     void load();
   }
 
@@ -129,7 +132,7 @@ export default function CapitalCallsPage() {
       .from("tracker_capital_calls")
       .update({ deleted_at: new Date().toISOString(), updated_by: user })
       .eq("id", c.id);
-    if (error) { alert(error.message); return; }
+    if (error) { setMessage(error.message); return; }
     await logAudit({
       actor: user,
       table_name: "tracker_capital_calls",
@@ -137,11 +140,17 @@ export default function CapitalCallsPage() {
       action: "delete",
       diff: { before: c },
     });
+    setMessage("Capital call deleted.");
     void load();
   }
 
   return (
     <TrackerShell title="Capital Calls" subtitle="Suggested calls require human approval before counting against members.">
+      {message && (
+        <div style={{ ...trackerCard, marginBottom: 16, padding: "12px 14px", background: "rgba(201,168,120,0.12)", fontSize: 13 }}>
+          {message}
+        </div>
+      )}
       {loading && <div style={{ color: "var(--muted)" }}>Loading…</div>}
 
       {admin && (

@@ -59,6 +59,7 @@ export default function MeetingsPage() {
   const [extraction, setExtraction] = useState<ExtractionResult | null>(null);
   const [confirmedItems, setConfirmedItems] = useState<Set<number>>(new Set());
   const [dragOver, setDragOver] = useState(false);
+  const [message, setMessage] = useState("");
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const reload = useCallback(async () => {
@@ -87,6 +88,8 @@ export default function MeetingsPage() {
 
   if (!user) return null;
   const admin = isAdmin(profiles, user);
+  const transcriptCount = notes.filter(n => n.transcript_filename).length;
+  const actionReadyLabel = extraction ? `${confirmedItems.size} ready` : "Transcript tool";
 
   const resetNewNoteForm = () => {
     setNewNote({ meeting_date: "", agenda: "", notes: "", attendees: [] });
@@ -102,13 +105,14 @@ export default function MeetingsPage() {
       meeting_time: nextDraft.meeting_time.trim() || null,
       agenda: nextDraft.agenda.trim() || null,
     }, user);
-    if (error) { alert(error); return; }
+    if (error) { setMessage(error); return; }
     setEditingNext(false);
+    setMessage("Next meeting updated.");
     void reload();
   };
 
   const saveNote = async () => {
-    if (!newNote.meeting_date) { alert("Pick a meeting date."); return; }
+    if (!newNote.meeting_date) { setMessage("Pick a meeting date."); return; }
     const { data, error } = await createMeetingNote({
       meeting_date: newNote.meeting_date,
       agenda: newNote.agenda,
@@ -117,7 +121,7 @@ export default function MeetingsPage() {
       transcript: transcriptText || null,
       transcript_filename: transcriptFilename || null,
     }, user);
-    if (error) { alert(error); return; }
+    if (error) { setMessage(error); return; }
 
     // Create any confirmed action items from the extraction.
     if (extraction && data) {
@@ -134,14 +138,16 @@ export default function MeetingsPage() {
 
     resetNewNoteForm();
     setShowNewNote(false);
+    setMessage("Meeting saved.");
     void reload();
   };
 
   const removeNote = async (note: MeetingNote) => {
     if (!confirm(`Delete notes for ${formatLong(note.meeting_date)}?`)) return;
     const { error } = await deleteMeetingNote(note.id, user);
-    if (error) { alert(error); return; }
+    if (error) { setMessage(error); return; }
     setNotes(prev => prev.filter(n => n.id !== note.id));
+    setMessage("Meeting note deleted.");
   };
 
   const toggleAttendee = (m: string) => {
@@ -167,7 +173,7 @@ export default function MeetingsPage() {
       }
       setTranscriptFilename(file.name);
     } catch (err) {
-      alert(`Could not read file: ${err instanceof Error ? err.message : "unknown error"}`);
+      setMessage(`Could not read file: ${err instanceof Error ? err.message : "unknown error"}`);
     } finally {
       setParsingFile(false);
     }
@@ -187,7 +193,7 @@ export default function MeetingsPage() {
   };
 
   const runExtraction = async () => {
-    if (!transcriptText.trim()) { alert("Upload a transcript first."); return; }
+    if (!transcriptText.trim()) { setMessage("Upload a transcript first."); return; }
     setExtracting(true);
     setExtraction(null);
     try {
@@ -198,7 +204,7 @@ export default function MeetingsPage() {
       });
       const data = await res.json();
       if (!res.ok) {
-        alert(data.error || "Extraction failed");
+        setMessage(data.error || "Extraction failed");
         return;
       }
       const result = data as ExtractionResult;
@@ -212,8 +218,9 @@ export default function MeetingsPage() {
         noteParts.push("\nDecisions:\n" + result.decisions.map(d => `• ${d}`).join("\n"));
       }
       if (noteParts.length > 0) setNewNote(prev => ({ ...prev, notes: noteParts.join("\n") }));
+      setMessage("Transcript extraction complete.");
     } catch (err) {
-      alert(`Extraction failed: ${err instanceof Error ? err.message : "unknown"}`);
+      setMessage(`Extraction failed: ${err instanceof Error ? err.message : "unknown"}`);
     } finally {
       setExtracting(false);
     }
@@ -229,17 +236,68 @@ export default function MeetingsPage() {
 
   return (
     <div style={{ maxWidth: 960, margin: "0 auto", padding: "84px 20px 100px" }} className="meetings-root">
-      <header style={{ marginBottom: 24 }}>
-        <p style={{ fontSize: 11, letterSpacing: 2, textTransform: "uppercase", color: "var(--brass)", fontWeight: 600, marginBottom: 8 }}>
-          Cadence
-        </p>
-        <h1 style={{ fontFamily: DISPLAY_FONT, fontSize: "clamp(34px, 5vw, 48px)", fontWeight: 500, color: "var(--obsidian)", letterSpacing: "-0.5px", marginBottom: 6 }}>
-          Meeting hub
-        </h1>
-        <p style={{ color: "var(--ink)", opacity: 0.65, fontSize: 14 }}>
-          Standing Monday meeting at 7:15 PM ET. Agenda + notes archive below.
-        </p>
+      <header className="meetings-header">
+        <div>
+          <p style={{ fontSize: 11, letterSpacing: 2, textTransform: "uppercase", color: "var(--brass)", fontWeight: 600, marginBottom: 8 }}>
+            Member Portal
+          </p>
+          <h1 style={{ fontFamily: DISPLAY_FONT, fontSize: "clamp(34px, 5vw, 48px)", fontWeight: 500, color: "var(--obsidian)", letterSpacing: "-0.5px", marginBottom: 6 }}>
+            Meetings
+          </h1>
+          <p style={{ color: "var(--ink)", opacity: 0.65, fontSize: 14, maxWidth: 640, lineHeight: 1.6 }}>
+            Agenda, transcript extraction, decisions, and action items stay connected to the member task queue instead of living in a separate notes pile.
+          </p>
+        </div>
+        <div className="meeting-actions">
+          <button onClick={() => router.push("/dashboard")} style={subtleBtn}>Member Home</button>
+          <button onClick={() => router.push("/actions")} style={subtleBtn}>My Tasks</button>
+          <button onClick={() => router.push("/decisions")} style={subtleBtn}>Decisions</button>
+          <button onClick={() => router.push("/documents")} style={primaryBtn}>Documents</button>
+        </div>
       </header>
+
+      {message && (
+        <div style={{
+          border: "1px solid rgba(176,137,84,0.36)",
+          background: "rgba(176,137,84,0.10)",
+          color: "var(--obsidian)",
+          borderRadius: 10,
+          padding: "11px 13px",
+          marginBottom: 16,
+          display: "flex",
+          justifyContent: "space-between",
+          gap: 12,
+          alignItems: "flex-start",
+          fontSize: 13,
+          lineHeight: 1.45,
+        }}>
+          <span>{message}</span>
+          <button onClick={() => setMessage("")} style={{ background: "transparent", border: "none", color: "var(--brass)", fontSize: 11, fontWeight: 800, letterSpacing: "0.12em", textTransform: "uppercase", cursor: "pointer" }}>Clear</button>
+        </div>
+      )}
+
+      <section className="meeting-bridge-grid">
+        <article className="meeting-bridge-card">
+          <span>Next Meeting</span>
+          <strong>{next?.meeting_date ? formatLong(next.meeting_date) : "Not scheduled"}</strong>
+          <p>{next?.meeting_time ?? "Set time in the agenda card"}</p>
+        </article>
+        <article className="meeting-bridge-card">
+          <span>Archive</span>
+          <strong>{notes.length}</strong>
+          <p>Past meeting notes in the member record.</p>
+        </article>
+        <article className="meeting-bridge-card">
+          <span>Transcripts</span>
+          <strong>{transcriptCount}</strong>
+          <p>Uploaded files available for review.</p>
+        </article>
+        <article className="meeting-bridge-card">
+          <span>Action Capture</span>
+          <strong>{actionReadyLabel}</strong>
+          <p>Confirmed extraction items become member tasks.</p>
+        </article>
+      </section>
 
       {/* Upcoming meeting */}
       <section style={{ marginBottom: 32 }}>
@@ -584,9 +642,63 @@ export default function MeetingsPage() {
       </section>
 
       <style jsx>{`
+        .meetings-header {
+          display: flex;
+          justify-content: space-between;
+          gap: 20px;
+          align-items: flex-start;
+          margin-bottom: 22px;
+        }
+        .meeting-actions {
+          display: flex;
+          gap: 8px;
+          flex-wrap: wrap;
+          justify-content: flex-end;
+        }
+        .meeting-bridge-grid {
+          display: grid;
+          grid-template-columns: repeat(4, minmax(0, 1fr));
+          gap: 12px;
+          margin-bottom: 20px;
+        }
+        .meeting-bridge-card {
+          background: var(--surface);
+          border: 1px solid var(--fog);
+          border-radius: 12px;
+          padding: 16px;
+          min-height: 126px;
+        }
+        .meeting-bridge-card span {
+          color: var(--brass);
+          display: block;
+          font-size: 10px;
+          font-weight: 700;
+          letter-spacing: 0.16em;
+          text-transform: uppercase;
+          margin-bottom: 14px;
+        }
+        .meeting-bridge-card strong {
+          color: var(--obsidian);
+          display: block;
+          font-size: 19px;
+          line-height: 1.25;
+          margin-bottom: 8px;
+        }
+        .meeting-bridge-card p {
+          color: var(--ink);
+          font-size: 12px;
+          line-height: 1.45;
+          opacity: 0.68;
+        }
+        @media (max-width: 900px) {
+          .meetings-header { flex-direction: column; }
+          .meeting-actions { justify-content: flex-start; }
+          .meeting-bridge-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        }
         @media (max-width: 600px) {
           .meetings-root { padding-top: 28px !important; }
           :global(.next-form-row) { grid-template-columns: 1fr !important; }
+          .meeting-bridge-grid { grid-template-columns: 1fr; }
         }
       `}</style>
     </div>

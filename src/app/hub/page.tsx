@@ -27,6 +27,7 @@ import {
 
 const DOC_CATEGORIES = ["Legal", "Financial", "Research", "Meeting Notes", "Other"];
 const LINK_CATEGORIES = ["Mentorship", "Legal", "Financial", "Education", "Networking", "Tools", "Other"];
+const DISPLAY_FONT = "var(--font-display)";
 
 const sectionStyle = (open: boolean) => ({
   background: "var(--surface)", borderRadius: 12, marginBottom: 16, overflow: "hidden" as const,
@@ -56,6 +57,7 @@ export default function HubPage() {
   const transcriptSearchTimer = useRef<NodeJS.Timeout | null>(null);
   const [links, setLinks] = useState<SharedLink[]>([]);
   const [profiles, setProfiles] = useState<Record<string, MemberProfile>>({});
+  const [message, setMessage] = useState("");
 
   // Form state
   const [newAnnouncement, setNewAnnouncement] = useState("");
@@ -123,25 +125,28 @@ export default function HubPage() {
   const addAnnouncement = async () => {
     if (!newAnnouncement.trim() || !user) return;
     const { data, error } = await saveAnnouncement(user, newAnnouncement.trim());
-    if (error) { alert(error); return; }
+    if (error) { setMessage(error); return; }
     if (data) setAnnouncements(prev => [data, ...prev]);
     setNewAnnouncement("");
+    setMessage("Announcement posted.");
   };
 
   const addDecision = async () => {
     if (!newDecision.description.trim() || !user) return;
     const { data, error } = await saveDecision(user, newDecision);
-    if (error) { alert(error); return; }
+    if (error) { setMessage(error); return; }
     if (data) setDecisions(prev => [data, ...prev]);
     setNewDecision({ description: "", present: [], outcome: "" });
+    setMessage("Decision logged.");
   };
 
   const addLink = async () => {
     if (!newLink.url.trim() || !newLink.title.trim() || !user) return;
     const { data, error } = await saveSharedLink(user, newLink);
-    if (error) { alert(error); return; }
+    if (error) { setMessage(error); return; }
     if (data) setLinks(prev => [data, ...prev]);
     setNewLink({ url: "", title: "", category: "Other" });
+    setMessage("Link saved.");
   };
 
   const handleFileUpload = () => {
@@ -154,8 +159,9 @@ export default function HubPage() {
       reader.onload = async () => {
         const data = reader.result as string;
         const { data: doc, error } = await saveHubDocument(user, { filename: file.name, category: docCategory, data, mimeType: file.type });
-        if (error) { alert(error); return; }
+        if (error) { setMessage(error); return; }
         if (doc) setDocuments(prev => [doc, ...prev]);
+        setMessage("Document uploaded.");
       };
       reader.readAsDataURL(file);
     };
@@ -179,7 +185,7 @@ export default function HubPage() {
       setTranscriptUploading(true);
       const result = await uploadTranscript({ file, title, occurredAt, uploader: user });
       setTranscriptUploading(false);
-      if (result.error) { alert(`Upload failed: ${result.error}`); return; }
+      if (result.error) { setMessage(`Upload failed: ${result.error}`); return; }
       if (!result.fileStored) {
         // Body still saved; just couldn't push the original file. Common cause:
         // Storage bucket "transcripts" doesn't exist yet — alert once so the
@@ -191,6 +197,7 @@ export default function HubPage() {
         ? await searchTranscripts(transcriptDebounced)
         : await fetchTranscripts();
       setTranscripts(next);
+      setMessage(result.fileStored ? "Transcript uploaded." : "Transcript text saved. Original file storage still needs setup.");
     };
     input.click();
   };
@@ -199,14 +206,15 @@ export default function HubPage() {
     if (!user) return;
     if (!confirm("Delete this transcript?")) return;
     const { error } = await deleteTranscript(id, user);
-    if (error) { alert(error); return; }
+    if (error) { setMessage(error); return; }
     setTranscripts(prev => prev.filter(t => t.id !== id));
+    setMessage("Transcript deleted.");
   };
 
   const handleTranscriptDownload = async (t: Transcript) => {
     const url = await transcriptDownloadUrl(t);
     if (!url) {
-      alert("Original file isn't available — only the extracted text is stored for this transcript.");
+      setMessage("Original file isn't available. Only the extracted text is stored for this transcript.");
       return;
     }
     window.open(url, "_blank");
@@ -223,9 +231,10 @@ export default function HubPage() {
     if (!user) return;
     const profile = { ...(profiles[user] || {}), name: user, role: profileEdit.role, contact: profileEdit.contact, lastActive: new Date().toISOString() };
     const { data, error } = await upsertHubProfile(profile);
-    if (error) { alert(error); return; }
+    if (error) { setMessage(error); return; }
     setProfiles(prev => ({ ...prev, [user]: data ?? profile }));
     setEditingProfile(false);
+    setMessage("Profile saved.");
   };
 
   const formatDate = (d: string) => {
@@ -236,19 +245,92 @@ export default function HubPage() {
   const filteredLinks = links.filter(l =>
     linkSearch === "" || l.title.toLowerCase().includes(linkSearch.toLowerCase()) || l.category.toLowerCase().includes(linkSearch.toLowerCase()) || l.url.toLowerCase().includes(linkSearch.toLowerCase())
   );
+  const openHubSection = (section: string) => setOpenSections(prev => ({ ...prev, [section]: true }));
 
   if (!user) return null;
+  const completedSurveys = MEMBERS.filter(m => getMemberCompletion(m) === 100).length;
 
   return (
-    <div style={{ padding: "72px 16px 80px", maxWidth: 800, margin: "0 auto" }}>
-      <div style={{ marginBottom: 24 }}>
-        <h1 style={{ fontSize: 24, fontWeight: 700, marginBottom: 4 }}>Partnership Hub</h1>
-        <p style={{ color: "var(--muted)", fontSize: 13 }}>Meridian Collective — Transparency & Collaboration</p>
+    <div style={{ padding: "84px 20px 100px", maxWidth: 1120, margin: "0 auto" }} className="hub-root">
+      <header style={{ marginBottom: 22 }}>
+        <p style={{ fontSize: 11, letterSpacing: 2, textTransform: "uppercase", color: "var(--brass)", fontWeight: 700, marginBottom: 8 }}>
+          Member Portal
+        </p>
+        <h1 style={{ fontFamily: DISPLAY_FONT, fontSize: "clamp(34px, 5vw, 48px)", fontWeight: 500, color: "var(--obsidian)", marginBottom: 6 }}>
+          Platform Archive
+        </h1>
+        <p style={{ color: "var(--ink)", opacity: 0.68, fontSize: 14, maxWidth: 690, lineHeight: 1.6 }}>
+          A shared archive for announcements, member profiles, resource links, transcript history, and legacy uploads. Daily operating work now lives in Dashboard, Tasks, CRM, Deals, Operations, Money, Projects, Documents, and Meetings.
+        </p>
+      </header>
+
+      {message && (
+        <div className="hub-message" role="status">
+          {message}
+        </div>
+      )}
+
+      <section className="hub-status-grid">
+        <article className="hub-status-card">
+          <span>Announcements</span>
+          <strong>{announcements.length}</strong>
+          <p>Broadcasts to the member group.</p>
+        </article>
+        <article className="hub-status-card">
+          <span>Transcripts</span>
+          <strong>{transcripts.length}</strong>
+          <p>Searchable meeting and planning records.</p>
+        </article>
+        <article className="hub-status-card">
+          <span>Resources</span>
+          <strong>{filteredLinks.length}</strong>
+          <p>Shared links and reference tools.</p>
+        </article>
+        <article className="hub-status-card">
+          <span>Survey Completion</span>
+          <strong>{completedSurveys}/{MEMBERS.length}</strong>
+          <p>Member operating agreement input.</p>
+        </article>
+      </section>
+
+      <section className="hub-directory-grid">
+        <button className="hub-directory-card" onClick={() => router.push("/dashboard")}>
+          <span>Member Home</span>
+          <strong>Review priorities and daily updates</strong>
+        </button>
+        <button className="hub-directory-card" onClick={() => router.push("/documents")}>
+          <span>Documents</span>
+          <strong>Source of truth for canonical files</strong>
+        </button>
+        <button className="hub-directory-card" onClick={() => router.push("/decisions")}>
+          <span>Decisions</span>
+          <strong>Operating agreement decisions and vote record</strong>
+        </button>
+        <button className="hub-directory-card" onClick={() => router.push("/meetings")}>
+          <span>Meetings</span>
+          <strong>Agenda, minutes, transcripts, and tasks</strong>
+        </button>
+        <button className="hub-directory-card" onClick={() => router.push("/crm")}>
+          <span>CRM</span>
+          <strong>Lead, seller, buyer, and disposition workspace</strong>
+        </button>
+        <button className="hub-directory-card" onClick={() => router.push("/operations")}>
+          <span>Operations</span>
+          <strong>VA briefs, time approval, lead ops, and money ops</strong>
+        </button>
+      </section>
+
+      <div style={{ background: "rgba(201,168,120,0.1)", border: "1px solid rgba(201,168,120,0.2)", borderRadius: 10, padding: "12px 14px", fontSize: 12, color: "var(--muted)", marginBottom: 24, lineHeight: 1.55 }}>
+        Use this page for group-wide posts and older shared resources. Use Documents for final files, Decisions for the official vote record, Meetings for agendas and transcript extraction, and CRM for deal activity.
       </div>
 
-      <div style={{ background: "rgba(201,168,120,0.1)", border: "1px solid rgba(201,168,120,0.2)", borderRadius: 8, padding: "10px 14px", fontSize: 12, color: "var(--muted)", marginBottom: 24 }}>
-        Hub announcements, decisions, links, profiles, and document entries are shared through Supabase. For large legal files, keep Google Drive as the source of record until full document storage is wired.
-      </div>
+      <nav className="hub-section-jump" aria-label="Hub sections">
+        <button onClick={() => openHubSection("announcements")}>Announcements</button>
+        <button onClick={() => openHubSection("transcripts")}>Transcripts</button>
+        <button onClick={() => openHubSection("profiles")}>Profiles</button>
+        <button onClick={() => openHubSection("links")}>Links</button>
+        <button onClick={() => openHubSection("documents")}>Legacy Uploads</button>
+      </nav>
 
       {/* ANNOUNCEMENTS */}
       <div style={sectionStyle(!!openSections.announcements)}>
@@ -373,7 +455,7 @@ export default function HubPage() {
       {/* DOCUMENT VAULT */}
       <div style={sectionStyle(!!openSections.documents)}>
         <div style={sectionHeader} onClick={() => toggle("documents")}>
-          <h2 style={{ fontSize: 16, fontWeight: 600 }}>Document Vault</h2>
+          <h2 style={{ fontSize: 16, fontWeight: 600 }}>Legacy Upload Vault</h2>
           <span style={{ color: "var(--muted)", fontSize: 18 }}>{openSections.documents ? "−" : "+"}</span>
         </div>
         {openSections.documents && (
@@ -452,7 +534,7 @@ export default function HubPage() {
       {/* KEY DECISIONS LOG */}
       <div style={sectionStyle(!!openSections.decisions)}>
         <div style={sectionHeader} onClick={() => toggle("decisions")}>
-          <h2 style={{ fontSize: 16, fontWeight: 600 }}>Key Decisions Log</h2>
+          <h2 style={{ fontSize: 16, fontWeight: 600 }}>Legacy Decisions Log</h2>
           <span style={{ color: "var(--muted)", fontSize: 18 }}>{openSections.decisions ? "−" : "+"}</span>
         </div>
         {openSections.decisions && (
@@ -518,6 +600,107 @@ export default function HubPage() {
           </div>
         )}
       </div>
+      <style jsx>{`
+        .hub-status-grid {
+          display: grid;
+          grid-template-columns: repeat(4, minmax(0, 1fr));
+          gap: 12px;
+          margin-bottom: 18px;
+        }
+        .hub-message {
+          background: rgba(201,168,120,0.14);
+          border: 1px solid rgba(201,168,120,0.34);
+          border-radius: 10px;
+          color: var(--obsidian);
+          font-size: 13px;
+          line-height: 1.45;
+          margin: -6px 0 18px;
+          padding: 11px 14px;
+        }
+        .hub-status-card {
+          background: var(--surface);
+          border: 1px solid var(--fog);
+          border-radius: 12px;
+          padding: 16px;
+          min-height: 126px;
+        }
+        .hub-status-card span,
+        .hub-directory-card span {
+          display: block;
+          color: var(--brass);
+          font-size: 10px;
+          font-weight: 700;
+          letter-spacing: 0.16em;
+          text-transform: uppercase;
+          margin-bottom: 12px;
+        }
+        .hub-status-card strong {
+          display: block;
+          color: var(--obsidian);
+          font-size: 24px;
+          line-height: 1.2;
+          margin-bottom: 8px;
+        }
+        .hub-status-card p {
+          color: var(--ink);
+          font-size: 12px;
+          line-height: 1.45;
+          opacity: 0.68;
+        }
+        .hub-directory-grid {
+          display: grid;
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+          gap: 12px;
+          margin-bottom: 18px;
+        }
+        .hub-directory-card {
+          appearance: none;
+          background: var(--surface);
+          border: 1px solid var(--fog);
+          border-radius: 12px;
+          cursor: pointer;
+          min-height: 122px;
+          padding: 16px;
+          text-align: left;
+        }
+        .hub-directory-card strong {
+          display: block;
+          color: var(--obsidian);
+          font-size: 15px;
+          line-height: 1.35;
+        }
+        .hub-section-jump {
+          display: flex;
+          gap: 8px;
+          flex-wrap: wrap;
+          margin-bottom: 16px;
+        }
+        .hub-section-jump button {
+          background: var(--surface);
+          border: 1px solid var(--fog);
+          border-radius: 999px;
+          color: var(--ink);
+          cursor: pointer;
+          font-size: 10px;
+          font-weight: 700;
+          letter-spacing: 0.16em;
+          padding: 8px 12px;
+          text-transform: uppercase;
+        }
+        @media (max-width: 900px) {
+          .hub-status-grid,
+          .hub-directory-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+          }
+        }
+        @media (max-width: 600px) {
+          .hub-root { padding-top: 28px !important; }
+          .hub-status-grid,
+          .hub-directory-grid {
+            grid-template-columns: 1fr;
+          }
+        }
+      `}</style>
     </div>
   );
 }

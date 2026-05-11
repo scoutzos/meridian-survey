@@ -1,7 +1,7 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { LOGIN_USERS, getUserRole } from "@/lib/identity";
+import { LOGIN_USERS, getUserRole, hydrateMeridianUserFromAuth, setCurrentMeridianUser } from "@/lib/identity";
 import { supabase } from "@/lib/supabase";
 import Logo from "@/components/Logo";
 
@@ -20,6 +20,31 @@ function homeFor(name: string): string {
   return getUserRole(name) === "va" ? "/va" : "/dashboard";
 }
 
+interface MemberLoginRecord {
+  password: string;
+  password_changed: boolean;
+  auth_email?: string | null;
+  auth_provider?: string | null;
+}
+
+async function fetchMemberLoginRecord(memberName: string): Promise<{ data: MemberLoginRecord | null; error: string | null }> {
+  if (!supabase) return { data: null, error: "Database not available" };
+  const full = await supabase
+    .from("meridian_members")
+    .select("password, password_changed, auth_email, auth_provider")
+    .eq("name", memberName)
+    .single();
+  if (!full.error && full.data) return { data: full.data as MemberLoginRecord, error: null };
+
+  const fallback = await supabase
+    .from("meridian_members")
+    .select("password, password_changed")
+    .eq("name", memberName)
+    .single();
+  if (fallback.error || !fallback.data) return { data: null, error: fallback.error?.message ?? full.error.message };
+  return { data: fallback.data as MemberLoginRecord, error: null };
+}
+
 export default function LoginPage() {
   const [name, setName] = useState("");
   const [code, setCode] = useState("");
@@ -32,7 +57,16 @@ export default function LoginPage() {
   const [resetName, setResetName] = useState("");
   const [verificationAnswer, setVerificationAnswer] = useState("");
   const [resetSuccess, setResetSuccess] = useState(false);
+  const [resetEmailSent, setResetEmailSent] = useState(false);
   const router = useRouter();
+
+  useEffect(() => {
+    let mounted = true;
+    void hydrateMeridianUserFromAuth().then(memberName => {
+      if (mounted && memberName) router.push(homeFor(memberName));
+    });
+    return () => { mounted = false; };
+  }, [router]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -44,21 +78,40 @@ export default function LoginPage() {
     if (!supabase) {
       // Fallback if no Supabase — use old hardcoded code
       if (code !== "meridian2026") { setError("Invalid password."); setLoading(false); return; }
-      localStorage.setItem("meridian_user", name);
+      setCurrentMeridianUser(name);
       router.push(homeFor(name));
       return;
     }
 
-    // Check password against DB
-    const { data, error: dbErr } = await supabase
-      .from("meridian_members")
-      .select("password, password_changed")
-      .eq("name", name)
-      .single();
+    const { data, error: dbErr } = await fetchMemberLoginRecord(name);
 
     if (dbErr || !data) {
       setError("Could not verify. Try again.");
       setLoading(false);
+      return;
+    }
+
+    if (data.auth_email) {
+      const { data: authData, error: authErr } = await supabase.auth.signInWithPassword({
+        email: data.auth_email,
+        password: code,
+      });
+      if (authErr || !authData.user) {
+        setError("Invalid password.");
+        setLoading(false);
+        return;
+      }
+      await supabase
+        .from("meridian_members")
+        .update({
+          auth_user_id: authData.user.id,
+          auth_provider: "supabase-auth",
+          auth_migrated_at: new Date().toISOString(),
+          last_login: new Date().toISOString(),
+        })
+        .eq("name", name);
+      setCurrentMeridianUser(name);
+      router.push(homeFor(name));
       return;
     }
 
@@ -81,7 +134,7 @@ export default function LoginPage() {
       .from("meridian_members")
       .update({ last_login: new Date().toISOString() })
       .eq("name", name);
-    localStorage.setItem("meridian_user", name);
+    setCurrentMeridianUser(name);
     router.push(homeFor(name));
   };
 
@@ -111,7 +164,7 @@ export default function LoginPage() {
       .from("meridian_members")
       .update({ last_login: new Date().toISOString() })
       .eq("name", name);
-    localStorage.setItem("meridian_user", name);
+    setCurrentMeridianUser(name);
     router.push(homeFor(name));
   };
 
@@ -131,6 +184,22 @@ export default function LoginPage() {
 
     if (!supabase) { setError("Database not available."); setLoading(false); return; }
 
+    const { data: loginRecord } = await fetchMemberLoginRecord(resetName);
+    if (loginRecord?.auth_email) {
+      const { error: resetErr } = await supabase.auth.resetPasswordForEmail(loginRecord.auth_email, {
+        redirectTo: window.location.origin,
+      });
+      if (resetErr) {
+        setError("Could not send reset email. Try again.");
+        setLoading(false);
+        return;
+      }
+      setLoading(false);
+      setResetEmailSent(true);
+      setResetSuccess(true);
+      return;
+    }
+
     const { error: updateErr } = await supabase
       .from("meridian_members")
       .update({ password: "meridian2026", password_changed: false })
@@ -143,6 +212,7 @@ export default function LoginPage() {
     }
 
     setLoading(false);
+    setResetEmailSent(false);
     setResetSuccess(true);
   };
 
@@ -289,15 +359,21 @@ export default function LoginPage() {
             <p style={{ ...eyebrowStyle, marginBottom: 14 }}>Account</p>
             <h1 className="login-heading" style={headingStyle}>Password reset</h1>
             <p className="login-subheading" style={{ ...subheadingStyle, marginBottom: 8 }}>
-              Your password has been reset to the default.
+              {resetEmailSent ? "A Supabase Auth reset email has been sent." : "Your password has been reset to the default."}
             </p>
             <p className="login-subheading" style={{ ...subheadingStyle, marginBottom: 28 }}>
-              Sign in as <span style={{ color: "var(--brass)" }}>{resetName}</span> with{" "}
-              <span style={{ color: "var(--brass)", fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}>meridian2026</span>{" "}
-              and you&apos;ll be prompted to set a new personal password.
+              {resetEmailSent ? (
+                <>Check the email connected to <span style={{ color: "var(--brass)" }}>{resetName}</span> and follow the reset link.</>
+              ) : (
+                <>
+                  Sign in as <span style={{ color: "var(--brass)" }}>{resetName}</span> with{" "}
+                  <span style={{ color: "var(--brass)", fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}>meridian2026</span>{" "}
+                  and you&apos;ll be prompted to set a new personal password.
+                </>
+              )}
             </p>
             <button
-              onClick={() => { setShowForgotPassword(false); setResetSuccess(false); setResetName(""); setVerificationAnswer(""); setName(resetName); }}
+              onClick={() => { setShowForgotPassword(false); setResetSuccess(false); setResetEmailSent(false); setResetName(""); setVerificationAnswer(""); setName(resetName); }}
               style={primaryBtnStyle(false)}
             >
               Back to Sign In
@@ -380,7 +456,7 @@ export default function LoginPage() {
           textTransform: "uppercase",
           marginBottom: 16,
         }}>
-          Role-based auth coming soon
+          Role-based auth ready
         </p>
 
         <form onSubmit={handleLogin} style={{ display: "flex", flexDirection: "column", gap: 14 }}>

@@ -49,9 +49,22 @@ import {
   type ImportedLandLead,
   type LandLeadBatch,
 } from "@/lib/land-leads";
+import {
+  VA_ASSIGNEE_LABEL,
+  addActionItemComment,
+  fetchActionItemEvents,
+  fetchActionItems,
+  isVaTask,
+  updateActionItemStatus,
+  type ActionItem,
+  type ActionItemEvent,
+} from "@/lib/action-items";
 import { isVaUser } from "@/lib/identity";
+import { createNotification } from "@/lib/operations";
 
 const DISPLAY_FONT = "var(--font-display)";
+
+type OperationsTab = "overview" | "escalations" | "va-briefs" | "time" | "lead-ops" | "finance" | "calendar" | "scenarios";
 
 function money(n: number | null | undefined): string {
   if (typeof n !== "number" || !Number.isFinite(n)) return "$0";
@@ -96,6 +109,14 @@ function labelize(value: string): string {
   return value.split("-").map(p => p.charAt(0).toUpperCase() + p.slice(1)).join(" ");
 }
 
+function actionHref(item: ActionItem): string {
+  if (item.source_table === "meridian_deals" && item.source_id) return `/opportunity?deal=${item.source_id}`;
+  if (item.source_table === "meridian_imported_land_leads" && item.source_id) return `/opportunity?lead=${item.source_id}`;
+  if (item.source_table === "meridian_projects" && item.source_id) return "/projects";
+  if (item.source_table === "meeting_notes" && item.source_id) return "/meetings";
+  return "/actions";
+}
+
 export default function OperationsPage() {
   const router = useRouter();
   const [user, setUser] = useState<string | null>(null);
@@ -116,11 +137,16 @@ export default function OperationsPage() {
   const [savingShiftEdit, setSavingShiftEdit] = useState(false);
   const [landLeadBatches, setLandLeadBatches] = useState<LandLeadBatch[]>([]);
   const [importedLeads, setImportedLeads] = useState<ImportedLandLead[]>([]);
+  const [actionItems, setActionItems] = useState<ActionItem[]>([]);
+  const [actionItemEvents, setActionItemEvents] = useState<ActionItemEvent[]>([]);
+  const [escalationResponses, setEscalationResponses] = useState<Record<string, string>>({});
   const [briefReviewNotes, setBriefReviewNotes] = useState<Record<string, string>>({});
   const [eventDraft, setEventDraft] = useState({ title: "", event_date: "", event_type: "deadline", assigned_to: "", notes: "", project_id: "" });
   const [reimbursementDraft, setReimbursementDraft] = useState({ member_name: "", amount: "", vendor: "", category: "Project", expense_date: "", receipt_url: "", notes: "", project_id: "" });
   const [distributionDraft, setDistributionDraft] = useState({ distribution_date: "", total_amount: "", reason: "", project_id: "" });
   const [scenarioDraft, setScenarioDraft] = useState({ name: "", strategy: "flip", purchase_price: "", rehab_or_site_cost: "", closing_costs: "", holding_costs: "", financing_costs: "", exit_value: "", expected_rent: "", notes: "", project_id: "" });
+  const [activeTab, setActiveTab] = useState<OperationsTab>("overview");
+  const [message, setMessage] = useState("");
 
   useEffect(() => {
     const u = localStorage.getItem("meridian_user");
@@ -139,7 +165,8 @@ export default function OperationsPage() {
       fetchVaTimeChangeRequests(100),
       fetchLandLeadBatches(12),
       fetchImportedLandLeads(250),
-    ]).then(([projectRows, eventRows, reimbursementRows, distributionRows, scenarioRows, briefRows, timeRows, timeRequestRows, batchRows, leadRows]) => {
+      fetchActionItems(),
+    ]).then(([projectRows, eventRows, reimbursementRows, distributionRows, scenarioRows, briefRows, timeRows, timeRequestRows, batchRows, leadRows, actionRows]) => {
       setProjects(projectRows);
       setEvents(eventRows);
       setReimbursements(reimbursementRows);
@@ -150,6 +177,8 @@ export default function OperationsPage() {
       setVaTimeChangeRequests(timeRequestRows);
       setLandLeadBatches(batchRows);
       setImportedLeads(leadRows);
+      setActionItems(actionRows);
+      void fetchActionItemEvents(actionRows.map(item => item.id)).then(setActionItemEvents);
       void fetchVaDailyBriefReviews(briefRows.map(brief => brief.id)).then(setVaBriefReviews);
     });
   }, [router]);
@@ -166,6 +195,14 @@ export default function OperationsPage() {
   const vaSubmittedHours = useMemo(() => vaTimeEntries.reduce((sum, entry) => sum + ((entry.status === "submitted" || entry.status === "approved") ? (entry.duration_minutes ?? 0) : 0), 0) / 60, [vaTimeEntries]);
   const vaSubmittedCost = useMemo(() => vaTimeEntries.reduce((sum, entry) => sum + ((entry.status === "submitted" || entry.status === "approved") ? Number(entry.cost_amount ?? 0) : 0), 0), [vaTimeEntries]);
   const pendingTimeRequests = useMemo(() => vaTimeChangeRequests.filter(request => request.status === "pending"), [vaTimeChangeRequests]);
+  const blockedVaTasks = useMemo(() => actionItems.filter(item => isVaTask(item) && item.status === "blocked"), [actionItems]);
+  const actionItemEventsById = useMemo(() => {
+    const out: Record<string, ActionItemEvent[]> = {};
+    for (const event of actionItemEvents) {
+      out[event.action_item_id] = [...(out[event.action_item_id] ?? []), event];
+    }
+    return out;
+  }, [actionItemEvents]);
 
   const scenarioPreview = useMemo(() => calculateScenario({
     purchase_price: toNumber(scenarioDraft.purchase_price),
@@ -183,8 +220,9 @@ export default function OperationsPage() {
     setApprovingPeriod(periodKey);
     const { error } = await approveVaPayPeriod(period, user);
     setApprovingPeriod(null);
-    if (error) { alert(error); return; }
+    if (error) { setMessage(error); return; }
     setVaTimeEntries(await fetchVaTimeEntries(120));
+    setMessage("VA pay period approved.");
   };
 
   const reviewTimeRequest = async (request: VaTimeChangeRequest, decision: "approved" | "rejected") => {
@@ -192,11 +230,12 @@ export default function OperationsPage() {
     setReviewingTimeRequest(request.id);
     const { error } = await reviewVaTimeChangeRequest(request, decision, user, timeRequestNotes[request.id] ?? "");
     setReviewingTimeRequest(null);
-    if (error) { alert(error); return; }
+    if (error) { setMessage(error); return; }
     const [timeRows, requestRows] = await Promise.all([fetchVaTimeEntries(120), fetchVaTimeChangeRequests(100)]);
     setVaTimeEntries(timeRows);
     setVaTimeChangeRequests(requestRows);
     setTimeRequestNotes(prev => ({ ...prev, [request.id]: "" }));
+    setMessage(`Time change ${decision}.`);
   };
 
   const startShiftEdit = (entry: VaTimeEntry) => {
@@ -213,7 +252,7 @@ export default function OperationsPage() {
     if (!user || !editingShiftId) return;
     const clockInAt = fromVaDateTimeInput(shiftEditDraft.clockIn);
     const clockOutAt = fromVaDateTimeInput(shiftEditDraft.clockOut);
-    if (!clockInAt || !clockOutAt) { alert("Clock in and clock out are required."); return; }
+    if (!clockInAt || !clockOutAt) { setMessage("Clock in and clock out are required."); return; }
     setSavingShiftEdit(true);
     const { error } = await updateVaTimeEntry({
       entryId: editingShiftId,
@@ -223,18 +262,19 @@ export default function OperationsPage() {
       actor: user,
     });
     setSavingShiftEdit(false);
-    if (error) { alert(error); return; }
+    if (error) { setMessage(error); return; }
     setEditingShiftId(null);
     setVaTimeEntries(await fetchVaTimeEntries(120));
-    alert("Shift updated.");
+    setMessage("Shift updated.");
   };
 
   const voidShift = async (entry: VaTimeEntry) => {
     if (!user) return;
     if (!confirm("Void this VA shift? This removes it from submitted pay-period totals.")) return;
     const { error } = await voidVaTimeEntry(entry.id);
-    if (error) { alert(error); return; }
+    if (error) { setMessage(error); return; }
     setVaTimeEntries(await fetchVaTimeEntries(120));
+    setMessage("VA shift voided.");
   };
 
   if (!user) return null;
@@ -249,9 +289,10 @@ export default function OperationsPage() {
       notes: eventDraft.notes || null,
       project_id: eventDraft.project_id || null,
     }, user);
-    if (error) { alert(error); return; }
+    if (error) { setMessage(error); return; }
     if (data) setEvents(prev => [...prev, data].sort((a, b) => a.event_date.localeCompare(b.event_date)));
     setEventDraft({ title: "", event_date: "", event_type: "deadline", assigned_to: "", notes: "", project_id: "" });
+    setMessage("Calendar event added.");
   };
 
   const addReimbursement = async () => {
@@ -267,15 +308,17 @@ export default function OperationsPage() {
       notes: reimbursementDraft.notes,
       project_id: reimbursementDraft.project_id || null,
     }, user);
-    if (error) { alert(error); return; }
+    if (error) { setMessage(error); return; }
     if (data) setReimbursements(prev => [data, ...prev]);
     setReimbursementDraft({ member_name: user, amount: "", vendor: "", category: "Project", expense_date: "", receipt_url: "", notes: "", project_id: "" });
+    setMessage("Reimbursement submitted.");
   };
 
   const setReimbursementStatus = async (item: Reimbursement, status: ReimbursementStatus) => {
     const { error } = await updateReimbursementStatus(item.id, status, user);
-    if (error) { alert(error); return; }
+    if (error) { setMessage(error); return; }
     setReimbursements(prev => prev.map(r => r.id === item.id ? { ...r, status, reviewed_by: user, reviewed_at: new Date().toISOString() } : r));
+    setMessage(`Reimbursement marked ${labelize(status)}.`);
   };
 
   const addDistribution = async () => {
@@ -287,9 +330,10 @@ export default function OperationsPage() {
       reason: distributionDraft.reason,
       project_id: distributionDraft.project_id || null,
     }, user);
-    if (error) { alert(error); return; }
+    if (error) { setMessage(error); return; }
     if (data) setDistributions(prev => [data, ...prev]);
     setDistributionDraft({ distribution_date: "", total_amount: "", reason: "", project_id: "" });
+    setMessage("Distribution proposal created.");
   };
 
   const addScenario = async () => {
@@ -307,16 +351,85 @@ export default function OperationsPage() {
       expected_rent: toNumber(scenarioDraft.expected_rent),
       notes: scenarioDraft.notes,
     }, user);
-    if (error) { alert(error); return; }
+    if (error) { setMessage(error); return; }
     if (data) setScenarios(prev => [data, ...prev]);
     setScenarioDraft({ name: "", strategy: "flip", purchase_price: "", rehab_or_site_cost: "", closing_costs: "", holding_costs: "", financing_costs: "", exit_value: "", expected_rent: "", notes: "", project_id: "" });
+    setMessage("Scenario saved.");
+  };
+
+  const sendEscalationResponse = async (task: ActionItem) => {
+    if (!user) return;
+    const note = (escalationResponses[task.id] || "").trim();
+    if (!note) return;
+    const { error } = await addActionItemComment(task.id, user, note);
+    if (error) { setMessage(error); return; }
+    const reopenResult = task.status === "blocked"
+      ? await updateActionItemStatus(task.id, "open", user, "Member responded to blocker.")
+      : { error: null };
+    if (reopenResult.error) { setMessage(reopenResult.error); return; }
+    const now = new Date().toISOString();
+    setActionItemEvents(prev => [
+      ...prev,
+      {
+        id: `local-comment-${task.id}-${now}`,
+        action_item_id: task.id,
+        event_type: "comment",
+        previous_status: null,
+        next_status: null,
+        note,
+        created_by: user,
+        created_at: now,
+      },
+      ...(task.status === "blocked" ? [{
+        id: `local-reopened-${task.id}-${now}`,
+        action_item_id: task.id,
+        event_type: "reopened" as const,
+        previous_status: "blocked" as const,
+        next_status: "open" as const,
+        note: "Member responded to blocker.",
+        created_by: user,
+        created_at: now,
+      }] : []),
+    ]);
+    setActionItems(prev => prev.map(item => item.id === task.id ? {
+      ...item,
+      status: task.status === "blocked" ? "open" : item.status,
+      blocker_reason: task.status === "blocked" ? null : item.blocker_reason,
+      updated_at: now,
+      updated_by: user,
+    } : item));
+    setEscalationResponses(prev => ({ ...prev, [task.id]: "" }));
+    await createNotification({
+      title: `Blocked task reopened: ${task.title}`,
+      body: `${note}\n\nThe task was reopened and is ready to continue.`,
+      priority: "high",
+      assigned_to: task.assigned_to || VA_ASSIGNEE_LABEL,
+      href: "/va",
+      source_table: "action_items",
+      source_id: task.id,
+      notification_type: "va-task-member-response",
+      dedupe: true,
+    }, user);
+    setMessage("Response sent and VA task reopened.");
   };
 
   const pendingReimbursements = reimbursements.filter(r => r.status === "submitted" || r.status === "approved");
+  const unreviewedBriefs = vaBriefs.filter(brief => !vaBriefReviews.some(review => review.brief_id === brief.id && review.member_name === user));
+  const activeFinanceItems = pendingReimbursements.length + distributions.filter(distribution => distribution.status !== "paid").length;
+  const operationTabs: { id: OperationsTab; label: string; count: number }[] = [
+    { id: "overview", label: "Overview", count: pendingTimeRequests.length + unreviewedBriefs.length + pendingReimbursements.length + blockedVaTasks.length },
+    { id: "escalations", label: "Escalations", count: blockedVaTasks.length },
+    { id: "va-briefs", label: "VA Briefs", count: unreviewedBriefs.length },
+    { id: "time", label: "Time Approval", count: pendingTimeRequests.length },
+    { id: "lead-ops", label: "Lead Ops", count: leadReviewStats.interested },
+    { id: "finance", label: "Money", count: activeFinanceItems },
+    { id: "calendar", label: "Calendar", count: events.length },
+    { id: "scenarios", label: "Scenarios", count: scenarios.length },
+  ];
 
   const reviewBrief = async (brief: VaDailyBrief) => {
     const { data, error } = await upsertVaDailyBriefReview(brief.id, user, briefReviewNotes[brief.id] ?? "");
-    if (error) { alert(error); return; }
+    if (error) { setMessage(error); return; }
     if (data) {
       setVaBriefReviews(prev => [data, ...prev.filter(review => !(review.brief_id === brief.id && review.member_name === user))]);
       setVaBriefs(prev => prev.map(row => row.id === brief.id ? {
@@ -327,21 +440,41 @@ export default function OperationsPage() {
         review_note: data.note,
       } : row));
       setBriefReviewNotes(prev => ({ ...prev, [brief.id]: "" }));
+      setMessage("VA daily brief reviewed.");
     }
   };
 
   return (
     <div className="operations-root" style={{ maxWidth: 1180, margin: "0 auto", padding: "84px 20px 100px" }}>
       <header style={{ marginBottom: 24 }}>
-        <p style={eyebrow}>Company Operations</p>
+        <p style={eyebrow}>Member Portal</p>
         <h1 style={{ fontFamily: DISPLAY_FONT, fontSize: "clamp(34px, 5vw, 50px)", fontWeight: 500, color: "var(--obsidian)", marginBottom: 6 }}>
-          Governance & finance
+          Operations
         </h1>
         <p style={{ color: "var(--ink)", opacity: 0.66, fontSize: 14, maxWidth: 760 }}>
-          Calendar, reimbursements, distributions, and deal scenarios. This is the operating layer around projects and decisions.
+          Review VA accountability, imported lead progress, reimbursements, operating dates, and scenario work from one member workspace.
         </p>
-        <p style={comingSoonPill}>Bank sync + receipt file upload coming soon</p>
       </header>
+
+      {message && (
+        <div style={{
+          border: "1px solid rgba(176,137,84,0.36)",
+          background: "rgba(176,137,84,0.10)",
+          color: "var(--obsidian)",
+          borderRadius: 10,
+          padding: "11px 13px",
+          marginBottom: 16,
+          display: "flex",
+          justifyContent: "space-between",
+          gap: 12,
+          alignItems: "flex-start",
+          fontSize: 13,
+          lineHeight: 1.45,
+        }}>
+          <span>{message}</span>
+          <button onClick={() => setMessage("")} style={{ background: "transparent", border: "none", color: "var(--brass)", fontSize: 11, fontWeight: 800, letterSpacing: "0.12em", textTransform: "uppercase", cursor: "pointer" }}>Clear</button>
+        </div>
+      )}
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 10, marginBottom: 18 }} className="stat-grid">
         <Stat label="Calendar items" value={String(events.length)} />
@@ -351,6 +484,74 @@ export default function OperationsPage() {
         <Stat label="VA briefs" value={String(vaBriefs.length)} />
       </div>
 
+      <nav className="operations-tabs" aria-label="Operations sections">
+        {operationTabs.map(tab => (
+          <OperationsTabButton
+            key={tab.id}
+            label={tab.label}
+            count={tab.count}
+            active={activeTab === tab.id}
+            onClick={() => setActiveTab(tab.id)}
+          />
+        ))}
+      </nav>
+
+      {(activeTab === "overview" || activeTab === "escalations") && (
+        <section style={{ ...panel, marginBottom: 18 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12, flexWrap: "wrap", marginBottom: 12 }}>
+            <div>
+              <p style={eyebrow}>Escalations</p>
+              <h2 style={sectionTitle}>Blocked VA work</h2>
+              <p style={briefText}>Tasks marked blocked by the VA so members can make a decision, provide missing information, or reassign the work.</p>
+            </div>
+            <span style={blockedVaTasks.length ? warningPill : comingSoonPill}>{blockedVaTasks.length ? `${blockedVaTasks.length} needs decision` : "Clear"}</span>
+          </div>
+          {blockedVaTasks.length === 0 ? (
+            <div style={{ background: "var(--bone)", border: "1px solid var(--fog)", borderRadius: 8, padding: 14 }}>
+              <p style={rowTitle}>No blocked VA tasks right now.</p>
+              <p style={rowMeta}>When Sophie marks a task blocked, it will appear here and notify members.</p>
+            </div>
+          ) : (
+            <div style={{ display: "grid", gap: 10 }}>
+              {blockedVaTasks.map(task => (
+                <article key={task.id} style={{ background: "var(--bone)", border: "1px solid rgba(176,137,84,0.45)", borderRadius: 8, padding: 12 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "start", marginBottom: 8 }}>
+                    <div>
+                      <p style={rowTitle}>{task.title}</p>
+                      <p style={rowMeta}>{task.assigned_to || "VA"} · assigned by {task.created_by || "Unknown"}{task.due_date ? ` · due ${task.due_date}` : ""}</p>
+                    </div>
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                      <button onClick={() => router.push("/actions")} style={{ ...primaryButton, background: "transparent", border: "1px solid var(--fog)", color: "var(--obsidian)" }}>Open Task</button>
+                      <button onClick={() => router.push(actionHref(task))} style={primaryButton}>Open Record</button>
+                    </div>
+                  </div>
+                  <p style={{ ...briefText, marginBottom: 8 }}>{task.blocker_reason || task.description || "No blocker reason added."}</p>
+                  <div style={{ display: "grid", gap: 8, marginTop: 10 }}>
+                    {(actionItemEventsById[task.id] ?? []).filter(event => event.event_type === "comment").slice(-3).map(event => (
+                      <div key={event.id} style={{ background: "var(--surface)", border: "1px solid var(--fog)", borderRadius: 8, padding: 10 }}>
+                        <p style={rowMeta}>{event.created_by || "Member"} · {fmtDateTime(event.created_at)}</p>
+                        <p style={{ ...briefText, marginTop: 4 }}>{event.note}</p>
+                      </div>
+                    ))}
+                    <textarea
+                      value={escalationResponses[task.id] || ""}
+                      onChange={e => setEscalationResponses(prev => ({ ...prev, [task.id]: e.target.value }))}
+                      placeholder="Reply with the decision, missing detail, or next instruction for Sophie..."
+                      style={{ ...inputStyle, minHeight: 72, resize: "vertical" }}
+                    />
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                      <p style={rowMeta}>Response is saved to task history, reopens the task, and notifies the VA.</p>
+                      <button onClick={() => sendEscalationResponse(task)} disabled={!escalationResponses[task.id]?.trim()} style={primaryButton}>Send + Reopen</button>
+                    </div>
+                  </div>
+                </article>
+              ))}
+            </div>
+          )}
+        </section>
+      )}
+
+      {(activeTab === "overview" || activeTab === "time" || activeTab === "va-briefs") && (
       <section style={{ ...panel, marginBottom: 18 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12, flexWrap: "wrap", marginBottom: 12 }}>
           <div>
@@ -364,7 +565,7 @@ export default function OperationsPage() {
           <MiniStat label="Submitted VA cost" value={money(vaSubmittedCost)} />
           <MiniStat label="Time edits pending" value={String(pendingTimeRequests.length)} />
         </div>
-        {pendingTimeRequests.length > 0 && (
+        {(activeTab === "overview" || activeTab === "time") && pendingTimeRequests.length > 0 && (
           <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 12, marginBottom: 18 }} className="brief-grid">
             {pendingTimeRequests.map(request => (
               <article key={request.id} style={{ background: "var(--bone)", border: "1px solid var(--fog)", borderRadius: 8, padding: 12 }}>
@@ -421,7 +622,8 @@ export default function OperationsPage() {
             ))}
           </div>
         )}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 12, marginBottom: 18 }} className="brief-grid">
+        {(activeTab === "overview" || activeTab === "time") && (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 12, marginBottom: activeTab === "time" ? 0 : 18 }} className="brief-grid">
           {vaPayPeriods.length === 0 && <p style={{ color: "var(--muted)", fontSize: 13 }}>No VA time entries have been submitted yet.</p>}
           {vaPayPeriods.slice(0, 4).map(period => {
             const periodKey = `${period.operatorName}:${period.periodStart}`;
@@ -493,6 +695,9 @@ export default function OperationsPage() {
             );
           })}
         </div>
+        )}
+        {(activeTab === "overview" || activeTab === "va-briefs") && (
+        <>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12, flexWrap: "wrap", marginBottom: 12 }}>
           <div>
             <p style={eyebrow}>End-of-shift reports</p>
@@ -516,6 +721,7 @@ export default function OperationsPage() {
                 <MiniStat label="Outreach" value={`${brief.outreach_sent ?? 0} sent`} />
                 <MiniStat label="Replies" value={`${brief.seller_replies ?? 0}`} />
                 <MiniStat label="Calls" value={`${brief.calls_completed ?? 0}`} />
+                <MiniStat label="VA tasks" value={`${brief.va_tasks_completed ?? 0}`} />
               </div>
               {brief.revised_at && (
                 <>
@@ -566,8 +772,12 @@ export default function OperationsPage() {
             </article>
           ))}
         </div>
+        </>
+        )}
       </section>
+      )}
 
+      {(activeTab === "overview" || activeTab === "lead-ops") && (
       <section style={{ ...panel, marginBottom: 18 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12, flexWrap: "wrap", marginBottom: 12 }}>
           <div>
@@ -614,16 +824,28 @@ export default function OperationsPage() {
           </div>
         </div>
       </section>
+      )}
 
+      {(activeTab === "overview" || activeTab === "finance" || activeTab === "calendar" || activeTab === "scenarios") && (
+      <>
       <div style={{ margin: "8px 0 14px" }}>
         <p style={eyebrow}>Finance tools</p>
-        <h2 style={{ ...sectionTitle, marginBottom: 4 }}>Operating forms</h2>
+        <h2 style={{ ...sectionTitle, marginBottom: 4 }}>
+          {activeTab === "calendar" ? "Operating calendar" : activeTab === "scenarios" ? "Scenario modeling" : activeTab === "finance" ? "Money operations" : "Operating forms"}
+        </h2>
         <p style={{ color: "var(--muted)", fontSize: 13 }}>
-          Calendar, reimbursements, scenario modeling, and distributions sit below VA approvals.
+          {activeTab === "calendar"
+            ? "Keep closings, deadlines, votes, and project dates visible to the whole team."
+            : activeTab === "scenarios"
+              ? "Model project economics before they become deal votes or operating decisions."
+              : activeTab === "finance"
+                ? "Submit reimbursements, approve expenses, and record distributions in one lane."
+                : "Calendar, reimbursements, scenario modeling, and distributions sit below VA approvals."}
         </p>
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18 }} className="ops-grid">
+        {(activeTab === "overview" || activeTab === "calendar") && (
         <section style={panel}>
           <h2 style={sectionTitle}>Operating calendar</h2>
           <div style={twoCol}>
@@ -642,7 +864,9 @@ export default function OperationsPage() {
             ))}
           </ListShell>
         </section>
+        )}
 
+        {(activeTab === "overview" || activeTab === "finance") && (
         <section style={panel}>
           <h2 style={sectionTitle}>Reimbursements</h2>
           <div style={twoCol}>
@@ -676,7 +900,9 @@ export default function OperationsPage() {
             ))}
           </ListShell>
         </section>
+        )}
 
+        {(activeTab === "overview" || activeTab === "scenarios") && (
         <section style={panel}>
           <h2 style={sectionTitle}>Scenario modeling</h2>
           <div style={twoCol}>
@@ -705,7 +931,9 @@ export default function OperationsPage() {
             ))}
           </ListShell>
         </section>
+        )}
 
+        {(activeTab === "overview" || activeTab === "finance") && (
         <section style={panel}>
           <h2 style={sectionTitle}>Distributions</h2>
           <div style={twoCol}>
@@ -723,7 +951,10 @@ export default function OperationsPage() {
             ))}
           </ListShell>
         </section>
+        )}
       </div>
+      </>
+      )}
 
       <style jsx>{`
         .operations-root :global(input),
@@ -760,6 +991,14 @@ export default function OperationsPage() {
         .operations-root :global(textarea::placeholder) {
           color: rgba(31,28,23,0.48);
         }
+        .operations-tabs {
+          display: flex;
+          gap: 8px;
+          overflow-x: auto;
+          padding: 2px 0 14px;
+          margin-bottom: 10px;
+          scrollbar-width: thin;
+        }
         @media (max-width: 900px) {
           .ops-grid, .brief-grid { grid-template-columns: 1fr !important; }
         }
@@ -772,6 +1011,49 @@ export default function OperationsPage() {
         }
       `}</style>
     </div>
+  );
+}
+
+function OperationsTabButton({ label, count, active, onClick }: { label: string; count: number; active: boolean; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 8,
+        minHeight: 42,
+        border: active ? "1px solid var(--obsidian)" : "1px solid var(--fog)",
+        borderRadius: 999,
+        background: active ? "var(--obsidian)" : "rgba(255,255,255,0.7)",
+        color: active ? "var(--bone)" : "var(--ink)",
+        padding: "8px 13px",
+        fontSize: 11,
+        fontWeight: 700,
+        letterSpacing: "0.12em",
+        textTransform: "uppercase",
+        whiteSpace: "nowrap",
+        cursor: "pointer",
+      }}
+    >
+      {label}
+      <span
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          justifyContent: "center",
+          minWidth: 22,
+          height: 22,
+          borderRadius: 999,
+          background: active ? "rgba(255,255,255,0.14)" : "var(--bone)",
+          color: active ? "var(--bone)" : "var(--muted)",
+          fontSize: 10,
+          letterSpacing: 0,
+        }}
+      >
+        {count}
+      </span>
+    </button>
   );
 }
 
@@ -866,6 +1148,18 @@ const primaryButton: React.CSSProperties = {
   cursor: "pointer",
 };
 
+const inputStyle: React.CSSProperties = {
+  width: "100%",
+  border: "1px solid var(--fog)",
+  borderRadius: 8,
+  background: "var(--surface)",
+  color: "var(--ink)",
+  padding: "10px 12px",
+  fontSize: 13,
+  lineHeight: 1.45,
+  outline: "none",
+};
+
 const comingSoonPill: React.CSSProperties = {
   display: "inline-flex",
   alignItems: "center",
@@ -878,6 +1172,13 @@ const comingSoonPill: React.CSSProperties = {
   letterSpacing: "0.12em",
   textTransform: "uppercase",
   marginTop: 10,
+};
+
+const warningPill: React.CSSProperties = {
+  ...comingSoonPill,
+  border: "1px solid rgba(176,137,84,0.65)",
+  color: "var(--brass)",
+  background: "rgba(176,137,84,0.1)",
 };
 
 const smallPill: React.CSSProperties = {
