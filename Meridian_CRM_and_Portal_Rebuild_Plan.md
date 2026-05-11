@@ -1508,10 +1508,13 @@ Completed in this pass:
 - Continued with notification cleanup:
   - Added opt-in notification deduplication to the shared notification helper.
   - Blocked VA task alerts, blocked-task responses, task reassignment alerts, and blocked-task comment alerts now update the existing unread notice instead of stacking duplicates.
+- Continued with document-linked work:
+  - Member task creation can now link tasks to records in the Document Library.
+  - Document-linked task detail shows `Document` as the source context and opens back to `/documents`.
+  - This uses the current library records until the larger document ownership/indexing system is upgraded.
 
 Remaining:
 
-- Add linked-record selectors for documents once document ownership/indexing is cleaned up.
 - Cut over from client-side prototype login to Supabase Auth, then remove prototype anon policies and verify the staged RLS policies with real member and VA users.
 
 Risk: High if skipped. Members will keep assigning VA work through texts or side conversations, which defeats the purpose of the portal.

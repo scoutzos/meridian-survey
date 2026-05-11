@@ -52,7 +52,7 @@ const STATUS_LABEL: Record<ActionItemStatus, string> = {
   "done": "Done",
 };
 type TaskFilter = "needs-me" | "votes" | "money" | "surveys" | "actions" | "va" | "assigned-by-me" | "completed";
-type LinkType = "general" | "lead" | "deal" | "project" | "meeting";
+type LinkType = "general" | "lead" | "deal" | "project" | "meeting" | "document";
 
 interface TaskCard {
   id: string;
@@ -74,6 +74,41 @@ interface LinkOption {
   href: string;
 }
 
+const DOCUMENT_LINK_OPTIONS: LinkOption[] = [
+  {
+    type: "document",
+    table: "document_library",
+    id: "operating-agreement-working-draft",
+    label: "Operating Agreement Working Draft",
+    detail: "Governance · Working Draft",
+    href: "/documents",
+  },
+  {
+    type: "document",
+    table: "document_library",
+    id: "brand-guidelines-vol-i",
+    label: "Brand Guidelines Vol. I",
+    detail: "Brand · PDF",
+    href: "/documents",
+  },
+  {
+    type: "document",
+    table: "document_library",
+    id: "forms-of-contribution-reference",
+    label: "Forms of Contribution Reference",
+    detail: "Money · Doc",
+    href: "/documents",
+  },
+  {
+    type: "document",
+    table: "document_library",
+    id: "meridian-website",
+    label: "Meridian Website",
+    detail: "Platform · Link",
+    href: "/documents",
+  },
+];
+
 function formatDue(iso: string | null): string | null {
   if (!iso) return null;
   const d = new Date(iso + "T00:00:00");
@@ -86,6 +121,7 @@ function taskHref(item: ActionItem): string {
   if (item.source_table === "meridian_imported_land_leads" && item.source_id) return `/opportunity?lead=${item.source_id}`;
   if (item.source_table === "meridian_projects" && item.source_id) return `/projects`;
   if (item.source_table === "meeting_notes" && item.source_id) return `/meetings`;
+  if (item.source_table === "document_library" && item.source_id) return "/documents";
   if (isVaTask(item)) return "/va";
   return "/actions";
 }
@@ -95,6 +131,7 @@ function sourceLabel(item: ActionItem): string {
   if (item.source_table === "meridian_imported_land_leads") return "Lead";
   if (item.source_table === "meridian_projects") return "Project";
   if (item.source_table === "meeting_notes") return "Meeting";
+  if (item.source_table === "document_library") return "Document";
   return isVaTask(item) ? "VA work" : "General";
 }
 
@@ -245,6 +282,7 @@ export default function ActionsPage() {
       detail: meeting.meeting_date,
       href: "/meetings",
     })),
+    ...DOCUMENT_LINK_OPTIONS,
   ], [deals, leads, meetings, projects]);
   const taskEventsById = useMemo(() => {
     const out: Record<string, ActionItemEvent[]> = {};
@@ -589,6 +627,7 @@ export default function ActionsPage() {
                 <option value="deal">Deal / opportunity</option>
                 <option value="project">Project</option>
                 <option value="meeting">Meeting</option>
+                <option value="document">Document</option>
               </select>
             </div>
             <div>
