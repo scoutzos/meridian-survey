@@ -634,14 +634,28 @@ export default function OperationsPage() {
           {vaPayPeriods.slice(0, 4).map(period => {
             const periodKey = `${period.operatorName}:${period.periodStart}`;
             const canApprove = !period.open && !period.approved && period.totalCost > 0;
+            const firstEntry = period.entries[0];
             return (
               <article key={periodKey} style={{ background: "var(--bone)", border: "1px solid var(--fog)", borderRadius: 8, padding: 12 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "baseline", marginBottom: 10 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start", marginBottom: 10 }}>
                   <div>
                     <p style={rowTitle}>{formatPayPeriod(period)}</p>
                     <p style={rowMeta}>{period.operatorName} · {period.entries.length} shift{period.entries.length === 1 ? "" : "s"}</p>
                   </div>
-                  <span style={smallPill}>{period.approved ? "Approved" : period.open ? "Open" : "Submitted"}</span>
+                  <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 8 }}>
+                    <span style={smallPill}>{period.approved ? "Approved" : period.open ? "Open" : "Submitted"}</span>
+                    {firstEntry && (
+                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                        <button onClick={() => startShiftEdit(firstEntry)} style={{ ...primaryButton, padding: "8px 11px" }}>Edit Timecard</button>
+                        <button
+                          onClick={() => voidShift(firstEntry)}
+                          style={{ ...primaryButton, padding: "8px 11px", background: "transparent", border: "1px solid var(--fog)", color: "var(--obsidian)" }}
+                        >
+                          Void Shift
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 </div>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 10 }}>
                   <MiniStat label="Hours" value={period.totalHours.toFixed(2)} />
@@ -671,18 +685,18 @@ export default function OperationsPage() {
                         </div>
                       ) : (
                         <>
-                          <div style={{ display: "flex", justifyContent: "space-between", gap: 10, fontSize: 12, color: "var(--ink)", flexWrap: "wrap" }}>
-                            <span>{fmtDateTime(entry.clock_in_at)}{entry.clock_out_at ? ` - ${fmtDateTime(entry.clock_out_at)}` : " - active"}</span>
+                          <div style={{ display: "flex", justifyContent: "space-between", gap: 10, fontSize: 12, color: "var(--ink)", flexWrap: "wrap", alignItems: "center" }}>
+                            <span><strong>Shift</strong> · {fmtDateTime(entry.clock_in_at)}{entry.clock_out_at ? ` - ${fmtDateTime(entry.clock_out_at)}` : " - active"}</span>
                             <span>{formatDuration(entry.duration_minutes ?? 0)} · {money(Number(entry.cost_amount ?? 0))}</span>
                           </div>
                           {entry.notes && <p style={{ ...rowMeta, marginTop: 4 }}>{entry.notes}</p>}
                           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
-                            <button onClick={() => startShiftEdit(entry)} style={{ ...primaryButton, padding: "7px 10px" }}>Edit Shift</button>
+                            <button onClick={() => startShiftEdit(entry)} style={{ ...primaryButton, padding: "7px 10px" }}>Edit Timecard</button>
                             <button
                               onClick={() => voidShift(entry)}
                               style={{ ...primaryButton, padding: "7px 10px", background: "transparent", border: "1px solid var(--fog)", color: "var(--obsidian)" }}
                             >
-                              Void
+                              Void Shift
                             </button>
                           </div>
                         </>
