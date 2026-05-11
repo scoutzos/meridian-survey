@@ -1549,10 +1549,12 @@ Completed in this pass:
 - Buyer-offer action items now open back to CRM Dispo so members can review the connected campaign, offer, and deal context.
 - Disposition campaign detail now includes campaign touch history combining offer milestones and linked SMS activity.
 - Offer decision tasks now auto-complete when an offer is accepted, countered, rejected, or withdrawn, with task event history preserved.
+- Accepted buyer offers now create a project/closing handoff with high-priority closing checklist tasks.
+- Rejected or withdrawn buyer offers now create a disposition follow-up task and can move the campaign to fell-through.
 
 Remaining:
 
-- Add disposition close/fall-through checklist and project/closing handoff.
+- QA the accepted-offer handoff with real Supabase data to confirm project creation, task ownership, and RLS behavior.
 
 Risk: High. Disposition is a core part of land/deal monetization.
 

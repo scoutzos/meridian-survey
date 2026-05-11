@@ -3,7 +3,7 @@
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { MEMBERS } from "@/data/questions";
-import { createActionItem, resolveActionItemsForSource } from "@/lib/action-items";
+import { ALL_MEMBERS_LABEL, createActionItem, resolveActionItemsForSource } from "@/lib/action-items";
 import { calculateDealAnalysis } from "@/lib/deals";
 import {
   createBuyerOffer,
@@ -26,6 +26,7 @@ import {
 import type { CommunicationEvent } from "@/lib/communications";
 import ConversationPanel from "@/components/ConversationPanel";
 import { createNotification } from "@/lib/operations";
+import { createProjectFromDeal } from "@/lib/projects";
 import { labelForStatus } from "@/lib/status-map";
 import { getDealNextAction } from "@/lib/workflow-actions";
 
@@ -262,17 +263,66 @@ function CrmContent() {
   const changeOfferStatus = async (offer: BuyerOffer, status: BuyerOffer["status"]) => {
     const { error } = await updateBuyerOfferStatus(offer, status, user);
     if (error) { setMessage(error); return; }
+    const actor = user || "Meridian";
     const resolution = ["accepted", "countered", "rejected", "withdrawn"].includes(status)
       ? await resolveActionItemsForSource(
         "meridian_buyer_offers",
         offer.id,
-        user || "Meridian",
+        actor,
         `Offer marked ${statusLabel(status)} in CRM Dispo.`,
       )
       : { count: 0, error: null };
+    const relatedDeal = data.deals.find(deal => deal.id === offer.deal_id) ?? selectedDeal;
+    const relatedCampaign = data.campaigns.find(campaign => campaign.id === offer.disposition_campaign_id || campaign.deal_id === offer.deal_id);
+    let handoffMessage = "";
+
+    if (status === "accepted" && relatedDeal) {
+      if (relatedCampaign) await updateDispositionCampaignStatus(relatedCampaign, "buyer-under-contract", actor);
+      const projectResult = await createProjectFromDeal(relatedDeal, actor);
+      if (projectResult.error) {
+        handoffMessage = ` Project handoff had an issue: ${projectResult.error}`;
+      } else if (projectResult.data) {
+        const project = projectResult.data;
+        const due = offer.close_date || new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+        const checklist = [
+          "Confirm buyer contract, assignment terms, and earnest money receipt.",
+          "Send deal packet, buyer offer, and seller/buyer contact details to title or closing owner.",
+          "Confirm closing timeline, open risks, and final member update before close.",
+        ];
+        const taskResults = await Promise.all(checklist.map((title, index) => createActionItem({
+          title: `Closing handoff ${index + 1}: ${relatedDeal.title}`,
+          description: `${title}\n\nBuyer: ${offer.buyer_name}\nOffer: ${money(offer.offer_amount)}\nClose date: ${offer.close_date ? formatDate(offer.close_date) : "Not set"}`,
+          assigned_to: index === 2 ? ALL_MEMBERS_LABEL : actor,
+          due_date: due,
+          task_type: "project-task",
+          priority: "high",
+          source_table: "meridian_projects",
+          source_id: project.id,
+        }, actor)));
+        const taskError = taskResults.find(result => result.error)?.error;
+        handoffMessage = taskError ? ` Closing project created, but checklist tasks had an issue: ${taskError}` : " Closing project and handoff checklist created.";
+      }
+    }
+
+    if ((status === "rejected" || status === "withdrawn") && relatedDeal) {
+      const followUp = await createActionItem({
+        title: `Disposition follow-up: ${relatedDeal.title}`,
+        description: `${offer.buyer_name}'s offer was marked ${statusLabel(status)}. Record why it fell through, confirm whether to re-market, and identify the next buyer path.`,
+        assigned_to: relatedCampaign?.owner || actor,
+        due_date: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
+        task_type: "deal-follow-up",
+        priority: "high",
+        source_table: "meridian_buyer_offers",
+        source_id: offer.id,
+      }, actor);
+      if (followUp.error) handoffMessage = ` Follow-up task had an issue: ${followUp.error}`;
+      else if (relatedCampaign) await updateDispositionCampaignStatus(relatedCampaign, "fell-through", actor);
+      else handoffMessage = " Fall-through follow-up task created.";
+    }
+
     setMessage(resolution.error
       ? `Offer marked ${statusLabel(status)}, but related tasks could not be resolved: ${resolution.error}`
-      : `Offer marked ${statusLabel(status)}${resolution.count ? ` and ${resolution.count} related task${resolution.count === 1 ? "" : "s"} completed` : ""}.`);
+      : `Offer marked ${statusLabel(status)}${resolution.count ? ` and ${resolution.count} related task${resolution.count === 1 ? "" : "s"} completed` : ""}.${handoffMessage}`);
     await reload();
   };
 
