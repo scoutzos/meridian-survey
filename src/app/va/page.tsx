@@ -2674,69 +2674,124 @@ export default function VaPage() {
           <section style={panel}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12, flexWrap: "wrap", marginBottom: 12 }}>
               <div>
-                <p style={eyebrowSmall}>Outreach</p>
-                <h2 style={sectionTitle}>Seller replies and follow-ups</h2>
+                <p style={eyebrowSmall}>Lead Inbox</p>
+                <h2 style={sectionTitle}>Seller conversations and follow-ups</h2>
               </div>
               <span style={(followUpsDue.length || unmatchedSms.length || interestedLeads.length) ? hotPill : pill}>
                 {followUpsDue.length + unmatchedSms.length + interestedLeads.length} needs action
               </span>
             </div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10, marginBottom: 14 }} className="number-grid">
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, marginBottom: 14 }} className="number-grid">
               <ShiftCard label="Seller replies" value={String(unmatchedSms.length)} tone={unmatchedSms.length ? "hot" : "calm"} />
               <ShiftCard label="Due follow-ups" value={String(followUpsDue.length)} tone={followUpsDue.length ? "hot" : "calm"} />
               <ShiftCard label="Interested sellers" value={String(interestedLeads.length)} tone={interestedLeads.length ? "hot" : "calm"} />
+              <ShiftCard label="Textable leads" value={String(workdeskLeadRows.filter(lead => lead.phone || lead.phone_2).length)} />
             </div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 12 }} className="two-col">
-              {unmatchedSms.slice(0, 8).map(event => (
-                <button
-                  key={`outreach-sms-${event.id}`}
-                  onClick={() => createLeadDraftFromSms(event)}
-                  style={{ ...subPanel, textAlign: "left", cursor: "pointer", background: "rgba(176,137,84,0.12)", borderColor: "var(--brass)" }}
-                >
-                  <div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginBottom: 8 }}>
-                    <strong style={{ color: "var(--obsidian)", fontSize: 14 }}>{event.contact_number || event.from_number || "Unknown number"}</strong>
-                    <span style={hotPill}>Seller reply</span>
+
+            <div style={{ display: "grid", gridTemplateColumns: "260px minmax(0, 1fr) 420px", gap: 14 }} className="lead-inbox-grid">
+              <aside style={{ display: "grid", gap: 12, alignContent: "start" }}>
+                <section style={subPanel}>
+                  <p style={eyebrowSmall}>Conversation queues</p>
+                  <div style={{ display: "grid", gap: 8, marginTop: 10 }}>
+                    <QueueButton label="Seller replies" detail="Unmatched inbound SMS" count={unmatchedSms.length} hot={!!unmatchedSms.length} onClick={() => void fetchCommunicationEvents({ unmatched: true, limit: 25 }).then(setUnmatchedSms)} />
+                    <QueueButton label="Interested sellers" detail="Ready for response" count={interestedLeads.length} hot={!!interestedLeads.length} onClick={() => { setLeadFilter("interested"); goToTab("lists"); }} />
+                    <QueueButton label="Follow-up due" detail="Needs call or text" count={followUpsDue.length} hot={!!followUpsDue.length} onClick={() => goToTab("outreach")} />
+                    <QueueButton label="New imported leads" detail="Start first touch" count={importStats.newRows} onClick={() => { setLeadFilter("new"); goToTab("lists"); }} />
                   </div>
-                  <p style={{ fontSize: 13, color: "var(--ink)", whiteSpace: "pre-wrap", marginBottom: 8 }}>{event.body || event.status || "Inbound message"}</p>
-                  <span style={miniLabel}>Create packet or match to an existing lead</span>
-                </button>
-              ))}
-              {interestedLeads.slice(0, 8).map(lead => (
-                <button
-                  key={`outreach-interest-${lead.id}`}
-                  onClick={() => selectImportedLead(lead, "lists")}
-                  style={{ ...subPanel, textAlign: "left", cursor: "pointer", background: "rgba(176,137,84,0.12)", borderColor: "var(--brass)" }}
-                >
-                  <div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginBottom: 8 }}>
-                    <strong style={{ color: "var(--obsidian)", fontSize: 14 }}>{lead.owner_name || "Owner unknown"}</strong>
-                    <span style={hotPill}>Interested</span>
+                </section>
+
+                {unmatchedSms.length > 0 && (
+                  <section style={{ ...subPanel, borderColor: "var(--brass)", background: "rgba(176,137,84,0.08)" }}>
+                    <p style={eyebrowSmall}>Unmatched inbound</p>
+                    <div style={{ display: "grid", gap: 8, marginTop: 10 }}>
+                      {unmatchedSms.slice(0, 5).map(event => (
+                        <button key={event.id} onClick={() => createLeadDraftFromSms(event)} style={{ ...miniInboxButton, borderColor: "var(--brass)" }}>
+                          <strong>{event.contact_number || event.from_number || "Unknown number"}</strong>
+                          <span>{event.body || event.status || "Inbound message"}</span>
+                          <em>Create packet or match</em>
+                        </button>
+                      ))}
+                    </div>
+                  </section>
+                )}
+              </aside>
+
+              <section style={subPanel}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", marginBottom: 12 }}>
+                  <div>
+                    <p style={eyebrowSmall}>Seller queue</p>
+                    <h3 style={{ ...sectionTitle, fontSize: 22 }}>Select a seller to text</h3>
                   </div>
-                  <p style={{ fontSize: 12, color: "var(--muted)", marginBottom: 8 }}>{lead.phone || lead.phone_2 || "Phone pending"} · {lead.property_address || lead.parcel_id || "No property detail"}</p>
-                  <p style={{ fontSize: 13, color: "var(--ink)" }}>Score {lead.lead_score ?? 0}. Work the seller response, log outcome, or build a packet.</p>
-                </button>
-              ))}
-              {(followUpsDue.length ? followUpsDue : deals.filter(deal => deal.next_follow_up_date).slice(0, 8)).map(deal => (
-                <button
-                  key={deal.id}
-                  onClick={() => openDealBrief(deal)}
-                  style={{
-                    ...subPanel,
-                    textAlign: "left",
-                    cursor: "pointer",
-                    background: selected?.id === deal.id ? "rgba(176,137,84,0.14)" : "var(--bone)",
-                  }}
-                >
-                  <div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginBottom: 8 }}>
-                    <strong style={{ color: "var(--obsidian)", fontSize: 14 }}>{deal.title}</strong>
-                    <span style={deal.urgency === "hot" ? hotPill : pill}>{deal.next_follow_up_date || "No date"}</span>
-                  </div>
-                  <p style={{ fontSize: 12, color: "var(--muted)", marginBottom: 8 }}>{deal.seller_name || "Seller pending"} · {deal.seller_phone || "Phone pending"}</p>
-                  <p style={{ fontSize: 13, color: "var(--ink)", whiteSpace: "pre-wrap" }}>{deal.notes || "No follow-up notes yet."}</p>
-                </button>
-              ))}
-              {!unmatchedSms.length && !interestedLeads.length && deals.filter(deal => deal.next_follow_up_date).length === 0 && (
-                <p style={{ fontSize: 13, color: "var(--muted)" }}>No seller replies or dated follow-ups yet.</p>
-              )}
+                  <button onClick={() => void reload(user)} style={secondaryButton}>Refresh</button>
+                </div>
+                <div style={{ display: "grid", gap: 8, maxHeight: 720, overflow: "auto", paddingRight: 2 }}>
+                  {workdeskLeadRows.map(lead => {
+                    const active = selectedImportedLeadId === lead.id;
+                    const action = sellerActionState(lead);
+                    return (
+                      <button
+                        key={lead.id}
+                        onClick={() => selectImportedLead(lead, "outreach")}
+                        style={{
+                          ...subPanel,
+                          padding: 12,
+                          textAlign: "left",
+                          cursor: "pointer",
+                          background: active ? "rgba(176,137,84,0.15)" : "var(--surface)",
+                          borderColor: active ? "var(--brass)" : "var(--fog)",
+                        }}
+                      >
+                        <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "start" }}>
+                          <div>
+                            <strong style={{ color: "var(--obsidian)", fontSize: 14 }}>{lead.owner_name || "Owner unknown"}</strong>
+                            <p style={{ color: "var(--muted)", fontSize: 12, marginTop: 3 }}>
+                              {lead.phone || lead.phone_2 || "No phone"} · {lead.county || "County pending"} · {lead.acreage ?? "N/A"} acres
+                            </p>
+                          </div>
+                          <span style={lead.status === "interested" ? hotPill : pill}>{statusLabel(lead.status)}</span>
+                        </div>
+                        <p style={{ color: "var(--ink)", fontSize: 12, lineHeight: 1.45, marginTop: 8 }}>
+                          {lead.property_address || lead.parcel_id || "No property detail"} · {action.primary}
+                        </p>
+                      </button>
+                    );
+                  })}
+                  {workdeskLeadRows.length === 0 && <p style={{ color: "var(--muted)", fontSize: 13 }}>No seller work items yet. Import a list or wait for inbound replies.</p>}
+                </div>
+              </section>
+
+              <aside style={{ display: "grid", gap: 12, alignContent: "start" }}>
+                {selectedImportedLead ? (
+                  <SellerCommandCenter
+                    lead={selectedImportedLead}
+                    communications={communicationEvents}
+                    activities={leadActivities}
+                    smsDraft={smsDraft}
+                    setSmsDraft={setSmsDraft}
+                    smsSending={smsSending}
+                    onSendSms={sendSmsToLead}
+                    dispositionDraft={dispositionDraft}
+                    setDispositionDraft={setDispositionDraft}
+                    onSaveDisposition={applyLeadDisposition}
+                    onQuickDisposition={quickLeadDisposition}
+                    activityDraft={activityDraft}
+                    setActivityDraft={setActivityDraft}
+                    onLogActivity={logLeadActivity}
+                    onOpenFile={() => router.push(`/opportunity?lead=${selectedImportedLead.id}`)}
+                    onBuildPacket={() => loadImportedLead(selectedImportedLead, true)}
+                    onPass={async () => { await updateImportedLandLeadStatus(selectedImportedLead.id, "passed", selectedImportedLead.deal_id); setImportedLeads(await fetchImportedLandLeads(500)); }}
+                    compact
+                  />
+                ) : (
+                  <section style={subPanel}>
+                    <p style={eyebrowSmall}>SMS workspace</p>
+                    <h3 style={{ ...sectionTitle, fontSize: 22 }}>Pick a seller</h3>
+                    <p style={{ color: "var(--muted)", fontSize: 13, lineHeight: 1.5, marginTop: 8 }}>
+                      Select a seller from the queue to see conversation history, send a Sakari text, log a call, set disposition, or build a packet.
+                    </p>
+                  </section>
+                )}
+              </aside>
             </div>
           </section>
           )}
@@ -3468,6 +3523,20 @@ const homeMetricButton: React.CSSProperties = {
   gap: 6,
   alignContent: "start",
   boxShadow: "0 10px 26px rgba(20,17,13,0.04)",
+};
+
+const miniInboxButton: React.CSSProperties = {
+  border: "1px solid var(--fog)",
+  borderRadius: 8,
+  background: "var(--surface)",
+  padding: 10,
+  textAlign: "left",
+  cursor: "pointer",
+  display: "grid",
+  gap: 4,
+  color: "var(--ink)",
+  fontSize: 12,
+  lineHeight: 1.35,
 };
 
 const tabButton: React.CSSProperties = {
