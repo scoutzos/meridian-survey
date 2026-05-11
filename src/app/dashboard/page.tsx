@@ -647,11 +647,12 @@ export default function DashboardPage() {
                   </div>
                   <Badge>{latestVaBrief.reviewed_status === "reviewed" ? "Reviewed" : "New"}</Badge>
                 </div>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }} className="brief-metrics">
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 8 }} className="brief-metrics">
                   <BriefMetric label="Texts" value={latestVaBrief.outreach_sent ?? 0} />
                   <BriefMetric label="Replies" value={latestVaBrief.seller_replies ?? 0} />
                   <BriefMetric label="Calls" value={latestVaBrief.calls_completed ?? 0} />
                   <BriefMetric label="Deals" value={latestVaBrief.deals_submitted ?? 0} />
+                  <BriefMetric label="Tasks" value={latestVaBrief.va_tasks_completed ?? 0} />
                 </div>
                 <div style={listItemStyle}>
                   <p style={{ fontSize: 10, color: COLORS.brass, fontWeight: 900, letterSpacing: "0.14em", textTransform: "uppercase", marginBottom: 4 }}>Completed</p>

@@ -1438,18 +1438,38 @@ Risk: Medium. CRM record depth is now visibly stronger, but the system still nee
 
 ### Phase 2A: Member-To-VA Task Assignment
 
-Status: Needed
+Status: In Progress
 
 Work:
 
-- Add VA users, such as `Sophie / VA`, to the task assignee dropdown.
+- Add VA users, such as `Sophie / VA`, to the task assignee dropdown. Started.
 - Decide whether all members or only admins can assign VA tasks.
-- Add a task type/category for VA work.
-- Show VA-assigned tasks in the VA Desk Today queue.
-- Let the VA mark assigned tasks Open, In Progress, and Done.
-- Count tasks marked Done during the VA shift/day in the daily brief metrics.
-- Include completed VA tasks in the daily brief detail and Operations review.
-- Notify members when a VA task is completed or blocked.
+- Add a task type/category for VA work. Started with `va-work` task type.
+- Show VA-assigned tasks in the VA Desk Today queue. Started.
+- Let the VA mark assigned tasks Open, In Progress, Done, and Blocked. Started.
+- Count tasks marked Done during the VA shift/day in the daily brief metrics. Started.
+- Include completed VA tasks in the daily brief detail and Operations review. Started.
+- Notify members when a VA task is completed or blocked. Started for task creator.
+
+Completed in this pass:
+
+- Extended `action_items` into the first version of the shared work-routing backbone.
+- Added task metadata for task type, priority, source record, completion note, blocker reason, and completed by.
+- Added blocked status to action items.
+- Let members assign tasks to `Sophie / VA` from the member task page.
+- Added VA-assigned task queue to the VA Desk Today view.
+- Added Start, Done, and Blocked actions for VA tasks.
+- Added completed VA task count into daily brief draft, VA brief submission, Operations review, and member dashboard brief metrics.
+- Added migration `036_work_routing_foundation.sql`.
+- Verified production build after implementation.
+
+Remaining:
+
+- Add linked-record selectors when members assign a VA task, such as deal, lead, document, project, or meeting.
+- Add a cleaner member-facing task detail/history view.
+- Add stronger notification rules for all members/admin, not only the task creator.
+- Confirm RLS for members assigning VA tasks and VA updating only assigned tasks.
+- Decide if blocked tasks should create a separate escalation queue in Operations.
 
 Risk: High if skipped. Members will keep assigning VA work through texts or side conversations, which defeats the purpose of the portal.
 

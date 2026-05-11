@@ -9,6 +9,7 @@ export interface VaDailyBriefInput {
   seller_replies?: number | null;
   calls_completed?: number | null;
   deals_submitted?: number | null;
+  va_tasks_completed?: number | null;
   checklist_items_cleared?: number | null;
   activities_completed: string;
   follow_ups_needed?: string | null;
@@ -65,6 +66,7 @@ function cleanInput(input: VaDailyBriefInput): VaDailyBriefInput {
     seller_replies: normalizeNumber(input.seller_replies),
     calls_completed: normalizeNumber(input.calls_completed),
     deals_submitted: normalizeNumber(input.deals_submitted),
+    va_tasks_completed: normalizeNumber(input.va_tasks_completed),
     checklist_items_cleared: normalizeNumber(input.checklist_items_cleared),
     activities_completed: input.activities_completed.trim(),
     follow_ups_needed: input.follow_ups_needed?.trim() || null,

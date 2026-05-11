@@ -21,6 +21,7 @@ import {
 } from "@/lib/deal-votes";
 import {
   ALL_MEMBERS_LABEL,
+  VA_ASSIGNEE_LABEL,
   createActionItem,
   deleteActionItem,
   fetchActionItems,
@@ -33,17 +34,18 @@ import { labelForStatus } from "@/lib/status-map";
 
 const DISPLAY_FONT = "var(--font-display)";
 
-const STATUS_ORDER: ActionItemStatus[] = ["open", "in-progress", "done"];
+const STATUS_ORDER: ActionItemStatus[] = ["open", "in-progress", "blocked", "done"];
 const STATUS_LABEL: Record<ActionItemStatus, string> = {
   "open": "Open",
   "in-progress": "In Progress",
+  "blocked": "Blocked",
   "done": "Done",
 };
 type TaskFilter = "needs-me" | "votes" | "money" | "surveys" | "actions" | "completed";
 
 interface TaskCard {
   id: string;
-  kind: "Vote" | "Money" | "Survey" | "Action";
+  kind: "Vote" | "Money" | "Survey" | "Action" | "VA Task";
   title: string;
   detail: string;
   href: string;
@@ -77,6 +79,8 @@ export default function ActionsPage() {
     description: "",
     assigned_to: ALL_MEMBERS_LABEL,
     due_date: "",
+    task_type: "general",
+    priority: "normal",
   });
   const [saving, setSaving] = useState(false);
 
@@ -135,7 +139,7 @@ export default function ActionsPage() {
   }, [router, reload]);
 
   const grouped = useMemo(() => {
-    const out: Record<ActionItemStatus, ActionItem[]> = { open: [], "in-progress": [], done: [] };
+    const out: Record<ActionItemStatus, ActionItem[]> = { open: [], "in-progress": [], blocked: [], done: [] };
     for (const i of items) out[i.status].push(i);
     return out;
   }, [items]);
@@ -215,18 +219,18 @@ export default function ActionsPage() {
       return true;
     }).map(item => ({
       id: `action-${item.id}`,
-      kind: "Action" as const,
+      kind: item.assigned_to === VA_ASSIGNEE_LABEL || item.task_type === "va-work" ? "VA Task" as const : "Action" as const,
       title: item.title,
       detail: item.description || "Assigned action item.",
       href: "/actions",
-      status: item.status === "in-progress" ? "In Progress" as const : "Open" as const,
+      status: item.status === "done" ? "Done" as const : item.status === "in-progress" ? "In Progress" as const : item.status === "blocked" ? "In Progress" as const : "Open" as const,
       due: item.due_date,
       sourceItem: item,
     })),
   ];
   const completedTasks: TaskCard[] = items.filter(item => item.status === "done" && isOwnedBy(item, user)).map(item => ({
     id: `action-${item.id}`,
-    kind: "Action",
+    kind: item.assigned_to === VA_ASSIGNEE_LABEL || item.task_type === "va-work" ? "VA Task" : "Action",
     title: item.title,
     detail: item.description || "Completed action item.",
     href: "/actions",
@@ -246,7 +250,7 @@ export default function ActionsPage() {
     votes: taskCards.filter(task => task.kind === "Vote").length,
     money: taskCards.filter(task => task.kind === "Money").length,
     surveys: taskCards.filter(task => task.kind === "Survey").length,
-    actions: taskCards.filter(task => task.kind === "Action").length,
+    actions: taskCards.filter(task => task.kind === "Action" || task.kind === "VA Task").length,
     completed: completedTasks.length,
   };
   const openAssignedActions = taskCards.filter(task => task.kind === "Action").length;
@@ -274,10 +278,12 @@ export default function ActionsPage() {
       description: draft.description,
       assigned_to: draft.assigned_to,
       due_date: draft.due_date || null,
+      task_type: draft.assigned_to === VA_ASSIGNEE_LABEL ? "va-work" : draft.task_type as ActionItem["task_type"],
+      priority: draft.priority as ActionItem["priority"],
     }, user);
     setSaving(false);
     if (error) { alert(error); return; }
-    setDraft({ title: "", description: "", assigned_to: ALL_MEMBERS_LABEL, due_date: "" });
+    setDraft({ title: "", description: "", assigned_to: ALL_MEMBERS_LABEL, due_date: "", task_type: "general", priority: "normal" });
     setShowNew(false);
     void reload();
   };
@@ -296,23 +302,21 @@ export default function ActionsPage() {
             One review queue for votes, money items, surveys, and assigned work.
           </p>
         </div>
-        {admin && (
-          <button
-            onClick={() => setShowNew(s => !s)}
-            style={{
-              background: showNew ? "transparent" : "var(--brass)",
-              color: showNew ? "var(--brass)" : "var(--obsidian)",
-              border: showNew ? "1px solid var(--brass)" : "none",
-              borderRadius: 6, padding: "10px 16px", fontSize: 11, fontWeight: 600,
-              letterSpacing: "0.18em", textTransform: "uppercase", cursor: "pointer",
-            }}
-          >
-            {showNew ? "Cancel" : "New action"}
-          </button>
-        )}
+        <button
+          onClick={() => setShowNew(s => !s)}
+          style={{
+            background: showNew ? "transparent" : "var(--brass)",
+            color: showNew ? "var(--brass)" : "var(--obsidian)",
+            border: showNew ? "1px solid var(--brass)" : "none",
+            borderRadius: 6, padding: "10px 16px", fontSize: 11, fontWeight: 600,
+            letterSpacing: "0.18em", textTransform: "uppercase", cursor: "pointer",
+          }}
+        >
+          {showNew ? "Cancel" : "Assign task"}
+        </button>
       </header>
 
-      {showNew && admin && (
+      {showNew && (
         <div style={{
           background: "var(--surface)", border: "1px solid var(--fog)", borderRadius: 12,
           padding: 18, marginBottom: 24, display: "flex", flexDirection: "column", gap: 12,
@@ -336,6 +340,7 @@ export default function ActionsPage() {
                 onChange={e => setDraft({ ...draft, assigned_to: e.target.value })}
               >
                 <option value={ALL_MEMBERS_LABEL}>{ALL_MEMBERS_LABEL}</option>
+                <option value={VA_ASSIGNEE_LABEL}>{VA_ASSIGNEE_LABEL}</option>
                 {MEMBERS.map(m => <option key={m} value={m}>{m}</option>)}
               </select>
             </div>
@@ -346,6 +351,36 @@ export default function ActionsPage() {
                 value={draft.due_date}
                 onChange={e => setDraft({ ...draft, due_date: e.target.value })}
               />
+            </div>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }} className="action-form-row">
+            <div>
+              <label style={labelStyle}>Task type</label>
+              <select
+                value={draft.assigned_to === VA_ASSIGNEE_LABEL ? "va-work" : draft.task_type}
+                disabled={draft.assigned_to === VA_ASSIGNEE_LABEL}
+                onChange={e => setDraft({ ...draft, task_type: e.target.value })}
+              >
+                <option value="general">General</option>
+                <option value="va-work">VA work</option>
+                <option value="meeting-follow-up">Meeting follow-up</option>
+                <option value="deal-follow-up">Deal follow-up</option>
+                <option value="project-task">Project task</option>
+                <option value="document-review">Document review</option>
+                <option value="money-approval">Money approval</option>
+              </select>
+            </div>
+            <div>
+              <label style={labelStyle}>Priority</label>
+              <select
+                value={draft.priority}
+                onChange={e => setDraft({ ...draft, priority: e.target.value })}
+              >
+                <option value="normal">Normal</option>
+                <option value="high">High</option>
+                <option value="urgent">Urgent</option>
+                <option value="low">Low</option>
+              </select>
             </div>
           </div>
           <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>

@@ -546,6 +546,7 @@ export default function OperationsPage() {
                 <MiniStat label="Outreach" value={`${brief.outreach_sent ?? 0} sent`} />
                 <MiniStat label="Replies" value={`${brief.seller_replies ?? 0}`} />
                 <MiniStat label="Calls" value={`${brief.calls_completed ?? 0}`} />
+                <MiniStat label="VA tasks" value={`${brief.va_tasks_completed ?? 0}`} />
               </div>
               {brief.revised_at && (
                 <>

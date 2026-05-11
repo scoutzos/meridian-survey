@@ -26,7 +26,14 @@ import {
   type DealUrgency,
   type DealDueDiligenceItem,
 } from "@/lib/deals";
-import { createActionItem } from "@/lib/action-items";
+import {
+  createActionItem,
+  fetchActionItems,
+  isVaTask,
+  updateActionItemStatus,
+  type ActionItem,
+  type ActionItemStatus,
+} from "@/lib/action-items";
 import { createNotification } from "@/lib/operations";
 import {
   createImportedLandLeadActivity,
@@ -267,6 +274,7 @@ const EMPTY_BRIEF = (): VaDailyBriefInput => ({
   seller_replies: null,
   calls_completed: null,
   deals_submitted: null,
+  va_tasks_completed: null,
   checklist_items_cleared: null,
   activities_completed: "",
   follow_ups_needed: "",
@@ -512,6 +520,7 @@ export default function VaPage() {
   const [attachmentDraft, setAttachmentDraft] = useState(EMPTY_ATTACHMENT);
   const [briefDraft, setBriefDraft] = useState<VaDailyBriefInput>(EMPTY_BRIEF);
   const [briefs, setBriefs] = useState<VaDailyBrief[]>([]);
+  const [assignedTasks, setAssignedTasks] = useState<ActionItem[]>([]);
   const [timeEntries, setTimeEntries] = useState<VaTimeEntry[]>([]);
   const [timeChangeRequests, setTimeChangeRequests] = useState<VaTimeChangeRequest[]>([]);
   const [openShift, setOpenShift] = useState<VaTimeEntry | null>(null);
@@ -563,7 +572,7 @@ export default function VaPage() {
 
   const reload = useCallback(async (memberName = user) => {
     setLoading(true);
-    const [rows, briefRows, timeRows, requestRows, currentShift, importRows, batchRows, smsRows] = await Promise.all([
+    const [rows, briefRows, timeRows, requestRows, currentShift, importRows, batchRows, smsRows, taskRows] = await Promise.all([
       fetchDeals(),
       fetchVaDailyBriefs(8),
       fetchVaTimeEntries(80),
@@ -572,6 +581,7 @@ export default function VaPage() {
       fetchImportedLandLeads(500),
       fetchLandLeadBatches(),
       fetchCommunicationEvents({ unmatched: true, limit: 25 }),
+      fetchActionItems(),
     ]);
     const activeRows = rows.filter(deal =>
       !["closed", "active-project", "stabilized", "sold"].includes(deal.status)
@@ -579,6 +589,7 @@ export default function VaPage() {
     );
     setDeals(activeRows);
     setBriefs(briefRows);
+    setAssignedTasks(taskRows.filter(task => isVaTask(task)));
     setTimeEntries(timeRows);
     setTimeChangeRequests(requestRows.filter(request => !memberName || request.operator_name === memberName));
     setOpenShift(currentShift);
@@ -613,6 +624,12 @@ export default function VaPage() {
     [briefDraft.work_date, timeEntries],
   );
   const liveShiftMinutes = openShift ? currentShiftMinutes(openShift) : 0;
+  const openAssignedTasks = useMemo(() => assignedTasks.filter(task => task.status !== "done"), [assignedTasks]);
+  const completedAssignedTasksToday = useMemo(() => assignedTasks.filter(task =>
+    task.status === "done"
+    && task.completed_at
+    && vaDateKey(task.completed_at) === briefDraft.work_date
+  ), [assignedTasks, briefDraft.work_date]);
   const followUpsDue = useMemo(() => deals.filter(deal => isDueTodayOrPast(deal.next_follow_up_date, today)), [deals, today]);
   const draftLeads = useMemo(() => deals.filter(deal => deal.status === "lead"), [deals]);
   const interestedLeads = useMemo(() => importedLeads.filter(lead => lead.status === "interested"), [importedLeads]);
@@ -688,7 +705,7 @@ export default function VaPage() {
     briefSubmitted: briefs.some(brief => brief.work_date === today),
   }), [briefs, deals, today]);
   const tabCounts: Record<VaTab, number> = {
-    today: unmatchedSms.length + followUpsDue.length + interestedLeads.length,
+    today: unmatchedSms.length + followUpsDue.length + interestedLeads.length + openAssignedTasks.length,
     outreach: unmatchedSms.length + followUpsDue.length,
     lists: importedLeads.length,
     packet: deals.length,
@@ -1274,6 +1291,7 @@ export default function VaPage() {
       seller_replies: brief.seller_replies ?? null,
       calls_completed: brief.calls_completed ?? null,
       deals_submitted: brief.deals_submitted ?? null,
+      va_tasks_completed: brief.va_tasks_completed ?? null,
       checklist_items_cleared: brief.checklist_items_cleared ?? null,
       activities_completed: brief.activities_completed,
       follow_ups_needed: brief.follow_ups_needed ?? "",
@@ -1303,9 +1321,60 @@ export default function VaPage() {
       seller_replies: touchedImportedLeads.filter(lead => lead.status === "interested" || lead.last_sms_direction === "inbound").length,
       calls_completed: touchedImportedLeads.filter(lead => lead.last_activity_type === "called" || lead.last_activity_type === "left-voicemail").length,
       deals_submitted: ownDeals.filter(deal => deal.status === "under-review" && sameDay(deal.updated_at)).length,
+      va_tasks_completed: completedAssignedTasksToday.length,
       checklist_items_cleared: checklist.filter(item => sameDay(item.updated_at) && (item.status === "cleared" || item.status === "not-applicable") && item.updated_by === user).length,
       hours_worked: todaysSubmittedMinutes > 0 ? Number((todaysSubmittedMinutes / 60).toFixed(2)) : prev.hours_worked,
     }));
+  };
+
+  const changeAssignedTaskStatus = async (task: ActionItem, status: ActionItemStatus) => {
+    if (!user) return;
+    const note = status === "blocked" ? window.prompt("What is blocking this task?") ?? "" : "";
+    const { error } = await updateActionItemStatus(task.id, status, user, note);
+    if (error) { setMessage(error); return; }
+    const now = new Date().toISOString();
+    const nextTask = {
+      ...task,
+      status,
+      updated_at: now,
+      updated_by: user,
+      completed_at: status === "done" ? now : null,
+      completed_by: status === "done" ? user : null,
+      blocker_reason: status === "blocked" ? note.trim() || null : null,
+    };
+    setAssignedTasks(prev => prev.map(row => row.id === task.id ? nextTask : row));
+    if (status === "done") {
+      setBriefDraft(prev => ({
+        ...prev,
+        va_tasks_completed: (prev.va_tasks_completed ?? completedAssignedTasksToday.length) + 1,
+        activities_completed: appendBriefText(prev.activities_completed, `Completed member-assigned task: ${task.title}`),
+      }));
+      if (task.created_by) {
+        await createNotification({
+          title: `VA task completed: ${task.title}`,
+          body: `${user} marked this task done.`,
+          priority: "normal",
+          assigned_to: task.created_by,
+          href: "/actions",
+          source_table: "action_items",
+          source_id: task.id,
+          notification_type: "va-task-completed",
+        }, user);
+      }
+    }
+    if (status === "blocked" && task.created_by) {
+      await createNotification({
+        title: `VA task blocked: ${task.title}`,
+        body: note.trim() || `${user} marked this task blocked.`,
+        priority: "high",
+        assigned_to: task.created_by,
+        href: "/actions",
+        source_table: "action_items",
+        source_id: task.id,
+        notification_type: "va-task-blocked",
+      }, user);
+    }
+    setMessage(status === "done" ? "Task completed and added to the daily brief." : `Task marked ${statusLabel(status)}.`);
   };
 
   const pullSakariBrief = async () => {
@@ -1579,6 +1648,7 @@ export default function VaPage() {
                     <QueueButton label="Seller replies" detail="Unmatched SMS" count={unmatchedSms.length} hot={!!unmatchedSms.length} onClick={() => setActiveTab("outreach")} />
                     <QueueButton label="Interested sellers" detail="Replied and expressed interest" count={interestedLeads.length} hot={!!interestedLeads.length} onClick={() => { setLeadFilter("interested"); setActiveTab("lists"); }} />
                     <QueueButton label="Follow-up due" detail="No reply in 24-72 hrs" count={followUpsDue.length} hot={!!followUpsDue.length} onClick={() => setActiveTab("outreach")} />
+                    <QueueButton label="Member-assigned tasks" detail="From member portal" count={openAssignedTasks.length} hot={!!openAssignedTasks.length} onClick={() => setActiveTab("today")} />
                     <QueueButton label="Bad numbers / DNC" detail="Invalid or do not contact" count={importedLeads.filter(lead => lead.status === "passed" || lead.sms_opt_status === "opted-out").length} onClick={() => { setLeadFilter("passed"); setActiveTab("lists"); }} />
                     <QueueButton label="Deal brief drafts" detail="In progress" count={draftLeads.length} onClick={() => draftLeads[0] ? openDealBrief(draftLeads[0]) : setActiveTab("packet")} />
                   </div>
@@ -1589,6 +1659,7 @@ export default function VaPage() {
                     <MiniStat label="Texts sent" value={String(briefDraft.outreach_sent ?? 0)} />
                     <MiniStat label="Replies received" value={String(briefDraft.seller_replies ?? unmatchedSms.length)} />
                     <MiniStat label="Leads updated" value={String(briefDraft.leads_updated ?? portalStats.updatedToday)} />
+                    <MiniStat label="Tasks done" value={String(briefDraft.va_tasks_completed ?? completedAssignedTasksToday.length)} />
                     <MiniStat label="On shift" value={openShift ? formatDuration(liveShiftMinutes) : "Ready"} />
                   </div>
                   <button onClick={openShift ? handleClockOut : handleClockIn} disabled={clockBusy} style={{ ...primaryButton, width: "100%", marginTop: 10, opacity: clockBusy ? 0.65 : 1 }}>
@@ -1648,6 +1719,39 @@ export default function VaPage() {
                 </div>
               </section>
 
+              <section style={subPanel}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", marginBottom: 10 }}>
+                  <div>
+                    <p style={eyebrowSmall}>Member-assigned tasks</p>
+                    <h2 style={{ ...sectionTitle, fontSize: 22 }}>VA work routing</h2>
+                  </div>
+                  <span style={pill}>{openAssignedTasks.length} open</span>
+                </div>
+                <div style={{ display: "grid", gap: 8 }}>
+                  {openAssignedTasks.slice(0, 6).map(task => (
+                    <div key={task.id} style={{ ...subPanel, background: task.status === "blocked" ? "rgba(176,137,84,0.08)" : "var(--bone)" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "start" }}>
+                        <div>
+                          <strong style={{ color: "var(--obsidian)", fontSize: 14 }}>{task.title}</strong>
+                          <p style={{ color: "var(--muted)", fontSize: 12, lineHeight: 1.45, marginTop: 4 }}>{task.description || "No task details added."}</p>
+                          <p style={{ color: "var(--muted)", fontSize: 11, marginTop: 5 }}>
+                            {task.created_by ? `Assigned by ${task.created_by}` : "Assigned"}{task.due_date ? ` · Due ${task.due_date}` : ""} · {statusLabel(task.status)}
+                          </p>
+                          {task.blocker_reason && <p style={{ color: "var(--brass)", fontSize: 12, marginTop: 5 }}>Blocked: {task.blocker_reason}</p>}
+                        </div>
+                        <span style={task.priority === "urgent" || task.priority === "high" ? hotPill : pill}>{statusLabel(task.priority || "normal")}</span>
+                      </div>
+                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 10 }}>
+                        {task.status !== "in-progress" && <button onClick={() => changeAssignedTaskStatus(task, "in-progress")} style={secondaryButton}>Start</button>}
+                        <button onClick={() => changeAssignedTaskStatus(task, "done")} style={primaryButton}>Done</button>
+                        <button onClick={() => changeAssignedTaskStatus(task, "blocked")} style={secondaryButton}>Blocked</button>
+                      </div>
+                    </div>
+                  ))}
+                  {openAssignedTasks.length === 0 && <p style={{ color: "var(--muted)", fontSize: 13 }}>No member-assigned VA tasks are open.</p>}
+                </div>
+              </section>
+
               <aside style={{ display: "grid", gap: 12, alignContent: "start" }}>
                 {selectedImportedLead ? (
                   <SellerCommandCenter
@@ -1692,11 +1796,12 @@ export default function VaPage() {
                   <button onClick={() => setActiveTab("brief")} style={secondaryButton}>Edit Brief</button>
                 </div>
               </div>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, marginBottom: 10 }} className="number-grid">
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 10, marginBottom: 10 }} className="number-grid">
                 <ShiftCard label="Calls made" value={String(briefDraft.calls_completed ?? 0)} />
                 <ShiftCard label="Texts sent" value={String(briefDraft.outreach_sent ?? 0)} />
                 <ShiftCard label="Replies received" value={String(briefDraft.seller_replies ?? unmatchedSms.length)} tone={unmatchedSms.length ? "hot" : "calm"} />
                 <ShiftCard label="Deals submitted" value={String(briefDraft.deals_submitted ?? portalStats.submittedToday)} />
+                <ShiftCard label="Tasks completed" value={String(briefDraft.va_tasks_completed ?? completedAssignedTasksToday.length)} />
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr) 260px", gap: 12 }} className="workdesk-brief-grid">
                 <div>
@@ -2550,6 +2655,7 @@ export default function VaPage() {
               <NumberField label="Seller replies" value={briefDraft.seller_replies} onChange={v => setBriefDraft({ ...briefDraft, seller_replies: v })} />
               <NumberField label="Calls completed" value={briefDraft.calls_completed} onChange={v => setBriefDraft({ ...briefDraft, calls_completed: v })} />
               <NumberField label="Deals submitted" value={briefDraft.deals_submitted} onChange={v => setBriefDraft({ ...briefDraft, deals_submitted: v })} />
+              <NumberField label="VA tasks done" value={briefDraft.va_tasks_completed} onChange={v => setBriefDraft({ ...briefDraft, va_tasks_completed: v })} />
               <NumberField label="Checklist cleared" value={briefDraft.checklist_items_cleared} onChange={v => setBriefDraft({ ...briefDraft, checklist_items_cleared: v })} />
             </div>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
@@ -2708,7 +2814,7 @@ export default function VaPage() {
                       </div>
                     </div>
                     <p style={{ fontSize: 12, color: "var(--muted)", marginBottom: 6 }}>
-                      Leads {brief.leads_added ?? 0} added / {brief.leads_updated ?? 0} updated · Outreach {brief.outreach_sent ?? 0} · Deals submitted {brief.deals_submitted ?? 0}
+                      Leads {brief.leads_added ?? 0} added / {brief.leads_updated ?? 0} updated · Outreach {brief.outreach_sent ?? 0} · Deals submitted {brief.deals_submitted ?? 0} · VA tasks {brief.va_tasks_completed ?? 0}
                     </p>
                     {brief.revised_at && (
                       <p style={{ fontSize: 12, color: "var(--muted)", marginBottom: 6 }}>
