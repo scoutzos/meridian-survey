@@ -49,6 +49,7 @@ import {
   type ImportedLandLead,
   type LandLeadBatch,
 } from "@/lib/land-leads";
+import { fetchActionItems, isVaTask, type ActionItem } from "@/lib/action-items";
 import { isVaUser } from "@/lib/identity";
 
 const DISPLAY_FONT = "var(--font-display)";
@@ -98,6 +99,14 @@ function labelize(value: string): string {
   return value.split("-").map(p => p.charAt(0).toUpperCase() + p.slice(1)).join(" ");
 }
 
+function actionHref(item: ActionItem): string {
+  if (item.source_table === "meridian_deals" && item.source_id) return `/opportunity?deal=${item.source_id}`;
+  if (item.source_table === "meridian_imported_land_leads" && item.source_id) return `/opportunity?lead=${item.source_id}`;
+  if (item.source_table === "meridian_projects" && item.source_id) return "/projects";
+  if (item.source_table === "meeting_notes" && item.source_id) return "/meetings";
+  return "/actions";
+}
+
 export default function OperationsPage() {
   const router = useRouter();
   const [user, setUser] = useState<string | null>(null);
@@ -118,6 +127,7 @@ export default function OperationsPage() {
   const [savingShiftEdit, setSavingShiftEdit] = useState(false);
   const [landLeadBatches, setLandLeadBatches] = useState<LandLeadBatch[]>([]);
   const [importedLeads, setImportedLeads] = useState<ImportedLandLead[]>([]);
+  const [actionItems, setActionItems] = useState<ActionItem[]>([]);
   const [briefReviewNotes, setBriefReviewNotes] = useState<Record<string, string>>({});
   const [eventDraft, setEventDraft] = useState({ title: "", event_date: "", event_type: "deadline", assigned_to: "", notes: "", project_id: "" });
   const [reimbursementDraft, setReimbursementDraft] = useState({ member_name: "", amount: "", vendor: "", category: "Project", expense_date: "", receipt_url: "", notes: "", project_id: "" });
@@ -142,7 +152,8 @@ export default function OperationsPage() {
       fetchVaTimeChangeRequests(100),
       fetchLandLeadBatches(12),
       fetchImportedLandLeads(250),
-    ]).then(([projectRows, eventRows, reimbursementRows, distributionRows, scenarioRows, briefRows, timeRows, timeRequestRows, batchRows, leadRows]) => {
+      fetchActionItems(),
+    ]).then(([projectRows, eventRows, reimbursementRows, distributionRows, scenarioRows, briefRows, timeRows, timeRequestRows, batchRows, leadRows, actionRows]) => {
       setProjects(projectRows);
       setEvents(eventRows);
       setReimbursements(reimbursementRows);
@@ -153,6 +164,7 @@ export default function OperationsPage() {
       setVaTimeChangeRequests(timeRequestRows);
       setLandLeadBatches(batchRows);
       setImportedLeads(leadRows);
+      setActionItems(actionRows);
       void fetchVaDailyBriefReviews(briefRows.map(brief => brief.id)).then(setVaBriefReviews);
     });
   }, [router]);
@@ -169,6 +181,7 @@ export default function OperationsPage() {
   const vaSubmittedHours = useMemo(() => vaTimeEntries.reduce((sum, entry) => sum + ((entry.status === "submitted" || entry.status === "approved") ? (entry.duration_minutes ?? 0) : 0), 0) / 60, [vaTimeEntries]);
   const vaSubmittedCost = useMemo(() => vaTimeEntries.reduce((sum, entry) => sum + ((entry.status === "submitted" || entry.status === "approved") ? Number(entry.cost_amount ?? 0) : 0), 0), [vaTimeEntries]);
   const pendingTimeRequests = useMemo(() => vaTimeChangeRequests.filter(request => request.status === "pending"), [vaTimeChangeRequests]);
+  const blockedVaTasks = useMemo(() => actionItems.filter(item => isVaTask(item) && item.status === "blocked"), [actionItems]);
 
   const scenarioPreview = useMemo(() => calculateScenario({
     purchase_price: toNumber(scenarioDraft.purchase_price),
@@ -319,7 +332,7 @@ export default function OperationsPage() {
   const unreviewedBriefs = vaBriefs.filter(brief => !vaBriefReviews.some(review => review.brief_id === brief.id && review.member_name === user));
   const activeFinanceItems = pendingReimbursements.length + distributions.filter(distribution => distribution.status !== "paid").length;
   const operationTabs: { id: OperationsTab; label: string; count: number }[] = [
-    { id: "overview", label: "Overview", count: pendingTimeRequests.length + unreviewedBriefs.length + pendingReimbursements.length },
+    { id: "overview", label: "Overview", count: pendingTimeRequests.length + unreviewedBriefs.length + pendingReimbursements.length + blockedVaTasks.length },
     { id: "va-briefs", label: "VA Briefs", count: unreviewedBriefs.length },
     { id: "time", label: "Time Approval", count: pendingTimeRequests.length },
     { id: "lead-ops", label: "Lead Ops", count: leadReviewStats.interested },
@@ -390,6 +403,23 @@ export default function OperationsPage() {
           <MiniStat label="Submitted VA cost" value={money(vaSubmittedCost)} />
           <MiniStat label="Time edits pending" value={String(pendingTimeRequests.length)} />
         </div>
+        {blockedVaTasks.length > 0 && (
+          <div style={{ display: "grid", gap: 10, marginBottom: 18 }}>
+            <p style={briefLabel}>Blocked VA tasks</p>
+            {blockedVaTasks.slice(0, 5).map(task => (
+              <article key={task.id} style={{ background: "var(--bone)", border: "1px solid rgba(176,137,84,0.45)", borderRadius: 8, padding: 12 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "start" }}>
+                  <div>
+                    <p style={rowTitle}>{task.title}</p>
+                    <p style={rowMeta}>{task.assigned_to || "VA"} · assigned by {task.created_by || "Unknown"}{task.due_date ? ` · due ${task.due_date}` : ""}</p>
+                  </div>
+                  <button onClick={() => router.push(actionHref(task))} style={{ ...primaryButton, background: "transparent", border: "1px solid var(--fog)", color: "var(--obsidian)" }}>Open Record</button>
+                </div>
+                <p style={{ ...briefText, marginTop: 8 }}>{task.blocker_reason || task.description || "No blocker reason added."}</p>
+              </article>
+            ))}
+          </div>
+        )}
         {(activeTab === "overview" || activeTab === "time") && pendingTimeRequests.length > 0 && (
           <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 12, marginBottom: 18 }} className="brief-grid">
             {pendingTimeRequests.map(request => (

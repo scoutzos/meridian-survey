@@ -19,6 +19,10 @@ import {
   fetchPendingDealVotes,
   type PendingDealVote,
 } from "@/lib/deal-votes";
+import { fetchDeals, type Deal } from "@/lib/deals";
+import { fetchImportedLandLeads, type ImportedLandLead } from "@/lib/land-leads";
+import { fetchMeetingNotes, type MeetingNote } from "@/lib/meetings";
+import { fetchProjects, type Project } from "@/lib/projects";
 import {
   ALL_MEMBERS_LABEL,
   VA_ASSIGNEE_LABEL,
@@ -26,6 +30,7 @@ import {
   deleteActionItem,
   fetchActionItems,
   isOwnedBy,
+  isVaTask,
   updateActionItemStatus,
   type ActionItem,
   type ActionItemStatus,
@@ -41,7 +46,8 @@ const STATUS_LABEL: Record<ActionItemStatus, string> = {
   "blocked": "Blocked",
   "done": "Done",
 };
-type TaskFilter = "needs-me" | "votes" | "money" | "surveys" | "actions" | "completed";
+type TaskFilter = "needs-me" | "votes" | "money" | "surveys" | "actions" | "va" | "assigned-by-me" | "completed";
+type LinkType = "general" | "lead" | "deal" | "project" | "meeting";
 
 interface TaskCard {
   id: string;
@@ -54,11 +60,37 @@ interface TaskCard {
   sourceItem?: ActionItem;
 }
 
+interface LinkOption {
+  type: LinkType;
+  table: string | null;
+  id: string;
+  label: string;
+  detail: string;
+  href: string;
+}
+
 function formatDue(iso: string | null): string | null {
   if (!iso) return null;
   const d = new Date(iso + "T00:00:00");
   if (isNaN(d.getTime())) return null;
   return d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+}
+
+function taskHref(item: ActionItem): string {
+  if (item.source_table === "meridian_deals" && item.source_id) return `/opportunity?deal=${item.source_id}`;
+  if (item.source_table === "meridian_imported_land_leads" && item.source_id) return `/opportunity?lead=${item.source_id}`;
+  if (item.source_table === "meridian_projects" && item.source_id) return `/projects`;
+  if (item.source_table === "meeting_notes" && item.source_id) return `/meetings`;
+  if (isVaTask(item)) return "/va";
+  return "/actions";
+}
+
+function sourceLabel(item: ActionItem): string {
+  if (item.source_table === "meridian_deals") return "Deal";
+  if (item.source_table === "meridian_imported_land_leads") return "Lead";
+  if (item.source_table === "meridian_projects") return "Project";
+  if (item.source_table === "meeting_notes") return "Meeting";
+  return isVaTask(item) ? "VA work" : "General";
 }
 
 export default function ActionsPage() {
@@ -70,6 +102,10 @@ export default function ActionsPage() {
   const [proposalVotes, setProposalVotes] = useState<PendingExpenseProposalVote[]>([]);
   const [dealVotes, setDealVotes] = useState<PendingDealVote[]>([]);
   const [capitalCalls, setCapitalCalls] = useState<CapitalCall[]>([]);
+  const [deals, setDeals] = useState<Deal[]>([]);
+  const [leads, setLeads] = useState<ImportedLandLead[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [meetings, setMeetings] = useState<MeetingNote[]>([]);
   const [surveyCounts, setSurveyCounts] = useState<Record<string, number>>({});
   const [filter, setFilter] = useState<TaskFilter>("needs-me");
   const [loading, setLoading] = useState(true);
@@ -81,6 +117,8 @@ export default function ActionsPage() {
     due_date: "",
     task_type: "general",
     priority: "normal",
+    link_type: "general" as LinkType,
+    source_key: "",
   });
   const [saving, setSaving] = useState(false);
 
@@ -88,18 +126,26 @@ export default function ActionsPage() {
     const currentUser = localStorage.getItem("meridian_user");
     if (!currentUser) return;
     setLoading(true);
-    const [data, pendingCandidates, pendingProposals, pendingDeals, trackerData] = await Promise.all([
+    const [data, pendingCandidates, pendingProposals, pendingDeals, trackerData, dealRows, leadRows, projectRows, meetingRows] = await Promise.all([
       fetchActionItems(),
       fetchPendingMembershipCandidateVotes(currentUser),
       fetchPendingExpenseProposalVotes(currentUser),
       fetchPendingDealVotes(currentUser),
       fetchAll(),
+      fetchDeals(),
+      fetchImportedLandLeads(120),
+      fetchProjects(),
+      fetchMeetingNotes(),
     ]);
     setItems(data);
     setCandidateVotes(pendingCandidates);
     setProposalVotes(pendingProposals);
     setDealVotes(pendingDeals);
     setCapitalCalls(trackerData?.capitalCalls ?? []);
+    setDeals(dealRows);
+    setLeads(leadRows);
+    setProjects(projectRows);
+    setMeetings(meetingRows);
 
     const surveys = getAllSurveys();
     const counts: Record<string, number> = {};
@@ -143,6 +189,42 @@ export default function ActionsPage() {
     for (const i of items) out[i.status].push(i);
     return out;
   }, [items]);
+
+  const linkOptions = useMemo<LinkOption[]>(() => [
+    ...leads.slice(0, 60).map(lead => ({
+      type: "lead" as const,
+      table: "meridian_imported_land_leads",
+      id: lead.id,
+      label: lead.owner_name || lead.property_address || lead.parcel_id || lead.phone || "Imported lead",
+      detail: `${lead.county || "County pending"} · ${labelForStatus(lead.status)}`,
+      href: `/opportunity?lead=${lead.id}`,
+    })),
+    ...deals.slice(0, 80).map(deal => ({
+      type: "deal" as const,
+      table: "meridian_deals",
+      id: deal.id,
+      label: deal.title,
+      detail: `${deal.address || deal.parcel_id || "Location pending"} · ${labelForStatus(deal.status)}`,
+      href: `/opportunity?deal=${deal.id}`,
+    })),
+    ...projects.slice(0, 60).map(project => ({
+      type: "project" as const,
+      table: "meridian_projects",
+      id: project.id,
+      label: project.name,
+      detail: `${labelForStatus(project.status)} · ${project.next_step || "Next step pending"}`,
+      href: "/projects",
+    })),
+    ...meetings.slice(0, 40).map(meeting => ({
+      type: "meeting" as const,
+      table: "meeting_notes",
+      id: meeting.id,
+      label: meeting.agenda || `Meeting ${meeting.meeting_date}`,
+      detail: meeting.meeting_date,
+      href: "/meetings",
+    })),
+  ], [deals, leads, meetings, projects]);
+  const selectedLink = linkOptions.find(option => `${option.table}:${option.id}` === draft.source_key) ?? null;
 
   if (!user) return null;
   const admin = isAdmin(profiles, user);
@@ -222,7 +304,7 @@ export default function ActionsPage() {
       kind: item.assigned_to === VA_ASSIGNEE_LABEL || item.task_type === "va-work" ? "VA Task" as const : "Action" as const,
       title: item.title,
       detail: item.description || "Assigned action item.",
-      href: "/actions",
+      href: taskHref(item),
       status: item.status === "done" ? "Done" as const : item.status === "in-progress" ? "In Progress" as const : item.status === "blocked" ? "In Progress" as const : "Open" as const,
       due: item.due_date,
       sourceItem: item,
@@ -233,7 +315,7 @@ export default function ActionsPage() {
     kind: item.assigned_to === VA_ASSIGNEE_LABEL || item.task_type === "va-work" ? "VA Task" : "Action",
     title: item.title,
     detail: item.description || "Completed action item.",
-    href: "/actions",
+      href: taskHref(item),
     status: "Done",
     due: item.completed_at,
     sourceItem: item,
@@ -243,6 +325,8 @@ export default function ActionsPage() {
     if (filter === "votes") return task.kind === "Vote";
     if (filter === "money") return task.kind === "Money";
     if (filter === "surveys") return task.kind === "Survey";
+    if (filter === "va") return task.kind === "VA Task";
+    if (filter === "assigned-by-me") return Boolean(task.sourceItem && task.sourceItem.created_by === user);
     return task.kind === "Action";
   });
   const filterCounts: Record<TaskFilter, number> = {
@@ -251,6 +335,8 @@ export default function ActionsPage() {
     money: taskCards.filter(task => task.kind === "Money").length,
     surveys: taskCards.filter(task => task.kind === "Survey").length,
     actions: taskCards.filter(task => task.kind === "Action" || task.kind === "VA Task").length,
+    va: taskCards.filter(task => task.kind === "VA Task").length,
+    "assigned-by-me": taskCards.filter(task => task.sourceItem?.created_by === user).length,
     completed: completedTasks.length,
   };
   const openAssignedActions = taskCards.filter(task => task.kind === "Action").length;
@@ -280,10 +366,12 @@ export default function ActionsPage() {
       due_date: draft.due_date || null,
       task_type: draft.assigned_to === VA_ASSIGNEE_LABEL ? "va-work" : draft.task_type as ActionItem["task_type"],
       priority: draft.priority as ActionItem["priority"],
+      source_table: selectedLink?.table ?? null,
+      source_id: selectedLink?.id ?? null,
     }, user);
     setSaving(false);
     if (error) { alert(error); return; }
-    setDraft({ title: "", description: "", assigned_to: ALL_MEMBERS_LABEL, due_date: "", task_type: "general", priority: "normal" });
+    setDraft({ title: "", description: "", assigned_to: ALL_MEMBERS_LABEL, due_date: "", task_type: "general", priority: "normal", link_type: "general", source_key: "" });
     setShowNew(false);
     void reload();
   };
@@ -353,6 +441,41 @@ export default function ActionsPage() {
               />
             </div>
           </div>
+          <div style={{ display: "grid", gridTemplateColumns: "220px 1fr", gap: 12 }} className="action-form-row">
+            <div>
+              <label style={labelStyle}>Linked record</label>
+              <select
+                value={draft.link_type}
+                onChange={e => setDraft({ ...draft, link_type: e.target.value as LinkType, source_key: "" })}
+              >
+                <option value="general">General task</option>
+                <option value="lead">Lead</option>
+                <option value="deal">Deal / opportunity</option>
+                <option value="project">Project</option>
+                <option value="meeting">Meeting</option>
+              </select>
+            </div>
+            <div>
+              <label style={labelStyle}>Record</label>
+              <select
+                value={draft.source_key}
+                disabled={draft.link_type === "general"}
+                onChange={e => setDraft({ ...draft, source_key: e.target.value })}
+              >
+                <option value="">{draft.link_type === "general" ? "No record needed" : "Choose a record"}</option>
+                {linkOptions.filter(option => option.type === draft.link_type).map(option => (
+                  <option key={`${option.table}:${option.id}`} value={`${option.table}:${option.id}`}>
+                    {option.label} · {option.detail}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+          {selectedLink && (
+            <p style={{ color: "var(--ink)", opacity: 0.68, fontSize: 12 }}>
+              This task will link to {selectedLink.label}. The assignee can open the related record from their task list.
+            </p>
+          )}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }} className="action-form-row">
             <div>
               <label style={labelStyle}>Task type</label>
@@ -409,6 +532,7 @@ export default function ActionsPage() {
             <TaskSummaryCard label="Votes" value={filterCounts.votes} detail="Deals, applications, proposals" active={filter === "votes"} onClick={() => setFilter("votes")} />
             <TaskSummaryCard label="Money" value={filterCounts.money} detail="Capital calls and approvals" active={filter === "money"} onClick={() => setFilter("money")} />
             <TaskSummaryCard label="Surveys" value={filterCounts.surveys} detail="Unfinished member input" active={filter === "surveys"} onClick={() => setFilter("surveys")} />
+            <TaskSummaryCard label="VA tasks" value={filterCounts.va} detail="Assigned to Sophie / VA" active={filter === "va"} onClick={() => setFilter("va")} />
             <TaskSummaryCard label="Assigned work" value={openAssignedActions} detail="Manual action items" active={filter === "actions"} onClick={() => setFilter("actions")} />
           </section>
 
@@ -435,6 +559,8 @@ export default function ActionsPage() {
                   ["money", "Money"],
                   ["surveys", "Surveys"],
                   ["actions", "Actions"],
+                  ["va", "VA Tasks"],
+                  ["assigned-by-me", "Assigned By Me"],
                   ["completed", "Done"],
                 ] as Array<[TaskFilter, string]>).map(([value, label]) => (
                   <button
@@ -485,6 +611,7 @@ export default function ActionsPage() {
                           textTransform: "uppercase",
                         }}>{task.kind}</span>
                         <span style={{ fontSize: 11, color: "var(--ink)", opacity: 0.58 }}>{task.status}</span>
+                        {task.sourceItem && <span style={{ fontSize: 11, color: "var(--ink)", opacity: 0.58 }}>{sourceLabel(task.sourceItem)}</span>}
                         {task.due && <span style={{ fontSize: 11, color: "var(--ink)", opacity: 0.58 }}>{formatDue(task.due)}</span>}
                       </div>
                       <p style={{ fontSize: 15, fontWeight: 700, color: "var(--obsidian)", lineHeight: 1.3 }}>{task.title}</p>
@@ -574,6 +701,12 @@ export default function ActionsPage() {
                           padding: "2px 8px", borderRadius: 999, fontSize: 11, fontWeight: 500,
                         }}>
                           {item.assigned_to ?? "Unassigned"}
+                        </span>
+                        <span style={{
+                          background: "var(--bone)", border: "1px solid var(--fog)",
+                          padding: "2px 8px", borderRadius: 999, fontSize: 11, fontWeight: 500,
+                        }}>
+                          {sourceLabel(item)}
                         </span>
                       </div>
                       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>

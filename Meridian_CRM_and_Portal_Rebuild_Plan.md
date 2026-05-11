@@ -1462,10 +1462,16 @@ Completed in this pass:
 - Added completed VA task count into daily brief draft, VA brief submission, Operations review, and member dashboard brief metrics.
 - Added migration `036_work_routing_foundation.sql`.
 - Verified production build after implementation.
+- Continued with linked task context:
+  - Members can link assigned tasks to a lead, deal/opportunity, project, or meeting.
+  - Member task cards show record type context.
+  - VA Desk task cards show the linked record type and include an Open Record action.
+  - Operations now surfaces blocked VA tasks with blocker reason and a link back to the related record.
+  - Member task page includes VA task and assigned-by-me filters.
 
 Remaining:
 
-- Add linked-record selectors when members assign a VA task, such as deal, lead, document, project, or meeting.
+- Add linked-record selectors for documents once document ownership/indexing is cleaned up.
 - Add a cleaner member-facing task detail/history view.
 - Add stronger notification rules for all members/admin, not only the task creator.
 - Confirm RLS for members assigning VA tasks and VA updating only assigned tasks.

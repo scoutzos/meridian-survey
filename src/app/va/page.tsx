@@ -304,6 +304,22 @@ function appendBriefText(existing: string | null | undefined, addition: string):
   return current ? `${current}\n\n${addition.trim()}` : addition.trim();
 }
 
+function taskRecordHref(task: ActionItem): string {
+  if (task.source_table === "meridian_deals" && task.source_id) return `/opportunity?deal=${task.source_id}`;
+  if (task.source_table === "meridian_imported_land_leads" && task.source_id) return `/opportunity?lead=${task.source_id}`;
+  if (task.source_table === "meridian_projects" && task.source_id) return "/projects";
+  if (task.source_table === "meeting_notes" && task.source_id) return "/meetings";
+  return "/actions";
+}
+
+function taskRecordLabel(task: ActionItem): string {
+  if (task.source_table === "meridian_deals") return "Deal";
+  if (task.source_table === "meridian_imported_land_leads") return "Lead";
+  if (task.source_table === "meridian_projects") return "Project";
+  if (task.source_table === "meeting_notes") return "Meeting";
+  return "General";
+}
+
 function formatDate(iso: string): string {
   try {
     return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
@@ -1735,7 +1751,7 @@ export default function VaPage() {
                           <strong style={{ color: "var(--obsidian)", fontSize: 14 }}>{task.title}</strong>
                           <p style={{ color: "var(--muted)", fontSize: 12, lineHeight: 1.45, marginTop: 4 }}>{task.description || "No task details added."}</p>
                           <p style={{ color: "var(--muted)", fontSize: 11, marginTop: 5 }}>
-                            {task.created_by ? `Assigned by ${task.created_by}` : "Assigned"}{task.due_date ? ` · Due ${task.due_date}` : ""} · {statusLabel(task.status)}
+                            {task.created_by ? `Assigned by ${task.created_by}` : "Assigned"}{task.due_date ? ` · Due ${task.due_date}` : ""} · {taskRecordLabel(task)} · {statusLabel(task.status)}
                           </p>
                           {task.blocker_reason && <p style={{ color: "var(--brass)", fontSize: 12, marginTop: 5 }}>Blocked: {task.blocker_reason}</p>}
                         </div>
@@ -1743,6 +1759,7 @@ export default function VaPage() {
                       </div>
                       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 10 }}>
                         {task.status !== "in-progress" && <button onClick={() => changeAssignedTaskStatus(task, "in-progress")} style={secondaryButton}>Start</button>}
+                        <button onClick={() => router.push(taskRecordHref(task))} style={secondaryButton}>Open Record</button>
                         <button onClick={() => changeAssignedTaskStatus(task, "done")} style={primaryButton}>Done</button>
                         <button onClick={() => changeAssignedTaskStatus(task, "blocked")} style={secondaryButton}>Blocked</button>
                       </div>
