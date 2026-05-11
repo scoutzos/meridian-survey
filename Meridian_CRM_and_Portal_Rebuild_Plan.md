@@ -1528,14 +1528,29 @@ Risk: High if skipped. Members will keep assigning VA work through texts or side
 
 ### Phase 3: Disposition Workspace
 
-Status: Next
+Status: In Progress
 
 Work:
 
-- Build disposition board.
-- Tie buyer campaigns/offers to deal packets.
-- Make member offer decisions visible.
-- Track buyer outreach and offer history.
+- Build disposition board. Started.
+- Tie buyer campaigns/offers to deal packets. Started.
+- Make member offer decisions visible. Started.
+- Track buyer outreach and offer history. Started.
+
+Completed in this pass:
+
+- Disposition board now groups campaigns by operating stage.
+- Campaign detail now supports moving the campaign stage from CRM.
+- Campaign stage changes update the linked deal packet disposition status when connected to a deal.
+- Buyer offers now have visible member decision controls: accept, counter, reject, withdrawn.
+- Offer decision changes update the linked deal with best buyer offer and disposition status where appropriate.
+- Disposition view now includes a member offer decision queue for received/countered offers.
+
+Remaining:
+
+- Add buyer outreach activity/campaign touch history beyond existing SMS conversation panel.
+- Add offer decision notifications/tasks for members when a buyer offer is received.
+- Add disposition close/fall-through checklist and project/closing handoff.
 
 Risk: High. Disposition is a core part of land/deal monetization.
 

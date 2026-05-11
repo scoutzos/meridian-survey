@@ -400,3 +400,66 @@ export async function createBuyerOffer(input: {
   const { data, error } = await supabase.from("meridian_buyer_offers").insert(row).select().single();
   return { data: data as BuyerOffer | null, error: error?.message ?? null };
 }
+
+export async function updateDispositionCampaignStatus(
+  campaign: DispositionCampaign,
+  status: DispositionCampaign["status"],
+  actor: string,
+): Promise<{ data: DispositionCampaign | null; error: string | null }> {
+  const patch = {
+    status,
+    marketed_at: status === "marketed" && !campaign.marketed_at ? now() : campaign.marketed_at,
+    updated_at: now(),
+    updated_by: actor,
+  };
+  if (!supabase) {
+    const rows = localGet<DispositionCampaign[]>(LOCAL_CAMPAIGNS, []);
+    const next = rows.map(row => row.id === campaign.id ? { ...row, ...patch } : row);
+    localSet(LOCAL_CAMPAIGNS, next);
+    return { data: next.find(row => row.id === campaign.id) ?? null, error: null };
+  }
+  const { data, error } = await supabase
+    .from("meridian_disposition_campaigns")
+    .update(patch)
+    .eq("id", campaign.id)
+    .select()
+    .single();
+  if (!error && campaign.deal_id) {
+    await supabase
+      .from("meridian_deals")
+      .update({ disposition_status: status, updated_at: now(), updated_by: actor })
+      .eq("id", campaign.deal_id);
+  }
+  return { data: data as DispositionCampaign | null, error: error?.message ?? null };
+}
+
+export async function updateBuyerOfferStatus(
+  offer: BuyerOffer,
+  status: BuyerOffer["status"],
+  actor: string,
+): Promise<{ data: BuyerOffer | null; error: string | null }> {
+  const patch = { status, updated_at: now(), updated_by: actor };
+  if (!supabase) {
+    const rows = localGet<BuyerOffer[]>(LOCAL_OFFERS, []);
+    const next = rows.map(row => row.id === offer.id ? { ...row, ...patch } : row);
+    localSet(LOCAL_OFFERS, next);
+    return { data: next.find(row => row.id === offer.id) ?? null, error: null };
+  }
+  const { data, error } = await supabase
+    .from("meridian_buyer_offers")
+    .update(patch)
+    .eq("id", offer.id)
+    .select()
+    .single();
+  if (!error && offer.deal_id) {
+    const dealPatch: Record<string, unknown> = {
+      best_buyer_offer: offer.offer_amount,
+      updated_at: now(),
+      updated_by: actor,
+    };
+    if (status === "accepted") dealPatch.disposition_status = "buyer-under-contract";
+    if (status === "rejected" || status === "withdrawn" || status === "expired") dealPatch.disposition_status = "offer-received";
+    await supabase.from("meridian_deals").update(dealPatch).eq("id", offer.deal_id);
+  }
+  return { data: data as BuyerOffer | null, error: error?.message ?? null };
+}

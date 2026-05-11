@@ -10,6 +10,8 @@ import {
   createDispositionCampaign,
   fetchCrmDashboardData,
   linkContactToOpportunity,
+  updateBuyerOfferStatus,
+  updateDispositionCampaignStatus,
   type CrmDashboardData,
   type CrmBuyer,
   type CrmContact,
@@ -212,6 +214,20 @@ function CrmContent() {
     await reload();
   };
 
+  const changeCampaignStage = async (campaign: DispositionCampaign, status: DispositionCampaign["status"]) => {
+    const { error } = await updateDispositionCampaignStatus(campaign, status, user);
+    if (error) { setMessage(error); return; }
+    setMessage(`Campaign moved to ${statusLabel(status)}.`);
+    await reload();
+  };
+
+  const changeOfferStatus = async (offer: BuyerOffer, status: BuyerOffer["status"]) => {
+    const { error } = await updateBuyerOfferStatus(offer, status, user);
+    if (error) { setMessage(error); return; }
+    setMessage(`Offer marked ${statusLabel(status)}.`);
+    await reload();
+  };
+
   const linkContact = async () => {
     if (!selectedDeal) { setMessage("Select an opportunity first."); return; }
     if (!linkDraft.contact_id) { setMessage("Choose a CRM contact to link."); return; }
@@ -409,6 +425,7 @@ function CrmContent() {
                 <strong>{campaign.campaign_name}</strong>
                 <span>{statusLabel(campaign.status)} · Target {money(campaign.target_price)}</span>
                 <span>{campaign.owner || "Owner pending"}</span>
+                <span>{data.offers.filter(offer => offer.disposition_campaign_id === campaign.id || offer.deal_id === campaign.deal_id).length} buyer offer(s)</span>
               </>
             )} onSelect={campaign => {
               setSelectedCampaignId(campaign.id);
@@ -419,11 +436,37 @@ function CrmContent() {
                 <strong>{offer.buyer_name}</strong>
                 <span>{money(offer.offer_amount)} · {statusLabel(offer.status)}</span>
                 <span>{offer.close_date ? `Close ${formatDate(offer.close_date)}` : "Close date pending"}</span>
+                <span>{offer.status === "received" || offer.status === "countered" ? "Member decision needed" : "Decision recorded"}</span>
               </>
             )} onSelect={offer => {
               setSelectedOfferId(offer.id);
               if (offer.deal_id) setSelectedDealId(offer.deal_id);
             }} selectedId={selectedOffer?.id} />
+          </div>
+          <div style={{ ...panel, marginTop: 12 }}>
+            <p style={eyebrowSmall}>Member offer decisions</p>
+            <div style={{ display: "grid", gap: 8, marginTop: 8 }}>
+              {offersNeedingDecision.map(offer => (
+                <div key={offer.id} style={{ ...subPanel, display: "grid", gap: 8 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "start" }}>
+                    <div>
+                      <strong style={rowTitle}>{offer.buyer_name} · {money(offer.offer_amount)}</strong>
+                      <p style={rowMeta}>{offer.close_date ? `Close ${formatDate(offer.close_date)}` : "Close date pending"} · {statusLabel(offer.status)}</p>
+                    </div>
+                    <button onClick={() => {
+                      setSelectedOfferId(offer.id);
+                      if (offer.deal_id) setSelectedDealId(offer.deal_id);
+                    }} style={secondaryButton}>Review</button>
+                  </div>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    <button onClick={() => changeOfferStatus(offer, "accepted")} style={primaryButton}>Accept</button>
+                    <button onClick={() => changeOfferStatus(offer, "countered")} style={secondaryButton}>Counter</button>
+                    <button onClick={() => changeOfferStatus(offer, "rejected")} style={secondaryButton}>Reject</button>
+                  </div>
+                </div>
+              ))}
+              {offersNeedingDecision.length === 0 && <EmptyText>No buyer offers are waiting on member direction.</EmptyText>}
+            </div>
           </div>
         </WorkspacePanel>
       );
@@ -489,14 +532,14 @@ function CrmContent() {
       )}
 
       {view === "dispo" && selectedCampaign && (
-        <CampaignDetailCard campaign={selectedCampaign} offers={data.offers.filter(offer => offer.disposition_campaign_id === selectedCampaign.id || offer.deal_id === selectedCampaign.deal_id)} onOpenDeal={dealId => {
+        <CampaignDetailCard campaign={selectedCampaign} offers={data.offers.filter(offer => offer.disposition_campaign_id === selectedCampaign.id || offer.deal_id === selectedCampaign.deal_id)} onChangeStage={status => changeCampaignStage(selectedCampaign, status)} onOpenDeal={dealId => {
           setSelectedDealId(dealId);
           selectView("deals");
         }} />
       )}
 
       {view === "dispo" && selectedOffer && (
-        <OfferDetailCard offer={selectedOffer} onOpenDeal={dealId => {
+        <OfferDetailCard offer={selectedOffer} onChangeStatus={status => changeOfferStatus(selectedOffer, status)} onOpenDeal={dealId => {
           setSelectedDealId(dealId);
           selectView("deals");
         }} />
@@ -1030,7 +1073,17 @@ function BuyerDetailCard({ buyer, offers }: { buyer: CrmBuyer; offers: BuyerOffe
   );
 }
 
-function CampaignDetailCard({ campaign, offers, onOpenDeal }: { campaign: DispositionCampaign; offers: BuyerOffer[]; onOpenDeal: (dealId: string) => void }) {
+function CampaignDetailCard({
+  campaign,
+  offers,
+  onChangeStage,
+  onOpenDeal,
+}: {
+  campaign: DispositionCampaign;
+  offers: BuyerOffer[];
+  onChangeStage: (status: DispositionCampaign["status"]) => void;
+  onOpenDeal: (dealId: string) => void;
+}) {
   return (
     <div style={panel}>
       <p style={eyebrowSmall}>Disposition campaign</p>
@@ -1043,6 +1096,14 @@ function CampaignDetailCard({ campaign, offers, onOpenDeal }: { campaign: Dispos
         <DetailLine label="Buyer type" value={campaign.target_buyer_type} />
         <DetailLine label="Channels" value={campaign.channels.join(", ") || "N/A"} />
         <DetailLine label="Buyer list" value={campaign.buyer_list_count} />
+      </div>
+      <div style={{ display: "grid", gap: 8, marginTop: 12 }}>
+        <p style={miniLabel}>Move campaign stage</p>
+        <select value={campaign.status} onChange={event => onChangeStage(event.target.value as DispositionCampaign["status"])}>
+          {DISPO_STAGES.map(stage => <option key={stage.id} value={stage.id}>{stage.label}</option>)}
+          <option value="closed">Closed</option>
+          <option value="fell-through">Fell Through</option>
+        </select>
       </div>
       {campaign.deal_id && <button onClick={() => onOpenDeal(campaign.deal_id!)} style={{ ...secondaryButton, marginTop: 12 }}>Open Deal Packet</button>}
       <HygieneChecklist items={[
@@ -1066,7 +1127,15 @@ function CampaignDetailCard({ campaign, offers, onOpenDeal }: { campaign: Dispos
   );
 }
 
-function OfferDetailCard({ offer, onOpenDeal }: { offer: BuyerOffer; onOpenDeal: (dealId: string) => void }) {
+function OfferDetailCard({
+  offer,
+  onChangeStatus,
+  onOpenDeal,
+}: {
+  offer: BuyerOffer;
+  onChangeStatus: (status: BuyerOffer["status"]) => void;
+  onOpenDeal: (dealId: string) => void;
+}) {
   return (
     <div style={panel}>
       <p style={eyebrowSmall}>Buyer offer</p>
@@ -1079,6 +1148,15 @@ function OfferDetailCard({ offer, onOpenDeal }: { offer: BuyerOffer; onOpenDeal:
         <DetailLine label="Contingencies" value={offer.contingencies} />
       </div>
       {offer.notes && <p style={{ ...bodyText, fontSize: 12, marginTop: 10 }}>{offer.notes}</p>}
+      <div style={{ display: "grid", gap: 8, marginTop: 12 }}>
+        <p style={miniLabel}>Member direction</p>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <button onClick={() => onChangeStatus("accepted")} style={primaryButton}>Accept</button>
+          <button onClick={() => onChangeStatus("countered")} style={secondaryButton}>Counter</button>
+          <button onClick={() => onChangeStatus("rejected")} style={secondaryButton}>Reject</button>
+          <button onClick={() => onChangeStatus("withdrawn")} style={secondaryButton}>Withdrawn</button>
+        </div>
+      </div>
       <HygieneChecklist items={[
         { label: "Connected deal packet", ok: Boolean(offer.deal_id) },
         { label: "Buyer name", ok: Boolean(offer.buyer_name) },
