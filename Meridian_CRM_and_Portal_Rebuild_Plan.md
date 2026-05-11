@@ -1639,6 +1639,7 @@ Completed in this pass:
 - Replaced Deal Reviews browser alerts with in-page feedback for packet saves, review notifications, checklist updates, seller SMS, votes, agreement saves, project conversion gates, and generated memos.
 - Replaced Decisions and Meetings browser alerts with in-page feedback for decision updates, agenda updates, meeting notes, transcript file reading, and transcript extraction.
 - Replaced Platform Archive browser alerts with in-page feedback for announcements, legacy decisions, resource links, legacy uploads, transcripts, downloads, and member profile saves.
+- Replaced Money Center and Capital Calls browser alerts with in-page feedback for suggested calls, manual calls, approvals, status changes, and deletes.
 
 Risk: Medium.
 

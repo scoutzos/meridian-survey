@@ -34,6 +34,7 @@ export default function TrackerDashboard() {
   const [calls, setCalls] = useState<CapitalCall[]>([]);
   const [loading, setLoading] = useState(true);
   const [creatingCall, setCreatingCall] = useState(false);
+  const [message, setMessage] = useState("");
 
   useEffect(() => {
     const u = localStorage.getItem("meridian_user");
@@ -116,7 +117,7 @@ export default function TrackerDashboard() {
     };
     const { data, error } = await supabase.from("tracker_capital_calls").insert(row).select().single();
     setCreatingCall(false);
-    if (error) { alert(error.message); return; }
+    if (error) { setMessage(error.message); return; }
     await logAudit({
       actor: user,
       table_name: "tracker_capital_calls",
@@ -124,11 +125,17 @@ export default function TrackerDashboard() {
       action: "create",
       diff: { after: data, source: "shortfall-suggestion" },
     });
+    setMessage("Suggested capital call created.");
     router.push("/tracker/capital-calls");
   }
 
   return (
     <TrackerShell title="Money Center" subtitle="Funding health, capital calls, expenses, deposits, and per-member balances tied back to operations and approved deals.">
+      {message && (
+        <div style={{ ...trackerCard, marginBottom: 16, padding: "12px 14px", background: "rgba(201,168,120,0.12)", fontSize: 13 }}>
+          {message}
+        </div>
+      )}
       {loading && <div style={{ color: "var(--muted)" }}>Loading…</div>}
 
       {/* Funding shortfall banner */}
