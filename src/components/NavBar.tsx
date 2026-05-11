@@ -1,8 +1,34 @@
 "use client";
 import { useRouter, usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
+import type { CSSProperties } from "react";
 import { isVaUser } from "@/lib/identity";
 import Logo from "./Logo";
+
+const crmRoutes = ["/crm", "/va", "/deals", "/opportunity", "/actions", "/operations", "/meetings"];
+const crmLinks = [
+  { href: "/crm", label: "Command Center" },
+  { href: "/va", label: "Lead Inbox" },
+  { href: "/deals", label: "Deal Pipeline" },
+  { href: "/crm?view=buyers", label: "Buyers" },
+  { href: "/crm?view=dispo", label: "Disposition" },
+  { href: "/crm?view=records", label: "Records" },
+  { href: "/actions", label: "Tasks" },
+  { href: "/operations", label: "Reports" },
+  { href: "/meetings", label: "Meetings" },
+];
+
+const crmCreateButton: CSSProperties = {
+  border: "1px solid var(--brass)",
+  background: "var(--brass)",
+  color: "var(--obsidian)",
+  borderRadius: 7,
+  padding: "8px 13px",
+  fontSize: 11,
+  fontWeight: 800,
+  letterSpacing: "0.08em",
+  textTransform: "uppercase",
+};
 
 export default function NavBar() {
   const router = useRouter();
@@ -12,6 +38,13 @@ export default function NavBar() {
   useEffect(() => {
     setUser(localStorage.getItem("meridian_user"));
   }, [pathname]);
+
+  const crmShell = !!user && crmRoutes.some(route => pathname === route || pathname.startsWith(route + "/"));
+
+  useEffect(() => {
+    document.body.classList.toggle("crm-shell-active", crmShell);
+    return () => document.body.classList.remove("crm-shell-active");
+  }, [crmShell]);
 
   if (!user || pathname === "/" || pathname === "/apply") return null;
 
@@ -43,6 +76,55 @@ export default function NavBar() {
     if (href === "/surveys" && (pathname.startsWith("/survey/") || pathname.startsWith("/results/"))) return true;
     return false;
   };
+
+  if (crmShell) {
+    return (
+      <>
+        <aside className="crm-side-nav">
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 18 }}>
+            <Logo width={38} onDark />
+            <div>
+              <strong style={{ display: "block", color: "var(--bone)", fontSize: 12, letterSpacing: "0.18em", textTransform: "uppercase" }}>Meridian</strong>
+              <span style={{ display: "block", color: "var(--brass)", fontSize: 9, letterSpacing: "0.2em", textTransform: "uppercase" }}>CRM</span>
+            </div>
+          </div>
+          <div style={{ display: "grid", gap: 4 }}>
+            {crmLinks.filter(link => !isVaUser(user) || ["/crm", "/va", "/actions", "/meetings"].some(href => link.href.startsWith(href))).map(link => {
+              const baseHref = link.href.split("?")[0];
+              const active = pathname === baseHref || pathname.startsWith(baseHref + "/");
+              return (
+                <button
+                  key={link.href}
+                  onClick={() => router.push(link.href)}
+                  className={active ? "crm-side-link crm-side-link-active" : "crm-side-link"}
+                >
+                  <span>{link.label}</span>
+                </button>
+              );
+            })}
+          </div>
+          <div style={{ marginTop: "auto", border: "1px solid rgba(214,205,183,0.18)", borderRadius: 8, padding: 10 }}>
+            <span style={{ display: "block", color: "rgba(237,230,214,0.62)", fontSize: 10, marginBottom: 4 }}>Signed in</span>
+            <strong style={{ display: "block", color: "var(--bone)", fontSize: 12 }}>{user}</strong>
+            <button
+              onClick={() => { localStorage.removeItem("meridian_user"); router.push("/"); }}
+              style={{ marginTop: 8, background: "transparent", border: "none", color: "var(--brass)", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.14em" }}
+            >
+              Sign out
+            </button>
+          </div>
+        </aside>
+        <nav className="crm-top-bar">
+          <button onClick={() => router.push("/va")} style={crmCreateButton}>+ Create</button>
+          <span style={{ color: "var(--fog)", fontSize: 12 }}>●</span>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ display: "grid", placeItems: "center", width: 28, height: 28, borderRadius: 999, background: "var(--obsidian)", color: "var(--bone)", fontSize: 11 }}>{user.split(/\s+/).map(part => part[0]).join("").slice(0, 2)}</span>
+            <span style={{ color: "var(--ink)", fontSize: 12 }}>{user}</span>
+          </div>
+        </nav>
+      </>
+    );
+  }
 
   return (
     <nav className="top-nav-bar" style={{
