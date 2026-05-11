@@ -1365,30 +1365,30 @@ export default function VaPage() {
         va_tasks_completed: (prev.va_tasks_completed ?? completedAssignedTasksToday.length) + 1,
         activities_completed: appendBriefText(prev.activities_completed, `Completed member-assigned task: ${task.title}`),
       }));
-      if (task.created_by) {
-        await createNotification({
-          title: `VA task completed: ${task.title}`,
-          body: `${user} marked this task done.`,
-          priority: "normal",
-          assigned_to: task.created_by,
-          href: "/actions",
-          source_table: "action_items",
-          source_id: task.id,
-          notification_type: "va-task-completed",
-        }, user);
-      }
+      const doneRecipients = task.created_by ? [task.created_by] : [null];
+      await Promise.all(doneRecipients.map(recipient => createNotification({
+        title: `VA task completed: ${task.title}`,
+        body: `${user} marked this task done. ${taskRecordLabel(task)}.`,
+        priority: "normal",
+        assigned_to: recipient,
+        href: "/actions",
+        source_table: "action_items",
+        source_id: task.id,
+        notification_type: "va-task-completed",
+      }, user)));
     }
-    if (status === "blocked" && task.created_by) {
-      await createNotification({
+    if (status === "blocked") {
+      const blockedRecipients = Array.from(new Set([task.created_by, ...MEMBERS].filter(Boolean))) as string[];
+      await Promise.all(blockedRecipients.map(recipient => createNotification({
         title: `VA task blocked: ${task.title}`,
-        body: note.trim() || `${user} marked this task blocked.`,
+        body: `${note.trim() || `${user} marked this task blocked.`} ${taskRecordLabel(task)}.`,
         priority: "high",
-        assigned_to: task.created_by,
+        assigned_to: recipient,
         href: "/actions",
         source_table: "action_items",
         source_id: task.id,
         notification_type: "va-task-blocked",
-      }, user);
+      }, user)));
     }
     setMessage(status === "done" ? "Task completed and added to the daily brief." : `Task marked ${statusLabel(status)}.`);
   };

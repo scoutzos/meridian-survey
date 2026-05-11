@@ -1473,12 +1473,15 @@ Completed in this pass:
   - Members can click assigned tasks to see status, assignee, creator, linked record, priority, due date, updated by, completed by, blocker reason, and completion note.
   - Members can start, block, complete, reopen, delete, or open the linked record directly from the task detail panel.
   - Task detail now shows a lightweight history based on created, updated, blocked, and completed fields.
+- Continued with VA task notifications:
+  - Completed VA tasks notify the member who requested the work, or create a shared notice if no creator exists.
+  - Blocked VA tasks now send high-priority notifications to the full member group so blockers do not sit with only the original requester.
 
 Remaining:
 
 - Add linked-record selectors for documents once document ownership/indexing is cleaned up.
 - Add a persistent task event/audit table if we need every status change, reassignment, comment, and notification preserved beyond the current task fields.
-- Add stronger notification rules for all members/admin, not only the task creator.
+- Add notification deduplication/read-state cleanup if blocked-task alerts become too noisy.
 - Confirm RLS for members assigning VA tasks and VA updating only assigned tasks.
 - Decide if blocked tasks should create a separate escalation queue in Operations.
 
