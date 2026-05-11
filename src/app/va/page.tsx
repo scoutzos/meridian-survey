@@ -562,6 +562,7 @@ export default function VaPage() {
   const [leadActivities, setLeadActivities] = useState<ImportedLandLeadActivity[]>([]);
   const [communicationEvents, setCommunicationEvents] = useState<CommunicationEvent[]>([]);
   const [unmatchedSms, setUnmatchedSms] = useState<CommunicationEvent[]>([]);
+  const [recentInboundSms, setRecentInboundSms] = useState<CommunicationEvent[]>([]);
   const [importPreview, setImportPreview] = useState<LandLeadImportPreview | null>(null);
   const [importStep, setImportStep] = useState<ImportStep>("upload");
   const [importStage, setImportStage] = useState<ImportStage>("idle");
@@ -590,7 +591,7 @@ export default function VaPage() {
 
   const reload = useCallback(async (memberName = user) => {
     setLoading(true);
-    const [rows, briefRows, timeRows, requestRows, currentShift, importRows, batchRows, smsRows, taskRows, memberNames] = await Promise.all([
+    const [rows, briefRows, timeRows, requestRows, currentShift, importRows, batchRows, smsRows, recentSmsRows, taskRows, memberNames] = await Promise.all([
       fetchDeals(),
       fetchVaDailyBriefs(8),
       fetchVaTimeEntries(80),
@@ -599,6 +600,7 @@ export default function VaPage() {
       fetchImportedLandLeads(500),
       fetchLandLeadBatches(),
       fetchCommunicationEvents({ unmatched: true, limit: 25 }),
+      fetchCommunicationEvents({ limit: 120 }),
       fetchActionItems(),
       fetchActiveMemberNames(),
     ]);
@@ -615,6 +617,7 @@ export default function VaPage() {
     setImportedLeads(importRows);
     setLeadBatches(batchRows);
     setUnmatchedSms(smsRows);
+    setRecentInboundSms(recentSmsRows.filter(event => event.direction === "inbound").slice(0, 40));
     setActiveMemberNames(memberNames);
     setSelectedId(prev => prev && activeRows.some(d => d.id === prev) ? prev : activeRows[0]?.id ?? null);
     setLoading(false);
@@ -727,8 +730,8 @@ export default function VaPage() {
     briefSubmitted: briefs.some(brief => brief.work_date === today),
   }), [briefs, deals, today]);
   const tabCounts: Record<VaTab, number> = {
-    today: unmatchedSms.length + followUpsDue.length + interestedLeads.length + openAssignedTasks.length,
-    outreach: unmatchedSms.length + followUpsDue.length,
+    today: recentInboundSms.length + followUpsDue.length + interestedLeads.length + openAssignedTasks.length,
+    outreach: recentInboundSms.length + followUpsDue.length,
     lists: importedLeads.length,
     packet: deals.length,
     brief: portalStats.briefSubmitted ? 1 : 0,
@@ -793,6 +796,20 @@ export default function VaPage() {
     setBulkSmsPreviewOpen(false);
     setMessage("New import started. Choose a Land Portal or Land Insights CSV to preview.");
     window.setTimeout(() => document.getElementById("va-list-upload")?.scrollIntoView({ behavior: "smooth", block: "start" }), 80);
+  };
+  const openIncomingSms = (event: CommunicationEvent) => {
+    if (event.matched_lead_id) {
+      const lead = importedLeads.find(item => item.id === event.matched_lead_id);
+      if (lead) {
+        selectImportedLead(lead, "outreach");
+        return;
+      }
+    }
+    if (event.matched_deal_id) {
+      router.push(`/opportunity?deal=${event.matched_deal_id}`);
+      return;
+    }
+    createLeadDraftFromSms(event);
   };
 
   const addToDailyBrief = (line: string, patch: Partial<VaDailyBriefInput> = {}) => {
@@ -1601,7 +1618,7 @@ export default function VaPage() {
     onAction: card.disabled ? undefined : card.onAction,
     tone: card.hot ? "hot" as const : card.label === "Brief" && portalStats.briefSubmitted ? "good" as const : "default" as const,
   })) : activeTab === "outreach" ? [
-    { label: "Seller Replies", value: String(unmatchedSms.length), detail: "Unmatched SMS needing triage", action: "Refresh", onAction: () => void reload(user), tone: unmatchedSms.length ? "hot" as const : "default" as const },
+    { label: "Incoming Texts", value: String(recentInboundSms.length), detail: "Recent seller replies", action: "Open", onAction: () => goToTab("outreach"), tone: recentInboundSms.length ? "hot" as const : "default" as const },
     { label: "Follow-ups", value: String(followUpsDue.length), detail: "Dated follow-ups due", action: "Review", onAction: () => goToTab("outreach"), tone: followUpsDue.length ? "hot" as const : "default" as const },
     { label: "Interested", value: String(interestedLeads.length), detail: "Sellers showing interest", action: "Open Leads", onAction: () => { setLeadFilter("interested"); goToTab("lists"); }, tone: interestedLeads.length ? "hot" as const : "default" as const },
     { label: "Draft Packets", value: String(draftLeads.length), detail: "Leads ready to package", action: "Build", onAction: () => draftLeads[0] ? openDealBrief(draftLeads[0]) : goToTab("packet"), tone: draftLeads.length ? "hot" as const : "default" as const },
@@ -1749,10 +1766,10 @@ export default function VaPage() {
               <section style={subPanel}>
                 <p style={eyebrowSmall}>Next best action</p>
                 <h3 style={{ ...sectionTitle, fontSize: 28, marginTop: 5 }}>
-                  {unmatchedSms.length ? "Work seller replies" : openAssignedTasks.length ? "Handle member-assigned tasks" : interestedLeads.length ? "Build interested seller packets" : importStats.newRows ? "Start with new list leads" : "Review the daily brief"}
+                  {recentInboundSms.length ? "Review incoming texts" : openAssignedTasks.length ? "Handle member-assigned tasks" : interestedLeads.length ? "Build interested seller packets" : importStats.newRows ? "Start with new list leads" : "Review the daily brief"}
                 </h3>
                 <p style={{ color: "var(--muted)", fontSize: 13, lineHeight: 1.5, marginTop: 6 }}>
-                  {unmatchedSms.length ? `${unmatchedSms.length} seller repl${unmatchedSms.length === 1 ? "y" : "ies"} need matching, response, or disposition.`
+                  {recentInboundSms.length ? `${recentInboundSms.length} incoming seller text${recentInboundSms.length === 1 ? "" : "s"} are visible in Lead Inbox, including matched and unmatched replies.`
                     : openAssignedTasks.length ? `${openAssignedTasks.length} task${openAssignedTasks.length === 1 ? "" : "s"} from members need a status update.`
                       : interestedLeads.length ? `${interestedLeads.length} interested seller${interestedLeads.length === 1 ? "" : "s"} can be moved toward a deal packet.`
                         : importStats.newRows ? `${importStats.newRows} new imported lead${importStats.newRows === 1 ? "" : "s"} are ready for outreach.`
@@ -1784,9 +1801,9 @@ export default function VaPage() {
 
             <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 10, marginTop: 14 }} className="number-grid">
               <button onClick={() => goToTab("outreach")} style={homeMetricButton}>
-                <span>Seller Replies</span>
-                <strong>{unmatchedSms.length}</strong>
-                <small>Need triage</small>
+                <span>Incoming Texts</span>
+                <strong>{recentInboundSms.length}</strong>
+                <small>Matched + unmatched</small>
               </button>
               <button onClick={() => goToTab("outreach")} style={homeMetricButton}>
                 <span>Follow-ups</span>
@@ -1811,7 +1828,7 @@ export default function VaPage() {
                   <p style={eyebrowSmall}>Today&apos;s queues</p>
                   <div style={{ display: "grid", gap: 8, marginTop: 10 }}>
                     <QueueButton label="New imported leads" detail="Fresh from land lists" count={importStats.newRows} onClick={() => { setActiveTab("lists"); setLeadFilter("new"); }} />
-                    <QueueButton label="Seller replies" detail="Unmatched SMS" count={unmatchedSms.length} hot={!!unmatchedSms.length} onClick={() => setActiveTab("outreach")} />
+                    <QueueButton label="Incoming texts" detail="Matched and unmatched SMS" count={recentInboundSms.length} hot={!!recentInboundSms.length} onClick={() => setActiveTab("outreach")} />
                     <QueueButton label="Interested sellers" detail="Replied and expressed interest" count={interestedLeads.length} hot={!!interestedLeads.length} onClick={() => { setLeadFilter("interested"); setActiveTab("lists"); }} />
                     <QueueButton label="Follow-up due" detail="No reply in 24-72 hrs" count={followUpsDue.length} hot={!!followUpsDue.length} onClick={() => setActiveTab("outreach")} />
                     <QueueButton label="Member-assigned tasks" detail="From member portal" count={openAssignedTasks.length} hot={!!openAssignedTasks.length} onClick={() => setActiveTab("today")} />
@@ -2687,12 +2704,12 @@ export default function VaPage() {
                 <p style={eyebrowSmall}>Lead Inbox</p>
                 <h2 style={sectionTitle}>Seller conversations and follow-ups</h2>
               </div>
-              <span style={(followUpsDue.length || unmatchedSms.length || interestedLeads.length) ? hotPill : pill}>
-                {followUpsDue.length + unmatchedSms.length + interestedLeads.length} needs action
+              <span style={(followUpsDue.length || recentInboundSms.length || interestedLeads.length) ? hotPill : pill}>
+                {followUpsDue.length + recentInboundSms.length + interestedLeads.length} needs review
               </span>
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, marginBottom: 14 }} className="number-grid">
-              <ShiftCard label="Seller replies" value={String(unmatchedSms.length)} tone={unmatchedSms.length ? "hot" : "calm"} />
+              <ShiftCard label="Incoming texts" value={String(recentInboundSms.length)} tone={recentInboundSms.length ? "hot" : "calm"} />
               <ShiftCard label="Due follow-ups" value={String(followUpsDue.length)} tone={followUpsDue.length ? "hot" : "calm"} />
               <ShiftCard label="Interested sellers" value={String(interestedLeads.length)} tone={interestedLeads.length ? "hot" : "calm"} />
               <ShiftCard label="Textable leads" value={String(workdeskLeadRows.filter(lead => lead.phone || lead.phone_2).length)} />
@@ -2700,10 +2717,24 @@ export default function VaPage() {
 
             <div style={{ display: "grid", gridTemplateColumns: "260px minmax(0, 1fr) 420px", gap: 14 }} className="lead-inbox-grid">
               <aside style={{ display: "grid", gap: 12, alignContent: "start" }}>
+                <section style={{ ...subPanel, borderColor: recentInboundSms.length ? "var(--brass)" : "var(--fog)", background: recentInboundSms.length ? "rgba(176,137,84,0.08)" : "var(--bone)" }}>
+                  <p style={eyebrowSmall}>Recent incoming texts</p>
+                  <div style={{ display: "grid", gap: 8, marginTop: 10 }}>
+                    {recentInboundSms.slice(0, 8).map(event => (
+                      <button key={event.id} onClick={() => openIncomingSms(event)} style={{ ...miniInboxButton, borderColor: event.matched_lead_id || event.matched_deal_id ? "var(--fog)" : "var(--brass)" }}>
+                        <strong>{event.contact_name || event.contact_number || event.from_number || "Unknown seller"}</strong>
+                        <span>{event.body || event.status || "Inbound SMS"}</span>
+                        <em>{event.matched_deal_id ? "Matched deal" : event.matched_lead_id ? "Matched lead" : "Unmatched"}</em>
+                      </button>
+                    ))}
+                    {recentInboundSms.length === 0 && <p style={{ color: "var(--muted)", fontSize: 12, lineHeight: 1.45 }}>No incoming seller texts have been received yet.</p>}
+                  </div>
+                </section>
+
                 <section style={subPanel}>
                   <p style={eyebrowSmall}>Conversation queues</p>
                   <div style={{ display: "grid", gap: 8, marginTop: 10 }}>
-                    <QueueButton label="Seller replies" detail="Unmatched inbound SMS" count={unmatchedSms.length} hot={!!unmatchedSms.length} onClick={() => void fetchCommunicationEvents({ unmatched: true, limit: 25 }).then(setUnmatchedSms)} />
+                    <QueueButton label="Unmatched replies" detail="Need lead/deal matching" count={unmatchedSms.length} hot={!!unmatchedSms.length} onClick={() => void reload(user)} />
                     <QueueButton label="Interested sellers" detail="Ready for response" count={interestedLeads.length} hot={!!interestedLeads.length} onClick={() => { setLeadFilter("interested"); goToTab("lists"); }} />
                     <QueueButton label="Follow-up due" detail="Needs call or text" count={followUpsDue.length} hot={!!followUpsDue.length} onClick={() => goToTab("outreach")} />
                     <QueueButton label="New imported leads" detail="Start first touch" count={importStats.newRows} onClick={() => { setLeadFilter("new"); goToTab("lists"); }} />
