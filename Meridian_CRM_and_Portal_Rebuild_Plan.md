@@ -1649,6 +1649,7 @@ Completed in this pass:
 - Added an in-app Launch Readiness Tracker to the Document Library so the production QA runbook can be checked off during live testing with pass/fail/reset states and notes.
 - Added Opportunity File quick actions for assigning VA tasks, opening Deal Review, jumping into CRM Records or Disposition for the selected deal, reviewing the conversation panel, and returning to the VA Workdesk.
 - Added a shared command-style operating header across Member Portal, CRM, and VA Workdesk so the three core surfaces now share the same visual language, primary actions, signed-in context, and live operating stats.
+- Reworked the Member Portal dashboard body into a consolidated decision desk: Needs My Attention queue first, then Deal Review Queue, VA Daily Brief, Money & Approvals, Active Projects & Closings, Seller Communication Alerts, Recent Activity, Upcoming Meeting, and compact secondary tools.
 
 Risk: Medium.
 
