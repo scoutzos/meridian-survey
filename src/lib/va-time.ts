@@ -138,7 +138,7 @@ export function vaDateKey(iso: string | null | undefined): string {
 export function formatVaDateTime(iso: string | null | undefined): string {
   if (!iso) return "No date";
   const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return iso;
+  if (Number.isNaN(date.getTime())) return "Needs time correction";
   return new Intl.DateTimeFormat("en-US", {
     timeZone: VA_TIME_ZONE,
     month: "short",

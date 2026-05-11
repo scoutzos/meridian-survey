@@ -77,6 +77,21 @@ function fmtDateTime(iso: string | null): string {
   return formatVaDateTime(iso);
 }
 
+function addMinutesToInput(value: string, minutes: number): string {
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/);
+  if (!match) return "";
+  const date = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]), Number(match[4]), Number(match[5]) + minutes));
+  return date.toISOString().slice(0, 16);
+}
+
+function fallbackShiftStart(entry: VaTimeEntry): string {
+  return toVaDateTimeInput(entry.clock_in_at) || `${entry.pay_period_start}T09:00`;
+}
+
+function fallbackShiftEnd(entry: VaTimeEntry, start: string): string {
+  return toVaDateTimeInput(entry.clock_out_at) || addMinutesToInput(start, entry.duration_minutes ?? 60) || `${entry.pay_period_start}T10:00`;
+}
+
 function labelize(value: string): string {
   return value.split("-").map(p => p.charAt(0).toUpperCase() + p.slice(1)).join(" ");
 }
@@ -185,10 +200,11 @@ export default function OperationsPage() {
   };
 
   const startShiftEdit = (entry: VaTimeEntry) => {
+    const clockIn = fallbackShiftStart(entry);
     setEditingShiftId(entry.id);
     setShiftEditDraft({
-      clockIn: toVaDateTimeInput(entry.clock_in_at),
-      clockOut: toVaDateTimeInput(entry.clock_out_at),
+      clockIn,
+      clockOut: fallbackShiftEnd(entry, clockIn),
       notes: entry.notes ?? "",
     });
   };
@@ -210,6 +226,7 @@ export default function OperationsPage() {
     if (error) { alert(error); return; }
     setEditingShiftId(null);
     setVaTimeEntries(await fetchVaTimeEntries(120));
+    alert("Shift updated.");
   };
 
   const voidShift = async (entry: VaTimeEntry) => {
