@@ -15,7 +15,6 @@ const MORE = [
   { href: "/operations", label: "Operations" },
   { href: "/meetings",   label: "Meetings" },
   { href: "/surveys",    label: "Surveys" },
-  { href: "/members",    label: "My Portal" },
   { href: "/members/candidates", label: "Applications" },
   { href: "/documents",  label: "Documents" },
   { href: "/decisions",  label: "Decisions" },

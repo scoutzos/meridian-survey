@@ -58,6 +58,15 @@ type SurveyProgress = {
   status: "Completed" | "In Progress" | "Not Started";
 };
 
+type MemberDirectoryRow = {
+  name: string;
+  llcName: string | null;
+  isAdmin: boolean;
+  role: string;
+  contact: string;
+  lastActive: string;
+};
+
 const DISPLAY_FONT = "var(--font-display)";
 const BODY_FONT = "var(--font-body)";
 
@@ -70,7 +79,6 @@ const COLORS = {
 };
 
 const QUICK_LINKS: Array<{ title: string; href: string; eyebrow: string; external?: boolean }> = [
-  { title: "Member Portal", eyebrow: "Full Record", href: "/members" },
   { title: "Vote on Proposals", eyebrow: "Approvals", href: "/tracker/planning" },
   { title: "Applications", eyebrow: "Member Review", href: "/members/candidates" },
   { title: "My Balances", eyebrow: "Money", href: "/tracker/members" },
@@ -118,6 +126,7 @@ export default function DashboardPage() {
   const [reimbursements, setReimbursements] = useState<Reimbursement[]>([]);
   const [decisions, setDecisions] = useState<Decision[]>([]);
   const [myBalance, setMyBalance] = useState<MemberBalance | null>(null);
+  const [memberDirectory, setMemberDirectory] = useState<MemberDirectoryRow[]>([]);
   const [capitalCalls, setCapitalCalls] = useState<CapitalCall[]>([]);
   const [pendingCandidateVotes, setPendingCandidateVotes] = useState<MembershipCandidate[]>([]);
   const [pendingProposalVotes, setPendingProposalVotes] = useState<PendingExpenseProposalVote[]>([]);
@@ -191,6 +200,18 @@ export default function DashboardPage() {
       setCommunicationEvents(communicationRows);
       setReimbursements(reimbursementRows);
       setDecisions(hub.decisions.slice(0, 4));
+      setMemberDirectory(MEMBERS.map(member => {
+        const trackerProfile = trackerData?.profiles.find(profile => profile.member_name === member);
+        const hubProfile = hub.profiles[member];
+        return {
+          name: member,
+          llcName: trackerProfile?.llc_name ?? null,
+          isAdmin: trackerProfile?.is_admin === true,
+          role: hubProfile?.role ?? "",
+          contact: hubProfile?.contact ?? "",
+          lastActive: hubProfile?.lastActive ?? "",
+        };
+      }));
 
       if (trackerData) {
         setCapitalCalls(trackerData.capitalCalls);
@@ -313,6 +334,9 @@ export default function DashboardPage() {
   const activeProjects = projects.filter(p => !["sold", "passed"].includes(p.status)).slice(0, 3);
   const pendingReimbursements = reimbursements.filter(r => r.status === "submitted" || r.status === "approved");
   const incompleteSurveys = progress.filter(p => p.status !== "Completed");
+  const previewVotes = pendingVotes.slice(0, 4);
+  const previewActions = myItems.slice(0, Math.max(0, 4 - previewVotes.length));
+  const previewSurveys = incompleteSurveys.slice(0, Math.max(0, 4 - previewVotes.length - previewActions.length));
   const surveyAnswered = progress.reduce((sum, p) => sum + p.answered, 0);
   const surveyTotal = progress.reduce((sum, p) => sum + p.total, 0);
   const surveyPct = surveyTotal > 0 ? Math.round((surveyAnswered / surveyTotal) * 100) : 0;
@@ -374,7 +398,7 @@ export default function DashboardPage() {
             </p>
           </div>
           <button
-            onClick={() => router.push("/members")}
+            onClick={() => router.push("/actions")}
             style={{
               background: obsidian,
               color: bone,
@@ -388,7 +412,7 @@ export default function DashboardPage() {
               cursor: "pointer",
             }}
           >
-            Open Member Portal
+            Open Task Inbox
           </button>
         </header>
 
@@ -471,8 +495,22 @@ export default function DashboardPage() {
 
           <Panel title="Task Inbox Preview" cta={{ label: "Tasks", onClick: () => router.push("/actions") }}>
             {!loaded && <SkeletonCard />}
-            {loaded && myItems.length === 0 && <EmptyText>Nothing assigned to you right now.</EmptyText>}
-            {myItems.slice(0, 4).map(item => {
+            {loaded && pendingVotes.length === 0 && myItems.length === 0 && incompleteSurveys.length === 0 && <EmptyText>Nothing assigned to you right now.</EmptyText>}
+            {previewVotes.map(notice => (
+              <div key={notice.id} style={listItemStyle}>
+                <button
+                  onClick={() => router.push(notice.href || "/actions")}
+                  style={{ background: "transparent", border: "none", textAlign: "left", cursor: "pointer", width: "100%" }}
+                >
+                  <p style={{ fontSize: 14, fontWeight: 800, color: obsidian, marginBottom: 3 }}>{notice.title}</p>
+                  {notice.body && <p style={{ fontSize: 12, color: ink, opacity: 0.68, lineHeight: 1.45 }}>{notice.body}</p>}
+                  <p style={{ fontSize: 11, color: brass, fontWeight: 800, letterSpacing: "0.12em", textTransform: "uppercase", marginTop: 6 }}>
+                    {notice.notification_type.includes("deal") ? "Deal review" : "Vote needed"}
+                  </p>
+                </button>
+              </div>
+            ))}
+            {previewActions.map(item => {
               const due = formatDueDate(item.due_date);
               return (
                 <div key={item.id} style={listItemStyle}>
@@ -489,6 +527,22 @@ export default function DashboardPage() {
                 </div>
               );
             })}
+            {previewSurveys.map(survey => (
+              <div key={survey.surveyId} style={listItemStyle}>
+                <button
+                  onClick={() => router.push(survey.status === "Completed" ? `/results/${survey.surveyId}` : `/survey/${survey.surveyId}`)}
+                  style={{ background: "transparent", border: "none", textAlign: "left", cursor: "pointer", width: "100%" }}
+                >
+                  <p style={{ fontSize: 14, fontWeight: 800, color: obsidian, marginBottom: 3 }}>{survey.title}</p>
+                  <p style={{ fontSize: 12, color: ink, opacity: 0.68, lineHeight: 1.45 }}>
+                    {survey.answered}/{survey.total} questions answered.
+                  </p>
+                  <p style={{ fontSize: 11, color: brass, fontWeight: 800, letterSpacing: "0.12em", textTransform: "uppercase", marginTop: 6 }}>
+                    {survey.status === "In Progress" ? "Continue survey" : "Start survey"}
+                  </p>
+                </button>
+              </div>
+            ))}
           </Panel>
         </section>
 
@@ -626,6 +680,29 @@ export default function DashboardPage() {
           </div>
         </section>
 
+        <section id="directory" style={{ marginBottom: 32 }}>
+          <SectionHeader
+            title="Member Directory"
+            subtitle="LLCs, roles, and profile details for the collective."
+            cta={{ label: "Edit profiles", onClick: () => router.push("/hub") }}
+          />
+          <div className="members-grid">
+            {memberDirectory.length === 0 && loaded && <EmptyText>No member profiles available yet.</EmptyText>}
+            {memberDirectory.map(member => (
+              <article key={member.name} style={{ ...cardStyle, borderColor: member.name === user ? brass : fog }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 2 }}>
+                  <h3 style={{ fontFamily: DISPLAY_FONT, fontSize: 22, fontWeight: 500, color: obsidian, letterSpacing: 0 }}>{member.name}</h3>
+                  {member.name === user && <Badge>You</Badge>}
+                  {member.isAdmin && <Badge>Managing</Badge>}
+                </div>
+                <p style={{ fontSize: 13, color: ink, opacity: 0.72 }}>{member.llcName ?? "LLC pending"}</p>
+                {member.role && <p style={{ fontSize: 12, color: ink, opacity: 0.65, lineHeight: 1.45 }}>{member.role}</p>}
+                {member.contact && <p style={{ fontSize: 12, color: ink, opacity: 0.58, lineHeight: 1.45 }}>{member.contact}</p>}
+              </article>
+            ))}
+          </div>
+        </section>
+
         <section style={{ marginBottom: 32 }}>
           <SectionHeader
             title="Surveys"
@@ -692,6 +769,11 @@ export default function DashboardPage() {
           grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
           gap: 14px;
         }
+        .members-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+          gap: 14px;
+        }
         @media (max-width: 900px) {
           .attention-grid { grid-template-columns: repeat(2, 1fr); }
           .dashboard-two-col { grid-template-columns: 1fr !important; }
@@ -699,7 +781,8 @@ export default function DashboardPage() {
         @media (max-width: 600px) {
           .dashboard-root { padding-top: 28px !important; }
           .attention-grid,
-          .survey-grid { grid-template-columns: 1fr; }
+          .survey-grid,
+          .members-grid { grid-template-columns: 1fr; }
         }
       `}</style>
     </div>
@@ -795,6 +878,21 @@ function SignalItem({ label, title, detail, onClick }: { label: string; title: s
 
 function EmptyText({ children }: { children: React.ReactNode }) {
   return <p style={{ fontSize: 13, color: COLORS.ink, opacity: 0.58 }}>{children}</p>;
+}
+
+function Badge({ children }: { children: React.ReactNode }) {
+  return (
+    <span style={{
+      fontSize: 9,
+      letterSpacing: 1.4,
+      textTransform: "uppercase",
+      color: COLORS.brass,
+      fontWeight: 800,
+      padding: "2px 8px",
+      borderRadius: 999,
+      border: `1px solid ${COLORS.brass}`,
+    }}>{children}</span>
+  );
 }
 
 function SkeletonCard() {
