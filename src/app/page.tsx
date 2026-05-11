@@ -58,6 +58,7 @@ export default function LoginPage() {
   const [verificationAnswer, setVerificationAnswer] = useState("");
   const [resetSuccess, setResetSuccess] = useState(false);
   const [resetEmailSent, setResetEmailSent] = useState(false);
+  const [loginUsers, setLoginUsers] = useState<string[]>([...LOGIN_USERS]);
   const router = useRouter();
 
   useEffect(() => {
@@ -65,6 +66,18 @@ export default function LoginPage() {
     void hydrateMeridianUserFromAuth().then(memberName => {
       if (mounted && memberName) router.push(homeFor(memberName));
     });
+    if (supabase) {
+      void supabase
+        .from("meridian_members")
+        .select("name")
+        .order("name")
+        .then(({ data }) => {
+          if (!mounted || !data) return;
+          const names = data.map(row => row.name as string).filter(Boolean);
+          const merged = Array.from(new Set([...names, ...LOGIN_USERS]));
+          setLoginUsers(merged);
+        });
+    }
     return () => { mounted = false; };
   }, [router]);
 
@@ -173,7 +186,7 @@ export default function LoginPage() {
     if (!resetName) { setError("Please select your name."); return; }
     if (!verificationAnswer.trim()) { setError("Please enter your last name."); return; }
 
-    const expected = MEMBER_VERIFICATION[resetName];
+    const expected = MEMBER_VERIFICATION[resetName] ?? resetName.trim().split(/\s+/).at(-1)?.toLowerCase();
     if (!expected || verificationAnswer.trim().toLowerCase() !== expected) {
       setError("That doesn't match our records. Try again.");
       return;
@@ -402,7 +415,7 @@ export default function LoginPage() {
               style={selectStyle(!!resetName)}
             >
               <option value="">Select your name</option>
-              {LOGIN_USERS.map(m => <option key={m} value={m}>{m}</option>)}
+              {loginUsers.map(m => <option key={m} value={m}>{m}</option>)}
             </select>
 
             <input
@@ -466,7 +479,7 @@ export default function LoginPage() {
             style={selectStyle(!!name)}
           >
             <option value="">Select your name</option>
-            {LOGIN_USERS.map(m => <option key={m} value={m}>{m}</option>)}
+            {loginUsers.map(m => <option key={m} value={m}>{m}</option>)}
           </select>
 
           <input

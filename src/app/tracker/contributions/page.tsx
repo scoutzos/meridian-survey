@@ -8,12 +8,12 @@ import {
   CapitalCall,
   MemberProfile,
   CONTRIBUTION_TYPE_LABEL,
+  activeTrackerMembers,
   fmtUSD,
   fmtDate,
   isAdmin,
   logAudit,
 } from "@/lib/tracker";
-import { MEMBERS } from "@/data/questions";
 import TrackerShell, {
   trackerCard,
   trackerInput,
@@ -82,9 +82,10 @@ export default function ContributionsPage() {
 
   const admin = isAdmin(profiles, user);
   const llcOf = (m: string) => profiles.find(p => p.member_name === m)?.llc_name || m;
+  const trackerMembers = activeTrackerMembers(profiles);
 
   // non-admins can only log contributions for themselves.
-  const allowedMembers: readonly string[] = admin ? MEMBERS : [user];
+  const allowedMembers: readonly string[] = admin ? trackerMembers.map(member => member.name) : [user];
 
   const filtered = contributions.filter(c => {
     if (filterMember !== "all" && c.member_name !== filterMember) return false;
@@ -215,7 +216,7 @@ export default function ContributionsPage() {
         <span style={{ fontSize: 12, color: "var(--muted)" }}>Filter:</span>
         <select value={filterMember} onChange={e => setFilterMember(e.target.value)} style={{ ...trackerInput, width: "auto" }}>
           <option value="all">All members</option>
-          {MEMBERS.map(m => <option key={m} value={m}>{llcOf(m)}</option>)}
+          {trackerMembers.map(member => <option key={member.name} value={member.name}>{member.llcName || llcOf(member.name)}</option>)}
         </select>
         <select value={filterType} onChange={e => setFilterType(e.target.value)} style={{ ...trackerInput, width: "auto" }}>
           <option value="all">All types</option>

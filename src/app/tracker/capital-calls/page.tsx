@@ -7,7 +7,7 @@ import {
   CapitalCallStatus,
   MemberProfile,
   CAPITAL_CALL_STATUS_LABEL,
-  MEMBER_COUNT,
+  activeTrackerMembers,
   fmtUSD,
   fmtDate,
   isAdmin,
@@ -71,6 +71,7 @@ export default function CapitalCallsPage() {
   if (!user) return null;
 
   const admin = isAdmin(profiles, user);
+  const memberCount = activeTrackerMembers(profiles).length;
 
   async function create() {
     if (!supabase || !user || !admin) return;
@@ -81,7 +82,7 @@ export default function CapitalCallsPage() {
       date_called: date,
       reason: reason.trim(),
       total_amount: total,
-      per_member_amount: MEMBER_COUNT > 0 ? Number((total / MEMBER_COUNT).toFixed(2)) : 0,
+      per_member_amount: memberCount > 0 ? Number((total / memberCount).toFixed(2)) : 0,
       status: "open" as CapitalCallStatus,
       auto_suggested: false,
       created_by: user,

@@ -8,11 +8,11 @@ import {
   Expense,
   MemberProfile,
   TrackerSettings,
+  activeTrackerMembers,
   computeMemberBalances,
   computeTargets,
   fmtUSD,
 } from "@/lib/tracker";
-import { MEMBERS } from "@/data/questions";
 import TrackerShell, { trackerCard } from "@/components/TrackerShell";
 
 export default function MemberTrackerPage() {
@@ -62,9 +62,7 @@ export default function MemberTrackerPage() {
 
   if (!user) return null;
 
-  const llcOf = (m: string) => profiles.find(p => p.member_name === m)?.llc_name || m;
-
-  const members = MEMBERS.map(m => ({ name: m, llcName: llcOf(m) }));
+  const members = activeTrackerMembers(profiles);
   const balances = computeMemberBalances({
     members,
     expenses,
@@ -73,7 +71,7 @@ export default function MemberTrackerPage() {
     settings,
   });
 
-  const targets = computeTargets(expenses, settings);
+  const targets = computeTargets(expenses, settings, members.length);
   const totals = balances.reduce(
     (acc, b) => {
       acc.initialPaid += b.initialPaid;

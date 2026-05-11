@@ -10,6 +10,7 @@ export default function SurveysPage() {
   const router = useRouter();
   const [user, setUser] = useState<string | null>(null);
   const [progressMap, setProgressMap] = useState<Record<string, Record<string, number>>>({});
+  const [memberNames, setMemberNames] = useState<string[]>([...MEMBERS]);
 
   const surveys = getAllSurveys();
 
@@ -22,11 +23,13 @@ export default function SurveysPage() {
     if (!supabase) return;
 
     // Fetch all responses to compute progress from Supabase
-    supabase
-      .from("meridian_responses")
-      .select("member_name, survey_id")
-      .then(({ data: rows }) => {
+    Promise.all([
+      supabase.from("meridian_responses").select("member_name, survey_id"),
+      supabase.from("meridian_members").select("name").order("name"),
+    ]).then(([{ data: rows }, { data: members }]) => {
         if (!rows) return;
+        const names = (members ?? []).map(row => row.name as string).filter(Boolean);
+        if (names.length) setMemberNames(Array.from(new Set([...names, ...MEMBERS])));
         // Build: { surveyId: { memberName: count } }
         const map: Record<string, Record<string, number>> = {};
         for (const row of rows) {
@@ -104,7 +107,7 @@ export default function SurveysPage() {
           const myProgress = getProgress(survey.id, user);
           const myPct = totalQ > 0 ? Math.round((myProgress.answered / totalQ) * 100) : 0;
 
-          const membersStarted = MEMBERS.filter(m => {
+          const membersStarted = memberNames.filter(m => {
             const p = getProgress(survey.id, m);
             return p.answered > 0;
           }).length;
@@ -143,7 +146,7 @@ export default function SurveysPage() {
               <div style={{ display: "flex", gap: 16, fontSize: 12, color: "var(--muted)", marginBottom: 12 }}>
                 <span>{totalQ} questions</span>
                 <span>{survey.categories.length} categories</span>
-                <span>{membersStarted}/{MEMBERS.length} members started</span>
+                <span>{membersStarted}/{memberNames.length} members started</span>
               </div>
 
               {/* Progress bar */}
