@@ -11,6 +11,7 @@ type SmsThread = {
   label: string;
   subtitle: string;
   status: string;
+  dealId: string | null;
   lead: ImportedLandLead | null;
   events: CommunicationEvent[];
   lastAt: string;
@@ -23,6 +24,7 @@ type FloatingSmsWindowProps = {
   events: CommunicationEvent[];
   canSend?: boolean;
   onOpenLead?: (lead: ImportedLandLead) => void;
+  onOpenDeal?: (dealId: string) => void;
   onCreateDealBrief?: (lead: ImportedLandLead) => void;
   onMarkInterested?: (lead: ImportedLandLead) => void;
   onSent?: (leadId?: string | null) => Promise<void> | void;
@@ -78,7 +80,7 @@ function buildThreads(events: CommunicationEvent[], leads: ImportedLandLead[]): 
     .filter(event => event.channel === "sms" || event.provider === "sakari")
     .forEach(event => {
       const phone = contactPhoneFor(event);
-      const key = event.matched_lead_id ? `lead:${event.matched_lead_id}` : phone ? `phone:${phone}` : `event:${event.id}`;
+      const key = event.matched_lead_id ? `lead:${event.matched_lead_id}` : event.matched_deal_id ? `deal:${event.matched_deal_id}` : phone ? `phone:${phone}` : `event:${event.id}`;
       groups.set(key, [...(groups.get(key) ?? []), event]);
     });
 
@@ -87,12 +89,14 @@ function buildThreads(events: CommunicationEvent[], leads: ImportedLandLead[]): 
     const first = sorted[0];
     const phone = contactPhoneFor(first);
     const lead = first.matched_lead_id ? leadById.get(first.matched_lead_id) ?? null : leadByPhone.get(phone) ?? null;
+    const dealId = first.matched_deal_id || lead?.deal_id || null;
     return {
       key,
       phone,
       label: first.contact_name || leadName(lead),
-      subtitle: lead?.county || lead?.parcel_id || displayPhone(phone),
-      status: lead?.status || (first.matched_deal_id ? "deal" : "unmatched"),
+      subtitle: lead?.property_address || lead?.parcel_id || lead?.county || displayPhone(phone),
+      status: dealId ? "deal linked" : lead?.status || "unmatched",
+      dealId,
       lead,
       events: sorted,
       lastAt: eventTime(first),
@@ -107,6 +111,7 @@ export default function FloatingSmsWindow({
   events,
   canSend = true,
   onOpenLead,
+  onOpenDeal,
   onCreateDealBrief,
   onMarkInterested,
   onSent,
@@ -130,6 +135,18 @@ export default function FloatingSmsWindow({
   const selectedThread = threads.find(thread => thread.key === selectedKey) ?? threads[0] ?? null;
   const selectedLead = selectedThread?.lead ?? null;
   const selectedPhone = selectedThread?.phone ?? last10(newPhone);
+  const contextTitleText = selectedLead?.property_address || (selectedThread?.dealId ? "Connected deal packet" : "No linked property yet");
+  const contextMetaText = [
+    selectedLead?.county,
+    selectedLead?.state,
+    selectedLead?.parcel_id ? `Parcel ${selectedLead.parcel_id}` : "",
+    selectedLead?.acreage ? `${selectedLead.acreage} acres` : "",
+    selectedLead?.campaign_source || selectedLead?.source_system,
+  ].filter(Boolean).join(" · ");
+  const openSelectedRecord = () => {
+    if (selectedThread?.dealId) onOpenDeal?.(selectedThread.dealId);
+    else if (selectedLead) onOpenLead?.(selectedLead);
+  };
 
   useEffect(() => {
     if (!selectedKey && threads[0]) setSelectedKey(threads[0].key);
@@ -144,6 +161,8 @@ export default function FloatingSmsWindow({
     setThreadEvents(selectedThread.events);
     if (selectedThread.lead?.id) {
       void fetchCommunicationEvents({ leadId: selectedThread.lead.id, limit: 50 }).then(setThreadEvents);
+    } else if (selectedThread.dealId) {
+      void fetchCommunicationEvents({ dealId: selectedThread.dealId, limit: 50 }).then(setThreadEvents);
     }
   }, [selectedThread]);
 
@@ -252,8 +271,18 @@ export default function FloatingSmsWindow({
       {!minimized && (
         <div style={body}>
           <aside style={threadList}>
+            <div style={searchWrap}>
+              <span style={{ color: "var(--muted)", fontSize: 13 }}>⌕</span>
+              <input value={newSearch} onChange={event => setNewSearch(event.target.value)} placeholder="Search threads by name or phone..." style={threadSearch} />
+              <button type="button" style={filterButton}>☷</button>
+            </div>
             {canSend && <button type="button" onClick={() => setShowNew(value => !value)} style={newButton}>+ Start New Text</button>}
-            {threads.map(thread => (
+            {threads.filter(thread => {
+              if (showNew) return true;
+              const query = newSearch.trim().toLowerCase();
+              if (!query) return true;
+              return [thread.label, thread.phone, thread.subtitle, thread.status].some(value => value.toLowerCase().includes(query));
+            }).map(thread => (
               <button
                 type="button"
                 key={thread.key}
@@ -266,7 +295,7 @@ export default function FloatingSmsWindow({
                 </span>
                 <span style={threadMeta}>{thread.subtitle}</span>
                 <span style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginTop: 6 }}>
-                  <span style={statusChip}>{thread.status}</span>
+                  <span style={{ ...statusChip, ...(thread.status.includes("deal") ? dealChip : thread.status === "interested" ? interestedChip : {}) }}>{thread.status}</span>
                   {thread.unread > 0 && <span style={unreadBadge}>{thread.unread}</span>}
                 </span>
               </button>
@@ -305,15 +334,32 @@ export default function FloatingSmsWindow({
               <>
                 <div style={contextCard}>
                   <div>
-                    <p style={eyebrowLight}>{selectedThread.status}</p>
-                    <h3 style={contextTitle}>{selectedThread.label}</h3>
-                    <p style={contextMeta}>{displayPhone(selectedPhone)} · {selectedThread.subtitle}</p>
+                    <h3 style={personTitle}>{selectedThread.label}</h3>
+                    <p style={personMeta}>{displayPhone(selectedPhone)}</p>
                   </div>
-                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
-                    {selectedLead && <button type="button" onClick={() => onOpenLead?.(selectedLead)} style={smallAction}>Open Lead</button>}
-                    {selectedLead && <button type="button" onClick={() => onCreateDealBrief?.(selectedLead)} style={smallAction}>Deal Brief</button>}
-                    {canSend && selectedLead && selectedLead.status !== "interested" && <button type="button" onClick={() => onMarkInterested?.(selectedLead)} style={smallAction}>Interested</button>}
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                    <button type="button" onClick={openSelectedRecord} style={roundAction}>☎</button>
+                    <button type="button" onClick={() => selectedLead ? onCreateDealBrief?.(selectedLead) : selectedThread.dealId ? onOpenDeal?.(selectedThread.dealId) : undefined} style={roundAction}>◇</button>
+                    <button type="button" onClick={openSelectedRecord} style={roundAction}>…</button>
                   </div>
+                </div>
+
+                <div style={propertyStrip}>
+                  <div style={propertyIcon}>⌂</div>
+                  <div style={{ minWidth: 0 }}>
+                    <strong style={propertyTitle}>{contextTitleText}</strong>
+                    <p style={propertyMeta}>{contextMetaText || selectedThread.subtitle}</p>
+                  </div>
+                  <button type="button" onClick={openSelectedRecord} style={openLeadButton}>
+                    {selectedThread.dealId ? "Open Deal" : selectedLead ? "Open Lead" : "Unmatched"}
+                  </button>
+                </div>
+
+                <div style={actionRow}>
+                  {selectedLead && <button type="button" onClick={() => onOpenLead?.(selectedLead)} style={smallAction}>Open Lead</button>}
+                  {selectedThread.dealId && <button type="button" onClick={() => onOpenDeal?.(selectedThread.dealId!)} style={smallAction}>Open Deal</button>}
+                  {selectedLead && <button type="button" onClick={() => onCreateDealBrief?.(selectedLead)} style={smallAction}>Create Deal Brief</button>}
+                  {canSend && selectedLead && selectedLead.status !== "interested" && <button type="button" onClick={() => onMarkInterested?.(selectedLead)} style={smallAction}>Mark Interested</button>}
                 </div>
 
                 <div style={messages}>
@@ -331,6 +377,7 @@ export default function FloatingSmsWindow({
 
                 {canSend ? (
                   <div style={composer}>
+                    <div style={composerTabs}><span style={activeComposerTab}>Text</span><span>Note</span></div>
                     <textarea value={reply} onChange={event => setReply(event.target.value)} rows={3} placeholder="Reply to this seller..." style={textarea} />
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
                       <span style={counter}>{reply.trim().length}/1200</span>
@@ -361,41 +408,42 @@ const shell: CSSProperties = {
   right: 24,
   bottom: 24,
   zIndex: 260,
-  width: "min(760px, calc(100vw - 32px))",
+  width: "min(860px, calc(100vw - 32px))",
   background: "var(--surface)",
   border: "1px solid rgba(176,137,84,0.42)",
-  borderRadius: 10,
+  borderRadius: 8,
   boxShadow: "0 24px 70px rgba(20,17,13,0.28)",
   overflow: "hidden",
 };
 
 const titleBar: CSSProperties = {
   alignItems: "center",
-  background: "linear-gradient(135deg, var(--obsidian), #3a2f22)",
+  background: "var(--obsidian)",
   display: "flex",
   justifyContent: "space-between",
-  padding: "12px 14px",
+  padding: "10px 14px",
   userSelect: "none",
 };
 
 const body: CSSProperties = {
   display: "grid",
-  gridTemplateColumns: "245px minmax(0, 1fr)",
-  minHeight: 470,
+  gridTemplateColumns: "320px minmax(0, 1fr)",
+  minHeight: 520,
 };
 
 const threadList: CSSProperties = {
-  background: "rgba(237,230,214,0.58)",
+  background: "rgba(255,252,245,0.94)",
   borderRight: "1px solid var(--fog)",
   display: "flex",
   flexDirection: "column",
   gap: 8,
-  maxHeight: 470,
+  maxHeight: 520,
   overflowY: "auto",
   padding: 10,
 };
 
 const conversation: CSSProperties = {
+  background: "rgba(255,252,245,0.86)",
   display: "flex",
   flexDirection: "column",
   minWidth: 0,
@@ -403,10 +451,10 @@ const conversation: CSSProperties = {
 };
 
 const newButton: CSSProperties = {
-  background: "var(--obsidian)",
-  border: "1px solid var(--obsidian)",
+  background: "var(--surface)",
+  border: "1px solid var(--fog)",
   borderRadius: 7,
-  color: "var(--bone)",
+  color: "var(--obsidian)",
   fontSize: 11,
   fontWeight: 800,
   letterSpacing: "0.12em",
@@ -415,16 +463,17 @@ const newButton: CSSProperties = {
 };
 
 const threadButton: CSSProperties = {
-  background: "var(--bone)",
-  border: "1px solid var(--fog)",
-  borderRadius: 8,
+  background: "transparent",
+  border: "none",
+  borderBottom: "1px solid var(--fog)",
+  borderRadius: 0,
   color: "var(--obsidian)",
-  padding: 10,
+  padding: "12px 8px",
   textAlign: "left",
 };
 
 const activeThread: CSSProperties = {
-  borderColor: "var(--brass)",
+  background: "rgba(176,137,84,0.12)",
   boxShadow: "inset 3px 0 0 var(--brass)",
 };
 
@@ -457,6 +506,18 @@ const statusChip: CSSProperties = {
   textTransform: "uppercase",
 };
 
+const interestedChip: CSSProperties = {
+  background: "rgba(55,130,91,0.12)",
+  borderColor: "rgba(55,130,91,0.24)",
+  color: "#2f7652",
+};
+
+const dealChip: CSSProperties = {
+  background: "rgba(176,137,84,0.14)",
+  borderColor: "rgba(176,137,84,0.32)",
+  color: "var(--brass)",
+};
+
 const unreadBadge: CSSProperties = {
   background: "var(--brass)",
   borderRadius: 999,
@@ -470,29 +531,96 @@ const unreadBadge: CSSProperties = {
 
 const contextCard: CSSProperties = {
   alignItems: "center",
-  background: "rgba(237,230,214,0.58)",
-  border: "1px solid var(--fog)",
-  borderRadius: 8,
+  background: "transparent",
+  borderBottom: "1px solid var(--fog)",
   display: "flex",
   gap: 10,
   justifyContent: "space-between",
   marginBottom: 10,
-  padding: 10,
+  padding: "0 0 10px",
 };
 
-const contextTitle: CSSProperties = {
+const personTitle: CSSProperties = {
   color: "var(--obsidian)",
-  fontFamily: "var(--font-display)",
-  fontSize: 24,
-  fontWeight: 500,
-  lineHeight: 1,
+  fontSize: 14,
+  fontWeight: 800,
   margin: 0,
 };
 
-const contextMeta: CSSProperties = {
+const personMeta: CSSProperties = {
   color: "var(--muted)",
   fontSize: 12,
-  marginTop: 5,
+  marginTop: 3,
+};
+
+const roundAction: CSSProperties = {
+  background: "var(--surface)",
+  border: "1px solid var(--fog)",
+  borderRadius: 8,
+  color: "var(--obsidian)",
+  fontSize: 14,
+  height: 34,
+  width: 38,
+};
+
+const propertyStrip: CSSProperties = {
+  alignItems: "center",
+  background: "var(--surface)",
+  border: "1px solid var(--fog)",
+  borderRadius: 8,
+  display: "grid",
+  gap: 10,
+  gridTemplateColumns: "36px minmax(0, 1fr) auto",
+  marginBottom: 12,
+  padding: 10,
+};
+
+const propertyIcon: CSSProperties = {
+  background: "rgba(176,137,84,0.14)",
+  border: "1px solid rgba(176,137,84,0.32)",
+  borderRadius: 7,
+  color: "var(--brass)",
+  display: "grid",
+  height: 34,
+  placeItems: "center",
+  width: 34,
+};
+
+const propertyTitle: CSSProperties = {
+  color: "var(--obsidian)",
+  display: "block",
+  fontSize: 13,
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  whiteSpace: "nowrap",
+};
+
+const propertyMeta: CSSProperties = {
+  color: "var(--muted)",
+  fontSize: 11,
+  marginTop: 3,
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  whiteSpace: "nowrap",
+};
+
+const openLeadButton: CSSProperties = {
+  background: "var(--bone)",
+  border: "1px solid var(--fog)",
+  borderRadius: 7,
+  color: "var(--obsidian)",
+  fontSize: 10,
+  fontWeight: 800,
+  letterSpacing: "0.08em",
+  padding: "8px 10px",
+  textTransform: "uppercase",
+};
+
+const actionRow: CSSProperties = {
+  display: "flex",
+  flexWrap: "wrap",
+  gap: 8,
+  marginBottom: 12,
 };
 
 const smallAction: CSSProperties = {
@@ -547,6 +675,48 @@ const bubbleTime: CSSProperties = {
 const composer: CSSProperties = {
   borderTop: "1px solid var(--fog)",
   paddingTop: 10,
+};
+
+const composerTabs: CSSProperties = {
+  color: "var(--muted)",
+  display: "flex",
+  fontSize: 12,
+  gap: 16,
+  marginBottom: 8,
+};
+
+const activeComposerTab: CSSProperties = {
+  borderBottom: "1px solid var(--brass)",
+  color: "var(--brass)",
+  paddingBottom: 4,
+};
+
+const searchWrap: CSSProperties = {
+  alignItems: "center",
+  background: "var(--surface)",
+  border: "1px solid var(--fog)",
+  borderRadius: 7,
+  display: "grid",
+  gap: 6,
+  gridTemplateColumns: "18px minmax(0, 1fr) 28px",
+  padding: "7px 8px",
+};
+
+const threadSearch: CSSProperties = {
+  background: "transparent",
+  border: "none",
+  color: "var(--obsidian)",
+  fontSize: 12,
+  outline: "none",
+  padding: 0,
+  width: "100%",
+};
+
+const filterButton: CSSProperties = {
+  background: "transparent",
+  border: "none",
+  color: "var(--muted)",
+  fontSize: 14,
 };
 
 const textarea: CSSProperties = {
