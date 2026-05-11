@@ -29,7 +29,7 @@ Imported list -> seller outreach -> interested lead -> deal packet -> calculator
 | Documents/Meetings/Decisions | Partial | Pages were reorganized and connected. Needs final feature audit and removal of confusing legacy behavior. |
 | Navigation/IA | Structurally built | Member nav, mobile nav, CRM access, Hub/archive role, and secondary tools are organized. Needs real-user label walkthrough. |
 
-Estimated structural completion: **92%**
+Estimated structural completion: **93%**
 
 ## What Has Been Built In This Rebuild
 
@@ -70,7 +70,7 @@ Remaining:
 - Cleaner empty states for a new VA with no imported list.
 - Stronger guardrails for DNC, bad numbers, duplicate leads, and already-contacted sellers.
 - More guided seller outcomes/dispositions.
-- Member-to-VA task assignment: members should be able to assign tasks to the VA from the member portal, the VA should see those tasks in the VA Desk Today queue, and completed tasks should count toward the VA daily brief.
+- Production QA on member-created VA tasks using real accounts and records.
 
 ### 3. Shared Conversation Panel
 
@@ -1642,6 +1642,7 @@ Completed in this pass:
 - Replaced Money Center and Capital Calls browser alerts with in-page feedback for suggested calls, manual calls, approvals, status changes, and deletes.
 - Replaced Contributions and Expenses browser alerts with in-page feedback for permission limits, deposit logs, expense logs, edits, deletes, and save errors.
 - Replaced Expense Planning browser alerts with in-page feedback for proposal saves, revisions, offset failures, votes, expense conversion, and generated capital-call suggestions.
+- Verified the member-to-VA task path is already wired: members can assign VA tasks from My Tasks, link them to records, the VA sees them in the VA Desk Today queue, and completed VA tasks count into the daily brief.
 
 Risk: Medium.
 
@@ -1668,5 +1669,5 @@ The next implementation should:
 
 1. Add record edit/update actions for contacts, buyers, properties, campaigns, and offers.
 2. Add duplicate detection and merge/cleanup workflows.
-3. Add the member-to-VA task assignment path and count completed VA tasks in the daily brief.
+3. Confirm the member-to-VA task flow against real Supabase production users and permissions.
 4. Confirm the CRM detail panels against real Supabase production data and adjust labels/empty states.
