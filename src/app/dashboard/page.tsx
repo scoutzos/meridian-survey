@@ -291,6 +291,8 @@ export default function DashboardPage() {
   const notifiedProposalIds = new Set(proposalNotificationVotes.map(n => n.source_id));
   const notifiedCandidateIds = new Set(candidateNotificationVotes.map(n => n.source_id));
   const notifiedDealIds = new Set(dealNotificationVotes.map(n => n.source_id));
+  const voteNotificationIds = new Set(notificationVotes.map(n => n.id));
+  const operationalNotifications = notifications.filter(n => !voteNotificationIds.has(n.id));
   const proposalVoteNotices: Notification[] = pendingProposalVotes
     .filter(proposal => !notifiedProposalIds.has(proposal.id))
     .map(proposal => ({
@@ -342,7 +344,7 @@ export default function DashboardPage() {
   const pendingVotes = [...notificationVotes, ...proposalVoteNotices, ...candidateVoteNotices, ...dealVoteNotices];
   const openCapitalCalls = capitalCalls.filter(c => !c.deleted_at && c.status === "open");
   const suggestedCapitalCalls = capitalCalls.filter(c => !c.deleted_at && c.status === "suggested");
-  const hotDeals = deals.filter(d => d.urgency === "hot" || d.analysis?.recommendation === "Strong Review").slice(0, 3);
+  const hotDeals = deals.filter(d => (d.urgency === "hot" || d.analysis?.recommendation === "Strong Review") && !pendingDealIds.has(d.id)).slice(0, 3);
   const sellerReplies = communicationEvents.filter(event => event.direction === "inbound");
   const unmatchedSellerReplies = sellerReplies.filter(event => !event.matched_lead_id && !event.matched_deal_id);
   const activeProjects = projects.filter(p => !["sold", "passed"].includes(p.status)).slice(0, 3);
@@ -360,7 +362,7 @@ export default function DashboardPage() {
   const operationsCount = openCapitalCalls.length + suggestedCapitalCalls.length + pendingReimbursements.length + unmatchedSellerReplies.length + unreviewedVaBriefs.length;
 
   const activity = [
-    ...notifications.slice(0, 4).map(n => ({
+    ...operationalNotifications.slice(0, 4).map(n => ({
       id: `notice-${n.id}`,
       title: n.title,
       detail: n.body || "Notification",
@@ -500,9 +502,9 @@ export default function DashboardPage() {
             </DecisionCenterCard>
           </div>
 
-          {notifications.length > 0 && (
+          {operationalNotifications.length > 0 && (
             <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 14 }}>
-              {notifications.slice(0, 3).map(notice => (
+              {operationalNotifications.slice(0, 3).map(notice => (
                 <div key={notice.id} style={{
                   background: notice.priority === "urgent" ? "rgba(20,17,13,0.10)" : "rgba(176,137,84,0.12)",
                   border: `1px solid ${notice.priority === "urgent" ? obsidian : brass}`,

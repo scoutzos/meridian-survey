@@ -1576,6 +1576,8 @@ Completed in this pass:
 - Home, Tasks, Deal Reviews, CRM, Money, Operations, and Projects remain first-level member destinations.
 - Docs, Meetings, Applications, Decisions, Surveys, and Hub moved under a More menu instead of competing with daily work.
 - CRM is now a normal member navigation destination, while the header CTA focuses on creating a new deal brief.
+- Member dashboard now suppresses duplicate vote notifications from general alerts/activity once they are already represented in the review queue.
+- Hot deal signals no longer double-count deals that are already waiting for the member's vote.
 
 Risk: Medium.
 
