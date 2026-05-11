@@ -1590,7 +1590,7 @@ Risk: Medium.
 
 ### Phase 5: Data Integrity And QA
 
-Status: Upcoming
+Status: In Progress
 
 Work:
 
@@ -1599,6 +1599,16 @@ Work:
 - Confirm Vercel/Supabase/Sakari.
 - Confirm production permissions.
 - Fix edge cases.
+
+Completed in this pass:
+
+- Added `Production_QA_Runbook.md` with exact production QA flows for identity, imports, Sakari SMS, VA daily brief, deal packet/member vote, CRM disposition, member-to-VA tasks, money/projects/documents/meetings, RLS, and launch decision criteria.
+- Converted Phase 5 from a vague checklist into executable pass/fail tests tied to the expected Supabase records.
+
+Remaining:
+
+- Run the production QA runbook against the live Vercel deployment with real Supabase data and Sakari test numbers.
+- Fix any RLS, data integrity, or workflow bugs found during the run.
 
 Risk: High until complete.
 
