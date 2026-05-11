@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useState, useEffect, useRef } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { fetchDeals, type Deal } from "@/lib/deals";
 import { fetchImportedLandLeads, type ImportedLandLead } from "@/lib/land-leads";
@@ -55,6 +55,8 @@ function dealMeta(deal: Deal): string {
 export default function GlobalLeadSearch() {
   const router = useRouter();
   const pathname = usePathname();
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const inputRef = useRef<HTMLInputElement | null>(null);
   const [user, setUser] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [loaded, setLoaded] = useState(false);
@@ -69,6 +71,27 @@ export default function GlobalLeadSearch() {
 
   const shouldShow = !!user && pathname !== "/" && pathname !== "/apply";
   const crmShell = ["/crm", "/va", "/deals", "/opportunity", "/actions", "/operations", "/meetings"].some(route => pathname === route || pathname.startsWith(route + "/"));
+
+  useEffect(() => {
+    if (!open) return;
+
+    const handlePointerDown = (event: PointerEvent) => {
+      if (rootRef.current && !rootRef.current.contains(event.target as Node)) {
+        setOpen(false);
+      }
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [open]);
 
   const loadSearchData = async () => {
     if (loaded || loading) return;
@@ -128,36 +151,54 @@ export default function GlobalLeadSearch() {
   if (!shouldShow) return null;
 
   return (
-    <div className="global-lead-search">
-      {!crmShell && <span className="global-lead-search-label">Lead search</span>}
-      <div style={{ position: "relative" }}>
+    <div className="global-lead-search" ref={rootRef}>
+      <button
+        type="button"
+        aria-label="Open lead search"
+        title="Search leads and deals"
+        className="global-lead-search-trigger"
+        onClick={() => {
+          setOpen(current => {
+            const next = !current;
+            if (next) {
+              void loadSearchData();
+              window.setTimeout(() => inputRef.current?.focus(), 40);
+            }
+            return next;
+          });
+        }}
+      >
+        <span aria-hidden="true">⌕</span>
+      </button>
+
+      {open && (
+      <div className="global-lead-search-panel">
+        <p className="global-lead-search-label">Lead search</p>
         <input
+          ref={inputRef}
           value={query}
           onFocus={() => { setOpen(true); void loadSearchData(); }}
           onChange={e => { setQuery(e.target.value); setOpen(true); void loadSearchData(); }}
           placeholder="Search by seller, phone, parcel ID, county, buyer..."
           style={{
             width: "100%",
-            height: 38,
-            borderRadius: 6,
+            height: 42,
+            borderRadius: 8,
             border: "1px solid rgba(201,168,120,0.45)",
             background: "var(--bone)",
             color: "var(--ink)",
-            padding: "0 12px",
+            padding: "0 13px",
             fontSize: 13,
             fontFamily: "var(--font-body)",
+            outline: "none",
           }}
         />
         {open && (query.trim() || loading) && (
           <div style={{
-            position: "absolute",
-            top: "calc(100% + 6px)",
-            left: 0,
-            right: 0,
+            marginTop: 8,
             background: "var(--bone)",
             border: "1px solid var(--fog)",
             borderRadius: 8,
-            boxShadow: "0 18px 44px rgba(20,17,13,0.22)",
             overflow: "hidden",
           }}>
             {loading && <p style={emptyStyle}>Loading leads...</p>}
@@ -192,24 +233,49 @@ export default function GlobalLeadSearch() {
           </div>
         )}
       </div>
+      )}
       <style jsx>{`
         .global-lead-search {
           position: fixed;
-          top: ${crmShell ? "10px" : "70px"};
-          left: ${crmShell ? "calc(156px + 28px)" : "50%"};
-          width: ${crmShell ? "min(560px, calc(100vw - 560px))" : "min(680px, calc(100vw - 40px))"};
-          transform: ${crmShell ? "none" : "translateX(-50%)"};
-          z-index: 260;
+          top: ${crmShell ? "10px" : "11px"};
+          right: ${crmShell ? "292px" : "clamp(260px, 24vw, 430px)"};
+          z-index: 320;
+        }
+        .global-lead-search-trigger {
+          width: 38px;
+          height: 38px;
           display: grid;
-          grid-template-columns: ${crmShell ? "1fr" : "auto minmax(0, 1fr)"};
-          gap: 10px;
-          align-items: center;
-          padding: ${crmShell ? "0" : "8px"};
-          border: ${crmShell ? "none" : "1px solid rgba(201,168,120,0.32)"};
-          border-radius: ${crmShell ? "0" : "10px"};
-          background: ${crmShell ? "transparent" : "rgba(27,23,18,0.92)"};
-          box-shadow: ${crmShell ? "none" : "0 16px 42px rgba(20,17,13,0.2)"};
-          backdrop-filter: blur(10px);
+          place-items: center;
+          border-radius: 999px;
+          border: 1px solid ${crmShell ? "var(--fog)" : "rgba(214,205,183,0.22)"};
+          background: ${crmShell ? "rgba(255,252,245,0.9)" : "rgba(237,230,214,0.06)"};
+          color: ${crmShell ? "var(--obsidian)" : "var(--bone)"};
+          box-shadow: ${crmShell ? "0 8px 24px rgba(20,17,13,0.08)" : "none"};
+          cursor: pointer;
+          font-family: var(--font-body);
+          transition: background 0.15s, border-color 0.15s, color 0.15s;
+        }
+        .global-lead-search-trigger:hover {
+          background: ${crmShell ? "var(--bone)" : "rgba(201,168,120,0.18)"};
+          border-color: var(--brass);
+          color: var(--brass);
+        }
+        .global-lead-search-trigger span {
+          font-size: 25px;
+          line-height: 1;
+          transform: translateY(-1px);
+        }
+        .global-lead-search-panel {
+          position: absolute;
+          top: calc(100% + 10px);
+          right: 0;
+          width: min(520px, calc(100vw - 32px));
+          padding: 10px;
+          border: 1px solid rgba(201,168,120,0.32);
+          border-radius: 12px;
+          background: rgba(27,23,18,0.95);
+          box-shadow: 0 24px 58px rgba(20,17,13,0.28);
+          backdrop-filter: blur(12px);
         }
         .global-lead-search-label {
           color: var(--brass);
@@ -218,17 +284,26 @@ export default function GlobalLeadSearch() {
           letter-spacing: 0.14em;
           text-transform: uppercase;
           white-space: nowrap;
+          margin-bottom: 7px;
         }
         @media (max-width: 767px) {
           .global-lead-search {
-            top: ${crmShell ? "56px" : "calc(10px + env(safe-area-inset-top))"};
+            top: calc(9px + env(safe-area-inset-top));
+            right: 12px;
+          }
+          .global-lead-search-trigger {
+            width: 40px;
+            height: 40px;
+            background: rgba(20,17,13,0.94);
+            color: var(--bone);
+            border-color: rgba(201,168,120,0.34);
+          }
+          .global-lead-search-panel {
+            position: fixed;
+            top: calc(58px + env(safe-area-inset-top));
             left: 12px;
             right: 12px;
-            bottom: auto;
             width: auto;
-            transform: none;
-            grid-template-columns: 1fr;
-            gap: 6px;
           }
         }
       `}</style>
