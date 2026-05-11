@@ -1492,11 +1492,15 @@ Completed in this pass:
   - Escalation responses are stored as `comment` events in task history.
   - The VA receives a high-priority notification when a member replies to a blocked task.
   - Operations shows the latest member responses under each blocked VA task.
+- Continued with general task comments:
+  - Member task detail now includes a comment box for any action item or VA task.
+  - Comments are stored as `comment` events in the durable task history.
+  - Task comments notify the other owner/requester when a clear recipient exists.
 
 Remaining:
 
 - Add linked-record selectors for documents once document ownership/indexing is cleaned up.
-- Extend task events to support reassignment events and general task comments outside blocked-task escalations.
+- Extend task events to support reassignment events.
 - Add notification deduplication/read-state cleanup if blocked-task alerts become too noisy.
 - Cut over from client-side prototype login to Supabase Auth, then remove prototype anon policies and verify the staged RLS policies with real member and VA users.
 - Decide whether a member escalation response should also reopen the task automatically or leave the VA to restart it.

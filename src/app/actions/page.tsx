@@ -26,6 +26,7 @@ import { fetchProjects, type Project } from "@/lib/projects";
 import {
   ALL_MEMBERS_LABEL,
   VA_ASSIGNEE_LABEL,
+  addActionItemComment,
   createActionItem,
   deleteActionItem,
   fetchActionItemEvents,
@@ -37,6 +38,7 @@ import {
   type ActionItemEvent,
   type ActionItemStatus,
 } from "@/lib/action-items";
+import { createNotification } from "@/lib/operations";
 import { labelForStatus } from "@/lib/status-map";
 
 const DISPLAY_FONT = "var(--font-display)";
@@ -119,6 +121,7 @@ export default function ActionsPage() {
   const [surveyCounts, setSurveyCounts] = useState<Record<string, number>>({});
   const [filter, setFilter] = useState<TaskFilter>("needs-me");
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+  const [taskComments, setTaskComments] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [showNew, setShowNew] = useState(false);
   const [draft, setDraft] = useState({
@@ -413,6 +416,42 @@ export default function ActionsPage() {
     setTaskEvents(prev => prev.filter(event => event.action_item_id !== item.id));
   };
 
+  const handleAddTaskComment = async (item: ActionItem) => {
+    const note = (taskComments[item.id] || "").trim();
+    if (!note) return;
+    const { error } = await addActionItemComment(item.id, user, note);
+    if (error) { alert(error); return; }
+    const now = new Date().toISOString();
+    setTaskEvents(prev => [
+      ...prev,
+      {
+        id: `local-comment-${item.id}-${now}`,
+        action_item_id: item.id,
+        event_type: "comment",
+        previous_status: null,
+        next_status: null,
+        note,
+        created_by: user,
+        created_at: now,
+      },
+    ]);
+    setItems(prev => prev.map(row => row.id === item.id ? { ...row, updated_at: now, updated_by: user } : row));
+    setTaskComments(prev => ({ ...prev, [item.id]: "" }));
+    const recipient = item.created_by === user ? item.assigned_to : item.created_by;
+    if (recipient && recipient !== ALL_MEMBERS_LABEL && recipient !== user) {
+      await createNotification({
+        title: `Task reply: ${item.title}`,
+        body: note,
+        priority: item.status === "blocked" ? "high" : "normal",
+        assigned_to: recipient,
+        href: "/actions",
+        source_table: "action_items",
+        source_id: item.id,
+        notification_type: "task-comment",
+      }, user);
+    }
+  };
+
   const handleCreate = async () => {
     if (!draft.title.trim()) { alert("Title is required."); return; }
     setSaving(true);
@@ -694,6 +733,9 @@ export default function ActionsPage() {
             <TaskDetailPanel
               task={selectedTask}
               events={taskEventsById[selectedTask.id] ?? []}
+              commentValue={taskComments[selectedTask.id] || ""}
+              onCommentChange={value => setTaskComments(prev => ({ ...prev, [selectedTask.id]: value }))}
+              onAddComment={() => handleAddTaskComment(selectedTask)}
               onClose={() => setSelectedTaskId(null)}
               onOpenRecord={() => router.push(taskHref(selectedTask))}
               onStart={() => handleStatusChange(selectedTask, "in-progress")}
@@ -884,22 +926,28 @@ function TaskSummaryCard({
 function TaskDetailPanel({
   task,
   events,
+  commentValue,
   onClose,
   onOpenRecord,
   onStart,
   onBlock,
   onDone,
   onReopen,
+  onCommentChange,
+  onAddComment,
   onDelete,
 }: {
   task: ActionItem;
   events: ActionItemEvent[];
+  commentValue: string;
   onClose: () => void;
   onOpenRecord: () => void;
   onStart: () => void;
   onBlock: () => void;
   onDone: () => void;
   onReopen: () => void;
+  onCommentChange: (value: string) => void;
+  onAddComment: () => void;
   onDelete?: () => void;
 }) {
   const fallbackHistory = [
@@ -982,6 +1030,33 @@ function TaskDetailPanel({
             </span>
           </div>
         ))}
+      </div>
+
+      <div style={{ background: "var(--bone)", border: "1px solid var(--fog)", borderRadius: 10, padding: 12, marginBottom: 14 }}>
+        <label style={{ ...labelStyle, marginBottom: 8 }}>Add Comment</label>
+        <textarea
+          value={commentValue}
+          onChange={event => onCommentChange(event.target.value)}
+          placeholder="Add an update, answer, instruction, or context for this task..."
+          style={{
+            width: "100%",
+            minHeight: 78,
+            border: "1px solid var(--fog)",
+            borderRadius: 8,
+            background: "var(--surface)",
+            color: "var(--ink)",
+            padding: "10px 12px",
+            fontSize: 13,
+            lineHeight: 1.45,
+            resize: "vertical",
+            outline: "none",
+            marginBottom: 8,
+          }}
+        />
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+          <p style={{ color: "var(--muted)", fontSize: 12 }}>Saved to task history and notifies the other owner when available.</p>
+          <button onClick={onAddComment} disabled={!commentValue.trim()} style={primaryBtnStyle}>Post Comment</button>
+        </div>
       </div>
 
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
