@@ -249,10 +249,10 @@ export default function HubPage() {
           Member Portal
         </p>
         <h1 style={{ fontFamily: DISPLAY_FONT, fontSize: "clamp(34px, 5vw, 48px)", fontWeight: 500, color: "var(--obsidian)", marginBottom: 6 }}>
-          Platform Hub
+          Platform Archive
         </h1>
         <p style={{ color: "var(--ink)", opacity: 0.68, fontSize: 14, maxWidth: 690, lineHeight: 1.6 }}>
-          A shared directory for announcements, member profiles, resource links, transcript archives, and legacy uploads. Focused work still happens in the dedicated member pages.
+          A shared archive for announcements, member profiles, resource links, transcript history, and legacy uploads. Daily operating work now lives in Dashboard, Tasks, CRM, Deals, Operations, Money, Projects, Documents, and Meetings.
         </p>
       </header>
 
@@ -307,7 +307,7 @@ export default function HubPage() {
       </section>
 
       <div style={{ background: "rgba(201,168,120,0.1)", border: "1px solid rgba(201,168,120,0.2)", borderRadius: 10, padding: "12px 14px", fontSize: 12, color: "var(--muted)", marginBottom: 24, lineHeight: 1.55 }}>
-        Use this page for group-wide posts and older shared resources. Use Documents for final files, Decisions for the official vote record, Meetings for agenda and transcript extraction, and CRM for deal activity.
+        Use this page for group-wide posts and older shared resources. Use Documents for final files, Decisions for the official vote record, Meetings for agendas and transcript extraction, and CRM for deal activity.
       </div>
 
       <nav className="hub-section-jump" aria-label="Hub sections">

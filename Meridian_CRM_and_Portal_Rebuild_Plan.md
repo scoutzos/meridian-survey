@@ -1560,7 +1560,7 @@ Risk: High. Disposition is a core part of land/deal monetization.
 
 ### Phase 4: Member Portal Final IA
 
-Status: In Progress
+Status: Complete structurally
 
 Work:
 
@@ -1579,6 +1579,12 @@ Completed in this pass:
 - Member dashboard now suppresses duplicate vote notifications from general alerts/activity once they are already represented in the review queue.
 - Hot deal signals no longer double-count deals that are already waiting for the member's vote.
 - Mobile bottom navigation now keeps CRM in the primary bar so the member portal and CRM do not feel like separate products.
+- Hub role clarified as the Platform Archive: announcements, profiles, resources, transcript history, and legacy uploads, not the daily operating home.
+
+Remaining:
+
+- Real-user walkthrough to confirm labels feel natural to members and VA.
+- Decide whether to hide or retain older survey/result routes after onboarding is complete.
 
 Risk: Medium.
 
