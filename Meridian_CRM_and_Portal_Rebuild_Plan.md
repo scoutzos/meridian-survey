@@ -1496,11 +1496,15 @@ Completed in this pass:
   - Member task detail now includes a comment box for any action item or VA task.
   - Comments are stored as `comment` events in the durable task history.
   - Task comments notify the other owner/requester when a clear recipient exists.
+- Continued with reassignment history:
+  - Added migration `039_action_item_reassignment_events.sql`.
+  - Member task detail now supports reassignment from the task record.
+  - Reassignments are stored as `reassigned` events in task history.
+  - New task assignees receive a notification when a task is reassigned to them.
 
 Remaining:
 
 - Add linked-record selectors for documents once document ownership/indexing is cleaned up.
-- Extend task events to support reassignment events.
 - Add notification deduplication/read-state cleanup if blocked-task alerts become too noisy.
 - Cut over from client-side prototype login to Supabase Auth, then remove prototype anon policies and verify the staged RLS policies with real member and VA users.
 - Decide whether a member escalation response should also reopen the task automatically or leave the VA to restart it.

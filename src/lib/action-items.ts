@@ -4,7 +4,7 @@ import { supabase } from "./supabase";
 
 export type ActionItemStatus = "open" | "in-progress" | "blocked" | "done";
 export type ActionItemTaskType = "general" | "va-work" | "meeting-follow-up" | "deal-follow-up" | "project-task" | "document-review" | "money-approval";
-export type ActionItemEventType = "created" | "status-changed" | "completed" | "blocked" | "reopened" | "deleted" | "comment";
+export type ActionItemEventType = "created" | "status-changed" | "completed" | "blocked" | "reopened" | "deleted" | "comment" | "reassigned";
 
 export interface ActionItem {
   id: string;
@@ -179,6 +179,34 @@ export async function addActionItemComment(id: string, actor: string, note: stri
     .update({ updated_at: new Date().toISOString(), updated_by: actor })
     .eq("id", id);
   return { error: error?.message ?? null };
+}
+
+export async function reassignActionItem(id: string, actor: string, assignedTo: string): Promise<{ data: ActionItem | null; error: string | null }> {
+  if (!supabase) return { data: null, error: "Supabase not configured" };
+  const assignee = assignedTo.trim();
+  if (!assignee) return { data: null, error: "Assignee is required" };
+  const { data: existing } = await supabase
+    .from("action_items")
+    .select("assigned_to")
+    .eq("id", id)
+    .maybeSingle();
+  const previousAssignee = existing?.assigned_to as string | null | undefined;
+  const { data, error } = await supabase
+    .from("action_items")
+    .update({
+      assigned_to: assignee,
+      task_type: assignee === VA_ASSIGNEE_LABEL ? "va-work" : "general",
+      updated_at: new Date().toISOString(),
+      updated_by: actor,
+    })
+    .eq("id", id)
+    .select()
+    .single();
+  if (error || !data) return { data: null, error: error?.message ?? null };
+  await recordActionItemEvent(id, "reassigned", actor, {
+    note: `Reassigned from ${previousAssignee || "Unassigned"} to ${assignee}.`,
+  });
+  return { data: data as ActionItem, error: null };
 }
 
 export async function deleteActionItem(id: string, actor: string): Promise<{ error: string | null }> {

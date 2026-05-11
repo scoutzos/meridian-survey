@@ -33,6 +33,7 @@ import {
   fetchActionItems,
   isOwnedBy,
   isVaTask,
+  reassignActionItem,
   updateActionItemStatus,
   type ActionItem,
   type ActionItemEvent,
@@ -122,6 +123,7 @@ export default function ActionsPage() {
   const [filter, setFilter] = useState<TaskFilter>("needs-me");
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [taskComments, setTaskComments] = useState<Record<string, string>>({});
+  const [taskAssignees, setTaskAssignees] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [showNew, setShowNew] = useState(false);
   const [draft, setDraft] = useState({
@@ -452,6 +454,42 @@ export default function ActionsPage() {
     }
   };
 
+  const handleReassignTask = async (item: ActionItem) => {
+    const assignedTo = taskAssignees[item.id] || item.assigned_to || ALL_MEMBERS_LABEL;
+    if (!assignedTo || assignedTo === item.assigned_to) return;
+    const { data, error } = await reassignActionItem(item.id, user, assignedTo);
+    if (error) { alert(error); return; }
+    const updated = data ?? { ...item, assigned_to: assignedTo, task_type: assignedTo === VA_ASSIGNEE_LABEL ? "va-work" as const : "general" as const };
+    const now = updated.updated_at || new Date().toISOString();
+    setItems(prev => prev.map(row => row.id === item.id ? updated : row));
+    setTaskEvents(prev => [
+      ...prev,
+      {
+        id: `local-reassigned-${item.id}-${now}`,
+        action_item_id: item.id,
+        event_type: "reassigned",
+        previous_status: null,
+        next_status: null,
+        note: `Reassigned from ${item.assigned_to || "Unassigned"} to ${assignedTo}.`,
+        created_by: user,
+        created_at: now,
+      },
+    ]);
+    setTaskAssignees(prev => ({ ...prev, [item.id]: assignedTo }));
+    if (assignedTo !== ALL_MEMBERS_LABEL && assignedTo !== user) {
+      await createNotification({
+        title: `Task assigned: ${item.title}`,
+        body: `${user} reassigned this task to you.`,
+        priority: updated.priority === "urgent" ? "urgent" : updated.priority === "high" ? "high" : "normal",
+        assigned_to: assignedTo,
+        href: "/actions",
+        source_table: "action_items",
+        source_id: item.id,
+        notification_type: "task-reassigned",
+      }, user);
+    }
+  };
+
   const handleCreate = async () => {
     if (!draft.title.trim()) { alert("Title is required."); return; }
     setSaving(true);
@@ -734,8 +772,12 @@ export default function ActionsPage() {
               task={selectedTask}
               events={taskEventsById[selectedTask.id] ?? []}
               commentValue={taskComments[selectedTask.id] || ""}
+              assigneeValue={taskAssignees[selectedTask.id] || selectedTask.assigned_to || ALL_MEMBERS_LABEL}
+              assigneeOptions={[ALL_MEMBERS_LABEL, VA_ASSIGNEE_LABEL, ...MEMBERS]}
               onCommentChange={value => setTaskComments(prev => ({ ...prev, [selectedTask.id]: value }))}
               onAddComment={() => handleAddTaskComment(selectedTask)}
+              onAssigneeChange={value => setTaskAssignees(prev => ({ ...prev, [selectedTask.id]: value }))}
+              onReassign={() => handleReassignTask(selectedTask)}
               onClose={() => setSelectedTaskId(null)}
               onOpenRecord={() => router.push(taskHref(selectedTask))}
               onStart={() => handleStatusChange(selectedTask, "in-progress")}
@@ -927,6 +969,8 @@ function TaskDetailPanel({
   task,
   events,
   commentValue,
+  assigneeValue,
+  assigneeOptions,
   onClose,
   onOpenRecord,
   onStart,
@@ -935,11 +979,15 @@ function TaskDetailPanel({
   onReopen,
   onCommentChange,
   onAddComment,
+  onAssigneeChange,
+  onReassign,
   onDelete,
 }: {
   task: ActionItem;
   events: ActionItemEvent[];
   commentValue: string;
+  assigneeValue: string;
+  assigneeOptions: string[];
   onClose: () => void;
   onOpenRecord: () => void;
   onStart: () => void;
@@ -948,6 +996,8 @@ function TaskDetailPanel({
   onReopen: () => void;
   onCommentChange: (value: string) => void;
   onAddComment: () => void;
+  onAssigneeChange: (value: string) => void;
+  onReassign: () => void;
   onDelete?: () => void;
 }) {
   const fallbackHistory = [
@@ -1020,6 +1070,29 @@ function TaskDetailPanel({
         </div>
       )}
 
+      <div style={{ background: "var(--bone)", border: "1px solid var(--fog)", borderRadius: 10, padding: 12, marginBottom: 14 }}>
+        <label style={{ ...labelStyle, marginBottom: 8 }}>Reassign Task</label>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <select
+            value={assigneeValue}
+            onChange={event => onAssigneeChange(event.target.value)}
+            style={{
+              minWidth: 220,
+              flex: "1 1 220px",
+              border: "1px solid var(--fog)",
+              borderRadius: 8,
+              background: "var(--surface)",
+              color: "var(--ink)",
+              padding: "10px 12px",
+              fontSize: 13,
+            }}
+          >
+            {assigneeOptions.map(option => <option key={option} value={option}>{option}</option>)}
+          </select>
+          <button onClick={onReassign} disabled={assigneeValue === (task.assigned_to || ALL_MEMBERS_LABEL)} style={subtleBtnStyle}>Reassign</button>
+        </div>
+      </div>
+
       <div style={{ display: "grid", gap: 8, marginBottom: 14 }}>
         <p style={{ fontSize: 11, fontWeight: 900, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--brass)" }}>History</p>
         {history.map((event, index) => (
@@ -1078,6 +1151,7 @@ function eventLabel(event: ActionItemEvent): string {
   if (event.event_type === "reopened") return "Reopened";
   if (event.event_type === "deleted") return "Deleted";
   if (event.event_type === "comment") return "Comment";
+  if (event.event_type === "reassigned") return "Reassigned";
   return "Status Changed";
 }
 
