@@ -29,6 +29,22 @@ const DOCS: Doc[] = [
     dateAdded: "2026-05-11",
   },
   {
+    title: "Production QA Runbook",
+    description: "Pass/fail checklist for live Supabase, Vercel, Sakari, VA, member, CRM, disposition, and permission testing.",
+    type: "Doc",
+    category: "Platform",
+    href: "/docs/production-qa-runbook.md",
+    dateAdded: "2026-05-11",
+  },
+  {
+    title: "Supabase Auth Cutover Runbook",
+    description: "Step-by-step path for migrating members and the VA from prototype login to Supabase Auth without breaking work routing.",
+    type: "Doc",
+    category: "Platform",
+    href: "/docs/supabase-auth-cutover-runbook.md",
+    dateAdded: "2026-05-11",
+  },
+  {
     title: "Operating Agreement Working Draft",
     description: "Governing document for Meridian Collective LLC. Currently in revision with the LegalShield attorney.",
     type: "Working Draft",
