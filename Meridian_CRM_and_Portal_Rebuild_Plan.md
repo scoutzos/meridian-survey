@@ -1578,6 +1578,7 @@ Completed in this pass:
 - CRM is now a normal member navigation destination, while the header CTA focuses on creating a new deal brief.
 - Member dashboard now suppresses duplicate vote notifications from general alerts/activity once they are already represented in the review queue.
 - Hot deal signals no longer double-count deals that are already waiting for the member's vote.
+- Mobile bottom navigation now keeps CRM in the primary bar so the member portal and CRM do not feel like separate products.
 
 Risk: Medium.
 

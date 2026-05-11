@@ -7,11 +7,11 @@ const PRIMARY = [
   { href: "/dashboard",  label: "Home" },
   { href: "/actions",    label: "Tasks" },
   { href: "/deals",      label: "Deals" },
-  { href: "/tracker",    label: "Money" },
+  { href: "/crm",        label: "CRM" },
 ];
 
 const MORE = [
-  { href: "/crm",        label: "CRM" },
+  { href: "/tracker",    label: "Money" },
   { href: "/operations", label: "Operations" },
   { href: "/projects",   label: "Projects" },
   { href: "/meetings",   label: "Meetings" },
