@@ -1,7 +1,7 @@
 "use client";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { MEMBERS, categories } from "@/data/questions";
+import { categories } from "@/data/questions";
 import {
   type Transcript,
   fetchTranscripts,
@@ -24,6 +24,7 @@ import {
   type MemberProfile,
   type SharedLink,
 } from "@/lib/hub";
+import { fetchActiveMemberNames } from "@/lib/members";
 
 const DOC_CATEGORIES = ["Legal", "Financial", "Research", "Meeting Notes", "Other"];
 const LINK_CATEGORIES = ["Mentorship", "Legal", "Financial", "Education", "Networking", "Tools", "Other"];
@@ -57,6 +58,7 @@ export default function HubPage() {
   const transcriptSearchTimer = useRef<NodeJS.Timeout | null>(null);
   const [links, setLinks] = useState<SharedLink[]>([]);
   const [profiles, setProfiles] = useState<Record<string, MemberProfile>>({});
+  const [memberNames, setMemberNames] = useState<string[]>([]);
   const [message, setMessage] = useState("");
 
   // Form state
@@ -73,13 +75,14 @@ export default function HubPage() {
     if (!u) { router.push("/"); return; }
     setUser(u);
     void (async () => {
-      const [hub, transcriptRows] = await Promise.all([fetchHubData(), fetchTranscripts()]);
+      const [hub, transcriptRows, activeMembers] = await Promise.all([fetchHubData(), fetchTranscripts(), fetchActiveMemberNames()]);
       setAnnouncements(hub.announcements);
       setDecisions(hub.decisions);
       setDocuments(hub.documents);
       setLinks(hub.links);
       setProfiles(hub.profiles);
       setTranscripts(transcriptRows);
+      setMemberNames(activeMembers);
 
       const existing = hub.profiles[u] || { name: u, role: "", contact: "", lastActive: "" };
       const profile = { ...existing, name: u, lastActive: new Date().toISOString() };
@@ -248,7 +251,7 @@ export default function HubPage() {
   const openHubSection = (section: string) => setOpenSections(prev => ({ ...prev, [section]: true }));
 
   if (!user) return null;
-  const completedSurveys = MEMBERS.filter(m => getMemberCompletion(m) === 100).length;
+  const completedSurveys = memberNames.filter(m => getMemberCompletion(m) === 100).length;
 
   return (
     <div style={{ padding: "84px 20px 100px", maxWidth: 1120, margin: "0 auto" }} className="hub-root">
@@ -288,7 +291,7 @@ export default function HubPage() {
         </article>
         <article className="hub-status-card">
           <span>Survey Completion</span>
-          <strong>{completedSurveys}/{MEMBERS.length}</strong>
+          <strong>{completedSurveys}/{memberNames.length}</strong>
           <p>Member operating agreement input.</p>
         </article>
       </section>
@@ -493,7 +496,7 @@ export default function HubPage() {
         </div>
         {openSections.profiles && (
           <div style={sectionBody}>
-            {MEMBERS.map(m => {
+            {memberNames.map(m => {
               const p = profiles[m];
               const completion = getMemberCompletion(m);
               const isMe = m === user;
@@ -542,7 +545,7 @@ export default function HubPage() {
             <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 16, background: "var(--surface2)", borderRadius: 8, padding: 14 }}>
               <textarea style={{ ...inputStyle, minHeight: 60 }} placeholder="Describe the decision..." value={newDecision.description} onChange={e => setNewDecision({ ...newDecision, description: e.target.value })} />
               <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                {MEMBERS.map(m => (
+                {memberNames.map(m => (
                   <label key={m} style={{ fontSize: 12, display: "flex", alignItems: "center", gap: 4, cursor: "pointer" }}>
                     <input type="checkbox" checked={newDecision.present.includes(m)} onChange={() => setNewDecision(prev => ({
                       ...prev, present: prev.present.includes(m) ? prev.present.filter(x => x !== m) : [...prev.present, m]
