@@ -1483,11 +1483,15 @@ Completed in this pass:
   - Added migration `037_work_routing_rls_readiness.sql` with Supabase Auth-ready helper functions and authenticated policies for `action_items` and `meridian_notifications`.
   - Documented the cutover requirement: Supabase Auth must provide a `member_name` claim or `user_metadata.member_name` before prototype anon policies are removed.
   - Staged policy rules so members can create/own/review member work, the VA can update assigned VA work, and admins can delete action items after Auth cutover.
+- Continued with durable task history:
+  - Added migration `038_action_item_events.sql` for a persistent task event stream.
+  - Status changes, completions, blockers, reopen events, creates, and deletes are now logged as task events when the migration is present.
+  - The member task detail panel now reads the task event stream and falls back to legacy created/updated/completed fields if no events exist yet.
 
 Remaining:
 
 - Add linked-record selectors for documents once document ownership/indexing is cleaned up.
-- Add a persistent task event/audit table if we need every status change, reassignment, comment, and notification preserved beyond the current task fields.
+- Extend task events to support member comments/replies and reassignment events.
 - Add notification deduplication/read-state cleanup if blocked-task alerts become too noisy.
 - Cut over from client-side prototype login to Supabase Auth, then remove prototype anon policies and verify the staged RLS policies with real member and VA users.
 - Confirm whether blocked VA tasks should support a one-click member response/comment from Operations or stay routed through Actions.

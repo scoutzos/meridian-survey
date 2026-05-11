@@ -4,6 +4,7 @@ import { supabase } from "./supabase";
 
 export type ActionItemStatus = "open" | "in-progress" | "blocked" | "done";
 export type ActionItemTaskType = "general" | "va-work" | "meeting-follow-up" | "deal-follow-up" | "project-task" | "document-review" | "money-approval";
+export type ActionItemEventType = "created" | "status-changed" | "completed" | "blocked" | "reopened" | "deleted" | "comment";
 
 export interface ActionItem {
   id: string;
@@ -27,6 +28,17 @@ export interface ActionItem {
   deleted_at: string | null;
 }
 
+export interface ActionItemEvent {
+  id: string;
+  action_item_id: string;
+  event_type: ActionItemEventType;
+  previous_status: ActionItemStatus | null;
+  next_status: ActionItemStatus | null;
+  note: string | null;
+  created_by: string | null;
+  created_at: string;
+}
+
 export const ALL_MEMBERS_LABEL = "All Members";
 export const VA_ASSIGNEE_LABEL = "Sophie / VA";
 
@@ -48,6 +60,41 @@ export async function fetchActionItems(): Promise<ActionItem[]> {
     .order("created_at", { ascending: true });
   if (error || !data) return [];
   return (data as ActionItem[]).filter(isVisibleActionItem);
+}
+
+export async function fetchActionItemEvents(actionItemIds: string[]): Promise<ActionItemEvent[]> {
+  if (!supabase || actionItemIds.length === 0) return [];
+  const { data, error } = await supabase
+    .from("action_item_events")
+    .select("*")
+    .in("action_item_id", actionItemIds)
+    .order("created_at", { ascending: true });
+  if (error || !data) return [];
+  return data as ActionItemEvent[];
+}
+
+function eventTypeForStatus(status: ActionItemStatus): ActionItemEventType {
+  if (status === "done") return "completed";
+  if (status === "blocked") return "blocked";
+  if (status === "open") return "reopened";
+  return "status-changed";
+}
+
+async function recordActionItemEvent(
+  actionItemId: string,
+  eventType: ActionItemEventType,
+  actor: string,
+  options: { previous_status?: ActionItemStatus | null; next_status?: ActionItemStatus | null; note?: string | null } = {},
+): Promise<void> {
+  if (!supabase) return;
+  await supabase.from("action_item_events").insert({
+    action_item_id: actionItemId,
+    event_type: eventType,
+    previous_status: options.previous_status || null,
+    next_status: options.next_status || null,
+    note: options.note?.trim() || null,
+    created_by: actor,
+  });
 }
 
 export async function createActionItem(
@@ -81,7 +128,10 @@ export async function createActionItem(
     })
     .select()
     .single();
-  return { data: (data as ActionItem) ?? null, error: error?.message ?? null };
+  if (error || !data) return { data: null, error: error?.message ?? null };
+  const item = data as ActionItem;
+  await recordActionItemEvent(item.id, "created", actor, { next_status: "open" });
+  return { data: item, error: null };
 }
 
 export async function updateActionItemStatus(
@@ -91,6 +141,12 @@ export async function updateActionItemStatus(
   note = "",
 ): Promise<{ error: string | null }> {
   if (!supabase) return { error: "Supabase not configured" };
+  const { data: existing } = await supabase
+    .from("action_items")
+    .select("status")
+    .eq("id", id)
+    .maybeSingle();
+  const previousStatus = (existing?.status as ActionItemStatus | undefined) ?? null;
   const { error } = await supabase
     .from("action_items")
     .update({
@@ -103,6 +159,13 @@ export async function updateActionItemStatus(
       updated_by: actor,
     })
     .eq("id", id);
+  if (!error) {
+    await recordActionItemEvent(id, eventTypeForStatus(status), actor, {
+      previous_status: previousStatus,
+      next_status: status,
+      note,
+    });
+  }
   return { error: error?.message ?? null };
 }
 
@@ -112,6 +175,7 @@ export async function deleteActionItem(id: string, actor: string): Promise<{ err
     .from("action_items")
     .update({ deleted_at: new Date().toISOString(), updated_by: actor })
     .eq("id", id);
+  if (!error) await recordActionItemEvent(id, "deleted", actor);
   return { error: error?.message ?? null };
 }
 

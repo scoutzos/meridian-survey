@@ -28,11 +28,13 @@ import {
   VA_ASSIGNEE_LABEL,
   createActionItem,
   deleteActionItem,
+  fetchActionItemEvents,
   fetchActionItems,
   isOwnedBy,
   isVaTask,
   updateActionItemStatus,
   type ActionItem,
+  type ActionItemEvent,
   type ActionItemStatus,
 } from "@/lib/action-items";
 import { labelForStatus } from "@/lib/status-map";
@@ -104,6 +106,7 @@ export default function ActionsPage() {
   const router = useRouter();
   const [user, setUser] = useState<string | null>(null);
   const [items, setItems] = useState<ActionItem[]>([]);
+  const [taskEvents, setTaskEvents] = useState<ActionItemEvent[]>([]);
   const [profiles, setProfiles] = useState<MemberProfile[]>([]);
   const [candidateVotes, setCandidateVotes] = useState<MembershipCandidate[]>([]);
   const [proposalVotes, setProposalVotes] = useState<PendingExpenseProposalVote[]>([]);
@@ -145,7 +148,9 @@ export default function ActionsPage() {
       fetchProjects(),
       fetchMeetingNotes(),
     ]);
+    const events = await fetchActionItemEvents(data.map(item => item.id));
     setItems(data);
+    setTaskEvents(events);
     setCandidateVotes(pendingCandidates);
     setProposalVotes(pendingProposals);
     setDealVotes(pendingDeals);
@@ -236,6 +241,13 @@ export default function ActionsPage() {
       href: "/meetings",
     })),
   ], [deals, leads, meetings, projects]);
+  const taskEventsById = useMemo(() => {
+    const out: Record<string, ActionItemEvent[]> = {};
+    for (const event of taskEvents) {
+      out[event.action_item_id] = [...(out[event.action_item_id] ?? []), event];
+    }
+    return out;
+  }, [taskEvents]);
   const selectedLink = linkOptions.find(option => `${option.table}:${option.id}` === draft.source_key) ?? null;
 
   if (!user) return null;
@@ -358,6 +370,7 @@ export default function ActionsPage() {
     const { error } = await updateActionItemStatus(item.id, status, user, note);
     if (error) { alert(error); return; }
     const now = new Date().toISOString();
+    const eventType = status === "done" ? "completed" : status === "blocked" ? "blocked" : status === "open" ? "reopened" : "status-changed";
     setItems(prev => prev.map(i => i.id === item.id ? {
       ...i,
       status,
@@ -368,6 +381,19 @@ export default function ActionsPage() {
       completion_note: status === "done" ? note.trim() || null : null,
       blocker_reason: status === "blocked" ? note.trim() || null : null,
     } : i));
+    setTaskEvents(prev => [
+      ...prev,
+      {
+        id: `local-${item.id}-${now}`,
+        action_item_id: item.id,
+        event_type: eventType,
+        previous_status: item.status,
+        next_status: status,
+        note: note.trim() || null,
+        created_by: user,
+        created_at: now,
+      },
+    ]);
   };
 
   const promptStatusChange = async (item: ActionItem, status: ActionItemStatus) => {
@@ -384,6 +410,7 @@ export default function ActionsPage() {
     const { error } = await deleteActionItem(item.id, user);
     if (error) { alert(error); return; }
     setItems(prev => prev.filter(i => i.id !== item.id));
+    setTaskEvents(prev => prev.filter(event => event.action_item_id !== item.id));
   };
 
   const handleCreate = async () => {
@@ -666,6 +693,7 @@ export default function ActionsPage() {
           {selectedTask && (
             <TaskDetailPanel
               task={selectedTask}
+              events={taskEventsById[selectedTask.id] ?? []}
               onClose={() => setSelectedTaskId(null)}
               onOpenRecord={() => router.push(taskHref(selectedTask))}
               onStart={() => handleStatusChange(selectedTask, "in-progress")}
@@ -855,6 +883,7 @@ function TaskSummaryCard({
 
 function TaskDetailPanel({
   task,
+  events,
   onClose,
   onOpenRecord,
   onStart,
@@ -864,6 +893,7 @@ function TaskDetailPanel({
   onDelete,
 }: {
   task: ActionItem;
+  events: ActionItemEvent[];
   onClose: () => void;
   onOpenRecord: () => void;
   onStart: () => void;
@@ -872,7 +902,7 @@ function TaskDetailPanel({
   onReopen: () => void;
   onDelete?: () => void;
 }) {
-  const history = [
+  const fallbackHistory = [
     { label: "Created", who: task.created_by || "Unknown", at: task.created_at, detail: "Task was assigned." },
     task.updated_at !== task.created_at
       ? {
@@ -891,6 +921,14 @@ function TaskDetailPanel({
         }
       : null,
   ].filter((item): item is { label: string; who: string; at: string; detail: string } => Boolean(item));
+  const history = events.length
+    ? events.map(event => ({
+        label: eventLabel(event),
+        who: event.created_by || "Unknown",
+        at: event.created_at,
+        detail: event.note || eventDetail(event),
+      }))
+    : fallbackHistory;
 
   return (
     <section
@@ -956,6 +994,24 @@ function TaskDetailPanel({
       </div>
     </section>
   );
+}
+
+function eventLabel(event: ActionItemEvent): string {
+  if (event.event_type === "created") return "Created";
+  if (event.event_type === "completed") return "Completed";
+  if (event.event_type === "blocked") return "Blocked";
+  if (event.event_type === "reopened") return "Reopened";
+  if (event.event_type === "deleted") return "Deleted";
+  if (event.event_type === "comment") return "Comment";
+  return "Status Changed";
+}
+
+function eventDetail(event: ActionItemEvent): string {
+  if (event.previous_status && event.next_status) {
+    return `${STATUS_LABEL[event.previous_status]} to ${STATUS_LABEL[event.next_status]}.`;
+  }
+  if (event.next_status) return `Set to ${STATUS_LABEL[event.next_status]}.`;
+  return "Task event recorded.";
 }
 
 function TaskDetailStat({ label, value }: { label: string; value: string }) {
