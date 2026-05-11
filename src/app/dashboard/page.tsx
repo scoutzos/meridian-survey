@@ -12,6 +12,7 @@ import {
 } from "@/lib/action-items";
 import { fetchNextMeeting, type NextMeeting } from "@/lib/meetings";
 import { fetchDeals, type Deal } from "@/lib/deals";
+import { fetchImportedLandLeadActivities, type ImportedLandLeadActivity } from "@/lib/land-leads";
 import { fetchProjects, type Project } from "@/lib/projects";
 import {
   fetchNotifications,
@@ -56,6 +57,13 @@ import {
   type VaDailyBrief,
   type VaDailyBriefReview,
 } from "@/lib/va-briefs";
+import {
+  currentShiftMinutes,
+  fetchVaTimeEntries,
+  formatDuration,
+  vaDateKey,
+  type VaTimeEntry,
+} from "@/lib/va-time";
 
 type SurveyProgress = {
   surveyId: string;
@@ -113,6 +121,13 @@ function formatActivityDate(iso: string | null): string {
   return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
+function formatActivityTime(iso: string | null | undefined): string {
+  if (!iso) return "No time";
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return "No time";
+  return d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+}
+
 export default function DashboardPage() {
   const router = useRouter();
   const [user, setUser] = useState<string | null>(null);
@@ -133,6 +148,9 @@ export default function DashboardPage() {
   const [communicationEvents, setCommunicationEvents] = useState<CommunicationEvent[]>([]);
   const [vaBriefs, setVaBriefs] = useState<VaDailyBrief[]>([]);
   const [vaBriefReviews, setVaBriefReviews] = useState<VaDailyBriefReview[]>([]);
+  const [vaTimeEntries, setVaTimeEntries] = useState<VaTimeEntry[]>([]);
+  const [leadActivities, setLeadActivities] = useState<ImportedLandLeadActivity[]>([]);
+  const [, setNowTick] = useState(0);
   const [loaded, setLoaded] = useState(false);
   const [message, setMessage] = useState("");
 
@@ -177,6 +195,8 @@ export default function DashboardPage() {
         dealVoteRows,
         communicationRows,
         briefRows,
+        timeRows,
+        activityRows,
       ] = await Promise.all([
         fetchActionItems(),
         fetchNextMeeting(),
@@ -191,6 +211,8 @@ export default function DashboardPage() {
         fetchPendingDealVotes(u),
         fetchCommunicationEvents({ limit: 30 }),
         fetchVaDailyBriefs(5),
+        fetchVaTimeEntries(20),
+        fetchImportedLandLeadActivities(undefined, 80),
       ]);
 
       setActionItems(items);
@@ -203,6 +225,8 @@ export default function DashboardPage() {
       setPendingDealVotes(dealVoteRows);
       setCommunicationEvents(communicationRows);
       setVaBriefs(briefRows);
+      setVaTimeEntries(timeRows);
+      setLeadActivities(activityRows);
       void fetchVaDailyBriefReviews(briefRows.map(brief => brief.id)).then(setVaBriefReviews);
       setReimbursements(reimbursementRows);
       setDecisions(hub.decisions.slice(0, 4));
@@ -233,6 +257,13 @@ export default function DashboardPage() {
       }
     }
 
+    const refreshInterval = window.setInterval(() => {
+      void loadSharedData();
+    }, 45000);
+    const clockInterval = window.setInterval(() => {
+      setNowTick(tick => tick + 1);
+    }, 60000);
+
     if (!supabase) {
       const counts: Record<string, Record<string, number>> = {};
       for (const s of surveys) {
@@ -247,7 +278,10 @@ export default function DashboardPage() {
       }
       buildProgressFromCounts(counts);
       void loadSharedData();
-      return;
+      return () => {
+        window.clearInterval(refreshInterval);
+        window.clearInterval(clockInterval);
+      };
     }
 
     Promise.all([
@@ -263,6 +297,10 @@ export default function DashboardPage() {
       }
       buildProgressFromCounts(counts);
     });
+    return () => {
+      window.clearInterval(refreshInterval);
+      window.clearInterval(clockInterval);
+    };
   }, [router, surveys]);
 
   if (!user) return null;
@@ -348,6 +386,67 @@ export default function DashboardPage() {
   const operationsCount = openCapitalCalls.length + suggestedCapitalCalls.length + pendingReimbursements.length + unmatchedSellerReplies.length + unreviewedVaBriefs.length;
   const firstIncompleteSurvey = incompleteSurveys[0];
   const firstPendingCandidate = pendingCandidateVotes[0];
+  const todayKey = vaDateKey(new Date().toISOString());
+  const openVaShift = vaTimeEntries.find(entry => entry.status === "open" && !entry.clock_out_at) ?? null;
+  const latestVaShift = vaTimeEntries[0] ?? null;
+  const liveShiftMinutes = currentShiftMinutes(openVaShift);
+  const todayLeadActivities = leadActivities.filter(activityRow => vaDateKey(activityRow.created_at) === todayKey);
+  const todayComms = communicationEvents.filter(event => vaDateKey(event.created_at) === todayKey);
+  const todayCompletedVaTasks = actionItems.filter(item =>
+    item.task_type === "va-work"
+    && item.status === "done"
+    && item.completed_at
+    && vaDateKey(item.completed_at) === todayKey
+  );
+  const todayDealBriefs = deals.filter(deal => vaDateKey(deal.last_submitted_at ?? deal.first_submitted_at ?? deal.created_at) === todayKey);
+  const todayLeadIds = new Set([
+    ...todayLeadActivities.map(activityRow => activityRow.lead_id),
+    ...todayComms.map(event => event.matched_lead_id).filter((id): id is string => Boolean(id)),
+  ]);
+  const vaOperator = openVaShift?.operator_name || latestVaBrief?.submitted_by || latestVaShift?.operator_name || "VA";
+  const vaIsOnline = !!openVaShift;
+  const liveFeed = [
+    ...todayLeadActivities.map(activityRow => ({
+      id: `lead-activity-${activityRow.id}`,
+      label: labelForStatus(activityRow.activity_type),
+      title: activityRow.summary || labelForStatus(activityRow.activity_type),
+      detail: activityRow.next_follow_up_date ? `Follow-up set for ${activityRow.next_follow_up_date}` : activityRow.actor || "Lead activity",
+      date: activityRow.created_at,
+      href: `/opportunity?lead=${activityRow.lead_id}`,
+    })),
+    ...todayComms.map(event => ({
+      id: `comm-${event.id}`,
+      label: event.direction === "outbound" ? "Text Sent" : event.direction === "inbound" ? "Reply" : "SMS",
+      title: event.contact_name || event.contact_number || event.from_number || "Seller message",
+      detail: event.body || event.status || labelForStatus(event.provider_event_type),
+      date: event.created_at,
+      href: event.matched_deal_id ? `/opportunity?deal=${event.matched_deal_id}` : event.matched_lead_id ? `/opportunity?lead=${event.matched_lead_id}` : "/crm?view=inbox",
+    })),
+    ...todayCompletedVaTasks.map(item => ({
+      id: `task-${item.id}`,
+      label: "Task Done",
+      title: item.title,
+      detail: item.completion_note || "Member-assigned VA task completed.",
+      date: item.completed_at || item.updated_at,
+      href: `/actions?task=${item.id}`,
+    })),
+    ...todayDealBriefs.map(deal => ({
+      id: `deal-${deal.id}`,
+      label: "Deal Brief",
+      title: deal.title,
+      detail: deal.submission_summary || deal.address || deal.parcel_id || "Deal packet created.",
+      date: deal.last_submitted_at ?? deal.first_submitted_at ?? deal.created_at,
+      href: `/opportunity?deal=${deal.id}`,
+    })),
+  ].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 5);
+  const vaLiveStats = [
+    { label: "Texts", value: todayComms.filter(event => event.direction === "outbound").length },
+    { label: "Replies", value: todayComms.filter(event => event.direction === "inbound").length },
+    { label: "Calls", value: todayLeadActivities.filter(activityRow => activityRow.activity_type === "called" || activityRow.activity_type === "left-voicemail").length },
+    { label: "Leads", value: todayLeadIds.size },
+    { label: "Tasks", value: todayCompletedVaTasks.length },
+    { label: "Packets", value: todayDealBriefs.length },
+  ];
   const attentionRows = [
     ...pendingVotes.slice(0, 3).map(notice => ({
       id: notice.id,
@@ -609,45 +708,76 @@ export default function DashboardPage() {
               )}
             </Panel>
 
-            <Panel title="VA Daily Brief" cta={{ label: "Review brief", onClick: () => router.push("/operations?tab=va-briefs") }}>
-            {!latestVaBrief ? (
-              <EmptyText>No VA daily brief has been submitted yet.</EmptyText>
-            ) : (
-              <>
-                <div style={briefSummaryStyle}>
-                  <div>
-                    <p style={{ fontSize: 10, color: COLORS.brass, fontWeight: 900, letterSpacing: "0.14em", textTransform: "uppercase", marginBottom: 4 }}>
-                      {formatActivityDate(latestVaBrief.work_date)} · {latestVaBrief.submitted_by}
-                    </p>
-                    <p style={{ fontSize: 14, fontWeight: 850, color: COLORS.obsidian }}>
-                      {latestVaBriefReviewedByMe ? "You reviewed the latest brief." : "Latest brief needs review."}
-                    </p>
+            <Panel title="VA Desk Today" cta={{ label: "Review brief", onClick: () => router.push("/operations?tab=va-briefs") }}>
+              <div style={briefSummaryStyle}>
+                <div>
+                  <p style={{ fontSize: 10, color: COLORS.brass, fontWeight: 900, letterSpacing: "0.14em", textTransform: "uppercase", marginBottom: 4 }}>
+                    {vaIsOnline ? `${vaOperator} is online` : `${vaOperator} is offline`}
+                  </p>
+                  <p style={{ fontSize: 14, fontWeight: 850, color: COLORS.obsidian }}>
+                    {vaIsOnline
+                      ? `Clocked in ${formatActivityTime(openVaShift?.clock_in_at)} · ${formatDuration(liveShiftMinutes)} on shift`
+                      : latestVaShift?.clock_out_at
+                        ? `Last clocked out ${formatActivityTime(latestVaShift.clock_out_at)}`
+                        : "No active shift logged today."}
+                  </p>
+                </div>
+                <Badge>{vaIsOnline ? "Live" : "Offline"}</Badge>
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }} className="brief-metrics">
+                {vaLiveStats.map(stat => (
+                  <BriefMetric key={stat.label} label={stat.label} value={stat.value} />
+                ))}
+              </div>
+
+              <div style={listItemStyle}>
+                <p style={{ fontSize: 10, color: COLORS.brass, fontWeight: 900, letterSpacing: "0.14em", textTransform: "uppercase", marginBottom: 4 }}>Live activity</p>
+                {liveFeed.length === 0 ? (
+                  <p style={{ fontSize: 12, color: COLORS.ink, opacity: 0.66, lineHeight: 1.45 }}>
+                    No calls, texts, lead updates, packets, or completed VA tasks have posted today yet.
+                  </p>
+                ) : (
+                  <div style={{ display: "grid", gap: 7 }}>
+                    {liveFeed.slice(0, 4).map(event => (
+                      <button key={event.id} onClick={() => router.push(event.href)} style={liveActivityButtonStyle}>
+                        <span style={{ color: COLORS.brass, fontSize: 10, fontWeight: 900, letterSpacing: "0.12em", textTransform: "uppercase" }}>{formatActivityTime(event.date)} · {event.label}</span>
+                        <strong style={{ color: COLORS.obsidian, fontSize: 12, lineHeight: 1.25 }}>{event.title}</strong>
+                        <small style={{ color: COLORS.ink, opacity: 0.68, fontSize: 11, lineHeight: 1.35 }}>{event.detail}</small>
+                      </button>
+                    ))}
                   </div>
-                  <Badge>{latestVaBrief.reviewed_status === "reviewed" ? "Reviewed" : "New"}</Badge>
-                </div>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 8 }} className="brief-metrics">
-                  <BriefMetric label="Texts" value={latestVaBrief.outreach_sent ?? 0} />
-                  <BriefMetric label="Replies" value={latestVaBrief.seller_replies ?? 0} />
-                  <BriefMetric label="Calls" value={latestVaBrief.calls_completed ?? 0} />
-                  <BriefMetric label="Deals" value={latestVaBrief.deals_submitted ?? 0} />
-                  <BriefMetric label="Tasks" value={latestVaBrief.va_tasks_completed ?? 0} />
-                </div>
+                )}
+              </div>
+
+              {!latestVaBrief ? (
                 <div style={listItemStyle}>
-                  <p style={{ fontSize: 10, color: COLORS.brass, fontWeight: 900, letterSpacing: "0.14em", textTransform: "uppercase", marginBottom: 4 }}>Completed</p>
+                  <p style={{ fontSize: 10, color: COLORS.brass, fontWeight: 900, letterSpacing: "0.14em", textTransform: "uppercase", marginBottom: 4 }}>Daily brief</p>
+                  <p style={{ fontSize: 12, color: COLORS.ink, opacity: 0.7, lineHeight: 1.45 }}>
+                    End-of-shift brief pending.
+                  </p>
+                </div>
+              ) : (
+                <div style={listItemStyle}>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start", marginBottom: 6 }}>
+                    <div>
+                      <p style={{ fontSize: 10, color: COLORS.brass, fontWeight: 900, letterSpacing: "0.14em", textTransform: "uppercase" }}>Daily brief</p>
+                      <p style={{ fontSize: 12, color: COLORS.ink, opacity: 0.72, marginTop: 2 }}>
+                        {formatActivityDate(latestVaBrief.work_date)} · {latestVaBrief.submitted_by}
+                      </p>
+                    </div>
+                    <Badge>{latestVaBriefReviewedByMe ? "Reviewed" : "Needs review"}</Badge>
+                  </div>
                   <p style={{ fontSize: 12, color: COLORS.ink, opacity: 0.72, lineHeight: 1.45, whiteSpace: "pre-wrap" }}>
                     {latestVaBrief.activities_completed}
                   </p>
-                </div>
-                {latestVaBrief.blockers && (
-                  <div style={{ ...listItemStyle, borderColor: "rgba(20,17,13,0.35)" }}>
-                    <p style={{ fontSize: 10, color: COLORS.brass, fontWeight: 900, letterSpacing: "0.14em", textTransform: "uppercase", marginBottom: 4 }}>Blockers</p>
-                    <p style={{ fontSize: 12, color: COLORS.ink, opacity: 0.76, lineHeight: 1.45, whiteSpace: "pre-wrap" }}>
-                      {latestVaBrief.blockers}
+                  {latestVaBrief.blockers && (
+                    <p style={{ fontSize: 12, color: COLORS.obsidian, opacity: 0.86, lineHeight: 1.45, marginTop: 8, whiteSpace: "pre-wrap" }}>
+                      Blockers: {latestVaBrief.blockers}
                     </p>
-                  </div>
-                )}
-              </>
-            )}
+                  )}
+                </div>
+              )}
             </Panel>
           </div>
         </section>
@@ -985,6 +1115,18 @@ const briefSummaryStyle: React.CSSProperties = {
   justifyContent: "space-between",
   alignItems: "flex-start",
   gap: 12,
+};
+
+const liveActivityButtonStyle: React.CSSProperties = {
+  background: "transparent",
+  border: "none",
+  borderTop: "1px solid var(--fog)",
+  cursor: "pointer",
+  display: "grid",
+  gap: 2,
+  padding: "8px 0 0",
+  textAlign: "left",
+  width: "100%",
 };
 
 const inlineLinkStyle: React.CSSProperties = {
