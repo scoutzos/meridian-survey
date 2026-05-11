@@ -76,6 +76,26 @@ function statusLabel(value: string): string {
   return labelForStatus(value);
 }
 
+function crmKey(value: string | null | undefined): string {
+  return (value || "").trim().toLowerCase();
+}
+
+function phoneKey(value: string | null | undefined): string {
+  return (value || "").replace(/\D/g, "").slice(-10);
+}
+
+function duplicateGroups<T>(rows: T[], keyFn: (row: T) => string): Array<{ key: string; rows: T[] }> {
+  const groups = new Map<string, T[]>();
+  for (const row of rows) {
+    const key = keyFn(row);
+    if (!key) continue;
+    groups.set(key, [...(groups.get(key) ?? []), row]);
+  }
+  return Array.from(groups.entries())
+    .filter(([, items]) => items.length > 1)
+    .map(([key, items]) => ({ key, rows: items }));
+}
+
 export default function CrmPage() {
   return (
     <Suspense fallback={<div style={{ minHeight: "100vh", padding: "84px 20px" }}>Loading CRM...</div>}>
@@ -146,6 +166,16 @@ function CrmContent() {
   const campaignsNeedingOffers = useMemo(() => data.campaigns.filter(campaign => !data.offers.some(offer => offer.disposition_campaign_id === campaign.id || offer.deal_id === campaign.deal_id)), [data.campaigns, data.offers]);
   const offersNeedingDecision = useMemo(() => data.offers.filter(offer => ["received", "countered"].includes(offer.status)), [data.offers]);
   const recordsNeedingCleanup = useMemo(() => data.contacts.filter(contact => !contact.phone && !contact.email).length + data.properties.filter(property => !property.parcel_id && !property.address).length, [data.contacts, data.properties]);
+  const duplicateContacts = useMemo(() => [
+    ...duplicateGroups(data.contacts, contact => phoneKey(contact.phone || contact.phone_2)).map(group => ({ ...group, type: "phone" as const })),
+    ...duplicateGroups(data.contacts, contact => crmKey(contact.email)).map(group => ({ ...group, type: "email" as const })),
+    ...duplicateGroups(data.contacts, contact => crmKey(contact.display_name)).map(group => ({ ...group, type: "name" as const })),
+  ], [data.contacts]);
+  const duplicateProperties = useMemo(() => [
+    ...duplicateGroups(data.properties, property => crmKey(property.parcel_id)).map(group => ({ ...group, type: "parcel" as const })),
+    ...duplicateGroups(data.properties, property => crmKey(property.address)).map(group => ({ ...group, type: "address" as const })),
+  ], [data.properties]);
+  const duplicateBuyers = useMemo(() => duplicateGroups(data.buyers, buyer => crmKey(buyer.buyer_name)), [data.buyers]);
   const selectedCampaigns = useMemo(() => selectedDeal ? data.campaigns.filter(campaign => campaign.deal_id === selectedDeal.id) : [], [data.campaigns, selectedDeal]);
   const selectedCommunicationEvents = useMemo(() => selectedDeal ? data.communications.filter(event => event.matched_deal_id === selectedDeal.id) : [], [data.communications, selectedDeal]);
   const selectedWorkflowAction = useMemo(() => selectedDeal ? getDealNextAction({
@@ -457,11 +487,11 @@ function CrmContent() {
     },
     {
       label: "Record Hygiene",
-      value: recordsNeedingCleanup,
+      value: recordsNeedingCleanup + duplicateContacts.length + duplicateProperties.length + duplicateBuyers.length,
       body: "Contacts and properties missing identifiers create duplicate work later.",
       action: "Clean Records",
       onAction: () => selectView("records"),
-      hot: recordsNeedingCleanup > 0,
+      hot: recordsNeedingCleanup > 0 || duplicateContacts.length > 0 || duplicateProperties.length > 0 || duplicateBuyers.length > 0,
     },
   ];
 
@@ -613,6 +643,50 @@ function CrmContent() {
     if (view === "records") {
       return (
         <WorkspacePanel title="CRM records" eyebrow="Contacts + properties">
+          <div style={{ ...panel, marginBottom: 12 }}>
+            <p style={eyebrowSmall}>Cleanup prompts</p>
+            <div style={{ display: "grid", gap: 8, marginTop: 8 }}>
+              {duplicateContacts.slice(0, 5).map(group => (
+                <DuplicatePrompt
+                  key={`contact-${group.type}-${group.key}`}
+                  label={`Duplicate contacts by ${group.type}`}
+                  detail={`${group.rows.length} records share ${group.type === "phone" ? "phone" : group.type === "email" ? "email" : "name"}: ${group.key}`}
+                  names={group.rows.map(contact => contact.display_name)}
+                  onClick={() => setSelectedContactId(group.rows[0].id)}
+                />
+              ))}
+              {duplicateProperties.slice(0, 5).map(group => (
+                <DuplicatePrompt
+                  key={`property-${group.type}-${group.key}`}
+                  label={`Duplicate properties by ${group.type}`}
+                  detail={`${group.rows.length} records share ${group.type}: ${group.key}`}
+                  names={group.rows.map(property => property.address || property.parcel_id || "Property record")}
+                  onClick={() => setSelectedPropertyId(group.rows[0].id)}
+                />
+              ))}
+              {duplicateBuyers.slice(0, 4).map(group => (
+                <DuplicatePrompt
+                  key={`buyer-${group.key}`}
+                  label="Duplicate buyers by name"
+                  detail={`${group.rows.length} buyer records share this name.`}
+                  names={group.rows.map(buyer => buyer.buyer_name)}
+                  onClick={() => {
+                    setSelectedBuyerId(group.rows[0].id);
+                    selectView("buyers");
+                  }}
+                />
+              ))}
+              {duplicateContacts.length === 0 && duplicateProperties.length === 0 && duplicateBuyers.length === 0 && recordsNeedingCleanup === 0 && (
+                <EmptyText>No duplicate or missing-core-field prompts right now.</EmptyText>
+              )}
+              {recordsNeedingCleanup > 0 && (
+                <div style={{ ...subPanel, background: "rgba(176,137,84,0.08)" }}>
+                  <strong style={rowTitle}>{recordsNeedingCleanup} record{recordsNeedingCleanup === 1 ? "" : "s"} need core fields</strong>
+                  <p style={rowMeta}>Open the contact or property detail panel and fill in phone/email, parcel/address, county, acreage, or use details.</p>
+                </div>
+              )}
+            </div>
+          </div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }} className="two-col">
             <CrmList title="Contacts" items={data.contacts} render={contact => (
               <>
@@ -1036,6 +1110,36 @@ function MessageCard({ event, compact = false }: { event: CommunicationEvent; co
 
 function EmptyText({ children }: { children: React.ReactNode }) {
   return <p style={{ color: "var(--muted)", fontSize: 13, lineHeight: 1.5 }}>{children}</p>;
+}
+
+function DuplicatePrompt({
+  label,
+  detail,
+  names,
+  onClick,
+}: {
+  label: string;
+  detail: string;
+  names: string[];
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        ...subPanel,
+        background: "rgba(255,252,245,0.78)",
+        textAlign: "left",
+        cursor: "pointer",
+        borderColor: "rgba(176,137,84,0.32)",
+      }}
+    >
+      <p style={eyebrowSmall}>{label}</p>
+      <strong style={{ ...rowTitle, display: "block", marginTop: 5 }}>{detail}</strong>
+      <p style={{ ...rowMeta, marginTop: 5 }}>{names.slice(0, 4).join(" / ")}{names.length > 4 ? ` +${names.length - 4} more` : ""}</p>
+      <p style={{ ...rowMeta, color: "var(--brass)", fontWeight: 800, marginTop: 7 }}>Open first record to clean up fields</p>
+    </button>
+  );
 }
 
 function QuickCreate({ title, children }: { title: string; children: React.ReactNode }) {
