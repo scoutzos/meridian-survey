@@ -1660,6 +1660,7 @@ Completed in this pass:
 - Moved the VA Lists upload chooser directly under the import steps/stats so clicking "New Import" reveals the CSV picker in the visible area even when hundreds of imported leads already exist.
 - Fixed VA tab routing so links such as Daily Brief update the active VA workspace tab immediately, keep the URL in sync, and scroll the Daily Brief panel into view.
 - Updated VA "New Import" so it opens the CSV file chooser directly instead of just navigating or scrolling to an upload section.
+- Added a draggable floating SMS command window to the VA workspace with live thread grouping, inbound/reply history, outbound replies, start-new-text, and lead actions for opening a lead, creating a deal brief, or marking a seller interested.
 
 Risk: Medium.
 
