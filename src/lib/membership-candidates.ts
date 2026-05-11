@@ -1,4 +1,3 @@
-import { MEMBERS } from "@/data/questions";
 import { getAllSurveys } from "@/data/surveys";
 import { fetchActiveMemberNames } from "./members";
 import { supabase, supabasePrototypeAnon } from "./supabase";
