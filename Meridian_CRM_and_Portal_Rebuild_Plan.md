@@ -1655,6 +1655,7 @@ Completed in this pass:
 - Reorganized the VA shell so `/va` is the VA Home / Command Center, while Lead Inbox, Lists, Deal Packets, and Daily Brief have direct tab URLs and section-specific header actions/stats. This keeps clock-in and end-of-shift context out of the focused Lead Inbox view.
 - Simplified VA Home into a start-of-shift command center with clock status, next best action, member-assigned task preview, and four queue metrics, while removing the dense seller table and full daily brief form from the first screen. Lead Inbox now opens without the deal-packet sidebar competing for attention.
 - Moved the primary one-to-one SMS workflow into Lead Inbox: conversation queues, seller list, selected seller panel, communication history, text composer, call logging, disposition controls, file opening, and packet creation now live together. Lists remains focused on imports and bulk outreach.
+- Fixed the VA Lists "New Import" action so it clears the selected lead/batch, resets to upload mode, shows an in-page confirmation, and scrolls directly to the CSV chooser instead of appearing to do nothing below the imported-lead list.
 
 Risk: Medium.
 

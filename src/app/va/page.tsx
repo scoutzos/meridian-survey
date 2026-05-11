@@ -784,6 +784,16 @@ export default function VaPage() {
     setActiveTab(tab);
     window.history.replaceState(null, "", tab === "today" ? "/va" : `/va?tab=${tab}`);
   };
+  const startNewImport = () => {
+    goToTab("lists");
+    setImportStep("upload");
+    setImportPreview(null);
+    setSelectedBatchId(null);
+    setSelectedImportedLeadId(null);
+    setBulkSmsPreviewOpen(false);
+    setMessage("New import started. Choose a Land Portal or Land Insights CSV to preview.");
+    window.setTimeout(() => document.getElementById("va-list-upload")?.scrollIntoView({ behavior: "smooth", block: "start" }), 80);
+  };
 
   const addToDailyBrief = (line: string, patch: Partial<VaDailyBriefInput> = {}) => {
     setBriefDraft(prev => ({
@@ -1561,7 +1571,7 @@ export default function VaPage() {
     ),
     lists: (
       <>
-      <button onClick={() => { setImportStep("upload"); setImportPreview(null); setSelectedBatchId(null); }} style={secondaryButton}>New Import</button>
+      <button onClick={startNewImport} style={secondaryButton}>New Import</button>
       <button onClick={() => setBulkSmsPreviewOpen(prev => !prev)} style={secondaryButton}>Bulk SMS</button>
       <button onClick={() => goToTab("outreach")} style={primaryButton}>Work Lead Inbox</button>
       </>
@@ -1596,7 +1606,7 @@ export default function VaPage() {
     { label: "Interested", value: String(interestedLeads.length), detail: "Sellers showing interest", action: "Open Leads", onAction: () => { setLeadFilter("interested"); goToTab("lists"); }, tone: interestedLeads.length ? "hot" as const : "default" as const },
     { label: "Draft Packets", value: String(draftLeads.length), detail: "Leads ready to package", action: "Build", onAction: () => draftLeads[0] ? openDealBrief(draftLeads[0]) : goToTab("packet"), tone: draftLeads.length ? "hot" as const : "default" as const },
   ] : activeTab === "lists" ? [
-    { label: "Imported", value: String(importedLeads.length), detail: "Total list records", action: "Upload", onAction: () => { setImportStep("upload"); setImportPreview(null); }, tone: "default" as const },
+    { label: "Imported", value: String(importedLeads.length), detail: "Total list records", action: "Upload", onAction: startNewImport, tone: "default" as const },
     { label: "New", value: String(importStats.newRows), detail: "Fresh from lists", action: "Filter", onAction: () => setLeadFilter("new"), tone: importStats.newRows ? "hot" as const : "default" as const },
     { label: "SMS Eligible", value: String(bulkEligibleLeads.length), detail: "Current view recipients", action: "Bulk SMS", onAction: () => setBulkSmsPreviewOpen(true), tone: bulkEligibleLeads.length ? "hot" as const : "default" as const },
     { label: "Converted", value: String(importStats.converted), detail: "Moved into deal flow", action: "Packets", onAction: () => goToTab("packet"), tone: "default" as const },
@@ -2251,7 +2261,7 @@ export default function VaPage() {
                 <h2 style={sectionTitle}>{selectedBatch ? selectedBatch.campaign_source || selectedBatch.original_filename || "Work imported batch" : "Import and work land lists"}</h2>
               </div>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                <button onClick={() => { setImportStep("upload"); setImportPreview(null); setSelectedBatchId(null); }} style={secondaryButton}>New Import</button>
+                <button onClick={startNewImport} style={secondaryButton}>New Import</button>
                 <span style={pill}>{importedLeads.length} imported · Avg score {importStats.avgScore}</span>
               </div>
             </div>
@@ -2391,7 +2401,7 @@ export default function VaPage() {
             </div>
 
             {(importStep === "upload" || (!importPreview && importedLeads.length === 0)) && (
-              <div style={{ ...subPanel, marginBottom: 12 }}>
+              <div id="va-list-upload" style={{ ...subPanel, marginBottom: 12 }}>
                 <div style={{ display: "grid", gridTemplateColumns: "220px minmax(0, 1fr)", gap: 12 }} className="two-col">
                   <label style={{
                     border: "1px dashed var(--brass)",
