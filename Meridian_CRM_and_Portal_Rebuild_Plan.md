@@ -1658,6 +1658,7 @@ Completed in this pass:
 - Fixed the VA Lists "New Import" action so it clears the selected lead/batch, resets to upload mode, shows an in-page confirmation, and scrolls directly to the CSV chooser instead of appearing to do nothing below the imported-lead list.
 - Added a VA incoming-text stream that loads recent inbound SMS regardless of whether it is matched or unmatched. VA Home now counts incoming texts, and Lead Inbox now shows a visible "Recent incoming texts" panel with matched lead, matched deal, and unmatched status.
 - Moved the VA Lists upload chooser directly under the import steps/stats so clicking "New Import" reveals the CSV picker in the visible area even when hundreds of imported leads already exist.
+- Fixed VA tab routing so links such as Daily Brief update the active VA workspace tab immediately, keep the URL in sync, and scroll the Daily Brief panel into view.
 
 Risk: Medium.
 

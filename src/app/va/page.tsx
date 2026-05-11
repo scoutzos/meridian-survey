@@ -627,10 +627,26 @@ export default function VaPage() {
     const u = localStorage.getItem("meridian_user");
     if (!u) { router.push("/"); return; }
     setUser(u);
-    const tab = new URLSearchParams(window.location.search).get("tab");
-    if (tab && TABS.some(item => item.value === tab)) setActiveTab(tab as VaTab);
     void reload(u);
   }, [router, reload]);
+
+  useEffect(() => {
+    const readUrlTab = () => {
+      const tab = new URLSearchParams(window.location.search).get("tab") || "today";
+      if (TABS.some(item => item.value === tab)) setActiveTab(tab as VaTab);
+    };
+    const handleTabEvent = (event: Event) => {
+      const tab = (event as CustomEvent<VaTab>).detail;
+      if (TABS.some(item => item.value === tab)) setActiveTab(tab);
+    };
+    readUrlTab();
+    window.addEventListener("popstate", readUrlTab);
+    window.addEventListener("meridian-va-tab", handleTabEvent);
+    return () => {
+      window.removeEventListener("popstate", readUrlTab);
+      window.removeEventListener("meridian-va-tab", handleTabEvent);
+    };
+  }, []);
 
   useEffect(() => {
     if (!openShift) return;
@@ -785,7 +801,9 @@ export default function VaPage() {
   const leadLabel = (lead: ImportedLandLead) => lead.owner_name || lead.property_address || lead.parcel_id || "Selected lead";
   const goToTab = (tab: VaTab) => {
     setActiveTab(tab);
-    window.history.replaceState(null, "", tab === "today" ? "/va" : `/va?tab=${tab}`);
+    router.replace(tab === "today" ? "/va" : `/va?tab=${tab}`, { scroll: false });
+    window.dispatchEvent(new CustomEvent("meridian-va-tab", { detail: tab }));
+    window.setTimeout(() => document.getElementById(`va-tab-${tab}`)?.scrollIntoView({ behavior: "smooth", block: "start" }), 80);
   };
   const startNewImport = () => {
     goToTab("lists");
@@ -2008,7 +2026,7 @@ export default function VaPage() {
           )}
 
           {activeTab === "packet" && (
-          <section style={panel}>
+          <section id="va-tab-brief" style={panel}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12, flexWrap: "wrap", marginBottom: 14 }}>
               <div>
                 <p style={eyebrowSmall}>Member review packet</p>
