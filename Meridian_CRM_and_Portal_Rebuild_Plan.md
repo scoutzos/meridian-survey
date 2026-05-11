@@ -469,6 +469,248 @@ Remaining structural gaps:
 - Document attachment ownership and permissions.
 - Buyer demand and buyer offer history.
 
+## Full Platform Operating Model
+
+This rebuild is not only a CRM redesign. It is the organization layer for the whole Meridian operating system. Every feature should fit into one connected flow instead of becoming a separate page, side tool, or duplicate record.
+
+The platform should organize around these lanes:
+
+| Lane | Purpose | Current Features That Belong Here | Rebuild Requirement |
+| --- | --- | --- | --- |
+| Intake | Capture lists, leads, seller replies, and first contact outcomes. | VA Desk, imported land lists, Sakari SMS, unmatched messages, lead dispositions, deal brief intake. | VA should be able to import, search, contact, disposition, and convert leads without re-entering data. |
+| Deal | Turn an interested lead into a member-ready packet. | Deal brief, calculator, opportunity file, notes, attachments, communication timeline. | Every deal should have one shared file with seller info, property info, calculator, notes, communication, and next action. |
+| Decision | Record member direction and approvals. | Deal votes, membership candidate votes, expense proposal votes, operating agreement decisions, decision records. | All votes and approvals should feel like one decision system with clear status, owner, deadline, quorum, and outcome. |
+| Disposition | Market approved or review-ready opportunities to buyers. | CRM buyers, buyer campaigns, buyer offers, buyer outreach, disposition statuses. | Buyer demand, campaigns, offers, member decisions, and final deal outcome must connect back to the packet. |
+| Execution | Manage approved deals as active projects. | Projects, vendors, risks, project documents, milestones, tasks. | Approved deals should convert into projects with packet, vote, agreement, budget, docs, tasks, vendors, and risks carried forward. |
+| Money | Track capital, expenses, contributions, and deal economics. | Tracker, capital calls, contributions, expenses, planning, deal agreement economics. | Money should connect to approved deals/projects, member commitments, capital calls, project expenses, and reimbursement approvals. |
+| Governance | Preserve the official company record. | Meetings, transcripts, decisions, documents, operating agreement inputs, member applications. | Meetings should create tasks, decisions, votes, and records. Documents and decisions should attach to the thing they govern. |
+| Operations | Route daily work across VA, members, and admins. | VA shifts, daily brief, action items, notifications, member-to-VA tasks, work queues. | Work should have one routing system: assign, due date, owner, status, completion, blocker, and daily brief/notification rollup. |
+| Platform | Make the app feel like one system. | Navigation, global search, permissions, audit trail, notifications, mobile shell. | Users should search, navigate, receive alerts, and access records based on role without portals feeling disconnected. |
+
+### Missing Or Under-Specified Cross-Platform Work
+
+These items need to be tracked explicitly so the rebuild enhances and organizes all existing features instead of only improving the CRM screens.
+
+#### 1. Time And Shift Operations
+
+The VA shift system should include:
+
+- Start shift / clock in.
+- Lunch or break tracking.
+- End shift.
+- Shift history.
+- Daily brief tied to the active shift.
+- Activity counts tied to the shift, including calls, texts, replies handled, leads updated, deal briefs submitted, and member-assigned tasks completed.
+- Member/admin review of submitted shift briefs.
+
+#### 2. Notes And Audit Trail
+
+Notes should not live randomly across pages. The platform needs one clear rule: every important note attaches to a record and appears in that record timeline.
+
+Notes should support:
+
+- Seller notes.
+- VA notes to members.
+- Member review notes.
+- Call notes.
+- Deal notes.
+- Project notes.
+- Vendor notes.
+- Decision notes.
+- System-generated activity notes.
+
+The official timeline should show who did what, when, and why it mattered.
+
+#### 3. Documents
+
+Documents should belong to records, not just the Documents page.
+
+Documents should attach to:
+
+- Deals.
+- Projects.
+- Members.
+- Meetings.
+- Decisions.
+- Vendors.
+- Agreements.
+- Due diligence items.
+- Expense approvals.
+
+The Documents page should become a library/index, while each record should show its own relevant documents.
+
+#### 4. Meetings
+
+Meetings need to create operating output, not just store notes.
+
+Meeting records should connect to:
+
+- Agenda.
+- Transcript.
+- Summary.
+- Decisions made.
+- Tasks assigned.
+- Deal packets discussed.
+- Votes triggered.
+- Follow-ups assigned to members or VA.
+- Documents reviewed.
+
+#### 5. Unified Decisions And Votes
+
+The app currently has multiple approval concepts. They need a unified decision pattern.
+
+Decision types include:
+
+- Deal votes.
+- Membership candidate votes.
+- Expense proposal votes.
+- Operating agreement decisions.
+- Project approvals.
+- Capital call approvals.
+- Vendor approvals.
+
+Every decision should have:
+
+- Type.
+- Status.
+- Owner.
+- Deadline.
+- Required voters or approvers.
+- Votes/responses.
+- Outcome.
+- Linked record.
+- Final notes.
+
+#### 6. Money And Tracker Integration
+
+Money should not feel separate from deals and projects.
+
+Tracker should connect to:
+
+- Deal agreement economics.
+- Approved deals.
+- Active projects.
+- Capital calls.
+- Member commitments.
+- Contributions received.
+- Project expenses.
+- Expense proposal votes.
+- Reimbursement/payment status.
+
+#### 7. Project Handoff
+
+When a deal is approved and converted, the project should inherit context.
+
+The project should carry forward:
+
+- Original deal packet.
+- Seller/property information.
+- Calculator.
+- Member vote result.
+- Agreement terms.
+- Due diligence checklist.
+- Documents.
+- Tasks.
+- Vendors.
+- Budget.
+- Risks.
+- Milestones.
+
+#### 8. Vendors
+
+Vendor management should connect into execution.
+
+Vendors should attach to:
+
+- Projects.
+- Tasks.
+- Documents.
+- Insurance/contracts.
+- Payments.
+- Performance notes.
+- Risks/blockers.
+
+#### 9. Permissions
+
+Permissions need to be explicit before launch.
+
+Roles to account for:
+
+- Admin.
+- Member.
+- VA.
+- Future vendor/partner.
+- Future attorney/title/broker/buyer guest access.
+
+Permission questions:
+
+- Who can edit deals?
+- Who can send seller SMS?
+- Who can assign VA tasks?
+- Who can approve money?
+- Who can see sensitive documents?
+- Who can view member financial commitments?
+- What can the VA see after a deal moves beyond her work?
+
+#### 10. Global Search
+
+Global search should make the platform feel connected.
+
+Search should find:
+
+- Seller.
+- Phone number.
+- Parcel ID.
+- County.
+- Buyer.
+- Deal.
+- Project.
+- Document.
+- Meeting.
+- Decision.
+- Task.
+- Vendor.
+
+#### 11. Notifications And Work Inbox
+
+The app needs one consistent work inbox.
+
+Notifications/work items should include:
+
+- Member vote needed.
+- VA task assigned.
+- Seller replied.
+- Deal packet submitted.
+- Buyer offer received.
+- Document needs review.
+- Capital call open.
+- Meeting follow-up due.
+- Expense proposal needs approval.
+- Project task blocked.
+
+#### 12. Legacy Page Decisions
+
+The rebuild needs final decisions on older pages so the app does not feel like several products at once.
+
+Pages to review:
+
+- Hub.
+- Decisions.
+- Tracker and tracker subpages.
+- Survey/results pages.
+- Documents.
+- Meetings.
+- Projects.
+- Operations.
+
+Each should be either:
+
+- Primary workspace.
+- Secondary record/library.
+- Admin-only page.
+- Legacy/hidden page.
+- Merged into a stronger workflow.
+
 ## Launch Readiness Checklist
 
 Before treating this as production-ready:
