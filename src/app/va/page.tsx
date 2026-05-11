@@ -1645,8 +1645,8 @@ export default function VaPage() {
         ))}
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: activeTab === "packet" || activeTab === "outreach" ? "330px minmax(0, 1fr)" : "1fr", gap: 18 }} className="va-workspace">
-        {(activeTab === "packet" || activeTab === "outreach") && <aside style={panel}>
+      <div style={{ display: "grid", gridTemplateColumns: activeTab === "packet" ? "330px minmax(0, 1fr)" : "1fr", gap: 18 }} className="va-workspace">
+        {activeTab === "packet" && <aside style={panel}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 12 }}>
             <h2 style={sectionTitle}>Deal Packets</h2>
             <span style={{ fontSize: 11, color: "var(--muted)" }}>{deals.length} active</span>
@@ -1716,13 +1716,86 @@ export default function VaPage() {
                 <h2 style={sectionTitle}>What needs action next</h2>
               </div>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                <button onClick={() => setActiveTab("outreach")} style={secondaryButton}>Work outreach</button>
-                <button onClick={() => draftLeads[0] ? openDealBrief(draftLeads[0]) : setActiveTab("packet")} style={secondaryButton}>Build packet</button>
-                <button onClick={() => setActiveTab("brief")} style={primaryButton}>End shift</button>
+                <button onClick={() => goToTab("outreach")} style={secondaryButton}>Open Lead Inbox</button>
+                <button onClick={() => draftLeads[0] ? openDealBrief(draftLeads[0]) : goToTab("packet")} style={secondaryButton}>Build packet</button>
+                <button onClick={() => goToTab("brief")} style={primaryButton}>End shift</button>
               </div>
             </div>
 
-            <div style={{ display: "grid", gridTemplateColumns: "250px minmax(0, 1fr) 420px", gap: 14 }} className="workdesk-grid">
+            <div style={{ display: "grid", gridTemplateColumns: "minmax(260px, 0.8fr) minmax(0, 1.2fr) minmax(320px, 0.9fr)", gap: 14 }} className="va-home-grid">
+              <section style={{ ...subPanel, background: "var(--obsidian)", color: "var(--bone)", borderColor: "rgba(20,17,13,0.88)" }}>
+                <p style={{ ...eyebrowSmall, color: "var(--brass)" }}>Shift</p>
+                <h3 style={{ fontFamily: DISPLAY_FONT, fontSize: 32, fontWeight: 500, color: "var(--bone)", lineHeight: 1.05, marginTop: 6 }}>
+                  {openShift ? formatDuration(liveShiftMinutes) : "Ready"}
+                </h3>
+                <p style={{ color: "rgba(247,242,232,0.72)", fontSize: 13, lineHeight: 1.5, marginTop: 8 }}>
+                  {openShift ? "You are clocked in. Work the next queue, then submit the daily brief before leaving." : "Clock in first, then work seller replies, assigned tasks, and packets."}
+                </p>
+                <button onClick={openShift ? handleClockOut : handleClockIn} disabled={clockBusy} style={{ ...primaryButton, width: "100%", marginTop: 14, background: "var(--bone)", color: "var(--obsidian)", borderColor: "var(--bone)", opacity: clockBusy ? 0.65 : 1 }}>
+                  {clockBusy ? "Saving..." : openShift ? "Clock Out" : "Clock In"}
+                </button>
+              </section>
+
+              <section style={subPanel}>
+                <p style={eyebrowSmall}>Next best action</p>
+                <h3 style={{ ...sectionTitle, fontSize: 28, marginTop: 5 }}>
+                  {unmatchedSms.length ? "Work seller replies" : openAssignedTasks.length ? "Handle member-assigned tasks" : interestedLeads.length ? "Build interested seller packets" : importStats.newRows ? "Start with new list leads" : "Review the daily brief"}
+                </h3>
+                <p style={{ color: "var(--muted)", fontSize: 13, lineHeight: 1.5, marginTop: 6 }}>
+                  {unmatchedSms.length ? `${unmatchedSms.length} seller repl${unmatchedSms.length === 1 ? "y" : "ies"} need matching, response, or disposition.`
+                    : openAssignedTasks.length ? `${openAssignedTasks.length} task${openAssignedTasks.length === 1 ? "" : "s"} from members need a status update.`
+                      : interestedLeads.length ? `${interestedLeads.length} interested seller${interestedLeads.length === 1 ? "" : "s"} can be moved toward a deal packet.`
+                        : importStats.newRows ? `${importStats.newRows} new imported lead${importStats.newRows === 1 ? "" : "s"} are ready for outreach.`
+                          : "No urgent seller queue is waiting. Keep the brief current or prep the next list."}
+                </p>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8, marginTop: 14 }} className="two-col">
+                  <button onClick={() => goToTab("outreach")} style={secondaryButton}>Open Lead Inbox</button>
+                  <button onClick={() => goToTab("brief")} style={primaryButton}>Daily Brief</button>
+                </div>
+              </section>
+
+              <section style={subPanel}>
+                <p style={eyebrowSmall}>Member-assigned tasks</p>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "baseline", marginTop: 4, marginBottom: 10 }}>
+                  <h3 style={{ ...sectionTitle, fontSize: 24 }}>{openAssignedTasks.length} open</h3>
+                  <button onClick={() => router.push("/actions")} style={inlineTextButton}>All tasks →</button>
+                </div>
+                <div style={{ display: "grid", gap: 8 }}>
+                  {openAssignedTasks.slice(0, 3).map(task => (
+                    <button key={task.id} onClick={() => router.push(taskRecordHref(task))} style={{ ...subPanel, textAlign: "left", cursor: "pointer", padding: 10 }}>
+                      <strong style={{ color: "var(--obsidian)", fontSize: 13 }}>{task.title}</strong>
+                      <p style={{ color: "var(--muted)", fontSize: 12, marginTop: 4 }}>{task.due_date ? `Due ${task.due_date}` : "No due date"} · {statusLabel(task.priority || "normal")}</p>
+                    </button>
+                  ))}
+                  {openAssignedTasks.length === 0 && <p style={{ color: "var(--muted)", fontSize: 13, lineHeight: 1.45 }}>No member-assigned VA tasks are open.</p>}
+                </div>
+              </section>
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 10, marginTop: 14 }} className="number-grid">
+              <button onClick={() => goToTab("outreach")} style={homeMetricButton}>
+                <span>Seller Replies</span>
+                <strong>{unmatchedSms.length}</strong>
+                <small>Need triage</small>
+              </button>
+              <button onClick={() => goToTab("outreach")} style={homeMetricButton}>
+                <span>Follow-ups</span>
+                <strong>{followUpsDue.length}</strong>
+                <small>Due now</small>
+              </button>
+              <button onClick={() => { setLeadFilter("new"); goToTab("lists"); }} style={homeMetricButton}>
+                <span>New Leads</span>
+                <strong>{importStats.newRows}</strong>
+                <small>From lists</small>
+              </button>
+              <button onClick={() => draftLeads[0] ? openDealBrief(draftLeads[0]) : goToTab("packet")} style={homeMetricButton}>
+                <span>Draft Packets</span>
+                <strong>{draftLeads.length}</strong>
+                <small>Ready to build</small>
+              </button>
+            </div>
+
+            <div style={{ display: "none" }} className="workdesk-grid">
               <aside style={{ display: "grid", gap: 12, alignContent: "start" }}>
                 <section style={subPanel}>
                   <p style={eyebrowSmall}>Today&apos;s queues</p>
@@ -1868,7 +1941,7 @@ export default function VaPage() {
               </aside>
             </div>
 
-            <section style={{ ...subPanel, marginTop: 14 }}>
+            <section style={{ display: "none" }}>
               <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "baseline", marginBottom: 10 }}>
                 <div>
                   <p style={eyebrowSmall}>Daily shift brief</p>
@@ -3369,6 +3442,32 @@ const secondaryButton: React.CSSProperties = {
   background: "transparent",
   color: "var(--obsidian)",
   border: "1px solid var(--fog)",
+};
+
+const inlineTextButton: React.CSSProperties = {
+  background: "transparent",
+  border: "none",
+  color: "var(--brass)",
+  cursor: "pointer",
+  fontSize: 10,
+  fontWeight: 900,
+  letterSpacing: "0.14em",
+  textTransform: "uppercase",
+  padding: 0,
+};
+
+const homeMetricButton: React.CSSProperties = {
+  border: "1px solid var(--fog)",
+  borderRadius: 8,
+  background: "rgba(255,255,255,0.72)",
+  padding: 14,
+  minHeight: 110,
+  textAlign: "left",
+  cursor: "pointer",
+  display: "grid",
+  gap: 6,
+  alignContent: "start",
+  boxShadow: "0 10px 26px rgba(20,17,13,0.04)",
 };
 
 const tabButton: React.CSSProperties = {

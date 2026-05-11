@@ -1653,6 +1653,7 @@ Completed in this pass:
 - Replaced the Member Portal seller alert card with a CRM Relationship Command module that shows the seller-to-opportunity-to-buyer-to-offer path, live reply/unmatched/buyer/offer counts, exact CRM action links, and recent seller replies inside the member dashboard.
 - Wired the Member Portal dashboard into exact destinations wherever the records exist: member tasks open the selected task, VA brief cards open the VA brief tab, finance/reimbursement cards open Operations Finance, projects open the selected project, candidate/survey cards open the selected record, and CRM offer/action links open the relevant CRM panel.
 - Reorganized the VA shell so `/va` is the VA Home / Command Center, while Lead Inbox, Lists, Deal Packets, and Daily Brief have direct tab URLs and section-specific header actions/stats. This keeps clock-in and end-of-shift context out of the focused Lead Inbox view.
+- Simplified VA Home into a start-of-shift command center with clock status, next best action, member-assigned task preview, and four queue metrics, while removing the dense seller table and full daily brief form from the first screen. Lead Inbox now opens without the deal-packet sidebar competing for attention.
 
 Risk: Medium.
 
