@@ -711,6 +711,289 @@ Each should be either:
 - Legacy/hidden page.
 - Merged into a stronger workflow.
 
+## Operating Rules Still Needed Behind The UI
+
+The UI can look connected before the system is truly reliable. Meridian also needs clear operating rules that define ownership, permissions, lifecycle movement, automation, reporting, and cleanup. These rules should be decided and implemented alongside the remaining rebuild passes.
+
+### 1. Source Of Truth Rules
+
+The app needs explicit rules for which record owns each piece of data.
+
+Examples:
+
+- Seller phone may appear on an imported lead, CRM contact, deal packet, and communication event.
+- Parcel data may appear on an imported list, CRM property, deal packet, and project.
+- Buyer name may appear on a CRM buyer, buyer contact, disposition campaign, and buyer offer.
+
+Questions to answer:
+
+- Which table is the master for seller/contact information?
+- Which table is the master for property/parcel information?
+- When a lead becomes a deal, what data is copied and what stays linked?
+- When a deal becomes a project, what data is inherited and what remains read-only?
+- How should duplicate or conflicting data be resolved?
+- What fields should be updated everywhere versus only on the owning record?
+
+### 2. Real Login And Roles
+
+The app needs a proper role model, not just user-name based routing.
+
+Roles to support:
+
+- Admin.
+- Member.
+- VA.
+- Future vendor/partner guest.
+- Future attorney/title/broker/buyer guest.
+
+Each role needs rules for:
+
+- Which pages they can access.
+- Which records they can view.
+- Which records they can create.
+- Which records they can edit.
+- Whether they can send SMS.
+- Whether they can approve deals or money.
+- Whether they can view sensitive documents.
+- Whether they can assign work to others.
+
+### 3. Record Edit, Archive, And Delete Rules
+
+The current rebuild adds many create/view surfaces. The full system needs update and cleanup behavior.
+
+Needed actions:
+
+- Edit contact.
+- Edit buyer.
+- Edit property.
+- Edit campaign.
+- Edit offer.
+- Edit deal packet fields.
+- Archive duplicate or bad records.
+- Mark bad numbers and DNC.
+- Restore archived records if needed.
+- Track who changed what and when.
+
+Delete should usually be soft-delete/archive, not permanent removal.
+
+### 4. Task System As The Backbone
+
+Tasks should become the operating backbone, not just a standalone page.
+
+Tasks should support:
+
+- VA work.
+- Member follow-ups.
+- Meeting action items.
+- Project tasks.
+- Document review.
+- Seller follow-up.
+- Buyer follow-up.
+- Money approval follow-up.
+- Blockers.
+
+Every task should have:
+
+- Title.
+- Linked record.
+- Assignee.
+- Creator.
+- Due date.
+- Priority.
+- Status.
+- Completion notes.
+- Blocker reason if blocked.
+- Whether completion should count toward VA daily brief.
+
+### 5. File Storage And Document Rules
+
+Documents need real storage and ownership rules.
+
+Needed decisions:
+
+- Where files are stored.
+- Which records can own files.
+- Who can upload.
+- Who can view.
+- Who can delete/archive.
+- Whether sensitive docs are private.
+- Whether documents need version history.
+- Whether documents need member acknowledgement or approval.
+
+Documents should not only live on the Documents page. The Documents page should be the index, while each deal/project/meeting/decision/vendor/member record shows its own files.
+
+### 6. Reporting Layer
+
+The app needs reporting beyond dashboard cards.
+
+Reports likely needed:
+
+- Leads imported.
+- Texts sent.
+- Replies received.
+- Response rate.
+- Interested sellers.
+- Leads converted to deal packets.
+- Deal packets submitted.
+- Member votes pending.
+- Member votes completed.
+- Buyer offers received.
+- Disposition conversion rate.
+- VA productivity.
+- Tasks completed by type.
+- Money committed.
+- Money spent.
+- Capital calls open/paid.
+- Project status and risk.
+
+Reports should be filterable by date, market, county, VA/member, source list, status, and project/deal.
+
+### 7. Automation Rules
+
+The platform should create work automatically when important events happen.
+
+Automation examples:
+
+- Seller replies -> create/reopen follow-up task.
+- Unmatched SMS -> create inbox triage item.
+- Deal packet submitted -> notify members and create vote tasks.
+- Member asks for more information -> create VA/member follow-up task.
+- Offer received -> create member decision task.
+- Meeting transcript uploaded -> extract action items.
+- VA ends shift -> notify members that daily brief is ready.
+- Capital call opens -> create member payment task.
+- Project task blocked -> notify owner/admin.
+
+Automation should be transparent, editable, and visible in the record timeline.
+
+### 8. Data Migration And Cleanup
+
+Existing scattered data needs a cleanup/migration strategy.
+
+Data to review:
+
+- Existing leads.
+- Imported CSV leads.
+- Existing deal packets.
+- Existing notes.
+- Existing decisions.
+- Existing documents.
+- Existing meetings/transcripts.
+- Existing tracker records.
+- Existing localStorage fallback data.
+- Existing Supabase production data.
+
+Cleanup questions:
+
+- What old records should be migrated?
+- What should be archived?
+- What should be deduplicated?
+- What should remain read-only for history?
+- What localStorage data should be moved into Supabase?
+
+### 9. Error Handling And Recovery
+
+Every important workflow needs clear failure handling.
+
+Failure cases:
+
+- Supabase unavailable.
+- Sakari send failure.
+- Sakari webhook failure.
+- Import failure.
+- Duplicate phone found.
+- Duplicate parcel found.
+- Permission denied.
+- Record save failed.
+- File upload failed.
+- Vote submission failed.
+- Project conversion failed.
+
+Each error should tell the user what happened, whether anything was saved, and what to do next.
+
+### 10. Mobile And Tablet Reality
+
+The desktop workflow is primary, but members and VA may use mobile for quick work.
+
+Mobile must support:
+
+- Member vote.
+- Daily brief review.
+- Task review and completion.
+- Seller/lead lookup.
+- Deal packet reading.
+- SMS history review.
+- Meeting/decision review.
+- Quick notes.
+
+Complex work like bulk import, disposition boards, and project setup can remain desktop-first.
+
+### 11. Operating Agreement And Governance Connection
+
+The survey/results/operating agreement features need a clear long-term home.
+
+They should connect to:
+
+- Governance records.
+- Decisions.
+- Member obligations.
+- Voting thresholds.
+- Capital rules.
+- Role rules.
+- Document records.
+- Membership applications.
+
+The operating agreement workflow should not feel like a separate legacy app once the member portal is reorganized.
+
+### 12. Lifecycle Definitions
+
+Every major object needs a defined lifecycle.
+
+Needed lifecycles:
+
+- Lead lifecycle.
+- Deal lifecycle.
+- Buyer lifecycle.
+- Disposition campaign lifecycle.
+- Offer lifecycle.
+- Project lifecycle.
+- Task lifecycle.
+- Decision lifecycle.
+- Document lifecycle.
+- Vendor lifecycle.
+- Member/application lifecycle.
+
+For each lifecycle, define:
+
+- Statuses.
+- Allowed transitions.
+- Who can move it.
+- What automation happens on transition.
+- What record history is created.
+- What notifications are sent.
+
+### 13. Admin Console
+
+The platform needs an admin/settings area for system management.
+
+Admin should manage:
+
+- Users.
+- Roles.
+- Permissions.
+- SMS templates.
+- Deal brief templates.
+- Status values.
+- Disposition outcomes.
+- Buyer tags.
+- Source lists.
+- Integrations.
+- Webhook health.
+- Data cleanup.
+- Feature flags or page visibility.
+
+This should prevent hard-coded settings from becoming a long-term bottleneck.
+
 ## Launch Readiness Checklist
 
 Before treating this as production-ready:
