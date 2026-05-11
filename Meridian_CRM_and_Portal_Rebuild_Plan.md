@@ -1650,6 +1650,7 @@ Completed in this pass:
 - Added Opportunity File quick actions for assigning VA tasks, opening Deal Review, jumping into CRM Records or Disposition for the selected deal, reviewing the conversation panel, and returning to the VA Workdesk.
 - Added a shared command-style operating header across Member Portal, CRM, and VA Workdesk so the three core surfaces now share the same visual language, primary actions, signed-in context, and live operating stats.
 - Reworked the Member Portal dashboard body into a consolidated decision desk: Needs My Attention queue first, then Deal Review Queue, VA Daily Brief, Money & Approvals, Active Projects & Closings, Seller Communication Alerts, Recent Activity, Upcoming Meeting, and compact secondary tools.
+- Replaced the Member Portal seller alert card with a CRM Relationship Command module that shows the seller-to-opportunity-to-buyer-to-offer path, live reply/unmatched/buyer/offer counts, exact CRM action links, and recent seller replies inside the member dashboard.
 - Wired the Member Portal dashboard into exact destinations wherever the records exist: member tasks open the selected task, VA brief cards open the VA brief tab, finance/reimbursement cards open Operations Finance, projects open the selected project, candidate/survey cards open the selected record, and CRM offer/action links open the relevant CRM panel.
 
 Risk: Medium.

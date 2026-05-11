@@ -20,6 +20,12 @@ import {
   type Notification,
 } from "@/lib/operations";
 import {
+  fetchCrmDashboardData,
+  type BuyerOffer,
+  type CrmBuyer,
+  type DispositionCampaign,
+} from "@/lib/crm";
+import {
   fetchPendingMembershipCandidateVotes,
   MEMBERSHIP_CANDIDATE_VOTE,
   type MembershipCandidate,
@@ -150,6 +156,11 @@ export default function DashboardPage() {
   const [vaBriefReviews, setVaBriefReviews] = useState<VaDailyBriefReview[]>([]);
   const [vaTimeEntries, setVaTimeEntries] = useState<VaTimeEntry[]>([]);
   const [leadActivities, setLeadActivities] = useState<ImportedLandLeadActivity[]>([]);
+  const [crmBuyers, setCrmBuyers] = useState<CrmBuyer[]>([]);
+  const [crmCampaigns, setCrmCampaigns] = useState<DispositionCampaign[]>([]);
+  const [crmOffers, setCrmOffers] = useState<BuyerOffer[]>([]);
+  const [crmContactCount, setCrmContactCount] = useState(0);
+  const [crmPropertyCount, setCrmPropertyCount] = useState(0);
   const [, setNowTick] = useState(0);
   const [loaded, setLoaded] = useState(false);
   const [message, setMessage] = useState("");
@@ -197,6 +208,7 @@ export default function DashboardPage() {
         briefRows,
         timeRows,
         activityRows,
+        crmRows,
       ] = await Promise.all([
         fetchActionItems(),
         fetchNextMeeting(),
@@ -213,6 +225,7 @@ export default function DashboardPage() {
         fetchVaDailyBriefs(5),
         fetchVaTimeEntries(20),
         fetchImportedLandLeadActivities(undefined, 80),
+        fetchCrmDashboardData(),
       ]);
 
       setActionItems(items);
@@ -227,6 +240,11 @@ export default function DashboardPage() {
       setVaBriefs(briefRows);
       setVaTimeEntries(timeRows);
       setLeadActivities(activityRows);
+      setCrmBuyers(crmRows.buyers);
+      setCrmCampaigns(crmRows.campaigns);
+      setCrmOffers(crmRows.offers);
+      setCrmContactCount(crmRows.contacts.length);
+      setCrmPropertyCount(crmRows.properties.length);
       void fetchVaDailyBriefReviews(briefRows.map(brief => brief.id)).then(setVaBriefReviews);
       setReimbursements(reimbursementRows);
       setDecisions(hub.decisions.slice(0, 4));
@@ -375,6 +393,9 @@ export default function DashboardPage() {
   const hotDeals = deals.filter(d => (d.urgency === "hot" || d.analysis?.recommendation === "Strong Review") && !pendingDealIds.has(d.id)).slice(0, 3);
   const sellerReplies = communicationEvents.filter(event => event.direction === "inbound");
   const unmatchedSellerReplies = sellerReplies.filter(event => !event.matched_lead_id && !event.matched_deal_id);
+  const crmOffersNeedingDecision = crmOffers.filter(offer => offer.status === "received" || offer.status === "countered");
+  const activeRelationshipCampaigns = crmCampaigns.filter(campaign => campaign.status !== "closed" && campaign.status !== "fell-through");
+  const crmRelationshipRecords = crmContactCount + crmPropertyCount + crmBuyers.length;
   const activeProjects = projects.filter(p => !["sold", "passed"].includes(p.status)).slice(0, 3);
   const pendingReimbursements = reimbursements.filter(r => r.status === "submitted" || r.status === "approved");
   const incompleteSurveys = progress.filter(p => p.status !== "Completed");
@@ -447,6 +468,38 @@ export default function DashboardPage() {
     { label: "Tasks", value: todayCompletedVaTasks.length },
     { label: "Packets", value: todayDealBriefs.length },
   ];
+  const relationshipActionRows = [
+    ...(unmatchedSellerReplies.length > 0 ? [{
+      label: "Seller Inbox",
+      title: "Unmatched seller replies",
+      detail: `${unmatchedSellerReplies.length} repl${unmatchedSellerReplies.length === 1 ? "y" : "ies"} need matching to a lead or deal.`,
+      href: "/crm?view=inbox",
+    }] : []),
+    ...(crmOffersNeedingDecision.length > 0 ? [{
+      label: "Offer Decision",
+      title: "Buyer offers need direction",
+      detail: `${crmOffersNeedingDecision.length} offer${crmOffersNeedingDecision.length === 1 ? "" : "s"} waiting for accept, counter, or pass.`,
+      href: "/crm?view=dispo",
+    }] : []),
+    ...(activeRelationshipCampaigns.length > 0 ? [{
+      label: "Disposition",
+      title: "Buyer campaigns in motion",
+      detail: `${activeRelationshipCampaigns.length} active campaign${activeRelationshipCampaigns.length === 1 ? "" : "s"} tied to deal exits.`,
+      href: "/crm?view=dispo",
+    }] : []),
+    ...(crmBuyers.length > 0 ? [{
+      label: "Buyer Network",
+      title: "Buyer list is building",
+      detail: `${crmBuyers.length} buyer profile${crmBuyers.length === 1 ? "" : "s"} available for matching.`,
+      href: "/crm?view=buyers",
+    }] : []),
+    ...(crmRelationshipRecords > 0 ? [{
+      label: "Records",
+      title: "Relationship records",
+      detail: `${crmContactCount} contacts · ${crmPropertyCount} properties · ${crmBuyers.length} buyers.`,
+      href: "/crm?view=records",
+    }] : []),
+  ].slice(0, 4);
   const attentionRows = [
     ...pendingVotes.slice(0, 3).map(notice => ({
       id: notice.id,
@@ -819,25 +872,42 @@ export default function DashboardPage() {
             ))}
           </Panel>
 
-          <Panel title="Seller Communication Alerts" cta={{ label: "CRM inbox", onClick: () => router.push("/crm?view=inbox") }}>
-            {sellerReplies.length === 0 && <EmptyText>No seller texts have arrived yet.</EmptyText>}
-            {unmatchedSellerReplies.length > 0 && (
-              <div style={{ ...listItemStyle, borderColor: "rgba(176,137,84,0.45)", background: "rgba(176,137,84,0.08)" }}>
-                <p style={{ fontSize: 14, fontWeight: 800, color: obsidian, marginBottom: 3 }}>
-                  {unmatchedSellerReplies.length} unmatched seller repl{unmatchedSellerReplies.length === 1 ? "y" : "ies"}
-                </p>
-                <p style={{ fontSize: 12, color: ink, opacity: 0.7, lineHeight: 1.45 }}>
-                  Needs matching to an imported lead or a new deal draft.
-                </p>
-              </div>
+          <Panel title="Relationship Command" cta={{ label: "Open CRM", onClick: () => router.push("/crm") }}>
+            <div className="relationship-path-grid">
+              <RelationshipStage label="Seller" value={sellerReplies.length} active={sellerReplies.length > 0} />
+              <RelationshipStage label="Opportunity" value={deals.length} active={deals.length > 0} />
+              <RelationshipStage label="Buyer / Dispo" value={crmBuyers.length + activeRelationshipCampaigns.length} active={crmBuyers.length + activeRelationshipCampaigns.length > 0} />
+              <RelationshipStage label="Offer" value={crmOffersNeedingDecision.length} active={crmOffersNeedingDecision.length > 0} />
+            </div>
+
+            <div className="relationship-metrics">
+              <BriefMetric label="Replies" value={sellerReplies.length} />
+              <BriefMetric label="Unmatched" value={unmatchedSellerReplies.length} />
+              <BriefMetric label="Buyers" value={crmBuyers.length} />
+              <BriefMetric label="Offers" value={crmOffersNeedingDecision.length} />
+            </div>
+
+            {relationshipActionRows.length === 0 ? (
+              <EmptyText>No CRM relationship work needs member attention right now.</EmptyText>
+            ) : (
+              relationshipActionRows.map(row => (
+                <SignalItem
+                  key={row.label}
+                  label={row.label}
+                  title={row.title}
+                  detail={row.detail}
+                  onClick={() => router.push(row.href)}
+                />
+              ))
             )}
-            {sellerReplies.slice(0, 4).map(event => (
+
+            {sellerReplies.slice(0, 2).map(event => (
               <SignalItem
                 key={event.id}
                 label={event.matched_deal_id ? "Matched deal" : event.matched_lead_id ? "Matched lead" : "Unmatched"}
                 title={event.contact_name || event.contact_number || event.from_number || "Unknown sender"}
                 detail={event.body || event.status || event.provider_event_type}
-                onClick={() => router.push(event.matched_deal_id ? `/opportunity?deal=${event.matched_deal_id}` : event.matched_lead_id ? `/opportunity?lead=${event.matched_lead_id}` : "/crm")}
+                onClick={() => router.push(event.matched_deal_id ? `/opportunity?deal=${event.matched_deal_id}` : event.matched_lead_id ? `/opportunity?lead=${event.matched_lead_id}` : "/crm?view=inbox")}
               />
             ))}
           </Panel>
@@ -925,6 +995,16 @@ export default function DashboardPage() {
           grid-template-columns: 1fr 1fr;
           gap: 16px;
         }
+        .relationship-path-grid {
+          display: grid;
+          grid-template-columns: repeat(4, minmax(0, 1fr));
+          gap: 7px;
+        }
+        .relationship-metrics {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 8px;
+        }
         .secondary-tool-grid {
           display: grid;
           grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -938,7 +1018,8 @@ export default function DashboardPage() {
         @media (max-width: 600px) {
           .dashboard-root { padding-top: 28px !important; }
           .secondary-tool-grid,
-          .brief-metrics { grid-template-columns: 1fr 1fr !important; }
+          .brief-metrics,
+          .relationship-path-grid { grid-template-columns: 1fr 1fr !important; }
         }
       `}</style>
     </div>
@@ -1026,6 +1107,21 @@ function BriefMetric({ label, value }: { label: string; value: number }) {
     }}>
       <p style={{ fontSize: 10, color: COLORS.brass, fontWeight: 900, letterSpacing: "0.13em", textTransform: "uppercase", marginBottom: 4 }}>{label}</p>
       <p style={{ fontSize: 18, color: COLORS.obsidian, fontWeight: 900, fontVariantNumeric: "tabular-nums" }}>{value}</p>
+    </div>
+  );
+}
+
+function RelationshipStage({ label, value, active }: { label: string; value: number; active: boolean }) {
+  return (
+    <div style={{
+      border: `1px solid ${active ? "rgba(176,137,84,0.55)" : "var(--fog)"}`,
+      background: active ? "rgba(176,137,84,0.10)" : "rgba(255,255,255,0.36)",
+      borderRadius: 8,
+      padding: "9px 8px",
+      minHeight: 62,
+    }}>
+      <p style={{ fontSize: 9, color: COLORS.brass, fontWeight: 900, letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: 5, lineHeight: 1.2 }}>{label}</p>
+      <p style={{ fontSize: 17, color: COLORS.obsidian, fontWeight: 900, fontVariantNumeric: "tabular-nums" }}>{value}</p>
     </div>
   );
 }
