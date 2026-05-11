@@ -93,6 +93,13 @@ function sourceLabel(item: ActionItem): string {
   return isVaTask(item) ? "VA work" : "General";
 }
 
+function formatDateTime(iso: string | null | undefined): string {
+  if (!iso) return "Not set";
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return iso;
+  return date.toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+}
+
 export default function ActionsPage() {
   const router = useRouter();
   const [user, setUser] = useState<string | null>(null);
@@ -108,6 +115,7 @@ export default function ActionsPage() {
   const [meetings, setMeetings] = useState<MeetingNote[]>([]);
   const [surveyCounts, setSurveyCounts] = useState<Record<string, number>>({});
   const [filter, setFilter] = useState<TaskFilter>("needs-me");
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [showNew, setShowNew] = useState(false);
   const [draft, setDraft] = useState({
@@ -189,6 +197,10 @@ export default function ActionsPage() {
     for (const i of items) out[i.status].push(i);
     return out;
   }, [items]);
+
+  useEffect(() => {
+    if (selectedTaskId && !items.some(item => item.id === selectedTaskId)) setSelectedTaskId(null);
+  }, [items, selectedTaskId]);
 
   const linkOptions = useMemo<LinkOption[]>(() => [
     ...leads.slice(0, 60).map(lead => ({
@@ -340,13 +352,31 @@ export default function ActionsPage() {
     completed: completedTasks.length,
   };
   const openAssignedActions = taskCards.filter(task => task.kind === "Action").length;
+  const selectedTask = selectedTaskId ? items.find(item => item.id === selectedTaskId) ?? null : null;
 
-  const handleStatusChange = async (item: ActionItem, status: ActionItemStatus) => {
-    const { error } = await updateActionItemStatus(item.id, status, user);
+  const handleStatusChange = async (item: ActionItem, status: ActionItemStatus, note = "") => {
+    const { error } = await updateActionItemStatus(item.id, status, user, note);
     if (error) { alert(error); return; }
+    const now = new Date().toISOString();
     setItems(prev => prev.map(i => i.id === item.id ? {
-      ...i, status, completed_at: status === "done" ? new Date().toISOString() : null,
+      ...i,
+      status,
+      updated_at: now,
+      updated_by: user,
+      completed_at: status === "done" ? now : null,
+      completed_by: status === "done" ? user : null,
+      completion_note: status === "done" ? note.trim() || null : null,
+      blocker_reason: status === "blocked" ? note.trim() || null : null,
     } : i));
+  };
+
+  const promptStatusChange = async (item: ActionItem, status: ActionItemStatus) => {
+    const note = status === "done"
+      ? window.prompt("Completion note (optional):") ?? ""
+      : status === "blocked"
+        ? window.prompt("What is blocking this task?") ?? ""
+        : "";
+    await handleStatusChange(item, status, note);
   };
 
   const handleDelete = async (item: ActionItem) => {
@@ -595,7 +625,7 @@ export default function ActionsPage() {
                     opacity: task.status === "Done" ? 0.68 : 1,
                   }}>
                     <button
-                      onClick={() => router.push(task.href)}
+                      onClick={() => task.sourceItem ? setSelectedTaskId(task.sourceItem.id) : router.push(task.href)}
                       style={{ background: "transparent", border: "none", padding: 0, textAlign: "left", cursor: "pointer", flex: 1, color: "var(--ink)" }}
                     >
                       <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 5 }}>
@@ -618,7 +648,7 @@ export default function ActionsPage() {
                       <p style={{ fontSize: 13, color: "var(--ink)", opacity: 0.7, lineHeight: 1.45, marginTop: 4 }}>{task.detail}</p>
                     </button>
                     {task.sourceItem && task.status !== "Done" && (
-                      <button onClick={() => handleStatusChange(task.sourceItem!, "done")} style={primaryBtnStyle}>
+                      <button onClick={() => promptStatusChange(task.sourceItem!, "done")} style={primaryBtnStyle}>
                         Done
                       </button>
                     )}
@@ -632,6 +662,19 @@ export default function ActionsPage() {
               </div>
             )}
           </section>
+
+          {selectedTask && (
+            <TaskDetailPanel
+              task={selectedTask}
+              onClose={() => setSelectedTaskId(null)}
+              onOpenRecord={() => router.push(taskHref(selectedTask))}
+              onStart={() => handleStatusChange(selectedTask, "in-progress")}
+              onBlock={() => promptStatusChange(selectedTask, "blocked")}
+              onDone={() => promptStatusChange(selectedTask, "done")}
+              onReopen={() => handleStatusChange(selectedTask, "open")}
+              onDelete={admin ? () => handleDelete(selectedTask) : undefined}
+            />
+          )}
 
           <details style={{ marginBottom: 24 }}>
             <summary style={{ cursor: "pointer", color: "var(--brass)", fontSize: 11, fontWeight: 800, letterSpacing: "0.16em", textTransform: "uppercase", marginBottom: 12 }}>
@@ -716,7 +759,7 @@ export default function ActionsPage() {
                           </button>
                         )}
                         {canMarkDone && status !== "done" && (
-                          <button onClick={() => handleStatusChange(item, "done")} style={primaryBtnStyle}>
+                          <button onClick={() => promptStatusChange(item, "done")} style={primaryBtnStyle}>
                             Mark done
                           </button>
                         )}
@@ -730,6 +773,9 @@ export default function ActionsPage() {
                             Delete
                           </button>
                         )}
+                        <button onClick={() => setSelectedTaskId(item.id)} style={subtleBtnStyle}>
+                          Details
+                        </button>
                       </div>
                     </div>
                   </div>
@@ -804,6 +850,120 @@ function TaskSummaryCard({
         {detail}
       </span>
     </button>
+  );
+}
+
+function TaskDetailPanel({
+  task,
+  onClose,
+  onOpenRecord,
+  onStart,
+  onBlock,
+  onDone,
+  onReopen,
+  onDelete,
+}: {
+  task: ActionItem;
+  onClose: () => void;
+  onOpenRecord: () => void;
+  onStart: () => void;
+  onBlock: () => void;
+  onDone: () => void;
+  onReopen: () => void;
+  onDelete?: () => void;
+}) {
+  const history = [
+    { label: "Created", who: task.created_by || "Unknown", at: task.created_at, detail: "Task was assigned." },
+    task.updated_at !== task.created_at
+      ? {
+          label: STATUS_LABEL[task.status],
+          who: task.updated_by || "Unknown",
+          at: task.updated_at,
+          detail: task.blocker_reason || task.completion_note || "Status updated.",
+        }
+      : null,
+    task.completed_at
+      ? {
+          label: "Completed",
+          who: task.completed_by || task.updated_by || "Unknown",
+          at: task.completed_at,
+          detail: task.completion_note || "Marked done.",
+        }
+      : null,
+  ].filter((item): item is { label: string; who: string; at: string; detail: string } => Boolean(item));
+
+  return (
+    <section
+      style={{
+        background: "var(--surface)",
+        border: "1px solid var(--fog)",
+        borderRadius: 12,
+        padding: 16,
+        marginBottom: 20,
+        boxShadow: "0 10px 26px rgba(20,17,13,0.06)",
+      }}
+    >
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 14, alignItems: "flex-start", marginBottom: 14 }}>
+        <div>
+          <p style={{ fontSize: 11, fontWeight: 900, letterSpacing: "0.16em", color: "var(--brass)", textTransform: "uppercase", marginBottom: 6 }}>
+            Task Detail
+          </p>
+          <h2 style={{ fontFamily: DISPLAY_FONT, fontSize: 26, fontWeight: 500, color: "var(--obsidian)" }}>{task.title}</h2>
+          <p style={{ color: "var(--ink)", opacity: 0.7, fontSize: 13, lineHeight: 1.5, marginTop: 5 }}>{task.description || "No description added."}</p>
+        </div>
+        <button onClick={onClose} style={subtleBtnStyle}>Close</button>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, marginBottom: 14 }} className="action-form-row">
+        <TaskDetailStat label="Status" value={STATUS_LABEL[task.status]} />
+        <TaskDetailStat label="Assignee" value={task.assigned_to || "Unassigned"} />
+        <TaskDetailStat label="Priority" value={labelForStatus(task.priority || "normal")} />
+        <TaskDetailStat label="Due" value={formatDue(task.due_date) || "No due date"} />
+        <TaskDetailStat label="Created By" value={task.created_by || "Unknown"} />
+        <TaskDetailStat label="Record" value={sourceLabel(task)} />
+        <TaskDetailStat label="Updated" value={formatDateTime(task.updated_at)} />
+        <TaskDetailStat label="Completed By" value={task.completed_by || "Not completed"} />
+      </div>
+
+      {(task.blocker_reason || task.completion_note) && (
+        <div style={{ background: "var(--bone)", border: "1px solid var(--fog)", borderRadius: 10, padding: 12, marginBottom: 14 }}>
+          <p style={{ fontSize: 11, fontWeight: 900, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--brass)", marginBottom: 5 }}>
+            {task.blocker_reason ? "Blocker" : "Completion Note"}
+          </p>
+          <p style={{ color: "var(--ink)", opacity: 0.75, fontSize: 13, lineHeight: 1.5 }}>{task.blocker_reason || task.completion_note}</p>
+        </div>
+      )}
+
+      <div style={{ display: "grid", gap: 8, marginBottom: 14 }}>
+        <p style={{ fontSize: 11, fontWeight: 900, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--brass)" }}>History</p>
+        {history.map((event, index) => (
+          <div key={`${event.label}-${index}`} style={{ display: "grid", gridTemplateColumns: "120px 1fr", gap: 10, borderBottom: "1px solid var(--fog)", paddingBottom: 8 }}>
+            <span style={{ color: "var(--muted)", fontSize: 12 }}>{formatDateTime(event.at)}</span>
+            <span style={{ color: "var(--ink)", fontSize: 13 }}>
+              <strong style={{ color: "var(--obsidian)" }}>{event.label}</strong> by {event.who}. {event.detail}
+            </span>
+          </div>
+        ))}
+      </div>
+
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        <button onClick={onOpenRecord} style={subtleBtnStyle}>Open Linked Record</button>
+        {task.status !== "in-progress" && task.status !== "done" && <button onClick={onStart} style={subtleBtnStyle}>Start</button>}
+        {task.status !== "done" && <button onClick={onDone} style={primaryBtnStyle}>Mark Done</button>}
+        {task.status !== "blocked" && task.status !== "done" && <button onClick={onBlock} style={subtleBtnStyle}>Mark Blocked</button>}
+        {task.status === "done" && <button onClick={onReopen} style={subtleBtnStyle}>Reopen</button>}
+        {onDelete && <button onClick={onDelete} style={subtleBtnStyle}>Delete</button>}
+      </div>
+    </section>
+  );
+}
+
+function TaskDetailStat({ label, value }: { label: string; value: string }) {
+  return (
+    <div style={{ background: "var(--bone)", border: "1px solid var(--fog)", borderRadius: 10, padding: 10 }}>
+      <p style={{ fontSize: 10, color: "var(--brass)", fontWeight: 900, letterSpacing: "0.14em", textTransform: "uppercase", marginBottom: 4 }}>{label}</p>
+      <strong style={{ color: "var(--obsidian)", fontSize: 13, lineHeight: 1.3 }}>{value}</strong>
+    </div>
   );
 }
 

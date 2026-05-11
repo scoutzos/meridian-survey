@@ -1468,11 +1468,16 @@ Completed in this pass:
   - VA Desk task cards show the linked record type and include an Open Record action.
   - Operations now surfaces blocked VA tasks with blocker reason and a link back to the related record.
   - Member task page includes VA task and assigned-by-me filters.
+- Continued with member task visibility:
+  - Added a task detail panel to the member action page.
+  - Members can click assigned tasks to see status, assignee, creator, linked record, priority, due date, updated by, completed by, blocker reason, and completion note.
+  - Members can start, block, complete, reopen, delete, or open the linked record directly from the task detail panel.
+  - Task detail now shows a lightweight history based on created, updated, blocked, and completed fields.
 
 Remaining:
 
 - Add linked-record selectors for documents once document ownership/indexing is cleaned up.
-- Add a cleaner member-facing task detail/history view.
+- Add a persistent task event/audit table if we need every status change, reassignment, comment, and notification preserved beyond the current task fields.
 - Add stronger notification rules for all members/admin, not only the task creator.
 - Confirm RLS for members assigning VA tasks and VA updating only assigned tasks.
 - Decide if blocked tasks should create a separate escalation queue in Operations.
