@@ -165,6 +165,7 @@ export default function ActionsPage() {
   const [taskAssignees, setTaskAssignees] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [showNew, setShowNew] = useState(false);
+  const [message, setMessage] = useState("");
   const [draft, setDraft] = useState({
     title: "",
     description: "",
@@ -413,7 +414,7 @@ export default function ActionsPage() {
 
   const handleStatusChange = async (item: ActionItem, status: ActionItemStatus, note = "") => {
     const { error } = await updateActionItemStatus(item.id, status, user, note);
-    if (error) { alert(error); return; }
+    if (error) { setMessage(error); return; }
     const now = new Date().toISOString();
     const eventType = status === "done" ? "completed" : status === "blocked" ? "blocked" : status === "open" ? "reopened" : "status-changed";
     setItems(prev => prev.map(i => i.id === item.id ? {
@@ -439,6 +440,7 @@ export default function ActionsPage() {
         created_at: now,
       },
     ]);
+    setMessage(`Task marked ${STATUS_LABEL[status]}.`);
   };
 
   const promptStatusChange = async (item: ActionItem, status: ActionItemStatus) => {
@@ -453,16 +455,17 @@ export default function ActionsPage() {
   const handleDelete = async (item: ActionItem) => {
     if (!confirm(`Delete "${item.title}"?`)) return;
     const { error } = await deleteActionItem(item.id, user);
-    if (error) { alert(error); return; }
+    if (error) { setMessage(error); return; }
     setItems(prev => prev.filter(i => i.id !== item.id));
     setTaskEvents(prev => prev.filter(event => event.action_item_id !== item.id));
+    setMessage("Task deleted.");
   };
 
   const handleAddTaskComment = async (item: ActionItem) => {
     const note = (taskComments[item.id] || "").trim();
     if (!note) return;
     const { error } = await addActionItemComment(item.id, user, note);
-    if (error) { alert(error); return; }
+    if (error) { setMessage(error); return; }
     const now = new Date().toISOString();
     setTaskEvents(prev => [
       ...prev,
@@ -493,13 +496,14 @@ export default function ActionsPage() {
         dedupe: item.status === "blocked",
       }, user);
     }
+    setMessage("Comment added.");
   };
 
   const handleReassignTask = async (item: ActionItem) => {
     const assignedTo = taskAssignees[item.id] || item.assigned_to || ALL_MEMBERS_LABEL;
     if (!assignedTo || assignedTo === item.assigned_to) return;
     const { data, error } = await reassignActionItem(item.id, user, assignedTo);
-    if (error) { alert(error); return; }
+    if (error) { setMessage(error); return; }
     const updated = data ?? { ...item, assigned_to: assignedTo, task_type: assignedTo === VA_ASSIGNEE_LABEL ? "va-work" as const : "general" as const };
     const now = updated.updated_at || new Date().toISOString();
     setItems(prev => prev.map(row => row.id === item.id ? updated : row));
@@ -530,10 +534,11 @@ export default function ActionsPage() {
         dedupe: true,
       }, user);
     }
+    setMessage(`Task reassigned to ${assignedTo}.`);
   };
 
   const handleCreate = async () => {
-    if (!draft.title.trim()) { alert("Title is required."); return; }
+    if (!draft.title.trim()) { setMessage("Title is required."); return; }
     setSaving(true);
     const { error } = await createActionItem({
       title: draft.title,
@@ -546,10 +551,11 @@ export default function ActionsPage() {
       source_id: selectedLink?.id ?? null,
     }, user);
     setSaving(false);
-    if (error) { alert(error); return; }
+    if (error) { setMessage(error); return; }
     setDraft({ title: "", description: "", assigned_to: ALL_MEMBERS_LABEL, due_date: "", task_type: "general", priority: "normal", link_type: "general", source_key: "" });
     setShowNew(false);
     void reload();
+    setMessage("Task assigned.");
   };
 
   return (
@@ -579,6 +585,26 @@ export default function ActionsPage() {
           {showNew ? "Cancel" : "Assign task"}
         </button>
       </header>
+
+      {message && (
+        <div style={{
+          border: "1px solid rgba(176,137,84,0.36)",
+          background: "rgba(176,137,84,0.10)",
+          color: "var(--obsidian)",
+          borderRadius: 10,
+          padding: "11px 13px",
+          marginBottom: 16,
+          display: "flex",
+          justifyContent: "space-between",
+          gap: 12,
+          alignItems: "flex-start",
+          fontSize: 13,
+          lineHeight: 1.45,
+        }}>
+          <span>{message}</span>
+          <button onClick={() => setMessage("")} style={{ background: "transparent", border: "none", color: "var(--brass)", fontSize: 11, fontWeight: 800, letterSpacing: "0.12em", textTransform: "uppercase", cursor: "pointer" }}>Clear</button>
+        </div>
+      )}
 
       {showNew && (
         <div style={{

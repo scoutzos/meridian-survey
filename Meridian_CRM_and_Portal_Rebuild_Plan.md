@@ -1635,6 +1635,7 @@ Completed in this pass:
 - Replaced Operations browser alerts with an in-page status banner for approvals, time edits, reimbursements, distributions, scenarios, VA brief reviews, and blocked-task responses.
 - Added member dashboard in-page feedback for clearing notifications and marking tasks done.
 - Replaced Projects browser alerts with an in-page status banner for risks, documents, vendors, and risk status changes.
+- Replaced Tasks browser alerts with in-page feedback for status changes, comments, reassignment, deletion, and task creation.
 
 Risk: Medium.
 
