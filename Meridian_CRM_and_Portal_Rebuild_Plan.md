@@ -487,6 +487,381 @@ The platform should organize around these lanes:
 | Operations | Route daily work across VA, members, and admins. | VA shifts, daily brief, action items, notifications, member-to-VA tasks, work queues. | Work should have one routing system: assign, due date, owner, status, completion, blocker, and daily brief/notification rollup. |
 | Platform | Make the app feel like one system. | Navigation, global search, permissions, audit trail, notifications, mobile shell. | Users should search, navigate, receive alerts, and access records based on role without portals feeling disconnected. |
 
+## Meridian Operating Blueprint
+
+This is the practical workflow blueprint for the rebuild. Every future build pass should improve one of these workflows, reduce duplicate entry, clarify ownership, or make automation safer.
+
+### Role Home Screens
+
+| Role | First Screen | Primary Question It Should Answer | Main Actions |
+| --- | --- | --- | --- |
+| VA | VA Desk | What do I need to work today? | Start shift, work lead queues, send/log SMS and calls, update dispositions, build deal briefs, complete member-assigned tasks, submit daily brief. |
+| Member | Member Dashboard | What needs my attention? | Vote, review deal packets, read VA brief, assign tasks, review documents, respond to capital calls, check project status. |
+| Admin | Command Center / Operations | Where is the business stuck? | Review queues, assign work, manage users/roles, monitor imports/SMS, review daily briefs, resolve blockers, manage templates/settings. |
+| CRM/Acquisitions Lead | CRM Command Center | What is happening across leads, buyers, deals, and disposition? | Triage replies, manage records, send messages, review campaigns, track offers, clean duplicates. |
+
+### 1. Lead Intake Workflow
+
+Purpose: turn raw land lists and seller replies into organized leads without re-entering data.
+
+Flow:
+
+```text
+Imported list -> lead record -> VA queue -> contact attempt -> disposition -> interested lead or closed lead
+```
+
+System of record:
+
+- Imported list batch records the source.
+- Lead record owns source-list fields and outreach status.
+- CRM contact owns durable person/contact information.
+- CRM property owns durable parcel/property information.
+
+Owner:
+
+- VA works the queue.
+- Admin reviews import quality and stuck queues.
+
+Automation:
+
+- Import creates lead records.
+- Duplicate phone/parcel should flag before outreach.
+- Seller reply should update last-touch and create/reopen work.
+- DNC/bad number should stop future bulk/manual outreach.
+
+Success metrics:
+
+- Lists imported.
+- Leads contacted.
+- Response rate.
+- Interested sellers.
+- Bad/DNC numbers.
+- Leads converted to deal packet.
+
+### 2. Seller Communication Workflow
+
+Purpose: make every seller text/call visible from the lead, CRM contact, deal packet, and opportunity file.
+
+Flow:
+
+```text
+Inbound/outbound SMS or call -> communication event -> matched lead/contact/deal -> timeline -> next action
+```
+
+System of record:
+
+- Communication event owns the actual message/call log.
+- Contact owns the person.
+- Lead/deal owns the business context.
+
+Owner:
+
+- VA handles normal seller communication.
+- Member/admin may review but should not casually bypass the VA workflow unless permission allows it.
+
+Automation:
+
+- Unmatched inbound SMS goes to inbox triage.
+- Matched inbound SMS creates a follow-up task if no open task exists.
+- Opt-out updates contact and lead communication status.
+- Sent SMS logs to daily activity and timeline.
+
+Success metrics:
+
+- Texts sent.
+- Replies received.
+- Unmatched messages.
+- Time to respond.
+- Follow-ups due.
+
+### 3. Deal Packet Workflow
+
+Purpose: convert an interested seller into a member-ready decision packet.
+
+Flow:
+
+```text
+Interested lead -> deal brief -> calculator -> VA notes -> member packet -> member review
+```
+
+System of record:
+
+- Deal packet owns the acquisition opportunity.
+- Opportunity File displays the shared record.
+- Calculator owns acquisition/disposition assumptions.
+- Notes/timeline own context and audit history.
+
+Owner:
+
+- VA drafts/submits packet.
+- Member/admin reviews and requests more info or votes.
+
+Automation:
+
+- Packet submission creates member review notifications/tasks.
+- Missing required fields block or warn before submission.
+- Member “needs more info” creates task back to VA/admin.
+
+Success metrics:
+
+- Deal briefs submitted.
+- Packets ready for review.
+- Packets returned for more info.
+- Time from interested seller to member review.
+
+### 4. Member Vote And Approval Workflow
+
+Purpose: make decisions clear, official, and connected to the record.
+
+Flow:
+
+```text
+Packet submitted -> member vote task -> votes collected -> outcome -> agreement/offer/project/disposition/pass
+```
+
+System of record:
+
+- Decision/vote record owns approval status and outcome.
+- Deal packet owns deal details.
+- Agreement record owns final terms and authority.
+
+Owner:
+
+- Members vote.
+- Admin closes/ratifies outcome if needed.
+
+Automation:
+
+- Vote request creates tasks for required members.
+- Quorum reached updates decision status.
+- Approval creates agreement/project/disposition next action.
+- Rejection/pass updates deal status and timeline.
+
+Success metrics:
+
+- Votes pending.
+- Time to quorum.
+- Approval rate.
+- Deals needing more info.
+- Decisions finalized.
+
+### 5. Disposition Workflow
+
+Purpose: connect buyer demand, campaigns, outreach, offers, and member decisions.
+
+Flow:
+
+```text
+Approved/review-ready packet -> buyer match -> campaign -> buyer outreach -> offer -> member decision -> close/pass/fallback
+```
+
+System of record:
+
+- Buyer record owns demand/buy box.
+- Disposition campaign owns outreach plan and stage.
+- Buyer offer owns offer terms.
+- Decision record owns member direction on offer acceptance/counter/pass.
+
+Owner:
+
+- CRM/acquisitions lead or admin manages buyer campaigns.
+- Members approve major offer decisions.
+- VA may support outreach if assigned.
+
+Automation:
+
+- Campaign stage changes should log timeline events.
+- Offer received creates decision task.
+- Accepted offer creates project/closing next actions.
+
+Success metrics:
+
+- Campaigns active.
+- Buyers contacted.
+- Offers received.
+- Offer spread to target.
+- Deals under contract/closed.
+
+### 6. Project Conversion Workflow
+
+Purpose: carry deal context into execution after approval.
+
+Flow:
+
+```text
+Approved deal -> agreement ready -> convert to project -> budget/tasks/vendors/docs/risks -> execution updates
+```
+
+System of record:
+
+- Project owns execution.
+- Deal remains historical acquisition source.
+- Agreement owns approved terms.
+- Tracker owns money movements.
+- Documents attach to project and underlying deal.
+
+Owner:
+
+- Admin/project owner manages conversion and execution.
+- Members review money/risk/status.
+
+Automation:
+
+- Conversion carries deal packet, votes, agreement, docs, diligence, and timeline.
+- Project creation creates initial tasks and milestone checklist.
+- Project risk/blocker creates notification.
+
+Success metrics:
+
+- Approved deals converted.
+- Active projects.
+- Open risks.
+- Milestones due.
+- Budget status.
+
+### 7. VA Daily Shift Workflow
+
+Purpose: make the VA’s day measurable, reviewable, and tied to real completed work.
+
+Flow:
+
+```text
+Start shift -> work queues/tasks -> log activity automatically -> add blockers/notes -> end shift brief -> member review
+```
+
+System of record:
+
+- Shift record owns clock-in/out and break status.
+- Daily brief owns summary, notes, blockers, and submitted report.
+- Activity/task records provide counts and detail.
+
+Owner:
+
+- VA starts/ends shift and submits brief.
+- Members/admin review the brief and assign follow-ups.
+
+Automation:
+
+- Starting shift opens active shift.
+- Texts/calls/lead updates/tasks completed count toward shift.
+- Ending shift drafts daily brief from activity.
+- Submitted brief notifies members/admin.
+
+Success metrics:
+
+- Calls made.
+- Texts sent.
+- Replies handled.
+- Leads updated.
+- Deal briefs submitted.
+- Member tasks completed.
+- Blockers reported.
+
+### 8. Meeting-To-Task Workflow
+
+Purpose: make meetings create real operating output.
+
+Flow:
+
+```text
+Agenda -> meeting/transcript -> summary -> decisions -> tasks -> follow-up review
+```
+
+System of record:
+
+- Meeting record owns agenda, transcript, and summary.
+- Decision record owns official outcomes.
+- Task record owns follow-up work.
+
+Owner:
+
+- Admin/member creates meeting record.
+- Members own decisions.
+- Assigned users own follow-up tasks.
+
+Automation:
+
+- Transcript extraction suggests summary and action items.
+- Approved action items become tasks.
+- Decisions link back to meeting and related record.
+
+Success metrics:
+
+- Meetings held.
+- Tasks created.
+- Tasks completed.
+- Decisions recorded.
+- Follow-ups overdue.
+
+### 9. Money Approval Workflow
+
+Purpose: connect money decisions to deals, projects, capital, and approvals.
+
+Flow:
+
+```text
+Expense/capital need -> proposal -> member approval -> capital call/payment/reimbursement -> project/deal ledger
+```
+
+System of record:
+
+- Tracker owns money records.
+- Decision/vote record owns approval.
+- Project/deal owns business context.
+
+Owner:
+
+- Admin creates proposals/capital calls.
+- Members approve and contribute.
+
+Automation:
+
+- Proposal creates approval tasks.
+- Approval creates expense/capital call next action.
+- Payment/contribution updates member/project status.
+
+Success metrics:
+
+- Capital calls open.
+- Contributions received.
+- Expenses approved.
+- Expenses paid.
+- Project budget variance.
+
+### 10. Document Review Workflow
+
+Purpose: make documents attached, reviewable, and tied to the record they support.
+
+Flow:
+
+```text
+Upload/attach document -> classify -> link record -> review/approve if needed -> preserve version/history
+```
+
+System of record:
+
+- Document record owns file metadata, permissions, version, and linked record.
+- Linked deal/project/meeting/decision shows relevant documents.
+
+Owner:
+
+- Admin/member uploads.
+- Required reviewer approves/acknowledges if needed.
+
+Automation:
+
+- Upload can create review task.
+- Approved agreement can unlock project conversion.
+- Missing diligence document can block next stage.
+
+Success metrics:
+
+- Documents uploaded.
+- Documents awaiting review.
+- Missing required documents.
+- Approved agreements.
+- Diligence completion.
+
 ### Missing Or Under-Specified Cross-Platform Work
 
 These items need to be tracked explicitly so the rebuild enhances and organizes all existing features instead of only improving the CRM screens.
