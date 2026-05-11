@@ -68,6 +68,7 @@ export default function GlobalLeadSearch() {
   }, [pathname]);
 
   const shouldShow = !!user && pathname !== "/" && pathname !== "/apply";
+  const crmShell = ["/crm", "/va", "/deals", "/opportunity", "/actions", "/operations", "/meetings"].some(route => pathname === route || pathname.startsWith(route + "/"));
 
   const loadSearchData = async () => {
     if (loaded || loading) return;
@@ -128,13 +129,13 @@ export default function GlobalLeadSearch() {
 
   return (
     <div className="global-lead-search">
-      <span className="global-lead-search-label">Lead search</span>
+      {!crmShell && <span className="global-lead-search-label">Lead search</span>}
       <div style={{ position: "relative" }}>
         <input
           value={query}
           onFocus={() => { setOpen(true); void loadSearchData(); }}
           onChange={e => { setQuery(e.target.value); setOpen(true); void loadSearchData(); }}
-          placeholder="Search any lead or deal"
+          placeholder="Search by seller, phone, parcel ID, county, buyer..."
           style={{
             width: "100%",
             height: 38,
@@ -194,20 +195,20 @@ export default function GlobalLeadSearch() {
       <style jsx>{`
         .global-lead-search {
           position: fixed;
-          top: 70px;
-          left: 50%;
-          width: min(680px, calc(100vw - 40px));
-          transform: translateX(-50%);
+          top: ${crmShell ? "10px" : "70px"};
+          left: ${crmShell ? "calc(156px + 28px)" : "50%"};
+          width: ${crmShell ? "min(560px, calc(100vw - 560px))" : "min(680px, calc(100vw - 40px))"};
+          transform: ${crmShell ? "none" : "translateX(-50%)"};
           z-index: 260;
           display: grid;
-          grid-template-columns: auto minmax(0, 1fr);
+          grid-template-columns: ${crmShell ? "1fr" : "auto minmax(0, 1fr)"};
           gap: 10px;
           align-items: center;
-          padding: 8px;
-          border: 1px solid rgba(201,168,120,0.32);
-          border-radius: 10px;
-          background: rgba(27,23,18,0.92);
-          box-shadow: 0 16px 42px rgba(20,17,13,0.2);
+          padding: ${crmShell ? "0" : "8px"};
+          border: ${crmShell ? "none" : "1px solid rgba(201,168,120,0.32)"};
+          border-radius: ${crmShell ? "0" : "10px"};
+          background: ${crmShell ? "transparent" : "rgba(27,23,18,0.92)"};
+          box-shadow: ${crmShell ? "none" : "0 16px 42px rgba(20,17,13,0.2)"};
           backdrop-filter: blur(10px);
         }
         .global-lead-search-label {
@@ -220,7 +221,7 @@ export default function GlobalLeadSearch() {
         }
         @media (max-width: 767px) {
           .global-lead-search {
-            top: calc(10px + env(safe-area-inset-top));
+            top: ${crmShell ? "56px" : "calc(10px + env(safe-area-inset-top))"};
             left: 12px;
             right: 12px;
             bottom: auto;
