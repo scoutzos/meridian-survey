@@ -54,7 +54,7 @@ import { isVaUser } from "@/lib/identity";
 
 const DISPLAY_FONT = "var(--font-display)";
 
-type OperationsTab = "overview" | "va-briefs" | "time" | "lead-ops" | "finance" | "calendar" | "scenarios";
+type OperationsTab = "overview" | "escalations" | "va-briefs" | "time" | "lead-ops" | "finance" | "calendar" | "scenarios";
 
 function money(n: number | null | undefined): string {
   if (typeof n !== "number" || !Number.isFinite(n)) return "$0";
@@ -333,6 +333,7 @@ export default function OperationsPage() {
   const activeFinanceItems = pendingReimbursements.length + distributions.filter(distribution => distribution.status !== "paid").length;
   const operationTabs: { id: OperationsTab; label: string; count: number }[] = [
     { id: "overview", label: "Overview", count: pendingTimeRequests.length + unreviewedBriefs.length + pendingReimbursements.length + blockedVaTasks.length },
+    { id: "escalations", label: "Escalations", count: blockedVaTasks.length },
     { id: "va-briefs", label: "VA Briefs", count: unreviewedBriefs.length },
     { id: "time", label: "Time Approval", count: pendingTimeRequests.length },
     { id: "lead-ops", label: "Lead Ops", count: leadReviewStats.interested },
@@ -389,6 +390,44 @@ export default function OperationsPage() {
         ))}
       </nav>
 
+      {(activeTab === "overview" || activeTab === "escalations") && (
+        <section style={{ ...panel, marginBottom: 18 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12, flexWrap: "wrap", marginBottom: 12 }}>
+            <div>
+              <p style={eyebrow}>Escalations</p>
+              <h2 style={sectionTitle}>Blocked VA work</h2>
+              <p style={briefText}>Tasks marked blocked by the VA so members can make a decision, provide missing information, or reassign the work.</p>
+            </div>
+            <span style={blockedVaTasks.length ? warningPill : comingSoonPill}>{blockedVaTasks.length ? `${blockedVaTasks.length} needs decision` : "Clear"}</span>
+          </div>
+          {blockedVaTasks.length === 0 ? (
+            <div style={{ background: "var(--bone)", border: "1px solid var(--fog)", borderRadius: 8, padding: 14 }}>
+              <p style={rowTitle}>No blocked VA tasks right now.</p>
+              <p style={rowMeta}>When Sophie marks a task blocked, it will appear here and notify members.</p>
+            </div>
+          ) : (
+            <div style={{ display: "grid", gap: 10 }}>
+              {blockedVaTasks.map(task => (
+                <article key={task.id} style={{ background: "var(--bone)", border: "1px solid rgba(176,137,84,0.45)", borderRadius: 8, padding: 12 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "start", marginBottom: 8 }}>
+                    <div>
+                      <p style={rowTitle}>{task.title}</p>
+                      <p style={rowMeta}>{task.assigned_to || "VA"} · assigned by {task.created_by || "Unknown"}{task.due_date ? ` · due ${task.due_date}` : ""}</p>
+                    </div>
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                      <button onClick={() => router.push("/actions")} style={{ ...primaryButton, background: "transparent", border: "1px solid var(--fog)", color: "var(--obsidian)" }}>Open Task</button>
+                      <button onClick={() => router.push(actionHref(task))} style={primaryButton}>Open Record</button>
+                    </div>
+                  </div>
+                  <p style={{ ...briefText, marginBottom: 8 }}>{task.blocker_reason || task.description || "No blocker reason added."}</p>
+                  <p style={rowMeta}>Next member action: decide, reply with missing context, or reassign from Actions.</p>
+                </article>
+              ))}
+            </div>
+          )}
+        </section>
+      )}
+
       {(activeTab === "overview" || activeTab === "time" || activeTab === "va-briefs") && (
       <section style={{ ...panel, marginBottom: 18 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12, flexWrap: "wrap", marginBottom: 12 }}>
@@ -403,23 +442,6 @@ export default function OperationsPage() {
           <MiniStat label="Submitted VA cost" value={money(vaSubmittedCost)} />
           <MiniStat label="Time edits pending" value={String(pendingTimeRequests.length)} />
         </div>
-        {blockedVaTasks.length > 0 && (
-          <div style={{ display: "grid", gap: 10, marginBottom: 18 }}>
-            <p style={briefLabel}>Blocked VA tasks</p>
-            {blockedVaTasks.slice(0, 5).map(task => (
-              <article key={task.id} style={{ background: "var(--bone)", border: "1px solid rgba(176,137,84,0.45)", borderRadius: 8, padding: 12 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "start" }}>
-                  <div>
-                    <p style={rowTitle}>{task.title}</p>
-                    <p style={rowMeta}>{task.assigned_to || "VA"} · assigned by {task.created_by || "Unknown"}{task.due_date ? ` · due ${task.due_date}` : ""}</p>
-                  </div>
-                  <button onClick={() => router.push(actionHref(task))} style={{ ...primaryButton, background: "transparent", border: "1px solid var(--fog)", color: "var(--obsidian)" }}>Open Record</button>
-                </div>
-                <p style={{ ...briefText, marginTop: 8 }}>{task.blocker_reason || task.description || "No blocker reason added."}</p>
-              </article>
-            ))}
-          </div>
-        )}
         {(activeTab === "overview" || activeTab === "time") && pendingTimeRequests.length > 0 && (
           <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 12, marginBottom: 18 }} className="brief-grid">
             {pendingTimeRequests.map(request => (
@@ -1015,6 +1037,13 @@ const comingSoonPill: React.CSSProperties = {
   letterSpacing: "0.12em",
   textTransform: "uppercase",
   marginTop: 10,
+};
+
+const warningPill: React.CSSProperties = {
+  ...comingSoonPill,
+  border: "1px solid rgba(176,137,84,0.65)",
+  color: "var(--brass)",
+  background: "rgba(176,137,84,0.1)",
 };
 
 const smallPill: React.CSSProperties = {

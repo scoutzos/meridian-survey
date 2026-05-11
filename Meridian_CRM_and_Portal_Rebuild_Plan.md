@@ -1476,6 +1476,9 @@ Completed in this pass:
 - Continued with VA task notifications:
   - Completed VA tasks notify the member who requested the work, or create a shared notice if no creator exists.
   - Blocked VA tasks now send high-priority notifications to the full member group so blockers do not sit with only the original requester.
+- Continued with operational escalation:
+  - Added an Operations Escalations tab for blocked VA work.
+  - Blocked VA tasks now have a focused member review surface with blocker reason, requester, due date, task link, record link, and the expected next member action.
 
 Remaining:
 
@@ -1483,7 +1486,7 @@ Remaining:
 - Add a persistent task event/audit table if we need every status change, reassignment, comment, and notification preserved beyond the current task fields.
 - Add notification deduplication/read-state cleanup if blocked-task alerts become too noisy.
 - Confirm RLS for members assigning VA tasks and VA updating only assigned tasks.
-- Decide if blocked tasks should create a separate escalation queue in Operations.
+- Confirm whether blocked VA tasks should support a one-click member response/comment from Operations or stay routed through Actions.
 
 Risk: High if skipped. Members will keep assigning VA work through texts or side conversations, which defeats the purpose of the portal.
 
