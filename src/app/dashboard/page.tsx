@@ -49,6 +49,7 @@ import {
 } from "@/lib/tracker";
 import { fetchHubData, type Decision } from "@/lib/hub";
 import { isVaUser } from "@/lib/identity";
+import OperatingHeader from "@/components/OperatingHeader";
 import {
   fetchVaDailyBriefReviews,
   fetchVaDailyBriefs,
@@ -361,6 +362,40 @@ export default function DashboardPage() {
   const latestVaBriefReviewedByMe = latestVaBrief ? vaBriefReviews.some(review => review.brief_id === latestVaBrief.id && review.member_name === user) : false;
   const unreviewedVaBriefs = vaBriefs.filter(brief => !vaBriefReviews.some(review => review.brief_id === brief.id && review.member_name === user));
   const operationsCount = openCapitalCalls.length + suggestedCapitalCalls.length + pendingReimbursements.length + unmatchedSellerReplies.length + unreviewedVaBriefs.length;
+  const memberHeaderStats = [
+    {
+      label: "Review Queue",
+      value: taskInboxCount,
+      detail: "Votes, tasks, capital items, and surveys waiting.",
+      action: "Open Tasks",
+      onAction: () => router.push("/actions"),
+      tone: taskInboxCount ? "hot" as const : "default" as const,
+    },
+    {
+      label: "Deal Reviews",
+      value: dealReviewCount,
+      detail: "Packets or hot deals that need member attention.",
+      action: "Review Deals",
+      onAction: () => router.push("/deals"),
+      tone: dealReviewCount ? "hot" as const : "default" as const,
+    },
+    {
+      label: "Operations",
+      value: operationsCount,
+      detail: "VA briefs, money items, reimbursements, and seller replies.",
+      action: "Open Ops",
+      onAction: () => router.push("/operations"),
+      tone: operationsCount ? "hot" as const : "default" as const,
+    },
+    {
+      label: "Active Projects",
+      value: activeProjects.length,
+      detail: latestVaBrief && !latestVaBriefReviewedByMe ? "Latest VA brief still needs review." : "Projects and VA updates are connected here.",
+      action: latestVaBrief && !latestVaBriefReviewedByMe ? "Review Brief" : "Open Projects",
+      onAction: () => router.push(latestVaBrief && !latestVaBriefReviewedByMe ? "/operations" : "/projects"),
+      tone: latestVaBrief && !latestVaBriefReviewedByMe ? "hot" as const : "default" as const,
+    },
+  ];
 
   const activity = [
     ...operationalNotifications.slice(0, 4).map(n => ({
@@ -398,27 +433,14 @@ export default function DashboardPage() {
       style={{ minHeight: "100vh", background: bone, color: ink, fontFamily: BODY_FONT, padding: "84px 20px 40px" }}
     >
       <div style={{ maxWidth: 1120, margin: "0 auto" }}>
-        <header style={{ marginBottom: 24, display: "flex", justifyContent: "space-between", gap: 18, alignItems: "flex-end", flexWrap: "wrap" }}>
-          <div>
-            <p style={{ fontSize: 11, letterSpacing: 2, textTransform: "uppercase", color: brass, fontWeight: 700, marginBottom: 8 }}>
-              Home
-            </p>
-            <h1 style={{
-              fontFamily: DISPLAY_FONT,
-              fontSize: "clamp(34px, 6vw, 52px)",
-              fontWeight: 500,
-              lineHeight: 1.05,
-              color: obsidian,
-              letterSpacing: 0,
-              marginBottom: 6,
-            }}>
-              Welcome back, {firstName}
-            </h1>
-            <p style={{ color: ink, opacity: 0.62, fontSize: 14 }}>
-              Review votes, deal packets, money items, VA updates, and operating work from one member home.
-            </p>
-          </div>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+        <OperatingHeader
+          eyebrow="Member Portal"
+          title={`Welcome back, ${firstName}`}
+          subtitle="Your command center for deal votes, VA updates, money decisions, operations, projects, and assigned work."
+          user={user}
+          mode="member"
+          actions={
+            <>
             <button
               onClick={() => router.push("/actions?new=va")}
               style={{
@@ -453,8 +475,10 @@ export default function DashboardPage() {
             >
               Open My Tasks
             </button>
-          </div>
-        </header>
+            </>
+          }
+          stats={memberHeaderStats}
+        />
 
         {message && (
           <div style={{

@@ -77,6 +77,7 @@ import {
 import ConversationPanel from "@/components/ConversationPanel";
 import { labelForStatus } from "@/lib/status-map";
 import { getLeadNextAction, type WorkflowTone } from "@/lib/workflow-actions";
+import OperatingHeader from "@/components/OperatingHeader";
 
 const DISPLAY_FONT = "var(--font-display)";
 
@@ -1509,34 +1510,35 @@ export default function VaPage() {
 
   return (
     <div className="va-root" style={{ maxWidth: 1680, margin: "0 auto", padding: "82px 20px 100px" }}>
-      <header style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", gap: 16, flexWrap: "wrap", marginBottom: 24 }}>
-        <div>
-          <h1 style={{ fontFamily: DISPLAY_FONT, fontSize: "clamp(30px, 4vw, 44px)", fontWeight: 500, color: "var(--obsidian)", marginBottom: 3 }}>
-            VA Workdesk
-          </h1>
-          <p style={{ color: "var(--ink)", opacity: 0.66, fontSize: 14, maxWidth: 720 }}>
-            Your daily workspace to manage seller replies, update leads, build deal briefs, and close the shift with a member-ready summary.
-          </p>
-        </div>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+      <OperatingHeader
+        eyebrow="Acquisitions Desk"
+        title="VA Workdesk"
+        subtitle="A focused daily workspace for list imports, seller replies, follow-ups, deal briefs, and the end-of-shift member summary."
+        user={user}
+        mode="va"
+        actions={
+          <>
           <button onClick={() => setActiveTab("lists")} style={secondaryButton}>Import List</button>
           <button onClick={() => selectedImportedLead ? document.getElementById("va-workdesk-note")?.focus() : setActiveTab("today")} style={secondaryButton}>Log Call</button>
           <button onClick={startNew} style={primaryButton}>New Deal Brief</button>
           <button onClick={() => setActiveTab("brief")} style={secondaryButton}>End Shift Brief</button>
-        </div>
-      </header>
+          </>
+        }
+        stats={vaFlowCards.map(card => ({
+          label: card.label,
+          value: card.value,
+          detail: card.detail,
+          action: card.action,
+          onAction: card.disabled ? undefined : card.onAction,
+          tone: card.hot ? "hot" : card.label === "Brief" && portalStats.briefSubmitted ? "good" : "default",
+        }))}
+      />
 
       {message && (
         <div style={{ ...panel, padding: 12, marginBottom: 16, borderColor: message.includes("issue") || message.includes("Add") || message.includes("could") ? "var(--obsidian)" : "var(--brass)" }}>
           <p style={{ fontSize: 13, color: "var(--ink)" }}>{message}</p>
         </div>
       )}
-
-      <section className="va-flow-strip">
-        {vaFlowCards.map(card => (
-          <VaFlowCard key={card.label} {...card} />
-        ))}
-      </section>
 
       {activeTab !== "today" && <section style={{ ...compactShiftPanel, marginBottom: 16 }}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 14, flexWrap: "wrap", alignItems: "flex-start", marginBottom: 14 }}>
@@ -2912,45 +2914,6 @@ export default function VaPage() {
         }
       `}</style>
     </div>
-  );
-}
-
-function VaFlowCard({
-  label: text,
-  value,
-  detail,
-  action,
-  onAction,
-  hot = false,
-  disabled = false,
-}: {
-  label: string;
-  value: string;
-  detail: string;
-  action: string;
-  onAction: () => void;
-  hot?: boolean;
-  disabled?: boolean;
-}) {
-  return (
-    <article style={{
-      ...subPanel,
-      minHeight: 142,
-      display: "grid",
-      gap: 8,
-      alignContent: "start",
-      borderColor: hot ? "var(--brass)" : "var(--fog)",
-      background: hot ? "rgba(176,137,84,0.10)" : "var(--surface)",
-    }}>
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "start" }}>
-        <p style={eyebrowSmall}>{text}</p>
-        <strong style={{ color: hot ? "var(--brass)" : "var(--obsidian)", fontSize: 22, lineHeight: 1 }}>{value}</strong>
-      </div>
-      <p style={{ color: "var(--muted)", fontSize: 12, lineHeight: 1.45 }}>{detail}</p>
-      <button onClick={onAction} disabled={disabled} style={{ ...secondaryButton, justifySelf: "start", opacity: disabled ? 0.6 : 1 }}>
-        {disabled ? "Saving..." : action}
-      </button>
-    </article>
   );
 }
 

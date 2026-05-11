@@ -30,6 +30,7 @@ import {
 } from "@/lib/crm";
 import type { CommunicationEvent } from "@/lib/communications";
 import ConversationPanel from "@/components/ConversationPanel";
+import OperatingHeader from "@/components/OperatingHeader";
 import { createNotification } from "@/lib/operations";
 import { createProjectFromDeal } from "@/lib/projects";
 import { labelForStatus } from "@/lib/status-map";
@@ -896,28 +897,28 @@ function CrmContent() {
   return (
     <div className="crm-page" style={{ minHeight: "100vh", background: "linear-gradient(180deg, #f8f2e7 0%, #efe6d6 100%)", padding: "72px 20px 80px", color: "var(--ink)" }}>
       <div style={{ maxWidth: 1360, margin: "0 auto" }}>
-        <header style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", gap: 18, alignItems: "end", marginBottom: 16 }} className="topbar">
-          <div>
-            <p style={eyebrow}>Meridian CRM</p>
-            <h1 style={{ fontFamily: DISPLAY_FONT, fontSize: "clamp(32px, 4vw, 44px)", lineHeight: 0.95, fontWeight: 500, color: "var(--obsidian)", letterSpacing: 0 }}>
-              CRM Command Center
-            </h1>
-            <p style={{ color: "var(--muted)", fontSize: 14, maxWidth: 720, marginTop: 8 }}>
-              Seller replies, deal packets, buyer demand, dispositions, offers, and records in one working system.
-            </p>
-          </div>
-          <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", flexWrap: "wrap" }}>
+        <OperatingHeader
+          eyebrow="Meridian CRM"
+          title="Command Center"
+          subtitle="Seller replies, deal packets, buyer demand, disposition campaigns, offers, and records in one connected workspace."
+          user={user}
+          mode="crm"
+          actions={
+            <>
             <button onClick={() => router.push("/dashboard")} style={secondaryButton}>Member Portal</button>
             <button onClick={() => router.push("/va")} style={secondaryButton}>VA Desk</button>
             <button onClick={() => router.push("/deals")} style={primaryButton}>Deal Reviews</button>
-          </div>
-        </header>
+            </>
+          }
+          stats={workSummary.map(item => ({
+            label: item.label,
+            value: item.value,
+            detail: item.sub,
+            tone: item.tone === "hot" ? "hot" : "default",
+          }))}
+        />
 
         {message && <div style={{ ...panel, marginBottom: 12, borderColor: "var(--brass)" }}>{message}</div>}
-
-        <section style={summaryStrip} className="summary-strip">
-          {workSummary.map(item => <SummaryStat key={item.label} {...item} />)}
-        </section>
 
         <section className="crm-workflow-strip">
           {workflowCards.map(card => (
@@ -1028,18 +1029,6 @@ function WorkflowCard({ label, value, body, action, onAction, hot }: { label: st
       <p style={{ ...bodyText, fontSize: 12 }}>{body}</p>
       <button onClick={onAction} style={{ ...secondaryButton, justifySelf: "start", marginTop: 2 }}>{action}</button>
     </article>
-  );
-}
-
-function SummaryStat({ label, value, sub, tone = "calm" }: { label: string; value: string; sub: string; tone?: "calm" | "hot" }) {
-  return (
-    <div style={{ borderRight: "1px solid rgba(247,242,232,0.16)", padding: "2px 16px" }}>
-      <p style={{ ...miniLabel, color: "rgba(247,242,232,0.58)" }}>{label}</p>
-      <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginTop: 5 }}>
-        <strong style={{ color: tone === "hot" ? "var(--brass)" : "var(--bone)", fontSize: 26, lineHeight: 1 }}>{value}</strong>
-        <span style={{ color: "rgba(247,242,232,0.62)", fontSize: 12 }}>{sub}</span>
-      </div>
-    </div>
   );
 }
 
@@ -1708,7 +1697,6 @@ const panel: React.CSSProperties = { background: "var(--bone)", border: "1px sol
 const navPanel: React.CSSProperties = { ...panel, background: "rgba(255,252,245,0.72)", boxShadow: "0 12px 34px rgba(20,17,13,0.08)" };
 const subPanel: React.CSSProperties = { background: "var(--surface)", border: "1px solid var(--fog)", borderRadius: 8, padding: 12 };
 const darkPanel: React.CSSProperties = { background: "linear-gradient(180deg, #1b1712 0%, #2c241a 100%)", border: "1px solid rgba(27,23,18,0.8)", borderRadius: 8, padding: 14, boxShadow: "0 16px 34px rgba(20,17,13,0.16)" };
-const summaryStrip: React.CSSProperties = { display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 0, background: "var(--obsidian)", border: "1px solid rgba(20,17,13,0.86)", borderRadius: 8, padding: "14px 2px", marginBottom: 14, boxShadow: "0 14px 36px rgba(20,17,13,0.13)" };
 const recordGrid: React.CSSProperties = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 10 };
 const workRow: React.CSSProperties = { background: "rgba(255,252,245,0.78)", border: "1px solid var(--fog)", borderRadius: 8, padding: 12, cursor: "pointer", display: "grid", gap: 6, textAlign: "left", boxShadow: "0 8px 18px rgba(20,17,13,0.04)" };
 const rowTop: React.CSSProperties = { display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" };
@@ -1716,7 +1704,6 @@ const rowTitle: React.CSSProperties = { color: "var(--obsidian)", fontSize: 13, 
 const rowMeta: React.CSSProperties = { color: "var(--muted)", fontSize: 12, lineHeight: 1.35 };
 const pill: React.CSSProperties = { border: "1px solid rgba(176,137,84,0.38)", borderRadius: 999, padding: "3px 7px", color: "var(--brass)", fontSize: 10, fontWeight: 800, whiteSpace: "nowrap", background: "rgba(176,137,84,0.09)" };
 const smallHeading: React.CSSProperties = { fontFamily: DISPLAY_FONT, color: "var(--obsidian)", fontSize: 22, fontWeight: 500, letterSpacing: 0, marginTop: 3 };
-const eyebrow: React.CSSProperties = { fontSize: 11, letterSpacing: 2, textTransform: "uppercase", color: "var(--brass)", fontWeight: 700, marginBottom: 8 };
 const eyebrowSmall: React.CSSProperties = { fontSize: 10, letterSpacing: "0.18em", textTransform: "uppercase", color: "var(--brass)", fontWeight: 700 };
 const miniLabel: React.CSSProperties = { fontSize: 10, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--muted)", fontWeight: 700 };
 const sectionTitle: React.CSSProperties = { fontFamily: DISPLAY_FONT, color: "var(--obsidian)", fontSize: 22, fontWeight: 500, letterSpacing: 0 };

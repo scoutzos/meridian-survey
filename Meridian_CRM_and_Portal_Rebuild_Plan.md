@@ -18,9 +18,9 @@ Imported list -> seller outreach -> interested lead -> deal packet -> calculator
 
 | Area | Status | Notes |
 | --- | --- | --- |
-| VA Workdesk | Mostly built | Imports, queues, SMS, dispositions, packet creation, time, VA tasks, and daily brief exist. Needs live import/SMS/brief QA. |
-| CRM Command Center | Structurally built | Core CRM views, conversation panel, record detail panels, disposition board, offer decisions, and closing handoff exist. Needs live data/RLS QA and edit/cleanup tools. |
-| Member Dashboard | Structurally built | Operating home, review queue, task preview, VA brief, communications, and deduped review signals exist. Needs real-user walkthrough. |
+| VA Workdesk | Mostly built | Imports, queues, SMS, dispositions, packet creation, time, VA tasks, daily brief, and unified command header exist. Needs deeper body layout polish and live import/SMS/brief QA. |
+| CRM Command Center | Structurally built | Core CRM views, conversation panel, record detail panels, disposition board, offer decisions, closing handoff, and unified command header exist. Needs live data/RLS QA and deeper table/detail polish. |
+| Member Dashboard | Structurally built | Operating home, review queue, task preview, VA brief, communications, deduped review signals, and unified command header exist. Needs real-user walkthrough and deeper dashboard card polish. |
 | Deal Reviews | Mostly built | Guided packet, calculator, communications, vote, agreement, diligence, and project conversion flow exist. Needs final QA and edge cases. |
 | Opportunity File | Mostly built | Shared file connects lead, deal, timeline, notes, calculator, review, buyer/disposition context, and direct cross-portal quick actions. Needs real-data QA. |
 | Communications/SMS | Mostly built | Sakari inbound/outbound, unmatched routing, bulk send, and shared conversation panel exist. Needs live Sakari test numbers and opt-out QA. |
@@ -1648,6 +1648,7 @@ Completed in this pass:
 - Added CRM cleanup prompts that flag duplicate contacts, properties, and buyers by phone, email, name, parcel, or address, plus missing-core-field record hygiene prompts.
 - Added an in-app Launch Readiness Tracker to the Document Library so the production QA runbook can be checked off during live testing with pass/fail/reset states and notes.
 - Added Opportunity File quick actions for assigning VA tasks, opening Deal Review, jumping into CRM Records or Disposition for the selected deal, reviewing the conversation panel, and returning to the VA Workdesk.
+- Added a shared command-style operating header across Member Portal, CRM, and VA Workdesk so the three core surfaces now share the same visual language, primary actions, signed-in context, and live operating stats.
 
 Risk: Medium.
 
@@ -1668,11 +1669,11 @@ Continue **Phase 4: Member Portal Final IA**, starting with member navigation, d
 
 Reason:
 
-The UI now has a shared conversation panel, shared status language, shared next-action logic, CRM record detail/edit panels, cleanup prompts, member-created VA task routing, and Opportunity File quick actions. The next weak spot is production confidence: the structure is in place, but it needs real Supabase/Sakari data testing before it can be treated as finished.
+The UI now has a shared conversation panel, shared status language, shared next-action logic, CRM record detail/edit panels, cleanup prompts, member-created VA task routing, Opportunity File quick actions, and a shared command header across the VA, CRM, and member portal. The next weak spot is the body-level UI polish: tables, queues, right rails, empty states, and mobile layouts still need to feel as intentional as the new top-level command surfaces.
 
 The next implementation should:
 
-1. Add true merge actions for duplicate contacts/properties/buyers after production data confirms the safest merge rules.
-2. Confirm the member-to-VA task flow against real Supabase production users and permissions.
-3. Confirm the CRM edit panels and detail panels against real Supabase production data and adjust labels/empty states.
-4. Run the production QA runbook end-to-end with real imports, Sakari SMS, votes, briefs, and RLS.
+1. Continue the visual/IA pass inside the VA Workdesk body: queue table, selected lead panel, SMS composer, and daily brief should match the command-center direction.
+2. Continue the visual/IA pass inside CRM: denser table rows, clearer selected record rail, and stronger inbox/disposition work surfaces.
+3. Continue the visual/IA pass inside Member Portal: cleaner decision queue, VA brief review, operations summary, and fewer competing card styles.
+4. Then run the production QA runbook end-to-end with real imports, Sakari SMS, votes, briefs, and RLS.
