@@ -143,6 +143,7 @@ export default function DashboardPage() {
   const [vaBriefs, setVaBriefs] = useState<VaDailyBrief[]>([]);
   const [vaBriefReviews, setVaBriefReviews] = useState<VaDailyBriefReview[]>([]);
   const [loaded, setLoaded] = useState(false);
+  const [message, setMessage] = useState("");
 
   const surveys = useMemo(() => getAllSurveys(), []);
 
@@ -381,12 +382,14 @@ export default function DashboardPage() {
   const dismissNotice = async (notice: Notification) => {
     await markNotificationRead(notice.id);
     setNotifications(prev => prev.filter(n => n.id !== notice.id));
+    setMessage("Notification cleared.");
   };
 
   const handleMarkDone = async (item: ActionItem) => {
     const { error } = await updateActionItemStatus(item.id, "done", user);
-    if (error) { alert(error); return; }
+    if (error) { setMessage(error); return; }
     setActionItems(prev => prev.map(i => i.id === item.id ? { ...i, status: "done", completed_at: new Date().toISOString() } : i));
+    setMessage("Task marked done.");
   };
 
   return (
@@ -433,6 +436,26 @@ export default function DashboardPage() {
             Open My Tasks
           </button>
         </header>
+
+        {message && (
+          <div style={{
+            border: "1px solid rgba(176,137,84,0.36)",
+            background: "rgba(176,137,84,0.10)",
+            color: obsidian,
+            borderRadius: 10,
+            padding: "11px 13px",
+            marginBottom: 16,
+            display: "flex",
+            justifyContent: "space-between",
+            gap: 12,
+            alignItems: "flex-start",
+            fontSize: 13,
+            lineHeight: 1.45,
+          }}>
+            <span>{message}</span>
+            <button onClick={() => setMessage("")} style={{ background: "transparent", border: "none", color: brass, fontSize: 11, fontWeight: 800, letterSpacing: "0.12em", textTransform: "uppercase", cursor: "pointer" }}>Clear</button>
+          </div>
+        )}
 
         <section style={{ marginBottom: 28 }}>
           <SectionHeader
