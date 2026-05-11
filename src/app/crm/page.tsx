@@ -116,6 +116,7 @@ function CrmContent() {
   const [selectedPropertyId, setSelectedPropertyId] = useState<string | null>(null);
   const [selectedCampaignId, setSelectedCampaignId] = useState<string | null>(null);
   const [selectedOfferId, setSelectedOfferId] = useState<string | null>(null);
+  const [selectedMessageId, setSelectedMessageId] = useState<string | null>(null);
   const [view, setView] = useState<CrmView>("inbox");
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
@@ -210,6 +211,7 @@ function CrmContent() {
   const selectedOffer = useMemo(() => data.offers.find(offer => offer.id === selectedOfferId) ?? data.offers[0] ?? null, [data.offers, selectedOfferId]);
   const selectedAnalysis = useMemo(() => selectedDeal ? calculateDealAnalysis(selectedDeal) : null, [selectedDeal]);
   const unmatchedMessages = useMemo(() => data.communications.filter(event => event.direction === "inbound" && !event.matched_deal_id && !event.matched_lead_id), [data.communications]);
+  const selectedMessage = useMemo(() => unmatchedMessages.find(event => event.id === selectedMessageId) ?? unmatchedMessages[0] ?? null, [selectedMessageId, unmatchedMessages]);
   const hotDeals = useMemo(() => data.deals.filter(deal => deal.urgency === "hot" || deal.analysis.recommendation === "Strong Review"), [data.deals]);
   const dealsNeedingMemberReview = useMemo(() => data.deals.filter(deal => ["lead", "under-review"].includes(deal.status)), [data.deals]);
   const campaignsNeedingOffers = useMemo(() => data.campaigns.filter(campaign => !data.offers.some(offer => offer.disposition_campaign_id === campaign.id || offer.deal_id === campaign.deal_id)), [data.campaigns, data.offers]);
@@ -487,41 +489,41 @@ function CrmContent() {
   };
 
   const views: Array<{ id: CrmView; label: string; detail: string; count: number }> = [
-    { id: "inbox", label: "Inbox", detail: "Seller replies and unmatched messages", count: unmatchedMessages.length },
-    { id: "deals", label: "Deals", detail: "Packets, votes, calculators, approvals", count: data.deals.length },
+    { id: "inbox", label: "Seller Inbox", detail: "Replies, triage, and lead matching", count: unmatchedMessages.length },
+    { id: "deals", label: "Opportunities", detail: "Shared files, packets, votes, calculators", count: data.deals.length },
     { id: "buyers", label: "Buyers", detail: "Buyer demand and buy boxes", count: data.buyers.length },
-    { id: "dispo", label: "Dispo", detail: "Campaigns, offers, exit tracking", count: data.campaigns.length + data.offers.length },
-    { id: "records", label: "Records", detail: "Contacts and property records", count: data.contacts.length + data.properties.length },
+    { id: "dispo", label: "Disposition", detail: "Campaigns, offers, exit tracking", count: data.campaigns.length + data.offers.length },
+    { id: "records", label: "Contacts & Records", detail: "People, property, cleanup", count: data.contacts.length + data.properties.length },
   ];
 
   const workSummary = [
-    { label: "Deals", value: String(data.deals.length), sub: `${hotDeals.length} hot`, tone: hotDeals.length ? "hot" as const : "calm" as const },
-    { label: "Inbox", value: String(unmatchedMessages.length), sub: "unmatched SMS", tone: unmatchedMessages.length ? "hot" as const : "calm" as const },
+    { label: "Seller Replies", value: String(unmatchedMessages.length), sub: "need matching", tone: unmatchedMessages.length ? "hot" as const : "calm" as const },
+    { label: "Opportunities", value: String(data.deals.length), sub: `${hotDeals.length} hot`, tone: hotDeals.length ? "hot" as const : "calm" as const },
     { label: "Buyers", value: String(data.buyers.length), sub: "active records" },
-    { label: "Campaigns", value: String(data.campaigns.length), sub: `${data.offers.length} offers` },
+    { label: "Offers", value: String(data.offers.length), sub: `${offersNeedingDecision.length} decisions`, tone: offersNeedingDecision.length ? "hot" as const : "calm" as const },
   ];
 
   const workflowCards = [
     {
-      label: "Lead Intake",
+      label: "Seller Inbox",
       value: unmatchedMessages.length,
-      body: "Unmatched seller replies need to become a lead, a contact, or a deal packet.",
+      body: "Seller replies should be matched to a lead, contact, deal, or VA follow-up.",
       action: "Open Inbox",
       onAction: () => selectView("inbox"),
       hot: unmatchedMessages.length > 0,
     },
     {
-      label: "Deal Packet",
+      label: "Opportunity File",
       value: dealsNeedingMemberReview.length,
-      body: "VA briefs and calculators should move cleanly into member review.",
-      action: "Review Deals",
+      body: "Every seller, message, calculator, vote, and packet should point to the same file.",
+      action: "Open Files",
       onAction: () => selectView("deals"),
       hot: dealsNeedingMemberReview.length > 0,
     },
     {
       label: "Disposition",
       value: campaignsNeedingOffers.length,
-      body: "Campaigns without buyer offers need outreach, follow-up, or buyer matching.",
+      body: "Buyer outreach, offers, and closing handoff stay attached to the opportunity.",
       action: "Open Dispo",
       onAction: () => selectView("dispo"),
       hot: campaignsNeedingOffers.length > 0,
@@ -535,9 +537,9 @@ function CrmContent() {
       hot: offersNeedingDecision.length > 0,
     },
     {
-      label: "Record Hygiene",
+      label: "Records",
       value: recordsNeedingCleanup + duplicateContacts.length + duplicateProperties.length + duplicateBuyers.length,
-      body: "Contacts and properties missing identifiers create duplicate work later.",
+      body: "People and properties stay clean so the VA and members do not duplicate work.",
       action: "Clean Records",
       onAction: () => selectView("records"),
       hot: recordsNeedingCleanup > 0 || duplicateContacts.length > 0 || duplicateProperties.length > 0 || duplicateBuyers.length > 0,
@@ -570,17 +572,61 @@ function CrmContent() {
   const renderWorkspace = () => {
     if (view === "inbox") {
       return (
-        <WorkspacePanel title="Seller inbox" eyebrow="Needs review" action={<button onClick={reload} style={secondaryButton}>{loading ? "Loading" : "Refresh"}</button>}>
-          <div style={stack}>
-            {unmatchedMessages.slice(0, 16).map(event => <MessageCard key={event.id} event={event} />)}
-            {unmatchedMessages.length === 0 && (
-              <EmptyState
-                title="No unmatched seller replies"
-                body="Inbound Sakari messages that cannot be matched to a list lead or deal will land here so the VA can create or connect the right record."
-                actionLabel="Open VA desk"
-                onAction={() => router.push("/va")}
-              />
-            )}
+        <WorkspacePanel title="Seller Inbox + Opportunity File" eyebrow="Relationship triage" action={<button onClick={reload} style={secondaryButton}>{loading ? "Loading" : "Refresh"}</button>}>
+          <div className="seller-inbox-layout">
+            <div style={subPanel}>
+              <p style={eyebrowSmall}>Reply queue</p>
+              <div style={{ ...stack, maxHeight: 620, marginTop: 10 }}>
+                {unmatchedMessages.slice(0, 16).map(event => (
+                  <button key={event.id} onClick={() => setSelectedMessageId(event.id)} style={{ ...workRow, borderColor: selectedMessage?.id === event.id ? "var(--brass)" : "var(--fog)" }}>
+                    <span style={rowTop}>
+                      <strong style={rowTitle}>{event.contact_name || event.contact_number || event.from_number || "Unknown seller"}</strong>
+                      <span style={pill}>Unmatched</span>
+                    </span>
+                    <span style={rowMeta}>{event.body || event.status || event.provider_event_type}</span>
+                    <span style={rowMeta}>{formatDate(event.provider_created_at || event.created_at)}</span>
+                  </button>
+                ))}
+                {unmatchedMessages.length === 0 && (
+                  <EmptyState
+                    title="No unmatched seller replies"
+                    body="Inbound Sakari messages that cannot be matched to a list lead or deal will land here so the VA can create or connect the right record."
+                    actionLabel="Open VA desk"
+                    onAction={() => router.push("/va")}
+                  />
+                )}
+              </div>
+            </div>
+
+            <div style={subPanel}>
+              <p style={eyebrowSmall}>Selected conversation</p>
+              {selectedMessage ? (
+                <>
+                  <div style={{ ...darkPanel, marginTop: 10, boxShadow: "none" }}>
+                    <p style={{ ...miniLabel, color: "rgba(247,242,232,0.58)" }}>{formatDate(selectedMessage.provider_created_at || selectedMessage.created_at)}</p>
+                    <h3 style={{ fontFamily: DISPLAY_FONT, color: "var(--bone)", fontSize: 24, fontWeight: 500, letterSpacing: 0, marginTop: 6 }}>
+                      {selectedMessage.contact_name || selectedMessage.contact_number || selectedMessage.from_number || "Unknown seller"}
+                    </h3>
+                    <p style={{ color: "rgba(247,242,232,0.76)", fontSize: 13, lineHeight: 1.55, marginTop: 10 }}>
+                      {selectedMessage.body || selectedMessage.status || selectedMessage.provider_event_type}
+                    </p>
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, marginTop: 10 }} className="triage-actions">
+                    <button onClick={() => router.push("/va")} style={primaryButton}>Match Reply</button>
+                    <button onClick={() => router.push("/actions?new=va")} style={secondaryButton}>Assign VA Task</button>
+                    <button onClick={() => selectView("records")} style={secondaryButton}>Create Contact</button>
+                  </div>
+                  <div style={{ ...subPanel, background: "rgba(176,137,84,0.08)", marginTop: 10 }}>
+                    <p style={eyebrowSmall}>Why this matters</p>
+                    <p style={{ ...bodyText, fontSize: 12, marginTop: 5 }}>
+                      This reply should become part of the shared opportunity trail: list lead, CRM contact, deal packet, or follow-up task.
+                    </p>
+                  </div>
+                </>
+              ) : (
+                <EmptyText>Select a seller reply to triage it.</EmptyText>
+              )}
+            </div>
           </div>
         </WorkspacePanel>
       );
@@ -588,7 +634,7 @@ function CrmContent() {
 
     if (view === "buyers") {
       return (
-        <WorkspacePanel title="Buyer demand" eyebrow="Buy boxes">
+        <WorkspacePanel title="Buyer Demand" eyebrow="Buy boxes tied to disposition">
           <div style={recordGrid}>
             {data.buyers.map(buyer => (
               <RecordCard key={buyer.id} title={buyer.buyer_name} meta={buyer.markets.join(", ") || buyer.buyer_type || "Market pending"} active={selectedBuyer?.id === buyer.id} onClick={() => setSelectedBuyerId(buyer.id)}>
@@ -611,7 +657,7 @@ function CrmContent() {
         campaigns: data.campaigns.filter(campaign => campaign.status === stage.id),
       }));
       return (
-        <WorkspacePanel title="Disposition board" eyebrow="Campaigns + offers">
+        <WorkspacePanel title="Disposition + Buyer Offers" eyebrow="Campaigns, offers, member decisions">
           <div className="dispo-stage-grid">
             {campaignsByStage.map(stage => (
               <div key={stage.id} style={subPanel}>
@@ -691,7 +737,7 @@ function CrmContent() {
 
     if (view === "records") {
       return (
-        <WorkspacePanel title="CRM records" eyebrow="Contacts + properties">
+        <WorkspacePanel title="Contacts & Property Records" eyebrow="Relationship database">
           <div style={{ ...panel, marginBottom: 12 }}>
             <p style={eyebrowSmall}>Cleanup prompts</p>
             <div style={{ display: "grid", gap: 8, marginTop: 8 }}>
@@ -757,7 +803,7 @@ function CrmContent() {
     }
 
     return (
-      <WorkspacePanel title="Deal packets" eyebrow="Member review queue">
+      <WorkspacePanel title="Opportunity Files" eyebrow="Deal packets, calculator, member review">
         {renderDealRows(16)}
       </WorkspacePanel>
     );
@@ -939,9 +985,9 @@ function CrmContent() {
     <div className="crm-page" style={{ minHeight: "100vh", background: "linear-gradient(180deg, #f8f2e7 0%, #efe6d6 100%)", padding: "72px 20px 80px", color: "var(--ink)" }}>
       <div style={{ maxWidth: 1360, margin: "0 auto" }}>
         <OperatingHeader
-          eyebrow="Meridian CRM"
-          title="Command Center"
-          subtitle="Seller replies, deal packets, buyer demand, disposition campaigns, offers, and records in one connected workspace."
+          eyebrow="Meridian Relationship Layer"
+          title="Relationship Command Center"
+          subtitle="Seller replies, buyers, offers, tasks, and disposition work tied back to the same Meridian opportunity file."
           user={user}
           mode="crm"
           actions={
@@ -960,6 +1006,14 @@ function CrmContent() {
         />
 
         {message && <div style={{ ...panel, marginBottom: 12, borderColor: "var(--brass)" }}>{message}</div>}
+
+        <section className="crm-file-path">
+          <ConnectedStep label="Seller Reply" active={view === "inbox"} ready={unmatchedMessages.length > 0 || data.communications.length > 0} />
+          <ConnectedStep label="Opportunity File" active={view === "deals"} ready={data.deals.length > 0} />
+          <ConnectedStep label="Buyer Demand" active={view === "buyers"} ready={data.buyers.length > 0} />
+          <ConnectedStep label="Disposition" active={view === "dispo"} ready={data.campaigns.length > 0} />
+          <ConnectedStep label="Offer / Project" active={view === "dispo" && !!selectedOffer} ready={data.offers.length > 0} />
+        </section>
 
         <section className="crm-workflow-strip">
           {workflowCards.map(card => (
@@ -1040,6 +1094,21 @@ function CrmContent() {
           gap: 10px;
           margin-bottom: 14px;
         }
+        .crm-file-path {
+          display: grid;
+          grid-template-columns: repeat(5, minmax(0, 1fr));
+          gap: 0;
+          margin-bottom: 14px;
+          border: 1px solid rgba(201,168,120,0.24);
+          border-radius: 8px;
+          overflow: hidden;
+          background: rgba(255,252,245,0.64);
+        }
+        .seller-inbox-layout {
+          display: grid;
+          grid-template-columns: minmax(260px, 0.9fr) minmax(0, 1.1fr);
+          gap: 12px;
+        }
         .dispo-stage-grid {
           display: grid;
           grid-template-columns: repeat(7, minmax(150px, 1fr));
@@ -1050,12 +1119,32 @@ function CrmContent() {
         }
         @media (max-width: 1200px) {
           .crm-workflow-strip { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+          .crm-file-path { grid-template-columns: repeat(3, minmax(0, 1fr)); }
         }
         @media (max-width: 760px) {
-          .summary-strip, .two-col { grid-template-columns: 1fr !important; }
+          .summary-strip, .two-col, .seller-inbox-layout, .triage-actions { grid-template-columns: 1fr !important; }
           .crm-workflow-strip { grid-template-columns: 1fr !important; }
+          .crm-file-path { grid-template-columns: 1fr !important; }
         }
       `}</style>
+    </div>
+  );
+}
+
+function ConnectedStep({ label, active, ready }: { label: string; active: boolean; ready: boolean }) {
+  return (
+    <div style={{
+      padding: "12px 13px",
+      borderRight: "1px solid rgba(201,168,120,0.18)",
+      background: active ? "var(--obsidian)" : ready ? "rgba(176,137,84,0.08)" : "transparent",
+      color: active ? "var(--bone)" : "var(--ink)",
+      minHeight: 62,
+      display: "grid",
+      alignContent: "center",
+      gap: 3,
+    }}>
+      <span style={{ ...miniLabel, color: active ? "var(--brass)" : "var(--muted)" }}>{ready ? "Connected" : "Waiting"}</span>
+      <strong style={{ fontSize: 13, color: active ? "var(--bone)" : "var(--obsidian)" }}>{label}</strong>
     </div>
   );
 }
@@ -1129,18 +1218,6 @@ function DecisionMetric({ label, value }: { label: string; value: string }) {
     <div style={{ display: "flex", justifyContent: "space-between", gap: 10, borderBottom: "1px solid rgba(247,242,232,0.14)", paddingBottom: 7 }}>
       <span style={{ color: "rgba(247,242,232,0.58)", fontSize: 11, textTransform: "uppercase", letterSpacing: "0.1em" }}>{label}</span>
       <strong style={{ color: "var(--bone)", fontSize: 13 }}>{value}</strong>
-    </div>
-  );
-}
-
-function MessageCard({ event, compact = false }: { event: CommunicationEvent; compact?: boolean }) {
-  return (
-    <div style={{ border: "1px solid var(--fog)", borderRadius: 8, background: event.direction === "inbound" ? "rgba(176,137,84,0.08)" : "var(--surface)", padding: compact ? 8 : 10 }}>
-      <p style={{ fontSize: 12, fontWeight: 800, color: "var(--obsidian)", marginBottom: 4 }}>
-        {event.contact_name || event.contact_number || event.from_number || "Unknown"} · {event.direction}
-      </p>
-      <p style={{ fontSize: 12, color: "var(--ink)", lineHeight: 1.45 }}>{event.body || event.status || event.provider_event_type}</p>
-      <p style={{ ...miniLabel, marginTop: 6 }}>{formatDate(event.provider_created_at || event.created_at)}</p>
     </div>
   );
 }
