@@ -153,6 +153,13 @@ function CrmContent() {
     }
   }, [searchParams]);
 
+  useEffect(() => {
+    const requestedDeal = searchParams.get("deal");
+    if (requestedDeal && data.deals.some(deal => deal.id === requestedDeal)) {
+      setSelectedDealId(requestedDeal);
+    }
+  }, [data.deals, searchParams]);
+
   const selectedDeal = useMemo(() => data.deals.find(deal => deal.id === selectedDealId) ?? data.deals[0] ?? null, [data.deals, selectedDealId]);
   const selectedContact = useMemo(() => data.contacts.find(contact => contact.id === selectedContactId) ?? data.contacts[0] ?? null, [data.contacts, selectedContactId]);
   const selectedBuyer = useMemo(() => data.buyers.find(buyer => buyer.id === selectedBuyerId) ?? data.buyers[0] ?? null, [data.buyers, selectedBuyerId]);

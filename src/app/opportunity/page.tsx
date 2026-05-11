@@ -219,6 +219,47 @@ function OpportunityContent() {
   const title = selectedDeal?.title || selectedLead?.property_address || selectedLead?.parcel_id || selectedLead?.owner_name || "Opportunity file";
   const clearedChecklist = checklist.filter(item => item.status === "cleared" || item.status === "not-applicable").length;
   const approvedVotes = votes.filter(vote => ["make-offer", "counter", "urgent-review"].includes(vote.vote)).length;
+  const opportunityCrmUrl = selectedDeal ? `/crm?view=records&deal=${selectedDeal.id}` : "/crm?view=records";
+  const opportunityDispoUrl = selectedDeal ? `/crm?view=dispo&deal=${selectedDeal.id}` : "/crm?view=dispo";
+  const opportunityDealReviewUrl = selectedDeal ? `/deals?deal=${selectedDeal.id}` : "/deals";
+  const quickActions = [
+    {
+      label: "Assign VA Task",
+      detail: "Send follow-up, research, or cleanup work to the VA queue.",
+      onClick: () => router.push("/actions?new=va"),
+      disabled: false,
+    },
+    {
+      label: "Open Deal Review",
+      detail: "Review votes, calculator, agreement, and member packet.",
+      onClick: () => router.push(opportunityDealReviewUrl),
+      disabled: !selectedDeal,
+    },
+    {
+      label: "CRM Records",
+      detail: "Check linked seller, property, buyer, and cleanup records.",
+      onClick: () => router.push(opportunityCrmUrl),
+      disabled: false,
+    },
+    {
+      label: "Disposition Desk",
+      detail: "Work buyer matches, campaigns, offers, and exit path.",
+      onClick: () => router.push(opportunityDispoUrl),
+      disabled: !selectedDeal,
+    },
+    {
+      label: "Conversation",
+      detail: "Read seller texts, VA notes, and activity timeline.",
+      onClick: () => setActiveSection("timeline"),
+      disabled: false,
+    },
+    {
+      label: "VA Workdesk",
+      detail: "Return to lead queues, calls, texts, and daily brief.",
+      onClick: () => router.push("/va"),
+      disabled: false,
+    },
+  ];
   const fileSections: { id: OpportunitySection; label: string; count?: number }[] = [
     { id: "overview", label: "Overview" },
     { id: "notes", label: "Notes", count: sharedNotes.length },
@@ -567,6 +608,29 @@ function OpportunityContent() {
                 )}
               </section>
 
+              <section style={panel}>
+                <p style={eyebrowSmall}>Quick actions</p>
+                <h3 style={smallHeading}>Move this file forward</h3>
+                <div style={{ display: "grid", gap: 8, marginTop: 12 }}>
+                  {quickActions.map(action => (
+                    <button
+                      key={action.label}
+                      type="button"
+                      onClick={action.onClick}
+                      disabled={action.disabled}
+                      style={{
+                        ...quickActionButton,
+                        opacity: action.disabled ? 0.52 : 1,
+                        cursor: action.disabled ? "not-allowed" : "pointer",
+                      }}
+                    >
+                      <span>{action.label}</span>
+                      <small>{action.detail}</small>
+                    </button>
+                  ))}
+                </div>
+              </section>
+
               <CrmList title="Buyer matches" empty="No buyer matches yet." items={matchedBuyers} render={buyer => (
                 <>
                   <strong>{buyer.buyer_name}</strong>
@@ -805,3 +869,4 @@ const pill: React.CSSProperties = { border: "1px solid var(--fog)", borderRadius
 const hotPill: React.CSSProperties = { ...pill, color: "var(--obsidian)", borderColor: "rgba(176,137,84,0.5)", background: "rgba(176,137,84,0.14)" };
 const primaryButton: React.CSSProperties = { border: "1px solid var(--obsidian)", background: "var(--obsidian)", color: "var(--bone)", borderRadius: 8, padding: "10px 12px", fontSize: 11, textTransform: "uppercase", letterSpacing: "0.12em", cursor: "pointer", textDecoration: "none" };
 const secondaryButton: React.CSSProperties = { border: "1px solid var(--fog)", background: "var(--surface)", color: "var(--obsidian)", borderRadius: 8, padding: "8px 10px", fontSize: 11, textTransform: "uppercase", letterSpacing: "0.12em", cursor: "pointer", textDecoration: "none" };
+const quickActionButton: React.CSSProperties = { appearance: "none", border: "1px solid var(--fog)", borderRadius: 8, background: "rgba(255,252,245,0.82)", color: "var(--obsidian)", padding: "10px 11px", textAlign: "left", display: "grid", gap: 4 };

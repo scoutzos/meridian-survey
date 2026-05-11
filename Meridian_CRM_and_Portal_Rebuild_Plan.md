@@ -22,14 +22,14 @@ Imported list -> seller outreach -> interested lead -> deal packet -> calculator
 | CRM Command Center | Structurally built | Core CRM views, conversation panel, record detail panels, disposition board, offer decisions, and closing handoff exist. Needs live data/RLS QA and edit/cleanup tools. |
 | Member Dashboard | Structurally built | Operating home, review queue, task preview, VA brief, communications, and deduped review signals exist. Needs real-user walkthrough. |
 | Deal Reviews | Mostly built | Guided packet, calculator, communications, vote, agreement, diligence, and project conversion flow exist. Needs final QA and edge cases. |
-| Opportunity File | Mostly built | Shared file connects lead, deal, timeline, notes, calculator, review, buyer/disposition context. Needs richer action buttons and real-data QA. |
+| Opportunity File | Mostly built | Shared file connects lead, deal, timeline, notes, calculator, review, buyer/disposition context, and direct cross-portal quick actions. Needs real-data QA. |
 | Communications/SMS | Mostly built | Sakari inbound/outbound, unmatched routing, bulk send, and shared conversation panel exist. Needs live Sakari test numbers and opt-out QA. |
 | Dispositions | Structurally built | Campaigns, offers, member decisions, campaign touch history, project/closing handoff, and fall-through follow-up exist. Needs live accepted/rejected offer QA. |
 | Money/Tracker | Partial | Tracker pages exist and are linked. Needs deeper connection to approvals, projects, and deal agreements. |
 | Documents/Meetings/Decisions | Partial | Pages were reorganized and connected. Needs final feature audit and removal of confusing legacy behavior. |
 | Navigation/IA | Structurally built | Member nav, mobile nav, CRM access, Hub/archive role, and secondary tools are organized. Needs real-user label walkthrough. |
 
-Estimated structural completion: **94%**
+Estimated structural completion: **95%**
 
 ## What Has Been Built In This Rebuild
 
@@ -1647,6 +1647,7 @@ Completed in this pass:
 - Added CRM edit/update flows for existing contacts, property records, buyers, disposition campaigns, and buyer offers from the CRM right rail.
 - Added CRM cleanup prompts that flag duplicate contacts, properties, and buyers by phone, email, name, parcel, or address, plus missing-core-field record hygiene prompts.
 - Added an in-app Launch Readiness Tracker to the Document Library so the production QA runbook can be checked off during live testing with pass/fail/reset states and notes.
+- Added Opportunity File quick actions for assigning VA tasks, opening Deal Review, jumping into CRM Records or Disposition for the selected deal, reviewing the conversation panel, and returning to the VA Workdesk.
 
 Risk: Medium.
 
@@ -1667,7 +1668,7 @@ Continue **Phase 4: Member Portal Final IA**, starting with member navigation, d
 
 Reason:
 
-The UI now has a shared conversation panel, shared status language, shared next-action logic, and first-pass CRM record detail panels. The next weak spot is CRM durability: users can inspect records, but they still need better edit flows, cleanup prompts, duplicate handling, and member-created VA work routing.
+The UI now has a shared conversation panel, shared status language, shared next-action logic, CRM record detail/edit panels, cleanup prompts, member-created VA task routing, and Opportunity File quick actions. The next weak spot is production confidence: the structure is in place, but it needs real Supabase/Sakari data testing before it can be treated as finished.
 
 The next implementation should:
 
