@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   calculateDealAnalysis,
@@ -588,6 +588,7 @@ export default function VaPage() {
   const [activeTab, setActiveTab] = useState<VaTab>("today");
   const [notifyReviewUpdate, setNotifyReviewUpdate] = useState(false);
   const [activeMemberNames, setActiveMemberNames] = useState<string[]>([]);
+  const leadCsvInputRef = useRef<HTMLInputElement | null>(null);
 
   const reload = useCallback(async (memberName = user) => {
     setLoading(true);
@@ -812,8 +813,8 @@ export default function VaPage() {
     setSelectedBatchId(null);
     setSelectedImportedLeadId(null);
     setBulkSmsPreviewOpen(false);
-    setMessage("New import started. Choose a Land Portal or Land Insights CSV to preview.");
-    window.setTimeout(() => document.getElementById("va-list-upload")?.scrollIntoView({ behavior: "smooth", block: "start" }), 80);
+    setMessage("Choose a Land Portal or Land Insights CSV to preview.");
+    if (!importing) leadCsvInputRef.current?.click();
   };
   const openIncomingSms = (event: CommunicationEvent) => {
     if (event.matched_lead_id) {
@@ -1669,6 +1670,15 @@ export default function VaPage() {
         stats={headerStats}
       />
 
+      <input
+        ref={leadCsvInputRef}
+        type="file"
+        accept=".csv,text/csv"
+        disabled={importing}
+        onChange={e => { void handleLeadCsvUpload(e.target.files?.[0] ?? null); e.currentTarget.value = ""; }}
+        style={{ display: "none" }}
+      />
+
       {message && (
         <div style={{ ...panel, padding: 12, marginBottom: 16, borderColor: message.includes("issue") || message.includes("Add") || message.includes("could") ? "var(--obsidian)" : "var(--brass)" }}>
           <p style={{ fontSize: 13, color: "var(--ink)" }}>{message}</p>
@@ -2326,7 +2336,7 @@ export default function VaPage() {
             {(importStep === "upload" || (!importPreview && importedLeads.length === 0)) && (
               <div id="va-list-upload" style={{ ...subPanel, marginBottom: 12, borderColor: "var(--brass)", background: "rgba(176,137,84,0.08)" }}>
                 <div style={{ display: "grid", gridTemplateColumns: "240px minmax(0, 1fr)", gap: 14, alignItems: "stretch" }} className="two-col">
-                  <label style={{
+                  <button type="button" onClick={() => leadCsvInputRef.current?.click()} disabled={importing} style={{
                     border: "1px dashed var(--brass)",
                     borderRadius: 8,
                     minHeight: 156,
@@ -2336,19 +2346,13 @@ export default function VaPage() {
                     cursor: importing ? "default" : "pointer",
                     background: "rgba(255,252,245,0.72)",
                     padding: 16,
+                    width: "100%",
                   }}>
-                    <input
-                      type="file"
-                      accept=".csv,text/csv"
-                      disabled={importing}
-                      onChange={e => { void handleLeadCsvUpload(e.target.files?.[0] ?? null); e.currentTarget.value = ""; }}
-                      style={{ display: "none" }}
-                    />
                     <span>
                       <strong style={{ display: "block", color: "var(--obsidian)", fontSize: 16, marginBottom: 6 }}>{importing && importStage === "previewing" ? "Reading CSV..." : "Choose CSV"}</strong>
                       <span style={{ display: "block", color: "var(--muted)", fontSize: 12, lineHeight: 1.45 }}>Land Portal or Land Insights export</span>
                     </span>
-                  </label>
+                  </button>
                   <div>
                     <p style={eyebrowSmall}>New list import</p>
                     <h3 style={{ ...sectionTitle, fontSize: 22, marginTop: 4 }}>Upload a CSV to preview before saving.</h3>

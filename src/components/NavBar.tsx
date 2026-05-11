@@ -148,8 +148,16 @@ export default function NavBar() {
                   onClick={() => {
                     setCrmView(linkView);
                     setVaTab(linkTab);
-                    if (linkTab) window.dispatchEvent(new CustomEvent("meridian-va-tab", { detail: linkTab }));
+                    if (linkTab && pathname === "/va") {
+                      window.history.pushState(null, "", link.href);
+                      window.dispatchEvent(new PopStateEvent("popstate"));
+                      window.dispatchEvent(new CustomEvent("meridian-va-tab", { detail: linkTab }));
+                      return;
+                    }
                     router.push(link.href);
+                    if (linkTab) {
+                      window.setTimeout(() => window.dispatchEvent(new CustomEvent("meridian-va-tab", { detail: linkTab })), 0);
+                    }
                   }}
                   className={active ? "crm-side-link crm-side-link-active" : "crm-side-link"}
                 >
