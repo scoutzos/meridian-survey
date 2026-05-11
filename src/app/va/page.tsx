@@ -550,6 +550,15 @@ export default function VaPage() {
     notes: string;
     reason: string;
   }>({ entryId: "", requestType: "add-shift", clockIn: "", clockOut: "", notes: "", reason: "" });
+  const [inlineTimeEditId, setInlineTimeEditId] = useState<string | null>(null);
+  const [inlineTimeDraft, setInlineTimeDraft] = useState<{
+    entryId: string;
+    requestType: VaTimeChangeRequestType;
+    clockIn: string;
+    clockOut: string;
+    notes: string;
+    reason: string;
+  }>({ entryId: "", requestType: "edit-shift", clockIn: "", clockOut: "", notes: "", reason: "" });
   const [timeRequestSaving, setTimeRequestSaving] = useState(false);
   const [editingBriefId, setEditingBriefId] = useState<string | null>(null);
   const [briefRevisionNote, setBriefRevisionNote] = useState("");
@@ -1305,34 +1314,35 @@ export default function VaPage() {
     setMessage("Clocked out. Submitted time is ready for member review.");
   };
 
-  const startTimeChangeRequest = (entry?: VaTimeEntry, requestType: VaTimeChangeRequestType = entry ? "edit-shift" : "add-shift") => {
-    setTimeRequestDraft({
-      entryId: entry?.id ?? "",
+  const startInlineTimeEdit = (entry: VaTimeEntry, requestType: VaTimeChangeRequestType) => {
+    setInlineTimeEditId(entry.id);
+    setInlineTimeDraft({
+      entryId: entry.id,
       requestType,
-      clockIn: toVaDateTimeInput(entry?.clock_in_at),
-      clockOut: toVaDateTimeInput(entry?.clock_out_at),
-      notes: entry?.notes ?? "",
+      clockIn: toVaDateTimeInput(entry.clock_in_at),
+      clockOut: toVaDateTimeInput(entry.clock_out_at),
+      notes: entry.notes ?? "",
       reason: "",
     });
   };
 
-  const submitTimeChangeRequest = async () => {
+  const sendTimeChangeRequest = async (draft: typeof timeRequestDraft, afterSave: () => void) => {
     if (!user) return;
     setTimeRequestSaving(true);
     setMessage("");
-    const selectedEntry = timeEntries.find(entry => entry.id === timeRequestDraft.entryId);
+    const selectedEntry = timeEntries.find(entry => entry.id === draft.entryId);
     const { data, error } = await createVaTimeChangeRequest({
-      entryId: timeRequestDraft.entryId || null,
+      entryId: draft.entryId || null,
       operatorName: user,
-      requestType: timeRequestDraft.requestType,
-      requestedClockInAt: timeRequestDraft.requestType === "void-shift"
+      requestType: draft.requestType,
+      requestedClockInAt: draft.requestType === "void-shift"
         ? selectedEntry?.clock_in_at ?? null
-        : fromVaDateTimeInput(timeRequestDraft.clockIn),
-      requestedClockOutAt: timeRequestDraft.requestType === "void-shift"
+        : fromVaDateTimeInput(draft.clockIn),
+      requestedClockOutAt: draft.requestType === "void-shift"
         ? selectedEntry?.clock_out_at ?? null
-        : fromVaDateTimeInput(timeRequestDraft.clockOut),
-      requestedNotes: timeRequestDraft.notes,
-      reason: timeRequestDraft.reason,
+        : fromVaDateTimeInput(draft.clockOut),
+      requestedNotes: draft.notes,
+      reason: draft.reason,
     });
     setTimeRequestSaving(false);
     if (error) { setMessage(error); return; }
@@ -1349,8 +1359,21 @@ export default function VaPage() {
         notification_type: "va-time-change-request",
       }, user)));
     }
-    setTimeRequestDraft({ entryId: "", requestType: "add-shift", clockIn: "", clockOut: "", notes: "", reason: "" });
+    afterSave();
     setMessage("Time change request sent for member review.");
+  };
+
+  const submitTimeChangeRequest = async () => {
+    await sendTimeChangeRequest(timeRequestDraft, () => {
+      setTimeRequestDraft({ entryId: "", requestType: "add-shift", clockIn: "", clockOut: "", notes: "", reason: "" });
+    });
+  };
+
+  const submitInlineTimeEdit = async () => {
+    await sendTimeChangeRequest(inlineTimeDraft, () => {
+      setInlineTimeEditId(null);
+      setInlineTimeDraft({ entryId: "", requestType: "edit-shift", clockIn: "", clockOut: "", notes: "", reason: "" });
+    });
   };
 
   const startBriefEdit = (brief: VaDailyBrief) => {
@@ -2976,16 +2999,62 @@ export default function VaPage() {
               </div>
               <div style={{ display: "grid", gap: 6 }}>
                 {timeEntries.filter(entry => vaDateKey(entry.clock_in_at) === briefDraft.work_date).slice(0, 4).map(entry => (
-                  <div key={entry.id} style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto auto", gap: 10, fontSize: 12, color: "var(--ink)", alignItems: "center" }} className="brief-grid">
-                    <span style={{ display: "grid", gap: 5 }}>
-                      <span><strong>Clock in:</strong> {formatVaDateTime(entry.clock_in_at)}</span>
-                      <span><strong>Clock out:</strong> {entry.clock_out_at ? formatVaDateTime(entry.clock_out_at) : "Still clocked in"}</span>
-                    </span>
-                    <span>{formatDuration(entry.duration_minutes ?? currentShiftMinutes(entry))} · {formatCurrency(Number(entry.cost_amount ?? 0))}</span>
-                    <span style={{ display: "flex", gap: 6 }}>
-                      <button onClick={() => startTimeChangeRequest(entry, "edit-shift")} style={secondaryButton}>Edit Time</button>
-                      <button onClick={() => startTimeChangeRequest(entry, "void-shift")} style={secondaryButton}>Void</button>
-                    </span>
+                  <div key={entry.id} style={{ border: "1px solid var(--fog)", borderRadius: 8, padding: 10, background: "rgba(255,253,248,0.5)" }}>
+                    {inlineTimeEditId === entry.id ? (
+                      <div style={{ display: "grid", gap: 8 }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                          <strong style={{ color: "var(--obsidian)", fontSize: 13 }}>
+                            {inlineTimeDraft.requestType === "void-shift" ? "Void this shift" : "Edit this shift"}
+                          </strong>
+                          <span style={{ color: "var(--muted)", fontSize: 12 }}>{formatDuration(entry.duration_minutes ?? currentShiftMinutes(entry))} · {formatCurrency(Number(entry.cost_amount ?? 0))}</span>
+                        </div>
+                        {inlineTimeDraft.requestType !== "void-shift" && (
+                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }} className="two-col">
+                            <div>
+                              <label style={label}>Clock in</label>
+                              <input type="datetime-local" value={inlineTimeDraft.clockIn} onChange={e => setInlineTimeDraft({ ...inlineTimeDraft, clockIn: e.target.value })} />
+                            </div>
+                            <div>
+                              <label style={label}>Clock out</label>
+                              <input type="datetime-local" value={inlineTimeDraft.clockOut} onChange={e => setInlineTimeDraft({ ...inlineTimeDraft, clockOut: e.target.value })} />
+                            </div>
+                          </div>
+                        )}
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }} className="two-col">
+                          <div>
+                            <label style={label}>Notes</label>
+                            <input value={inlineTimeDraft.notes} onChange={e => setInlineTimeDraft({ ...inlineTimeDraft, notes: e.target.value })} placeholder="Optional shift note" />
+                          </div>
+                          <div>
+                            <label style={label}>Reason</label>
+                            <input value={inlineTimeDraft.reason} onChange={e => setInlineTimeDraft({ ...inlineTimeDraft, reason: e.target.value })} placeholder="Why this change is needed" />
+                          </div>
+                        </div>
+                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                          <button onClick={submitInlineTimeEdit} disabled={timeRequestSaving} style={{ ...secondaryButton, opacity: timeRequestSaving ? 0.6 : 1 }}>
+                            {timeRequestSaving ? "Sending..." : inlineTimeDraft.requestType === "void-shift" ? "Request Void" : "Send Edit Request"}
+                          </button>
+                          <button
+                            onClick={() => setInlineTimeEditId(null)}
+                            style={{ ...secondaryButton, background: "transparent", color: "var(--obsidian)" }}
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto auto", gap: 10, fontSize: 12, color: "var(--ink)", alignItems: "center" }} className="brief-grid">
+                        <span style={{ display: "grid", gap: 5 }}>
+                          <span><strong>Clock in:</strong> {formatVaDateTime(entry.clock_in_at)}</span>
+                          <span><strong>Clock out:</strong> {entry.clock_out_at ? formatVaDateTime(entry.clock_out_at) : "Still clocked in"}</span>
+                        </span>
+                        <span>{formatDuration(entry.duration_minutes ?? currentShiftMinutes(entry))} · {formatCurrency(Number(entry.cost_amount ?? 0))}</span>
+                        <span style={{ display: "flex", gap: 6 }}>
+                          <button onClick={() => startInlineTimeEdit(entry, "edit-shift")} style={secondaryButton}>Edit Time</button>
+                          <button onClick={() => startInlineTimeEdit(entry, "void-shift")} style={secondaryButton}>Void</button>
+                        </span>
+                      </div>
+                    )}
                   </div>
                 ))}
                 {timeEntries.filter(entry => vaDateKey(entry.clock_in_at) === briefDraft.work_date).length === 0 && (
