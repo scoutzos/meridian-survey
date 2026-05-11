@@ -27,8 +27,13 @@ import {
 } from "@/lib/land-leads";
 import { fetchCommunicationEvents, type CommunicationEvent } from "@/lib/communications";
 import { fetchCrmDashboardData, type BuyerOffer, type CrmBuyer, type DispositionCampaign } from "@/lib/crm";
+import ConversationPanel from "@/components/ConversationPanel";
+import { labelForStatus } from "@/lib/status-map";
+import { getDealNextAction, getLeadNextAction } from "@/lib/workflow-actions";
 
 const DISPLAY_FONT = "var(--font-display)";
+
+type OpportunitySection = "overview" | "notes" | "calculator" | "timeline" | "review";
 
 function money(n: number | null | undefined): string {
   if (typeof n !== "number" || !Number.isFinite(n)) return "N/A";
@@ -43,8 +48,7 @@ function formatDate(iso: string | null | undefined): string {
 }
 
 function statusLabel(value: string | null | undefined): string {
-  if (!value) return "Not Set";
-  return value.split("-").map(part => part.charAt(0).toUpperCase() + part.slice(1)).join(" ");
+  return labelForStatus(value);
 }
 
 type SharedNote = {
@@ -85,6 +89,7 @@ function OpportunityContent() {
   const [noteSaving, setNoteSaving] = useState(false);
   const [noteMessage, setNoteMessage] = useState("");
   const [loading, setLoading] = useState(true);
+  const [activeSection, setActiveSection] = useState<OpportunitySection>("overview");
 
   useEffect(() => {
     const current = localStorage.getItem("meridian_user");
@@ -152,6 +157,36 @@ function OpportunityContent() {
       }));
     return [...leadNotes, ...dealNotes].sort((a, b) => b.at.localeCompare(a.at));
   }, [dealActivity, leadActivities]);
+  const conversationActivities = useMemo(() => [
+    ...leadActivities.map(activity => ({
+      id: `lead-${activity.id}`,
+      title: statusLabel(activity.activity_type),
+      date: activity.created_at,
+      body: activity.summary,
+      meta: activity.next_follow_up_date ? `Follow up ${activity.next_follow_up_date}` : undefined,
+    })),
+    ...dealActivity.map(activity => ({
+      id: `deal-${activity.id}`,
+      title: statusLabel(activity.activity_type),
+      date: activity.created_at,
+      body: activity.summary,
+      meta: activity.actor || undefined,
+    })),
+  ], [dealActivity, leadActivities]);
+  const nextWorkflowAction = useMemo(() => {
+    if (selectedDeal) {
+      return getDealNextAction({
+        deal: selectedDeal,
+        votes,
+        agreement,
+        checklist,
+        communications,
+        currentUser: user,
+      });
+    }
+    if (selectedLead) return getLeadNextAction(selectedLead);
+    return null;
+  }, [agreement, checklist, communications, selectedDeal, selectedLead, user, votes]);
 
   useEffect(() => {
     if (!selectedLead && !selectedDeal) return;
@@ -184,6 +219,50 @@ function OpportunityContent() {
   const title = selectedDeal?.title || selectedLead?.property_address || selectedLead?.parcel_id || selectedLead?.owner_name || "Opportunity file";
   const clearedChecklist = checklist.filter(item => item.status === "cleared" || item.status === "not-applicable").length;
   const approvedVotes = votes.filter(vote => ["make-offer", "counter", "urgent-review"].includes(vote.vote)).length;
+  const fileSections: { id: OpportunitySection; label: string; count?: number }[] = [
+    { id: "overview", label: "Overview" },
+    { id: "notes", label: "Notes", count: sharedNotes.length },
+    { id: "calculator", label: "Calculator", count: analysis?.missingInfo.length ?? 0 },
+    { id: "timeline", label: "Timeline", count: communications.length + leadActivities.length + dealActivity.length },
+    { id: "review", label: "Review", count: votes.length + checklist.length },
+  ];
+  const opportunityDecisionPath = selectedDeal ? [
+    {
+      label: "1. Handoff",
+      title: selectedDeal.submission_summary ? "VA packet ready" : "Review packet",
+      detail: selectedDeal.requested_next_step || "Confirm the member decision being requested.",
+      state: selectedDeal.status === "under-review" ? "active" : "done",
+      section: "overview" as OpportunitySection,
+    },
+    {
+      label: "2. Calculator",
+      title: analysis?.recommendation || "Needs numbers",
+      detail: analysis ? `${money(analysis.acquisition.recommendedOffer)} recommended · ${analysis.disposition.exitConfidence} confidence` : "Add price, value, and exit details.",
+      state: analysis && analysis.missingInfo.length === 0 ? "done" : "active",
+      section: "calculator" as OpportunitySection,
+    },
+    {
+      label: "3. Review",
+      title: votes.length ? `${approvedVotes}/${votes.length} support` : "No votes yet",
+      detail: votes.length ? "Member votes are attached to this shared file." : "Members need to vote or request information.",
+      state: votes.length ? "done" : selectedDeal.status === "under-review" ? "active" : "open",
+      section: "review" as OpportunitySection,
+    },
+    {
+      label: "4. Agreement",
+      title: agreement ? statusLabel(agreement.status) : "Not started",
+      detail: agreement ? "Deal terms are saved for this opportunity." : "Define capital, roles, guarantees, and economics.",
+      state: agreement && ["approved", "signed"].includes(agreement.status) ? "done" : votes.length ? "active" : "open",
+      section: "review" as OpportunitySection,
+    },
+    {
+      label: "5. Disposition",
+      title: relatedCampaigns.length ? "Campaign active" : "Not started",
+      detail: relatedOffers.length ? `${relatedOffers.length} buyer offer${relatedOffers.length === 1 ? "" : "s"} recorded.` : "Launch buyer outreach after member direction.",
+      state: relatedCampaigns.length || relatedOffers.length ? "active" : "open",
+      section: "review" as OpportunitySection,
+    },
+  ] : [];
 
   async function saveSharedNote() {
     const summary = noteDraft.trim();
@@ -244,8 +323,9 @@ function OpportunityContent() {
             </p>
           </div>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+            <button onClick={() => router.push("/dashboard")} style={secondaryButton}>Member Home</button>
             <button onClick={() => router.push("/va")} style={secondaryButton}>VA Desk</button>
-            <button onClick={() => router.push(selectedDeal ? `/deals?deal=${selectedDeal.id}` : "/deals")} style={secondaryButton}>Deal Desk</button>
+            <button onClick={() => router.push(selectedDeal ? `/deals?deal=${selectedDeal.id}` : "/deals")} style={secondaryButton}>Deal Reviews</button>
             <button onClick={() => router.push("/crm")} style={primaryButton}>CRM</button>
           </div>
         </header>
@@ -258,6 +338,22 @@ function OpportunityContent() {
           <SummaryMetric label="Best Offer" value={money(analysis?.disposition.bestBuyerOffer ?? relatedOffers[0]?.offer_amount)} tone={relatedOffers.length ? "hot" : "calm"} />
         </section>
 
+        {selectedDeal && (
+          <section className="opportunity-decision-path">
+            {opportunityDecisionPath.map(item => (
+              <button
+                key={item.label}
+                onClick={() => setActiveSection(item.section)}
+                className={`opportunity-path-card ${item.state}`}
+              >
+                <span>{item.label}</span>
+                <strong>{item.title}</strong>
+                <p>{item.detail}</p>
+              </button>
+            ))}
+          </section>
+        )}
+
         {loading && <div style={panel}>Loading opportunity file...</div>}
         {!loading && !selectedLead && !selectedDeal && (
           <div style={panel}>
@@ -268,6 +364,18 @@ function OpportunityContent() {
         )}
 
         {!loading && (selectedLead || selectedDeal) && (
+          <>
+          <nav className="file-tabs" aria-label="Opportunity file sections">
+            {fileSections.map(section => (
+              <FileTabButton
+                key={section.id}
+                label={section.label}
+                count={section.count}
+                active={activeSection === section.id}
+                onClick={() => setActiveSection(section.id)}
+              />
+            ))}
+          </nav>
           <div style={{ display: "grid", gridTemplateColumns: "270px minmax(0, 1fr) 340px", gap: 14 }} className="opportunity-grid">
             <aside style={panel}>
               <p style={eyebrowSmall}>File path</p>
@@ -283,6 +391,7 @@ function OpportunityContent() {
             </aside>
 
             <main style={{ display: "grid", gap: 14 }}>
+              {activeSection === "overview" && (
               <section style={panel}>
                 <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "start", marginBottom: 12 }}>
                   <div>
@@ -314,7 +423,9 @@ function OpportunityContent() {
                   {selectedDeal?.submit_uncertainties && <p style={{ ...bodyText, marginTop: 8 }}><strong>Open questions:</strong> {selectedDeal.submit_uncertainties}</p>}
                 </div>
               </section>
+              )}
 
+              {activeSection === "notes" && (
               <section style={panel}>
                 <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "start", marginBottom: 12 }} className="notes-header">
                   <div>
@@ -349,7 +460,9 @@ function OpportunityContent() {
                   {sharedNotes.length === 0 && <p style={bodyText}>No shared notes yet.</p>}
                 </div>
               </section>
+              )}
 
+              {activeSection === "calculator" && (
               <section style={panel}>
                 <p style={eyebrowSmall}>Calculator + decision packet</p>
                 <h2 style={sectionTitle}>{analysis?.recommendation || "Calculator starts after conversion"}</h2>
@@ -375,44 +488,83 @@ function OpportunityContent() {
                   </InfoBlock>
                 </div>
               </section>
+              )}
 
+              {activeSection === "timeline" && (
               <section style={panel}>
                 <p style={eyebrowSmall}>Communication + activity timeline</p>
                 <h2 style={sectionTitle}>What happened so far</h2>
-                <div style={{ display: "grid", gap: 8, marginTop: 12, maxHeight: 420, overflow: "auto" }}>
-                  {[...communications.map(event => ({ id: `comm-${event.id}`, at: event.provider_created_at || event.created_at, title: event.direction === "inbound" ? "Seller message received" : "Message sent", body: event.body || event.status || event.provider_event_type })),
-                    ...leadActivities.map(activity => ({ id: `lead-${activity.id}`, at: activity.created_at, title: statusLabel(activity.activity_type), body: activity.summary })),
-                    ...dealActivity.map(activity => ({ id: `deal-${activity.id}`, at: activity.created_at, title: statusLabel(activity.activity_type), body: activity.summary })),
-                  ].sort((a, b) => b.at.localeCompare(a.at)).map(item => (
-                    <div key={item.id} style={timelineItem}>
-                      <span style={timelineDot} />
-                      <div>
-                        <strong style={{ color: "var(--obsidian)", fontSize: 13 }}>{item.title}</strong>
-                        <p style={{ color: "var(--muted)", fontSize: 12, marginTop: 3 }}>{formatDate(item.at)}</p>
-                        <p style={{ ...bodyText, marginTop: 5 }}>{item.body}</p>
-                      </div>
-                    </div>
-                  ))}
-                  {communications.length + leadActivities.length + dealActivity.length === 0 && <p style={bodyText}>No activity has been logged yet.</p>}
+                <div style={{ marginTop: 12 }}>
+                  <ConversationPanel
+                    eyebrow="Shared timeline"
+                    title="Conversation panel"
+                    subject={selectedDeal?.seller_phone || selectedLead?.phone || selectedLead?.phone_2 || "No seller phone"}
+                    communications={communications}
+                    activities={conversationActivities}
+                    emptyText="No activity has been logged yet."
+                    maxHeight={420}
+                  />
                 </div>
               </section>
+              )}
+
+              {activeSection === "review" && (
+              <section style={panel}>
+                <p style={eyebrowSmall}>Member review packet</p>
+                <h2 style={sectionTitle}>Votes, agreement, and diligence</h2>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, marginTop: 12 }} className="number-grid">
+                  <MiniStat label="Votes" value={votes.length ? `${approvedVotes}/${votes.length} support` : "No votes"} />
+                  <MiniStat label="Checklist" value={checklist.length ? `${clearedChecklist}/${checklist.length} cleared` : "Not started"} />
+                  <MiniStat label="Agreement" value={agreement ? statusLabel(agreement.status) : "Not started"} />
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 12 }} className="two-col">
+                  <InfoBlock title="Member votes">
+                    {votes.map(vote => (
+                      <p key={vote.id} style={bodyText}>
+                        <strong>{vote.member_name}</strong>: {statusLabel(vote.vote)}{vote.note ? ` - ${vote.note}` : ""}
+                      </p>
+                    ))}
+                    {votes.length === 0 && <p style={bodyText}>No member votes yet.</p>}
+                  </InfoBlock>
+                  <InfoBlock title="Checklist blockers">
+                    {checklist.filter(item => item.status === "blocked").map(item => (
+                      <p key={item.id} style={bodyText}>• {item.title}</p>
+                    ))}
+                    {checklist.filter(item => item.status === "blocked").length === 0 && (
+                      <p style={bodyText}>{checklist.length ? "No blocked diligence items." : "No checklist has been generated yet."}</p>
+                    )}
+                  </InfoBlock>
+                </div>
+                <div style={{ ...subPanel, marginTop: 12 }}>
+                  <p style={eyebrowSmall}>Agreement status</p>
+                  <p style={bodyText}>
+                    {agreement
+                      ? `${statusLabel(agreement.status)}. Offer authority ${money(agreement.offer_authority)}. Capital needed ${money(agreement.capital_needed)}.`
+                      : "Deal-specific agreement terms have not been saved yet."}
+                  </p>
+                </div>
+              </section>
+              )}
             </main>
 
             <aside style={{ display: "grid", gap: 12, alignContent: "start" }}>
               <section style={darkPanel}>
                 <p style={{ ...eyebrowSmall, color: "var(--brass)" }}>Next best action</p>
                 <h3 style={{ fontFamily: DISPLAY_FONT, color: "var(--bone)", fontSize: 24, fontWeight: 500, marginTop: 6 }}>
-                  {!selectedDeal ? "Convert or pass the lead" : selectedDeal.status === "under-review" ? "Members review the packet" : relatedCampaigns.length ? "Work disposition" : "Choose the next stage"}
+                  {nextWorkflowAction?.title || "Choose the next stage"}
                 </h3>
                 <p style={{ color: "rgba(247,242,232,0.72)", fontSize: 13, lineHeight: 1.5, marginTop: 8 }}>
-                  {!selectedDeal
-                    ? "The VA should finish seller notes, property facts, and outreach history before turning this into a member packet."
-                    : selectedDeal.status === "under-review"
-                      ? "Members should review the VA summary, calculator, risks, communications, and vote or request more information."
-                      : relatedCampaigns.length
-                        ? "Track buyer outreach, offers, and final exit decision here."
-                        : "Use the calculator and communication history to decide whether to submit, pass, or launch disposition."}
+                  {nextWorkflowAction?.detail || "Use the calculator and communication history to decide whether to submit, pass, or launch disposition."}
                 </p>
+                {nextWorkflowAction && (
+                  <button
+                    type="button"
+                    onClick={() => setActiveSection(nextWorkflowAction.target === "communications" ? "timeline" : nextWorkflowAction.target === "vote" || nextWorkflowAction.target === "agreement" || nextWorkflowAction.target === "diligence" ? "review" : nextWorkflowAction.target === "packet" ? "overview" : "calculator")}
+                    style={{ ...primaryButton, background: "var(--bone)", borderColor: "var(--bone)", color: "var(--obsidian)", marginTop: 12 }}
+                  >
+                    {nextWorkflowAction.primary}
+                  </button>
+                )}
               </section>
 
               <CrmList title="Buyer matches" empty="No buyer matches yet." items={matchedBuyers} render={buyer => (
@@ -448,20 +600,128 @@ function OpportunityContent() {
               )} />
             </aside>
           </div>
+          </>
         )}
       </div>
       <style jsx global>{`
         .opportunity-page button { font: inherit; }
+        .opportunity-decision-path {
+          display: grid;
+          grid-template-columns: repeat(5, minmax(0, 1fr));
+          gap: 10px;
+          margin: 0 0 14px;
+        }
+        .opportunity-path-card {
+          appearance: none;
+          background: rgba(255, 252, 245, 0.78);
+          border: 1px solid var(--fog);
+          border-radius: 8px;
+          color: var(--ink);
+          cursor: pointer;
+          min-height: 128px;
+          padding: 14px;
+          text-align: left;
+          transition: border-color 160ms ease, background 160ms ease, transform 160ms ease;
+        }
+        .opportunity-path-card:hover {
+          border-color: rgba(176, 137, 84, 0.55);
+          transform: translateY(-1px);
+        }
+        .opportunity-path-card.active {
+          background: rgba(176, 137, 84, 0.12);
+          border-color: var(--brass);
+        }
+        .opportunity-path-card.done {
+          border-color: rgba(176, 137, 84, 0.42);
+        }
+        .opportunity-path-card.open {
+          opacity: 0.78;
+        }
+        .opportunity-path-card span {
+          color: var(--brass);
+          display: block;
+          font-size: 10px;
+          font-weight: 800;
+          letter-spacing: 0.16em;
+          margin-bottom: 10px;
+          text-transform: uppercase;
+        }
+        .opportunity-path-card strong {
+          color: var(--obsidian);
+          display: block;
+          font-size: 14px;
+          line-height: 1.28;
+          margin-bottom: 8px;
+        }
+        .opportunity-path-card p {
+          color: var(--ink);
+          font-size: 12px;
+          line-height: 1.42;
+          opacity: 0.68;
+        }
+        .file-tabs {
+          display: flex;
+          gap: 8px;
+          overflow-x: auto;
+          padding: 0 0 12px;
+          margin: -2px 0 8px;
+          scrollbar-width: thin;
+        }
         @media (max-width: 1080px) {
           .opportunity-grid { grid-template-columns: 1fr !important; }
           .topbar { grid-template-columns: 1fr !important; }
+          .opportunity-decision-path { grid-template-columns: repeat(2, minmax(0, 1fr)); }
         }
         @media (max-width: 760px) {
           .summary-strip, .two-col, .number-grid { grid-template-columns: 1fr !important; }
+          .opportunity-decision-path { grid-template-columns: 1fr !important; }
           .notes-header, .note-actions { display: grid !important; justify-content: stretch !important; }
         }
       `}</style>
     </div>
+  );
+}
+
+function FileTabButton({ label, count, active, onClick }: { label: string; count?: number; active: boolean; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 8,
+        minHeight: 40,
+        border: active ? "1px solid var(--obsidian)" : "1px solid var(--fog)",
+        borderRadius: 999,
+        background: active ? "var(--obsidian)" : "rgba(255,252,245,0.78)",
+        color: active ? "var(--bone)" : "var(--ink)",
+        padding: "8px 12px",
+        fontSize: 11,
+        fontWeight: 800,
+        letterSpacing: "0.12em",
+        textTransform: "uppercase",
+        whiteSpace: "nowrap",
+        cursor: "pointer",
+      }}
+    >
+      {label}
+      {typeof count === "number" && (
+        <span style={{
+          display: "inline-flex",
+          alignItems: "center",
+          justifyContent: "center",
+          minWidth: 22,
+          height: 22,
+          borderRadius: 999,
+          background: active ? "rgba(237,230,214,0.16)" : "var(--bone)",
+          color: active ? "var(--bone)" : "var(--muted)",
+          fontSize: 10,
+          letterSpacing: 0,
+        }}>
+          {count}
+        </span>
+      )}
+    </button>
   );
 }
 
@@ -533,8 +793,6 @@ const summaryStrip: React.CSSProperties = { display: "grid", gridTemplateColumns
 const panel: React.CSSProperties = { background: "rgba(255,252,245,0.78)", border: "1px solid var(--fog)", borderRadius: 8, padding: 14, boxShadow: "0 10px 28px rgba(20,17,13,0.06)" };
 const subPanel: React.CSSProperties = { background: "var(--surface)", border: "1px solid var(--fog)", borderRadius: 8, padding: 12 };
 const darkPanel: React.CSSProperties = { background: "linear-gradient(180deg, #1b1712 0%, #2c241a 100%)", border: "1px solid rgba(27,23,18,0.8)", borderRadius: 8, padding: 14, boxShadow: "0 16px 34px rgba(20,17,13,0.16)" };
-const timelineItem: React.CSSProperties = { display: "grid", gridTemplateColumns: "18px minmax(0, 1fr)", gap: 8, border: "1px solid var(--fog)", borderRadius: 8, padding: 10, background: "var(--surface)" };
-const timelineDot: React.CSSProperties = { width: 10, height: 10, borderRadius: 999, background: "var(--brass)", marginTop: 4 };
 const noteItem: React.CSSProperties = { border: "1px solid var(--fog)", borderRadius: 8, padding: 10, background: "var(--surface)" };
 const noteTextarea: React.CSSProperties = { width: "100%", minHeight: 112, resize: "vertical", border: "1px solid var(--fog)", borderRadius: 8, background: "var(--surface)", color: "var(--obsidian)", padding: 12, font: "inherit", fontSize: 13, lineHeight: 1.5, outline: "none" };
 const bodyText: React.CSSProperties = { color: "var(--ink)", fontSize: 13, lineHeight: 1.55, whiteSpace: "pre-wrap" };

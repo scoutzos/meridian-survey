@@ -11,6 +11,8 @@ import {
 import { supabase } from "@/lib/supabase";
 import { isAdmin, type MemberProfile } from "@/lib/tracker";
 
+const DISPLAY_FONT = "var(--font-display)";
+
 const STATUS_CONFIG: Record<DecisionStatus, { label: string; color: string; bg: string }> = {
   confirmed: { label: "Confirmed", color: "var(--gold)",   bg: "rgba(201,168,120,0.12)" },
   tabled:    { label: "Tabled",    color: "var(--gold)",   bg: "rgba(201,168,120,0.12)" },
@@ -101,12 +103,44 @@ export default function DecisionsPage() {
   }
 
   return (
-    <div style={{ maxWidth: 900, margin: "0 auto", padding: "24px 16px 100px" }}>
-      <h1 style={{ fontSize: 24, fontWeight: 700, marginBottom: 4 }}>Decision Tracker</h1>
-      <p style={{ color: "var(--muted)", fontSize: 14, marginBottom: 20 }}>
-        Track confirmed decisions, tabled items, and remaining questions for the Operating Agreement.
-        {admin && <span style={{ marginLeft: 8, color: "var(--gold)" }}>· Admin: click any decision to edit.</span>}
-      </p>
+    <div style={{ maxWidth: 1120, margin: "0 auto", padding: "84px 20px 100px" }} className="decisions-root">
+      <header className="decisions-header">
+        <div>
+          <p style={{ fontSize: 11, letterSpacing: 2, textTransform: "uppercase", color: "var(--brass)", fontWeight: 700, marginBottom: 8 }}>
+            Member Portal
+          </p>
+          <h1 style={{ fontFamily: DISPLAY_FONT, fontSize: "clamp(34px, 5vw, 48px)", fontWeight: 500, color: "var(--obsidian)", marginBottom: 6 }}>
+            Decisions
+          </h1>
+          <p style={{ color: "var(--ink)", opacity: 0.68, fontSize: 14, maxWidth: 660, lineHeight: 1.6 }}>
+            The voting record for operating agreement questions, member decisions, and money rules that feed the larger platform.
+            {admin && <span style={{ marginLeft: 8, color: "var(--brass)", fontWeight: 700 }}>Admin can click a decision to edit.</span>}
+          </p>
+        </div>
+      </header>
+
+      <section className="decision-bridge-grid">
+        <article className="decision-bridge-card">
+          <span>Operating Agreement</span>
+          <strong>{pct}%</strong>
+          <p>{confirmed.length} of {total} tracked questions confirmed.</p>
+        </article>
+        <button onClick={() => router.push("/deals")} className="decision-bridge-card clickable">
+          <span>Deal Votes</span>
+          <strong>Review Queue</strong>
+          <p>Acquisition packets and member deal decisions live in Deal Reviews.</p>
+        </button>
+        <button onClick={() => router.push("/meetings")} className="decision-bridge-card clickable">
+          <span>Meeting Outcomes</span>
+          <strong>Minutes to Decisions</strong>
+          <p>Meeting notes capture what was discussed and what becomes action.</p>
+        </button>
+        <button onClick={() => router.push("/tracker")} className="decision-bridge-card clickable">
+          <span>Money Rules</span>
+          <strong>Tracker Inputs</strong>
+          <p>Confirmed monetary decisions feed member balances and planning.</p>
+        </button>
+      </section>
 
       {/* Progress Bar */}
       <div style={{ background: "var(--surface)", borderRadius: 12, padding: 20, marginBottom: 20, border: "1px solid var(--border)" }}>
@@ -293,6 +327,63 @@ export default function DecisionsPage() {
           </div>
         </div>
       ))}
+      <style jsx>{`
+        .decisions-header {
+          display: flex;
+          justify-content: space-between;
+          gap: 20px;
+          align-items: flex-start;
+          margin-bottom: 22px;
+        }
+        .decision-bridge-grid {
+          display: grid;
+          grid-template-columns: repeat(4, minmax(0, 1fr));
+          gap: 12px;
+          margin-bottom: 20px;
+        }
+        .decision-bridge-card {
+          background: var(--surface);
+          border: 1px solid var(--fog);
+          border-radius: 12px;
+          padding: 16px;
+          min-height: 132px;
+          text-align: left;
+        }
+        .decision-bridge-card.clickable {
+          appearance: none;
+          cursor: pointer;
+        }
+        .decision-bridge-card span {
+          color: var(--brass);
+          display: block;
+          font-size: 10px;
+          font-weight: 700;
+          letter-spacing: 0.16em;
+          text-transform: uppercase;
+          margin-bottom: 14px;
+        }
+        .decision-bridge-card strong {
+          color: var(--obsidian);
+          display: block;
+          font-size: 20px;
+          line-height: 1.25;
+          margin-bottom: 8px;
+        }
+        .decision-bridge-card p {
+          color: var(--ink);
+          font-size: 12px;
+          line-height: 1.45;
+          opacity: 0.68;
+        }
+        @media (max-width: 900px) {
+          .decisions-header { flex-direction: column; }
+          .decision-bridge-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        }
+        @media (max-width: 600px) {
+          .decisions-root { padding-top: 28px !important; }
+          .decision-bridge-grid { grid-template-columns: 1fr; }
+        }
+      `}</style>
     </div>
   );
 }

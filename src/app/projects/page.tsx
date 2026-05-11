@@ -25,6 +25,8 @@ import {
 
 const DISPLAY_FONT = "var(--font-display)";
 
+type ProjectTab = "overview" | "risks" | "documents" | "vendors" | "timeline";
+
 function money(n: number | null | undefined): string {
   if (typeof n !== "number" || !Number.isFinite(n)) return "—";
   return n.toLocaleString(undefined, { style: "currency", currency: "USD", maximumFractionDigits: 0 });
@@ -56,6 +58,7 @@ export default function ProjectsPage() {
   const [docDraft, setDocDraft] = useState({ title: "", category: "Due Diligence", url: "", notes: "" });
   const [vendorDraft, setVendorDraft] = useState({ name: "", company: "", role: "Contractor", phone: "", email: "", reliability: "", pricing_notes: "", general_notes: "" });
   const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState<ProjectTab>("overview");
 
   const reload = useCallback(async () => {
     setLoading(true);
@@ -96,6 +99,13 @@ export default function ProjectsPage() {
   const totalBudget = projects.reduce((sum, p) => sum + Number(p.budget_total ?? 0), 0);
   const totalActual = projects.reduce((sum, p) => sum + Number(p.actual_spend ?? 0), 0);
   const openRisks = risks.filter(r => r.status === "open" || r.status === "monitoring");
+  const projectTabs: { id: ProjectTab; label: string; count: number }[] = [
+    { id: "overview", label: "Overview", count: selected ? 1 : 0 },
+    { id: "risks", label: "Risks", count: openRisks.length },
+    { id: "documents", label: "Documents", count: documents.length },
+    { id: "vendors", label: "Vendors", count: vendors.length },
+    { id: "timeline", label: "Timeline", count: timeline.length },
+  ];
 
   const addRisk = async () => {
     if (!selected || !riskDraft.title.trim()) return;
@@ -153,7 +163,11 @@ export default function ProjectsPage() {
             Approved deals become operating records here: budget, risk, next step, source packet, and timeline in one place.
           </p>
         </div>
-        <button onClick={() => router.push("/deals")} style={primaryButton}>Review Deals</button>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+          <button onClick={() => router.push("/operations")} style={secondaryButton}>Operations</button>
+          <button onClick={() => router.push("/tracker")} style={secondaryButton}>Money</button>
+          <button onClick={() => router.push("/deals")} style={primaryButton}>Deal Reviews</button>
+        </div>
       </header>
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, marginBottom: 18 }} className="stat-grid">
@@ -173,9 +187,9 @@ export default function ProjectsPage() {
           {!loading && projects.length === 0 && (
             <div>
               <p style={{ color: "var(--muted)", fontSize: 13, marginBottom: 10 }}>
-                No projects yet. Convert an approved deal from Deal Desk to create the first project record.
+                No projects yet. Convert an approved deal packet to create the first project record.
               </p>
-              <button onClick={() => router.push("/deals")} style={secondaryButton}>Go to Deal Desk</button>
+              <button onClick={() => router.push("/deals")} style={secondaryButton}>Go to Deal Reviews</button>
             </div>
           )}
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -214,6 +228,19 @@ export default function ProjectsPage() {
             </section>
           ) : (
             <>
+              <nav className="project-tabs" aria-label="Project record sections">
+                {projectTabs.map(tab => (
+                  <ProjectTabButton
+                    key={tab.id}
+                    label={tab.label}
+                    count={tab.count}
+                    active={activeTab === tab.id}
+                    onClick={() => setActiveTab(tab.id)}
+                  />
+                ))}
+              </nav>
+
+              {activeTab === "overview" && (
               <section style={panel}>
                 <div style={{ display: "flex", justifyContent: "space-between", gap: 16, alignItems: "flex-start", flexWrap: "wrap", marginBottom: 14 }}>
                   <div>
@@ -225,7 +252,14 @@ export default function ProjectsPage() {
                       {selected.address || selected.parcel_id || "Location pending"}
                     </p>
                   </div>
-                  <span style={pillLarge}>{statusLabel(selected.status)}</span>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                    <span style={pillLarge}>{statusLabel(selected.status)}</span>
+                    {selected.deal_id && (
+                      <button onClick={() => router.push(`/opportunity?deal=${selected.deal_id}`)} style={secondaryButton}>
+                        Source File
+                      </button>
+                    )}
+                  </div>
                 </div>
 
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10 }} className="stat-grid">
@@ -253,7 +287,9 @@ export default function ProjectsPage() {
                   </div>
                 )}
               </section>
+              )}
 
+              {activeTab === "risks" && (
               <section style={panel}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12, flexWrap: "wrap", marginBottom: 12 }}>
                   <div>
@@ -304,7 +340,9 @@ export default function ProjectsPage() {
                   ))}
                 </div>
               </section>
+              )}
 
+              {activeTab === "documents" && (
               <section style={panel}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12, flexWrap: "wrap" }}>
                   <h2 style={sectionTitle}>Project documents</h2>
@@ -334,7 +372,9 @@ export default function ProjectsPage() {
                   ))}
                 </div>
               </section>
+              )}
 
+              {activeTab === "vendors" && (
               <section style={panel}>
                 <h2 style={sectionTitle}>Vendor directory</h2>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 160px", gap: 10, marginTop: 10 }} className="risk-form">
@@ -363,7 +403,9 @@ export default function ProjectsPage() {
                   ))}
                 </div>
               </section>
+              )}
 
+              {activeTab === "timeline" && (
               <section style={panel}>
                 <h2 style={sectionTitle}>Timeline</h2>
                 <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 10 }}>
@@ -377,12 +419,20 @@ export default function ProjectsPage() {
                   ))}
                 </div>
               </section>
+              )}
             </>
           )}
         </main>
       </div>
 
       <style jsx>{`
+        .project-tabs {
+          display: flex;
+          gap: 8px;
+          overflow-x: auto;
+          padding: 0 0 12px;
+          scrollbar-width: thin;
+        }
         @media (max-width: 900px) {
           .project-workspace { grid-template-columns: 1fr !important; }
         }
@@ -396,6 +446,47 @@ export default function ProjectsPage() {
         }
       `}</style>
     </div>
+  );
+}
+
+function ProjectTabButton({ label, count, active, onClick }: { label: string; count: number; active: boolean; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 8,
+        minHeight: 40,
+        border: active ? "1px solid var(--obsidian)" : "1px solid var(--fog)",
+        borderRadius: 999,
+        background: active ? "var(--obsidian)" : "rgba(255,255,255,0.7)",
+        color: active ? "var(--bone)" : "var(--ink)",
+        padding: "8px 12px",
+        fontSize: 11,
+        fontWeight: 800,
+        letterSpacing: "0.12em",
+        textTransform: "uppercase",
+        whiteSpace: "nowrap",
+        cursor: "pointer",
+      }}
+    >
+      {label}
+      <span style={{
+        minWidth: 22,
+        height: 22,
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        borderRadius: 999,
+        background: active ? "rgba(237,230,214,0.16)" : "var(--bone)",
+        color: active ? "var(--bone)" : "var(--muted)",
+        fontSize: 10,
+        letterSpacing: 0,
+      }}>
+        {count}
+      </span>
+    </button>
   );
 }
 

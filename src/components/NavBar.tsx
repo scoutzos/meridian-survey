@@ -5,18 +5,15 @@ import type { CSSProperties } from "react";
 import { isVaUser } from "@/lib/identity";
 import Logo from "./Logo";
 
-const crmRoutes = ["/crm", "/va", "/deals", "/opportunity", "/actions", "/operations", "/meetings"];
+const crmRoutes = ["/crm", "/va"];
 const crmLinks = [
   { href: "/dashboard", label: "Member Portal" },
   { href: "/crm", label: "Command Center" },
   { href: "/va", label: "Lead Inbox" },
-  { href: "/deals", label: "Deal Pipeline" },
+  { href: "/crm?view=deals", label: "Deal Reviews" },
   { href: "/crm?view=buyers", label: "Buyers" },
   { href: "/crm?view=dispo", label: "Disposition" },
   { href: "/crm?view=records", label: "Records" },
-  { href: "/actions", label: "Tasks" },
-  { href: "/operations", label: "Reports" },
-  { href: "/meetings", label: "Meetings" },
 ];
 
 const crmCreateButton: CSSProperties = {
@@ -47,9 +44,15 @@ export default function NavBar() {
   const router = useRouter();
   const pathname = usePathname();
   const [user, setUser] = useState<string | null>(null);
+  const [crmView, setCrmView] = useState<string | null>(null);
 
   useEffect(() => {
     setUser(localStorage.getItem("meridian_user"));
+    if (pathname === "/crm") {
+      setCrmView(new URLSearchParams(window.location.search).get("view"));
+    } else {
+      setCrmView(null);
+    }
   }, [pathname]);
 
   const crmShell = !!user && crmRoutes.some(route => pathname === route || pathname.startsWith(route + "/"));
@@ -63,17 +66,15 @@ export default function NavBar() {
 
   const memberLinks = [
     { href: "/dashboard",  label: "Home" },
-    { href: "/crm",        label: "CRM" },
-    { href: "/tracker",    label: "Money" },
-    { href: "/deals",      label: "Deals" },
-    { href: "/projects",   label: "Projects" },
-    { href: "/operations", label: "Ops" },
-    { href: "/surveys",    label: "Surveys" },
     { href: "/actions",    label: "Tasks" },
-    { href: "/meetings",   label: "Meetings" },
-    { href: "/dashboard",  label: "My Portal" },
-    { href: "/members/candidates", label: "Applications" },
+    { href: "/deals",      label: "Deal Reviews" },
+    { href: "/tracker",    label: "Money" },
+    { href: "/operations", label: "Operations" },
+    { href: "/projects",   label: "Projects" },
     { href: "/documents",  label: "Docs" },
+    { href: "/meetings",   label: "Meetings" },
+    { href: "/members/candidates", label: "Applications" },
+    { href: "/surveys",    label: "Surveys" },
     { href: "/decisions",  label: "Decisions" },
     { href: "/hub",        label: "Hub" },
   ];
@@ -87,6 +88,7 @@ export default function NavBar() {
     if (pathname === href) return true;
     if (pathname.startsWith(href + "/")) return true;
     if (href === "/surveys" && (pathname.startsWith("/survey/") || pathname.startsWith("/results/"))) return true;
+    if (href === "/deals" && pathname.startsWith("/opportunity")) return true;
     return false;
   };
 
@@ -104,11 +106,19 @@ export default function NavBar() {
           <div style={{ display: "grid", gap: 4 }}>
             {crmLinks.filter(link => !isVaUser(user) || ["/dashboard", "/crm", "/va", "/actions", "/meetings"].some(href => link.href.startsWith(href))).map(link => {
               const baseHref = link.href.split("?")[0];
-              const active = pathname === baseHref || pathname.startsWith(baseHref + "/");
+              const linkView = new URLSearchParams(link.href.split("?")[1] ?? "").get("view");
+              const active = link.href === "/crm"
+                ? pathname === "/crm" && !crmView
+                : linkView
+                  ? pathname === "/crm" && crmView === linkView
+                  : pathname === baseHref || pathname.startsWith(baseHref + "/");
               return (
                 <button
                   key={link.href}
-                  onClick={() => router.push(link.href)}
+                  onClick={() => {
+                    setCrmView(linkView);
+                    router.push(link.href);
+                  }}
                   className={active ? "crm-side-link crm-side-link-active" : "crm-side-link"}
                 >
                   <span>{link.label}</span>
@@ -151,6 +161,12 @@ export default function NavBar() {
     }}>
       <div style={{ display: "flex", alignItems: "center", gap: 24, flex: 1, minWidth: 0 }}>
         <Logo width={42} onDark style={{ cursor: "pointer", flexShrink: 0 }} onClick={() => router.push(isVaUser(user) ? "/va" : "/dashboard")} />
+        {!isVaUser(user) && (
+          <div style={{ display: "grid", lineHeight: 1.05, flexShrink: 0 }}>
+            <strong style={{ color: "var(--bone)", fontSize: 12, letterSpacing: "0.18em", textTransform: "uppercase" }}>Member</strong>
+            <span style={{ color: "var(--brass)", fontSize: 9, letterSpacing: "0.2em", textTransform: "uppercase" }}>Portal</span>
+          </div>
+        )}
         <div style={{
           display: "flex", alignItems: "center", gap: 2, overflowX: "auto",
           scrollbarWidth: "none",
@@ -185,6 +201,11 @@ export default function NavBar() {
         </div>
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 16, flexShrink: 0 }}>
+        {!isVaUser(user) && (
+          <button onClick={() => router.push("/crm")} style={crmCreateButton}>
+            CRM Workspace
+          </button>
+        )}
         <span style={{
           fontFamily: "var(--font-body)",
           fontSize: 11,

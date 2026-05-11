@@ -128,7 +128,7 @@ export default function TrackerDashboard() {
   }
 
   return (
-    <TrackerShell title="Contribution Tracker" subtitle="Funding health, expenses, deposits, and per-member balances.">
+    <TrackerShell title="Money Center" subtitle="Funding health, capital calls, expenses, deposits, and per-member balances tied back to operations and approved deals.">
       {loading && <div style={{ color: "var(--muted)" }}>Loading…</div>}
 
       {/* Funding shortfall banner */}
@@ -263,6 +263,10 @@ export default function TrackerDashboard() {
         <QuickLink label="Expenses" desc="Log and categorize costs" href="/tracker/expenses" router={router} />
         <QuickLink label="Contributions" desc="Member bank deposits" href="/tracker/contributions" router={router} />
         <QuickLink label="Capital Calls" desc="Approve, close, or dismiss calls" href="/tracker/capital-calls" router={router} />
+        <QuickLink label="Expense Planning" desc="Propose and vote before spend" href="/tracker/planning" router={router} />
+        <QuickLink label="Operations" desc="VA time, reimbursements, scenarios" href="/operations" router={router} />
+        <QuickLink label="Projects" desc="Budgets, docs, vendors, risk" href="/projects" router={router} />
+        <QuickLink label="Deal Reviews" desc="Packets before money moves" href="/deals" router={router} />
       </div>
     </TrackerShell>
   );

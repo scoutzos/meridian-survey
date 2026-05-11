@@ -53,6 +53,8 @@ import { isVaUser } from "@/lib/identity";
 
 const DISPLAY_FONT = "var(--font-display)";
 
+type OperationsTab = "overview" | "va-briefs" | "time" | "lead-ops" | "finance" | "calendar" | "scenarios";
+
 function money(n: number | null | undefined): string {
   if (typeof n !== "number" || !Number.isFinite(n)) return "$0";
   return n.toLocaleString(undefined, { style: "currency", currency: "USD", maximumFractionDigits: 0 });
@@ -121,6 +123,7 @@ export default function OperationsPage() {
   const [reimbursementDraft, setReimbursementDraft] = useState({ member_name: "", amount: "", vendor: "", category: "Project", expense_date: "", receipt_url: "", notes: "", project_id: "" });
   const [distributionDraft, setDistributionDraft] = useState({ distribution_date: "", total_amount: "", reason: "", project_id: "" });
   const [scenarioDraft, setScenarioDraft] = useState({ name: "", strategy: "flip", purchase_price: "", rehab_or_site_cost: "", closing_costs: "", holding_costs: "", financing_costs: "", exit_value: "", expected_rent: "", notes: "", project_id: "" });
+  const [activeTab, setActiveTab] = useState<OperationsTab>("overview");
 
   useEffect(() => {
     const u = localStorage.getItem("meridian_user");
@@ -313,6 +316,17 @@ export default function OperationsPage() {
   };
 
   const pendingReimbursements = reimbursements.filter(r => r.status === "submitted" || r.status === "approved");
+  const unreviewedBriefs = vaBriefs.filter(brief => !vaBriefReviews.some(review => review.brief_id === brief.id && review.member_name === user));
+  const activeFinanceItems = pendingReimbursements.length + distributions.filter(distribution => distribution.status !== "paid").length;
+  const operationTabs: { id: OperationsTab; label: string; count: number }[] = [
+    { id: "overview", label: "Overview", count: pendingTimeRequests.length + unreviewedBriefs.length + pendingReimbursements.length },
+    { id: "va-briefs", label: "VA Briefs", count: unreviewedBriefs.length },
+    { id: "time", label: "Time Approval", count: pendingTimeRequests.length },
+    { id: "lead-ops", label: "Lead Ops", count: leadReviewStats.interested },
+    { id: "finance", label: "Money", count: activeFinanceItems },
+    { id: "calendar", label: "Calendar", count: events.length },
+    { id: "scenarios", label: "Scenarios", count: scenarios.length },
+  ];
 
   const reviewBrief = async (brief: VaDailyBrief) => {
     const { data, error } = await upsertVaDailyBriefReview(brief.id, user, briefReviewNotes[brief.id] ?? "");
@@ -333,14 +347,13 @@ export default function OperationsPage() {
   return (
     <div className="operations-root" style={{ maxWidth: 1180, margin: "0 auto", padding: "84px 20px 100px" }}>
       <header style={{ marginBottom: 24 }}>
-        <p style={eyebrow}>Company Operations</p>
+        <p style={eyebrow}>Member Portal</p>
         <h1 style={{ fontFamily: DISPLAY_FONT, fontSize: "clamp(34px, 5vw, 50px)", fontWeight: 500, color: "var(--obsidian)", marginBottom: 6 }}>
-          Governance & finance
+          Operations
         </h1>
         <p style={{ color: "var(--ink)", opacity: 0.66, fontSize: 14, maxWidth: 760 }}>
-          Calendar, reimbursements, distributions, and deal scenarios. This is the operating layer around projects and decisions.
+          Review VA accountability, imported lead progress, reimbursements, operating dates, and scenario work from one member workspace.
         </p>
-        <p style={comingSoonPill}>Bank sync + receipt file upload coming soon</p>
       </header>
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 10, marginBottom: 18 }} className="stat-grid">
@@ -351,6 +364,19 @@ export default function OperationsPage() {
         <Stat label="VA briefs" value={String(vaBriefs.length)} />
       </div>
 
+      <nav className="operations-tabs" aria-label="Operations sections">
+        {operationTabs.map(tab => (
+          <OperationsTabButton
+            key={tab.id}
+            label={tab.label}
+            count={tab.count}
+            active={activeTab === tab.id}
+            onClick={() => setActiveTab(tab.id)}
+          />
+        ))}
+      </nav>
+
+      {(activeTab === "overview" || activeTab === "time" || activeTab === "va-briefs") && (
       <section style={{ ...panel, marginBottom: 18 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12, flexWrap: "wrap", marginBottom: 12 }}>
           <div>
@@ -364,7 +390,7 @@ export default function OperationsPage() {
           <MiniStat label="Submitted VA cost" value={money(vaSubmittedCost)} />
           <MiniStat label="Time edits pending" value={String(pendingTimeRequests.length)} />
         </div>
-        {pendingTimeRequests.length > 0 && (
+        {(activeTab === "overview" || activeTab === "time") && pendingTimeRequests.length > 0 && (
           <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 12, marginBottom: 18 }} className="brief-grid">
             {pendingTimeRequests.map(request => (
               <article key={request.id} style={{ background: "var(--bone)", border: "1px solid var(--fog)", borderRadius: 8, padding: 12 }}>
@@ -421,7 +447,8 @@ export default function OperationsPage() {
             ))}
           </div>
         )}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 12, marginBottom: 18 }} className="brief-grid">
+        {(activeTab === "overview" || activeTab === "time") && (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 12, marginBottom: activeTab === "time" ? 0 : 18 }} className="brief-grid">
           {vaPayPeriods.length === 0 && <p style={{ color: "var(--muted)", fontSize: 13 }}>No VA time entries have been submitted yet.</p>}
           {vaPayPeriods.slice(0, 4).map(period => {
             const periodKey = `${period.operatorName}:${period.periodStart}`;
@@ -493,6 +520,9 @@ export default function OperationsPage() {
             );
           })}
         </div>
+        )}
+        {(activeTab === "overview" || activeTab === "va-briefs") && (
+        <>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12, flexWrap: "wrap", marginBottom: 12 }}>
           <div>
             <p style={eyebrow}>End-of-shift reports</p>
@@ -566,8 +596,12 @@ export default function OperationsPage() {
             </article>
           ))}
         </div>
+        </>
+        )}
       </section>
+      )}
 
+      {(activeTab === "overview" || activeTab === "lead-ops") && (
       <section style={{ ...panel, marginBottom: 18 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12, flexWrap: "wrap", marginBottom: 12 }}>
           <div>
@@ -614,16 +648,28 @@ export default function OperationsPage() {
           </div>
         </div>
       </section>
+      )}
 
+      {(activeTab === "overview" || activeTab === "finance" || activeTab === "calendar" || activeTab === "scenarios") && (
+      <>
       <div style={{ margin: "8px 0 14px" }}>
         <p style={eyebrow}>Finance tools</p>
-        <h2 style={{ ...sectionTitle, marginBottom: 4 }}>Operating forms</h2>
+        <h2 style={{ ...sectionTitle, marginBottom: 4 }}>
+          {activeTab === "calendar" ? "Operating calendar" : activeTab === "scenarios" ? "Scenario modeling" : activeTab === "finance" ? "Money operations" : "Operating forms"}
+        </h2>
         <p style={{ color: "var(--muted)", fontSize: 13 }}>
-          Calendar, reimbursements, scenario modeling, and distributions sit below VA approvals.
+          {activeTab === "calendar"
+            ? "Keep closings, deadlines, votes, and project dates visible to the whole team."
+            : activeTab === "scenarios"
+              ? "Model project economics before they become deal votes or operating decisions."
+              : activeTab === "finance"
+                ? "Submit reimbursements, approve expenses, and record distributions in one lane."
+                : "Calendar, reimbursements, scenario modeling, and distributions sit below VA approvals."}
         </p>
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18 }} className="ops-grid">
+        {(activeTab === "overview" || activeTab === "calendar") && (
         <section style={panel}>
           <h2 style={sectionTitle}>Operating calendar</h2>
           <div style={twoCol}>
@@ -642,7 +688,9 @@ export default function OperationsPage() {
             ))}
           </ListShell>
         </section>
+        )}
 
+        {(activeTab === "overview" || activeTab === "finance") && (
         <section style={panel}>
           <h2 style={sectionTitle}>Reimbursements</h2>
           <div style={twoCol}>
@@ -676,7 +724,9 @@ export default function OperationsPage() {
             ))}
           </ListShell>
         </section>
+        )}
 
+        {(activeTab === "overview" || activeTab === "scenarios") && (
         <section style={panel}>
           <h2 style={sectionTitle}>Scenario modeling</h2>
           <div style={twoCol}>
@@ -705,7 +755,9 @@ export default function OperationsPage() {
             ))}
           </ListShell>
         </section>
+        )}
 
+        {(activeTab === "overview" || activeTab === "finance") && (
         <section style={panel}>
           <h2 style={sectionTitle}>Distributions</h2>
           <div style={twoCol}>
@@ -723,7 +775,10 @@ export default function OperationsPage() {
             ))}
           </ListShell>
         </section>
+        )}
       </div>
+      </>
+      )}
 
       <style jsx>{`
         .operations-root :global(input),
@@ -760,6 +815,14 @@ export default function OperationsPage() {
         .operations-root :global(textarea::placeholder) {
           color: rgba(31,28,23,0.48);
         }
+        .operations-tabs {
+          display: flex;
+          gap: 8px;
+          overflow-x: auto;
+          padding: 2px 0 14px;
+          margin-bottom: 10px;
+          scrollbar-width: thin;
+        }
         @media (max-width: 900px) {
           .ops-grid, .brief-grid { grid-template-columns: 1fr !important; }
         }
@@ -772,6 +835,49 @@ export default function OperationsPage() {
         }
       `}</style>
     </div>
+  );
+}
+
+function OperationsTabButton({ label, count, active, onClick }: { label: string; count: number; active: boolean; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 8,
+        minHeight: 42,
+        border: active ? "1px solid var(--obsidian)" : "1px solid var(--fog)",
+        borderRadius: 999,
+        background: active ? "var(--obsidian)" : "rgba(255,255,255,0.7)",
+        color: active ? "var(--bone)" : "var(--ink)",
+        padding: "8px 13px",
+        fontSize: 11,
+        fontWeight: 700,
+        letterSpacing: "0.12em",
+        textTransform: "uppercase",
+        whiteSpace: "nowrap",
+        cursor: "pointer",
+      }}
+    >
+      {label}
+      <span
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          justifyContent: "center",
+          minWidth: 22,
+          height: 22,
+          borderRadius: 999,
+          background: active ? "rgba(255,255,255,0.14)" : "var(--bone)",
+          color: active ? "var(--bone)" : "var(--muted)",
+          fontSize: 10,
+          letterSpacing: 0,
+        }}
+      >
+        {count}
+      </span>
+    </button>
   );
 }
 

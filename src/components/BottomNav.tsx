@@ -5,14 +5,15 @@ import { isVaUser } from "@/lib/identity";
 
 const PRIMARY = [
   { href: "/dashboard",  label: "Home" },
-  { href: "/crm",        label: "CRM" },
-  { href: "/tracker",    label: "Money" },
+  { href: "/actions",    label: "Tasks" },
   { href: "/deals",      label: "Deals" },
+  { href: "/tracker",    label: "Money" },
 ];
 
 const MORE = [
-  { href: "/actions",    label: "Tasks" },
+  { href: "/crm",        label: "CRM" },
   { href: "/operations", label: "Operations" },
+  { href: "/projects",   label: "Projects" },
   { href: "/meetings",   label: "Meetings" },
   { href: "/surveys",    label: "Surveys" },
   { href: "/members/candidates", label: "Applications" },
@@ -38,6 +39,7 @@ export default function BottomNav() {
     if (pathname === href) return true;
     if (pathname.startsWith(href + "/")) return true;
     if (href === "/surveys" && (pathname.startsWith("/survey/") || pathname.startsWith("/results/"))) return true;
+    if (href === "/deals" && pathname.startsWith("/opportunity")) return true;
     return false;
   };
 

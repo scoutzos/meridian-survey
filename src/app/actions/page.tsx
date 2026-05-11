@@ -29,6 +29,7 @@ import {
   type ActionItem,
   type ActionItemStatus,
 } from "@/lib/action-items";
+import { labelForStatus } from "@/lib/status-map";
 
 const DISPLAY_FONT = "var(--font-display)";
 
@@ -184,8 +185,8 @@ export default function ActionsPage() {
       id: `deal-${deal.id}`,
       kind: "Vote" as const,
       title: `Review deal: ${deal.title}`,
-      detail: `${deal.recommendation ?? "Needs Review"} · ${deal.urgency === "hot" ? "Hot deal" : "Review requested"}`,
-      href: `/deals?deal=${deal.id}`,
+      detail: `${deal.recommendation ?? labelForStatus("needs-review")} · ${deal.urgency === "hot" ? "Hot Deal" : "Review Requested"}`,
+      href: `/opportunity?deal=${deal.id}`,
       status: "Open" as const,
       due: null,
     })),
@@ -248,6 +249,7 @@ export default function ActionsPage() {
     actions: taskCards.filter(task => task.kind === "Action").length,
     completed: completedTasks.length,
   };
+  const openAssignedActions = taskCards.filter(task => task.kind === "Action").length;
 
   const handleStatusChange = async (item: ActionItem, status: ActionItemStatus) => {
     const { error } = await updateActionItemStatus(item.id, status, user);
@@ -285,13 +287,13 @@ export default function ActionsPage() {
       <header style={{ marginBottom: 24, display: "flex", justifyContent: "space-between", alignItems: "flex-end", gap: 16, flexWrap: "wrap" }}>
         <div>
           <p style={{ fontSize: 11, letterSpacing: 2, textTransform: "uppercase", color: "var(--brass)", fontWeight: 600, marginBottom: 8 }}>
-            Operations
+            Member Portal
           </p>
           <h1 style={{ fontFamily: DISPLAY_FONT, fontSize: "clamp(34px, 5vw, 48px)", fontWeight: 500, color: "var(--obsidian)", letterSpacing: "-0.5px", marginBottom: 6 }}>
-            Task inbox
+            My Tasks
           </h1>
           <p style={{ color: "var(--ink)", opacity: 0.65, fontSize: 14 }}>
-            One place for votes, money tasks, surveys, and assigned action items.
+            One review queue for votes, money items, surveys, and assigned work.
           </p>
         </div>
         {admin && (
@@ -367,6 +369,14 @@ export default function ActionsPage() {
 
       {!loading && (
         <>
+          <section className="task-summary-grid" style={{ marginBottom: 18 }}>
+            <TaskSummaryCard label="Open queue" value={filterCounts["needs-me"]} detail="Everything waiting on you" active={filter === "needs-me"} onClick={() => setFilter("needs-me")} />
+            <TaskSummaryCard label="Votes" value={filterCounts.votes} detail="Deals, applications, proposals" active={filter === "votes"} onClick={() => setFilter("votes")} />
+            <TaskSummaryCard label="Money" value={filterCounts.money} detail="Capital calls and approvals" active={filter === "money"} onClick={() => setFilter("money")} />
+            <TaskSummaryCard label="Surveys" value={filterCounts.surveys} detail="Unfinished member input" active={filter === "surveys"} onClick={() => setFilter("surveys")} />
+            <TaskSummaryCard label="Assigned work" value={openAssignedActions} detail="Manual action items" active={filter === "actions"} onClick={() => setFilter("actions")} />
+          </section>
+
           <section style={{
             background: "var(--surface)",
             border: "1px solid var(--fog)",
@@ -377,7 +387,7 @@ export default function ActionsPage() {
             <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-end", flexWrap: "wrap", marginBottom: 14 }}>
               <div>
                 <p style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.16em", textTransform: "uppercase", color: "var(--brass)", marginBottom: 6 }}>
-                  Needs My Attention
+                  Review Queue
                 </p>
                 <h2 style={{ fontFamily: DISPLAY_FONT, fontSize: 26, fontWeight: 500, color: "var(--obsidian)" }}>
                   {filterCounts["needs-me"]} open task{filterCounts["needs-me"] === 1 ? "" : "s"}
@@ -385,7 +395,7 @@ export default function ActionsPage() {
               </div>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                 {([
-                  ["needs-me", "All"],
+                  ["needs-me", "All Open"],
                   ["votes", "Votes"],
                   ["money", "Money"],
                   ["surveys", "Surveys"],
@@ -463,7 +473,7 @@ export default function ActionsPage() {
 
           <details style={{ marginBottom: 24 }}>
             <summary style={{ cursor: "pointer", color: "var(--brass)", fontSize: 11, fontWeight: 800, letterSpacing: "0.16em", textTransform: "uppercase", marginBottom: 12 }}>
-              Manual action board
+              Assigned action board
             </summary>
             <div style={{ marginTop: 12 }}>
               {STATUS_ORDER.map(status => {
@@ -567,12 +577,65 @@ export default function ActionsPage() {
       )}
 
       <style jsx>{`
+        .task-summary-grid {
+          display: grid;
+          grid-template-columns: repeat(5, minmax(0, 1fr));
+          gap: 10px;
+        }
         @media (max-width: 600px) {
           .actions-root { padding-top: 28px !important; }
           :global(.action-form-row) { grid-template-columns: 1fr !important; }
+          .task-summary-grid { grid-template-columns: 1fr !important; }
+        }
+        @media (min-width: 601px) and (max-width: 900px) {
+          .task-summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
         }
       `}</style>
     </div>
+  );
+}
+
+function TaskSummaryCard({
+  label,
+  value,
+  detail,
+  active,
+  onClick,
+}: {
+  label: string;
+  value: number;
+  detail: string;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        background: active ? "var(--obsidian)" : "var(--surface)",
+        border: `1px solid ${active ? "var(--obsidian)" : "var(--fog)"}`,
+        borderRadius: 12,
+        padding: "14px 15px",
+        textAlign: "left",
+        cursor: "pointer",
+        minHeight: 126,
+        color: active ? "var(--bone)" : "var(--ink)",
+        display: "flex",
+        flexDirection: "column",
+        justifyContent: "space-between",
+        gap: 10,
+      }}
+    >
+      <span style={{ fontSize: 10, letterSpacing: "0.16em", textTransform: "uppercase", color: "var(--brass)", fontWeight: 900 }}>
+        {label}
+      </span>
+      <strong style={{ fontSize: 32, lineHeight: 1, color: active ? "var(--bone)" : "var(--obsidian)", fontVariantNumeric: "tabular-nums" }}>
+        {value}
+      </strong>
+      <span style={{ fontSize: 12, lineHeight: 1.35, color: active ? "rgba(237,230,214,0.78)" : "var(--muted)" }}>
+        {detail}
+      </span>
+    </button>
   );
 }
 

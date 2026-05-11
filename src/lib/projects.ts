@@ -129,7 +129,7 @@ export async function createProjectFromDeal(deal: Deal, actor: string): Promise<
       id: `event-${Date.now()}`,
       project_id: project.id,
       event_date: now.slice(0, 10),
-      title: "Converted from Deal Desk",
+      title: "Converted from Deal Review",
       detail: `Source recommendation: ${deal.analysis?.recommendation ?? "Needs Review"}`,
       event_type: "conversion",
       created_at: now,
@@ -154,7 +154,7 @@ export async function createProjectFromDeal(deal: Deal, actor: string): Promise<
   await supabase.from("meridian_project_timeline_events").insert({
     project_id: project.id,
     event_date: new Date().toISOString().slice(0, 10),
-    title: "Converted from Deal Desk",
+    title: "Converted from Deal Review",
     detail: `Source recommendation: ${deal.analysis?.recommendation ?? "Needs Review"}`,
     event_type: "conversion",
     created_by: actor,

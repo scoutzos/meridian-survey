@@ -1,0 +1,344 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>VA First Day Schedule | The Meridian Collective</title>
+  <style>
+    :root {
+      --obsidian: #14110d;
+      --bone: #f7f3ea;
+      --surface: #fffdf8;
+      --fog: #d8cfbd;
+      --brass: #c9a878;
+      --bronze: #6b3410;
+      --ink: #1a1a1a;
+      --muted: #6b6b68;
+    }
+
+    @page {
+      size: Letter;
+      margin: 0;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: var(--bone);
+      color: var(--ink);
+      font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+    }
+
+    .page {
+      width: 8.5in;
+      height: 11in;
+      background:
+        linear-gradient(90deg, var(--obsidian) 0, var(--obsidian) 0.34in, transparent 0.34in),
+        var(--surface);
+      padding: 0.5in 0.58in 0.5in 0.78in;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .top-rule {
+      position: absolute;
+      left: 0.34in;
+      right: 0;
+      top: 0;
+      height: 0.08in;
+      background: var(--brass);
+    }
+
+    .brand-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.25in;
+      padding-bottom: 0.26in;
+      border-bottom: 1px solid rgba(107, 52, 16, 0.22);
+    }
+
+    .brand-lockup {
+      display: flex;
+      align-items: center;
+      gap: 0.18in;
+    }
+
+    .logo {
+      width: 0.82in;
+      height: 0.82in;
+      object-fit: contain;
+      border-radius: 999px;
+      background: var(--obsidian);
+      padding: 0.04in;
+    }
+
+    .brand-name {
+      font-family: Georgia, "Times New Roman", serif;
+      font-size: 20px;
+      line-height: 1.05;
+      color: var(--obsidian);
+      letter-spacing: 0.02em;
+      margin: 0;
+      font-weight: 400;
+    }
+
+    .brand-note {
+      margin-top: 5px;
+      font-size: 8.5px;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: var(--bronze);
+      font-weight: 700;
+    }
+
+    .date-pill {
+      border: 1px solid rgba(107, 52, 16, 0.25);
+      color: var(--bronze);
+      padding: 0.08in 0.13in;
+      font-size: 10px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      font-weight: 700;
+      white-space: nowrap;
+      background: rgba(255, 253, 248, 0.72);
+    }
+
+    .hero {
+      display: grid;
+      grid-template-columns: 1fr 1.48in;
+      gap: 0.28in;
+      align-items: end;
+      margin: 0.3in 0 0.24in;
+    }
+
+    .eyebrow {
+      font-size: 9.5px;
+      letter-spacing: 0.24em;
+      text-transform: uppercase;
+      color: var(--bronze);
+      font-weight: 800;
+      margin: 0 0 0.07in;
+    }
+
+    h1 {
+      font-family: Georgia, "Times New Roman", serif;
+      font-size: 38px;
+      line-height: 0.98;
+      font-weight: 400;
+      color: var(--obsidian);
+      margin: 0;
+      letter-spacing: 0;
+    }
+
+    .subhead {
+      margin: 0.13in 0 0;
+      font-size: 12px;
+      line-height: 1.5;
+      color: var(--muted);
+      max-width: 5.2in;
+    }
+
+    .time-block {
+      background: var(--obsidian);
+      color: var(--bone);
+      padding: 0.18in;
+      min-height: 1.15in;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+    }
+
+    .time-block span {
+      font-size: 8px;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: var(--brass);
+      font-weight: 800;
+    }
+
+    .time-block strong {
+      font-family: Georgia, "Times New Roman", serif;
+      font-size: 25px;
+      line-height: 1.04;
+      margin-top: 0.04in;
+      font-weight: 400;
+    }
+
+    .agenda {
+      display: grid;
+      gap: 0.105in;
+      margin-top: 0.05in;
+    }
+
+    .item {
+      display: grid;
+      grid-template-columns: 1.18in 1fr;
+      gap: 0.16in;
+      align-items: stretch;
+      border: 1px solid rgba(214, 205, 183, 0.95);
+      background: #fffdf8;
+      min-height: 0.62in;
+      page-break-inside: avoid;
+    }
+
+    .item.break {
+      background: #f3ead6;
+      border-color: rgba(201, 168, 120, 0.58);
+    }
+
+    .time {
+      background: rgba(20, 17, 13, 0.94);
+      color: var(--bone);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 0.07in;
+      font-size: 11px;
+      line-height: 1.25;
+      font-weight: 800;
+    }
+
+    .item.break .time {
+      background: var(--brass);
+      color: var(--obsidian);
+    }
+
+    .details {
+      padding: 0.105in 0.13in 0.1in 0;
+    }
+
+    .details h2 {
+      font-size: 13px;
+      line-height: 1.2;
+      margin: 0 0 0.035in;
+      color: var(--obsidian);
+      font-weight: 800;
+    }
+
+    .details p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 10.6px;
+      line-height: 1.42;
+    }
+
+    .footer {
+      position: absolute;
+      left: 0.78in;
+      right: 0.58in;
+      bottom: 0.34in;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-top: 1px solid rgba(107, 52, 16, 0.22);
+      padding-top: 0.11in;
+      color: var(--muted);
+      font-size: 8.8px;
+    }
+
+    .footer strong {
+      color: var(--bronze);
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      font-size: 8px;
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <div class="top-rule"></div>
+
+    <header class="brand-row">
+      <div class="brand-lockup">
+        <img class="logo" src="public/logos/meridian-collective-transparent.svg" alt="The Meridian Collective logo">
+        <div>
+          <p class="brand-name">The Meridian<br>Collective</p>
+          <div class="brand-note">Disciplined Investing</div>
+        </div>
+      </div>
+      <div class="date-pill">Tomorrow | 12:00 PM-6:00 PM</div>
+    </header>
+
+    <section class="hero">
+      <div>
+        <p class="eyebrow">Virtual Assistant Onboarding</p>
+        <h1>First Day Schedule</h1>
+        <p class="subhead">
+          A structured first-day flow to orient the VA to Meridian's deal process, set expectations clearly, and introduce the admin portal for daily workflow.
+        </p>
+      </div>
+      <aside class="time-block">
+        <span>Training Window</span>
+        <strong>12-6 PM</strong>
+      </aside>
+    </section>
+
+    <section class="agenda" aria-label="First day agenda">
+      <article class="item">
+        <div class="time">12:00-12:15<br>PM</div>
+        <div class="details">
+          <h2>Welcome + Setup</h2>
+          <p>Quick welcome, introductions, and confirmation that she has the right access, tools, and context for the day.</p>
+        </div>
+      </article>
+
+      <article class="item">
+        <div class="time">12:15-2:00<br>PM</div>
+        <div class="details">
+          <h2>Deal Acquisition + Disposition Download with Sophie</h2>
+          <p>Sophie walks her through lead flow, acquisition steps, disposition, handoffs, key terminology, and where the VA fits into the process.</p>
+        </div>
+      </article>
+
+      <article class="item break">
+        <div class="time">2:00-3:00<br>PM</div>
+        <div class="details">
+          <h2>Break</h2>
+          <p>Time to pause, review notes, and get settled before the afternoon session.</p>
+        </div>
+      </article>
+
+      <article class="item">
+        <div class="time">3:00-3:45<br>PM</div>
+        <div class="details">
+          <h2>Agreement Signing + Expectations with Aaliyah</h2>
+          <p>Aaliyah reviews the agreement, role expectations, communication standards, confidentiality, schedule, and early success markers.</p>
+        </div>
+      </article>
+
+      <article class="item">
+        <div class="time">3:45-4:30<br>PM</div>
+        <div class="details">
+          <h2>Initial Investment Strategy</h2>
+          <p>Aaliyah explains the initial investment strategy, target deals, deal criteria, red flags, priorities, and escalation rules.</p>
+        </div>
+      </article>
+
+      <article class="item">
+        <div class="time">4:30-5:30<br>PM</div>
+        <div class="details">
+          <h2>Admin Portal Walkthrough</h2>
+          <p>Introduce the portal built for her day-to-day workflow: tasks, lead/deal tracking, status updates, notes, and daily expectations.</p>
+        </div>
+      </article>
+
+      <article class="item">
+        <div class="time">5:30-6:00<br>PM</div>
+        <div class="details">
+          <h2>Practice + Q&A</h2>
+          <p>Walk through a sample task or sample lead in the portal, answer questions, and leave with clear priorities for day two.</p>
+        </div>
+      </article>
+    </section>
+
+    <footer class="footer">
+      <strong>The Meridian Collective</strong>
+      <span>Prepared for VA onboarding</span>
+    </footer>
+  </main>
+</body>
+</html>

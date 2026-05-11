@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { calculateDealAnalysis } from "@/lib/deals";
 import {
   createBuyerOffer,
@@ -11,13 +11,31 @@ import {
   fetchCrmDashboardData,
   linkContactToOpportunity,
   type CrmDashboardData,
+  type CrmBuyer,
+  type CrmContact,
   type CrmContactType,
+  type CrmProperty,
+  type BuyerOffer,
+  type DispositionCampaign,
   type OpportunityContactRole,
 } from "@/lib/crm";
 import type { CommunicationEvent } from "@/lib/communications";
+import ConversationPanel from "@/components/ConversationPanel";
+import { labelForStatus } from "@/lib/status-map";
+import { getDealNextAction } from "@/lib/workflow-actions";
 
 const DISPLAY_FONT = "var(--font-display)";
 type CrmView = "inbox" | "deals" | "buyers" | "dispo" | "records";
+const CRM_VIEWS: CrmView[] = ["inbox", "deals", "buyers", "dispo", "records"];
+const DISPO_STAGES: Array<{ id: DispositionCampaign["status"]; label: string; detail: string }> = [
+  { id: "not-started", label: "Not Started", detail: "Packet needs buyer plan" },
+  { id: "buyer-list-built", label: "Buyer List", detail: "Targets identified" },
+  { id: "marketed", label: "Marketed", detail: "Sent to buyers" },
+  { id: "buyer-interest", label: "Interest", detail: "Replies to qualify" },
+  { id: "offer-received", label: "Offers", detail: "Member decision needed" },
+  { id: "buyer-under-contract", label: "Contract", detail: "Buyer under contract" },
+  { id: "closing-scheduled", label: "Closing", detail: "Track final items" },
+];
 
 const EMPTY_DATA: CrmDashboardData = {
   deals: [],
@@ -44,14 +62,28 @@ function formatDate(iso: string | null | undefined): string {
 }
 
 function statusLabel(value: string): string {
-  return value.split("-").map(part => part.charAt(0).toUpperCase() + part.slice(1)).join(" ");
+  return labelForStatus(value);
 }
 
 export default function CrmPage() {
+  return (
+    <Suspense fallback={<div style={{ minHeight: "100vh", padding: "84px 20px" }}>Loading CRM...</div>}>
+      <CrmContent />
+    </Suspense>
+  );
+}
+
+function CrmContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [user, setUser] = useState<string | null>(null);
   const [data, setData] = useState<CrmDashboardData>(EMPTY_DATA);
   const [selectedDealId, setSelectedDealId] = useState<string | null>(null);
+  const [selectedContactId, setSelectedContactId] = useState<string | null>(null);
+  const [selectedBuyerId, setSelectedBuyerId] = useState<string | null>(null);
+  const [selectedPropertyId, setSelectedPropertyId] = useState<string | null>(null);
+  const [selectedCampaignId, setSelectedCampaignId] = useState<string | null>(null);
+  const [selectedOfferId, setSelectedOfferId] = useState<string | null>(null);
   const [view, setView] = useState<CrmView>("inbox");
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
@@ -60,12 +92,19 @@ export default function CrmPage() {
   const [campaignDraft, setCampaignDraft] = useState({ campaign_name: "", owner: "", notes: "" });
   const [offerDraft, setOfferDraft] = useState({ buyer_name: "", offer_amount: "", earnest_money: "", close_date: "", notes: "" });
   const [linkDraft, setLinkDraft] = useState({ contact_id: "", role: "seller" as OpportunityContactRole, notes: "" });
+  const [smsDraft, setSmsDraft] = useState({ contact_id: "", body: "" });
+  const [smsSending, setSmsSending] = useState(false);
 
   const reload = useCallback(async () => {
     setLoading(true);
     const rows = await fetchCrmDashboardData();
     setData(rows);
     setSelectedDealId(prev => prev && rows.deals.some(deal => deal.id === prev) ? prev : rows.deals[0]?.id ?? null);
+    setSelectedContactId(prev => prev && rows.contacts.some(contact => contact.id === prev) ? prev : rows.contacts[0]?.id ?? null);
+    setSelectedBuyerId(prev => prev && rows.buyers.some(buyer => buyer.id === prev) ? prev : rows.buyers[0]?.id ?? null);
+    setSelectedPropertyId(prev => prev && rows.properties.some(property => property.id === prev) ? prev : rows.properties[0]?.id ?? null);
+    setSelectedCampaignId(prev => prev && rows.campaigns.some(campaign => campaign.id === prev) ? prev : rows.campaigns[0]?.id ?? null);
+    setSelectedOfferId(prev => prev && rows.offers.some(offer => offer.id === prev) ? prev : rows.offers[0]?.id ?? null);
     setLoading(false);
   }, []);
 
@@ -76,18 +115,50 @@ export default function CrmPage() {
     void reload();
   }, [router, reload]);
 
+  useEffect(() => {
+    const requested = searchParams.get("view");
+    if (requested && CRM_VIEWS.includes(requested as CrmView)) {
+      setView(requested as CrmView);
+    }
+  }, [searchParams]);
+
   const selectedDeal = useMemo(() => data.deals.find(deal => deal.id === selectedDealId) ?? data.deals[0] ?? null, [data.deals, selectedDealId]);
+  const selectedContact = useMemo(() => data.contacts.find(contact => contact.id === selectedContactId) ?? data.contacts[0] ?? null, [data.contacts, selectedContactId]);
+  const selectedBuyer = useMemo(() => data.buyers.find(buyer => buyer.id === selectedBuyerId) ?? data.buyers[0] ?? null, [data.buyers, selectedBuyerId]);
+  const selectedProperty = useMemo(() => data.properties.find(property => property.id === selectedPropertyId) ?? data.properties[0] ?? null, [data.properties, selectedPropertyId]);
+  const selectedCampaign = useMemo(() => data.campaigns.find(campaign => campaign.id === selectedCampaignId) ?? data.campaigns[0] ?? null, [data.campaigns, selectedCampaignId]);
+  const selectedOffer = useMemo(() => data.offers.find(offer => offer.id === selectedOfferId) ?? data.offers[0] ?? null, [data.offers, selectedOfferId]);
   const selectedAnalysis = useMemo(() => selectedDeal ? calculateDealAnalysis(selectedDeal) : null, [selectedDeal]);
   const unmatchedMessages = useMemo(() => data.communications.filter(event => event.direction === "inbound" && !event.matched_deal_id && !event.matched_lead_id), [data.communications]);
   const hotDeals = useMemo(() => data.deals.filter(deal => deal.urgency === "hot" || deal.analysis.recommendation === "Strong Review"), [data.deals]);
+  const dealsNeedingMemberReview = useMemo(() => data.deals.filter(deal => ["lead", "under-review"].includes(deal.status)), [data.deals]);
+  const campaignsNeedingOffers = useMemo(() => data.campaigns.filter(campaign => !data.offers.some(offer => offer.disposition_campaign_id === campaign.id || offer.deal_id === campaign.deal_id)), [data.campaigns, data.offers]);
+  const offersNeedingDecision = useMemo(() => data.offers.filter(offer => ["received", "countered"].includes(offer.status)), [data.offers]);
+  const recordsNeedingCleanup = useMemo(() => data.contacts.filter(contact => !contact.phone && !contact.email).length + data.properties.filter(property => !property.parcel_id && !property.address).length, [data.contacts, data.properties]);
   const selectedCampaigns = useMemo(() => selectedDeal ? data.campaigns.filter(campaign => campaign.deal_id === selectedDeal.id) : [], [data.campaigns, selectedDeal]);
+  const selectedCommunicationEvents = useMemo(() => selectedDeal ? data.communications.filter(event => event.matched_deal_id === selectedDeal.id) : [], [data.communications, selectedDeal]);
+  const selectedWorkflowAction = useMemo(() => selectedDeal ? getDealNextAction({
+    deal: selectedDeal,
+    communications: selectedCommunicationEvents,
+    currentUser: user,
+  }) : null, [selectedCommunicationEvents, selectedDeal, user]);
   const opportunityCountByContact = useMemo(() => data.opportunityContacts.reduce<Record<string, number>>((acc, link) => {
     acc[link.contact_id] = (acc[link.contact_id] ?? 0) + 1;
     return acc;
   }, {}), [data.opportunityContacts]);
   const selectedOpportunityContacts = useMemo(() => selectedDeal ? data.opportunityContacts.filter(link => link.deal_id === selectedDeal.id) : [], [data.opportunityContacts, selectedDeal]);
+  const selectedLinkedContacts = useMemo(() => selectedOpportunityContacts
+    .map(link => ({ link, contact: data.contacts.find(contact => contact.id === link.contact_id) ?? null }))
+    .filter((item): item is { link: typeof item.link; contact: NonNullable<typeof item.contact> } => !!item.contact),
+  [data.contacts, selectedOpportunityContacts]);
+  const textableLinkedContacts = useMemo(() => selectedLinkedContacts.filter(item => item.contact.phone && item.contact.sms_opt_status !== "opted-out"), [selectedLinkedContacts]);
 
   if (!user) return null;
+
+  const selectView = (nextView: CrmView) => {
+    setView(nextView);
+    router.replace(nextView === "inbox" ? "/crm" : `/crm?view=${nextView}`, { scroll: false });
+  };
 
   const createContact = async () => {
     const { error } = await createCrmContact(contactDraft, user);
@@ -157,6 +228,31 @@ export default function CrmPage() {
     await reload();
   };
 
+  const sendSelectedSms = async () => {
+    if (!selectedDeal) { setMessage("Select an opportunity first."); return; }
+    const selected = textableLinkedContacts.find(item => item.contact.id === smsDraft.contact_id) ?? textableLinkedContacts[0];
+    if (!selected?.contact.phone) { setMessage("Choose a linked contact with a phone number."); return; }
+    if (!smsDraft.body.trim()) { setMessage("Write a message before sending."); return; }
+    setSmsSending(true);
+    setMessage("");
+    const response = await fetch("/api/sakari/send", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        toNumber: selected.contact.phone,
+        message: smsDraft.body,
+        actor: user,
+        dealId: selectedDeal.id,
+      }),
+    });
+    const result = await response.json().catch(() => ({}));
+    setSmsSending(false);
+    if (!response.ok) { setMessage(result.error || "SMS failed."); return; }
+    setSmsDraft({ contact_id: selected.contact.id, body: "" });
+    setMessage("SMS sent and logged to the opportunity.");
+    await reload();
+  };
+
   const views: Array<{ id: CrmView; label: string; detail: string; count: number }> = [
     { id: "inbox", label: "Inbox", detail: "Seller replies and unmatched messages", count: unmatchedMessages.length },
     { id: "deals", label: "Deals", detail: "Packets, votes, calculators, approvals", count: data.deals.length },
@@ -170,6 +266,49 @@ export default function CrmPage() {
     { label: "Inbox", value: String(unmatchedMessages.length), sub: "unmatched SMS", tone: unmatchedMessages.length ? "hot" as const : "calm" as const },
     { label: "Buyers", value: String(data.buyers.length), sub: "active records" },
     { label: "Campaigns", value: String(data.campaigns.length), sub: `${data.offers.length} offers` },
+  ];
+
+  const workflowCards = [
+    {
+      label: "Lead Intake",
+      value: unmatchedMessages.length,
+      body: "Unmatched seller replies need to become a lead, a contact, or a deal packet.",
+      action: "Open Inbox",
+      onAction: () => selectView("inbox"),
+      hot: unmatchedMessages.length > 0,
+    },
+    {
+      label: "Deal Packet",
+      value: dealsNeedingMemberReview.length,
+      body: "VA briefs and calculators should move cleanly into member review.",
+      action: "Review Deals",
+      onAction: () => selectView("deals"),
+      hot: dealsNeedingMemberReview.length > 0,
+    },
+    {
+      label: "Disposition",
+      value: campaignsNeedingOffers.length,
+      body: "Campaigns without buyer offers need outreach, follow-up, or buyer matching.",
+      action: "Open Dispo",
+      onAction: () => selectView("dispo"),
+      hot: campaignsNeedingOffers.length > 0,
+    },
+    {
+      label: "Offer Decision",
+      value: offersNeedingDecision.length,
+      body: "New and countered buyer offers need a member-facing decision path.",
+      action: "Offers",
+      onAction: () => selectView("dispo"),
+      hot: offersNeedingDecision.length > 0,
+    },
+    {
+      label: "Record Hygiene",
+      value: recordsNeedingCleanup,
+      body: "Contacts and properties missing identifiers create duplicate work later.",
+      action: "Clean Records",
+      onAction: () => selectView("records"),
+      hot: recordsNeedingCleanup > 0,
+    },
   ];
 
   const renderDealRows = (limit = 12) => (
@@ -219,7 +358,7 @@ export default function CrmPage() {
         <WorkspacePanel title="Buyer demand" eyebrow="Buy boxes">
           <div style={recordGrid}>
             {data.buyers.map(buyer => (
-              <RecordCard key={buyer.id} title={buyer.buyer_name} meta={buyer.markets.join(", ") || buyer.buyer_type || "Market pending"}>
+              <RecordCard key={buyer.id} title={buyer.buyer_name} meta={buyer.markets.join(", ") || buyer.buyer_type || "Market pending"} active={selectedBuyer?.id === buyer.id} onClick={() => setSelectedBuyerId(buyer.id)}>
                 <span>Max: {money(buyer.max_price)}</span>
                 <span>{statusLabel(buyer.relationship_strength)} · POF {statusLabel(buyer.proof_of_funds_status)}</span>
                 <span>{buyer.buy_box || "Buy box needs detail."}</span>
@@ -234,8 +373,36 @@ export default function CrmPage() {
     }
 
     if (view === "dispo") {
+      const campaignsByStage = DISPO_STAGES.map(stage => ({
+        ...stage,
+        campaigns: data.campaigns.filter(campaign => campaign.status === stage.id),
+      }));
       return (
         <WorkspacePanel title="Disposition board" eyebrow="Campaigns + offers">
+          <div className="dispo-stage-grid">
+            {campaignsByStage.map(stage => (
+              <div key={stage.id} style={subPanel}>
+                <p style={eyebrowSmall}>{stage.label}</p>
+                <strong style={{ color: "var(--obsidian)", fontSize: 22 }}>{stage.campaigns.length}</strong>
+                <p style={{ ...rowMeta, marginTop: 4 }}>{stage.detail}</p>
+                <div style={{ display: "grid", gap: 6, marginTop: 10 }}>
+                  {stage.campaigns.slice(0, 3).map(campaign => (
+                    <button
+                      key={campaign.id}
+                      onClick={() => {
+                        setSelectedCampaignId(campaign.id);
+                        if (campaign.deal_id) setSelectedDealId(campaign.deal_id);
+                      }}
+                      style={{ ...viewButton, background: "rgba(255,252,245,0.72)", borderColor: "var(--fog)", color: "var(--ink)" }}
+                    >
+                      <strong>{campaign.campaign_name}</strong>
+                      <span>{money(campaign.target_price)} target</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }} className="two-col">
             <CrmList title="Campaigns" items={data.campaigns} render={campaign => (
               <>
@@ -243,14 +410,20 @@ export default function CrmPage() {
                 <span>{statusLabel(campaign.status)} · Target {money(campaign.target_price)}</span>
                 <span>{campaign.owner || "Owner pending"}</span>
               </>
-            )} />
+            )} onSelect={campaign => {
+              setSelectedCampaignId(campaign.id);
+              if (campaign.deal_id) setSelectedDealId(campaign.deal_id);
+            }} selectedId={selectedCampaign?.id} />
             <CrmList title="Offers" items={data.offers} render={offer => (
               <>
                 <strong>{offer.buyer_name}</strong>
                 <span>{money(offer.offer_amount)} · {statusLabel(offer.status)}</span>
                 <span>{offer.close_date ? `Close ${formatDate(offer.close_date)}` : "Close date pending"}</span>
               </>
-            )} />
+            )} onSelect={offer => {
+              setSelectedOfferId(offer.id);
+              if (offer.deal_id) setSelectedDealId(offer.deal_id);
+            }} selectedId={selectedOffer?.id} />
           </div>
         </WorkspacePanel>
       );
@@ -266,14 +439,14 @@ export default function CrmPage() {
                 <span>{statusLabel(contact.contact_type)} · {contact.phone || contact.email || "No phone/email"}</span>
                 <span>{opportunityCountByContact[contact.id] ?? 0} linked opportunit{(opportunityCountByContact[contact.id] ?? 0) === 1 ? "y" : "ies"} · SMS {statusLabel(contact.sms_opt_status)}</span>
               </>
-            )} />
+            )} onSelect={contact => setSelectedContactId(contact.id)} selectedId={selectedContact?.id} />
             <CrmList title="Properties" items={data.properties} render={property => (
               <>
                 <strong>{property.address || property.parcel_id || "Property record"}</strong>
                 <span>{property.county || "County pending"} · {property.acreage ?? "N/A"} acres</span>
                 <span>{property.zoning || property.land_use || "Use pending"}</span>
               </>
-            )} />
+            )} onSelect={property => setSelectedPropertyId(property.id)} selectedId={selectedProperty?.id} />
           </div>
         </WorkspacePanel>
       );
@@ -288,6 +461,47 @@ export default function CrmPage() {
 
   const renderRightRail = () => (
     <aside style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      {view === "records" && selectedContact && (
+        <ContactDetailCard
+          contact={selectedContact}
+          links={data.opportunityContacts.filter(link => link.contact_id === selectedContact.id)}
+          deals={data.deals}
+          communications={data.communications.filter(event => {
+            const phone = selectedContact.phone || selectedContact.phone_2;
+            return !!phone && [event.contact_number, event.from_number, event.to_number].some(value => value?.replace(/\D/g, "").endsWith(phone.replace(/\D/g, "").slice(-10)));
+          })}
+          onOpenDeal={dealId => {
+            setSelectedDealId(dealId);
+            selectView("deals");
+          }}
+        />
+      )}
+
+      {view === "records" && selectedProperty && (
+        <PropertyDetailCard property={selectedProperty} deals={data.deals.filter(deal => deal.parcel_id === selectedProperty.parcel_id || deal.address === selectedProperty.address)} onOpenDeal={dealId => {
+          setSelectedDealId(dealId);
+          selectView("deals");
+        }} />
+      )}
+
+      {view === "buyers" && selectedBuyer && (
+        <BuyerDetailCard buyer={selectedBuyer} offers={data.offers.filter(offer => offer.buyer_id === selectedBuyer.id || offer.buyer_name === selectedBuyer.buyer_name)} />
+      )}
+
+      {view === "dispo" && selectedCampaign && (
+        <CampaignDetailCard campaign={selectedCampaign} offers={data.offers.filter(offer => offer.disposition_campaign_id === selectedCampaign.id || offer.deal_id === selectedCampaign.deal_id)} onOpenDeal={dealId => {
+          setSelectedDealId(dealId);
+          selectView("deals");
+        }} />
+      )}
+
+      {view === "dispo" && selectedOffer && (
+        <OfferDetailCard offer={selectedOffer} onOpenDeal={dealId => {
+          setSelectedDealId(dealId);
+          selectView("deals");
+        }} />
+      )}
+
       {selectedDeal && selectedAnalysis ? (
         <div style={darkPanel}>
           <p style={{ ...eyebrowSmall, color: "var(--brass)" }}>Selected packet</p>
@@ -302,8 +516,8 @@ export default function CrmPage() {
           <div style={{ borderTop: "1px solid rgba(247,242,232,0.16)", marginTop: 14, paddingTop: 12 }}>
             <p style={{ ...miniLabel, color: "rgba(247,242,232,0.58)" }}>Linked CRM contacts</p>
             <p style={{ color: "rgba(247,242,232,0.72)", fontSize: 12, lineHeight: 1.45, marginTop: 5 }}>
-              {selectedOpportunityContacts.length
-                ? `${selectedOpportunityContacts.length} contact${selectedOpportunityContacts.length === 1 ? "" : "s"} attached to this opportunity.`
+              {selectedLinkedContacts.length
+                ? `${selectedLinkedContacts.length} contact${selectedLinkedContacts.length === 1 ? "" : "s"} attached to this opportunity.`
                 : "No CRM contacts linked yet."}
             </p>
           </div>
@@ -330,6 +544,35 @@ export default function CrmPage() {
 
       {(view === "dispo" || view === "deals" || view === "records") && selectedDeal && (
         <>
+          <ConversationPanel
+            eyebrow="Opportunity communications"
+            title="Conversation panel"
+            subject={selectedDeal.title}
+            communications={selectedCommunicationEvents}
+            emptyText="No messages are attached to this opportunity yet."
+            maxHeight={320}
+            compact
+            composer={textableLinkedContacts.length > 0 ? (
+              <div style={{ display: "grid", gap: 8 }}>
+                <select value={smsDraft.contact_id || textableLinkedContacts[0]?.contact.id || ""} onChange={e => setSmsDraft({ ...smsDraft, contact_id: e.target.value })}>
+                  {textableLinkedContacts.map(({ link, contact }) => (
+                    <option key={contact.id} value={contact.id}>
+                      {contact.display_name} · {statusLabel(link.role)} · {contact.phone}
+                    </option>
+                  ))}
+                </select>
+                <textarea rows={4} placeholder="Write a seller or buyer text..." value={smsDraft.body} onChange={e => setSmsDraft({ ...smsDraft, body: e.target.value })} />
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
+                  <span style={rowMeta}>{Math.max(1, Math.ceil(smsDraft.body.trim().length / 160))} segment estimate</span>
+                  <button onClick={sendSelectedSms} disabled={smsSending || !smsDraft.body.trim()} style={{ ...primaryButton, opacity: smsSending || !smsDraft.body.trim() ? 0.55 : 1 }}>
+                    {smsSending ? "Sending" : "Send SMS"}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <EmptyText>Link a seller, owner, buyer, or agent contact with a phone number before sending from CRM.</EmptyText>
+            )}
+          />
           <QuickCreate title="Link contact">
             <select value={linkDraft.contact_id} onChange={e => setLinkDraft({ ...linkDraft, contact_id: e.target.value })}>
               <option value="">Choose CRM contact</option>
@@ -385,15 +628,16 @@ export default function CrmPage() {
           <div>
             <p style={eyebrow}>Meridian CRM</p>
             <h1 style={{ fontFamily: DISPLAY_FONT, fontSize: "clamp(32px, 4vw, 44px)", lineHeight: 0.95, fontWeight: 500, color: "var(--obsidian)", letterSpacing: 0 }}>
-              CRM command center
+              CRM Command Center
             </h1>
             <p style={{ color: "var(--muted)", fontSize: 14, maxWidth: 720, marginTop: 8 }}>
               Seller replies, deal packets, buyer demand, dispositions, offers, and records in one working system.
             </p>
           </div>
           <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", flexWrap: "wrap" }}>
-            <button onClick={() => router.push("/va")} style={secondaryButton}>VA desk</button>
-            <button onClick={() => router.push("/deals")} style={primaryButton}>Deal desk</button>
+            <button onClick={() => router.push("/dashboard")} style={secondaryButton}>Member Portal</button>
+            <button onClick={() => router.push("/va")} style={secondaryButton}>VA Desk</button>
+            <button onClick={() => router.push("/deals")} style={primaryButton}>Deal Reviews</button>
           </div>
         </header>
 
@@ -401,6 +645,12 @@ export default function CrmPage() {
 
         <section style={summaryStrip} className="summary-strip">
           {workSummary.map(item => <SummaryStat key={item.label} {...item} />)}
+        </section>
+
+        <section className="crm-workflow-strip">
+          {workflowCards.map(card => (
+            <WorkflowCard key={card.label} {...card} />
+          ))}
         </section>
 
         <section style={{ display: "grid", gridTemplateColumns: "270px minmax(0, 1fr) 320px", gap: 14 }} className="crm-grid">
@@ -411,7 +661,7 @@ export default function CrmPage() {
             </div>
             <div style={{ display: "grid", gap: 8 }}>
               {views.map(item => (
-                <button key={item.id} onClick={() => setView(item.id)} style={view === item.id ? activeViewButton : viewButton}>
+                <button key={item.id} onClick={() => selectView(item.id)} style={view === item.id ? activeViewButton : viewButton}>
                   <span style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
                     <strong>{item.label}</strong>
                     <span style={countBadge}>{item.count}</span>
@@ -422,8 +672,12 @@ export default function CrmPage() {
             </div>
             <div style={{ ...subPanel, marginTop: 14 }}>
               <p style={eyebrowSmall}>Next best action</p>
+              {selectedWorkflowAction && view !== "inbox" && (
+                <p style={{ color: "var(--obsidian)", fontSize: 13, fontWeight: 800, marginTop: 6 }}>{selectedWorkflowAction.title}</p>
+              )}
               <p style={{ ...bodyText, marginTop: 6 }}>
-                {view === "inbox" ? "Clear unmatched messages first so interested sellers become searchable leads or deal packets." :
+                {selectedWorkflowAction && view !== "inbox" ? selectedWorkflowAction.detail :
+                  view === "inbox" ? "Clear unmatched messages first so interested sellers become searchable leads or deal packets." :
                   view === "buyers" ? "Add buyer criteria before launching disposition campaigns so offers have context." :
                   view === "dispo" ? "Create campaigns from approved packets, then track every buyer response and offer." :
                   view === "records" ? "Keep people and properties clean so the VA does not re-enter the same data." :
@@ -466,11 +720,42 @@ export default function CrmPage() {
           .crm-grid { grid-template-columns: 1fr !important; }
           .topbar { grid-template-columns: 1fr !important; }
         }
+        .crm-workflow-strip {
+          display: grid;
+          grid-template-columns: repeat(5, minmax(0, 1fr));
+          gap: 10px;
+          margin-bottom: 14px;
+        }
+        .dispo-stage-grid {
+          display: grid;
+          grid-template-columns: repeat(7, minmax(150px, 1fr));
+          gap: 10px;
+          overflow-x: auto;
+          padding-bottom: 8px;
+          margin-bottom: 12px;
+        }
+        @media (max-width: 1200px) {
+          .crm-workflow-strip { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+        }
         @media (max-width: 760px) {
           .summary-strip, .two-col { grid-template-columns: 1fr !important; }
+          .crm-workflow-strip { grid-template-columns: 1fr !important; }
         }
       `}</style>
     </div>
+  );
+}
+
+function WorkflowCard({ label, value, body, action, onAction, hot }: { label: string; value: number; body: string; action: string; onAction: () => void; hot: boolean }) {
+  return (
+    <article style={{ ...panel, minHeight: 158, display: "grid", gap: 8, alignContent: "start", borderColor: hot ? "rgba(176,137,84,0.56)" : "var(--fog)" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "start" }}>
+        <p style={eyebrowSmall}>{label}</p>
+        <strong style={{ color: hot ? "var(--brass)" : "var(--obsidian)", fontSize: 24, lineHeight: 1 }}>{value}</strong>
+      </div>
+      <p style={{ ...bodyText, fontSize: 12 }}>{body}</p>
+      <button onClick={onAction} style={{ ...secondaryButton, justifySelf: "start", marginTop: 2 }}>{action}</button>
+    </article>
   );
 }
 
@@ -512,13 +797,28 @@ function EmptyState({ title, body, actionLabel, onAction }: { title: string; bod
   );
 }
 
-function RecordCard({ title, meta, children }: { title: string; meta: string; children: React.ReactNode }) {
-  return (
-    <div style={subPanel}>
+function RecordCard({ title, meta, children, active = false, onClick }: { title: string; meta: string; children: React.ReactNode; active?: boolean; onClick?: () => void }) {
+  const content = (
+    <>
       <strong style={rowTitle}>{title}</strong>
       <p style={{ ...rowMeta, marginTop: 4 }}>{meta}</p>
       <div style={{ display: "grid", gap: 4, marginTop: 10, color: "var(--muted)", fontSize: 12 }}>{children}</div>
-    </div>
+    </>
+  );
+  if (!onClick) return <div style={subPanel}>{content}</div>;
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        ...subPanel,
+        textAlign: "left",
+        cursor: "pointer",
+        borderColor: active ? "var(--brass)" : "var(--fog)",
+        boxShadow: active ? "0 0 0 3px rgba(176,137,84,0.12)" : subPanel.boxShadow,
+      }}
+    >
+      {content}
+    </button>
   );
 }
 
@@ -556,16 +856,269 @@ function QuickCreate({ title, children }: { title: string; children: React.React
   );
 }
 
-function CrmList<T extends { id: string }>({ title, items, render }: { title: string; items: T[]; render: (item: T) => React.ReactNode }) {
+function DetailLine({ label, value }: { label: string; value: React.ReactNode }) {
+  return (
+    <div style={{ display: "grid", gap: 3 }}>
+      <span style={miniLabel}>{label}</span>
+      <strong style={{ color: "var(--obsidian)", fontSize: 13, lineHeight: 1.3 }}>{value || "N/A"}</strong>
+    </div>
+  );
+}
+
+function DetailSection({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div style={subPanel}>
+      <p style={eyebrowSmall}>{title}</p>
+      <div style={{ display: "grid", gap: 10, marginTop: 10 }}>{children}</div>
+    </div>
+  );
+}
+
+function HygieneChecklist({ items }: { items: Array<{ label: string; ok: boolean }> }) {
+  const missing = items.filter(item => !item.ok);
+  return (
+    <DetailSection title="Record hygiene">
+      {items.map(item => (
+        <div key={item.label} style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
+          <span style={{ ...rowMeta, color: item.ok ? "var(--muted)" : "var(--obsidian)" }}>{item.label}</span>
+          <span style={{ ...pill, color: item.ok ? "#2f7d4c" : "var(--brass)", borderColor: item.ok ? "rgba(47,125,76,0.26)" : "rgba(176,137,84,0.38)", background: item.ok ? "rgba(47,125,76,0.08)" : "rgba(176,137,84,0.09)" }}>
+            {item.ok ? "Ready" : "Needs"}
+          </span>
+        </div>
+      ))}
+      <p style={{ ...rowMeta, marginTop: 2 }}>
+        {missing.length === 0 ? "This record has the core fields needed for routing and review." : `${missing.length} cleanup item${missing.length === 1 ? "" : "s"} before this record is clean.`}
+      </p>
+    </DetailSection>
+  );
+}
+
+function ContactDetailCard({
+  contact,
+  links,
+  deals,
+  communications,
+  onOpenDeal,
+}: {
+  contact: CrmContact;
+  links: CrmDashboardData["opportunityContacts"];
+  deals: CrmDashboardData["deals"];
+  communications: CommunicationEvent[];
+  onOpenDeal: (dealId: string) => void;
+}) {
+  const linkedDeals = links
+    .map(link => ({ link, deal: deals.find(deal => deal.id === link.deal_id) ?? null }))
+    .filter((item): item is { link: typeof item.link; deal: NonNullable<typeof item.deal> } => !!item.deal);
+
+  return (
+    <div style={panel}>
+      <p style={eyebrowSmall}>Contact record</p>
+      <h3 style={smallHeading}>{contact.display_name}</h3>
+      <p style={{ ...bodyText, fontSize: 12, marginTop: 4 }}>{statusLabel(contact.contact_type)} · {statusLabel(contact.relationship_status || "new")} · SMS {statusLabel(contact.sms_opt_status)}</p>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 12 }}>
+        <DetailLine label="Phone" value={contact.phone || contact.phone_2} />
+        <DetailLine label="Email" value={contact.email} />
+        <DetailLine label="County" value={contact.county} />
+        <DetailLine label="Last touch" value={formatDate(contact.last_contacted_at)} />
+      </div>
+      {contact.tags.length > 0 && <p style={{ ...rowMeta, marginTop: 10 }}>Tags: {contact.tags.join(", ")}</p>}
+      {contact.notes && <p style={{ ...bodyText, fontSize: 12, marginTop: 10 }}>{contact.notes}</p>}
+
+      <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
+        <HygieneChecklist items={[
+          { label: "Phone or email on file", ok: Boolean(contact.phone || contact.phone_2 || contact.email) },
+          { label: "SMS status known", ok: contact.sms_opt_status !== "unknown" },
+          { label: "Linked to an opportunity", ok: links.length > 0 },
+          { label: "Relationship status set", ok: Boolean(contact.relationship_status) },
+        ]} />
+        <DetailSection title="Linked opportunities">
+          {linkedDeals.map(({ link, deal }) => (
+            <button key={link.id} onClick={() => onOpenDeal(deal.id)} style={workRow}>
+              <span style={rowTop}>
+                <strong style={rowTitle}>{deal.title}</strong>
+                <span style={pill}>{statusLabel(link.role)}</span>
+              </span>
+              <span style={rowMeta}>{deal.address || deal.parcel_id || "Location pending"}</span>
+            </button>
+          ))}
+          {linkedDeals.length === 0 && <EmptyText>No linked opportunities yet.</EmptyText>}
+        </DetailSection>
+        <ConversationPanel
+          eyebrow="Contact communication"
+          title="Recent messages"
+          communications={communications}
+          emptyText="No texts or calls are tied to this contact yet."
+          maxHeight={240}
+          compact
+        />
+      </div>
+    </div>
+  );
+}
+
+function PropertyDetailCard({ property, deals, onOpenDeal }: { property: CrmProperty; deals: CrmDashboardData["deals"]; onOpenDeal: (dealId: string) => void }) {
+  return (
+    <div style={panel}>
+      <p style={eyebrowSmall}>Property record</p>
+      <h3 style={smallHeading}>{property.address || property.parcel_id || "Property record"}</h3>
+      <p style={{ ...bodyText, fontSize: 12, marginTop: 4 }}>{[property.city, property.county, property.state].filter(Boolean).join(", ") || "Location pending"}</p>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 12 }}>
+        <DetailLine label="Parcel" value={property.parcel_id} />
+        <DetailLine label="Acres" value={property.acreage ?? "N/A"} />
+        <DetailLine label="Zoning" value={property.zoning} />
+        <DetailLine label="Land use" value={property.land_use} />
+        <DetailLine label="Market value" value={money(property.market_value)} />
+        <DetailLine label="Assessed" value={money(property.assessed_value)} />
+        <DetailLine label="Utilities" value={property.utilities} />
+        <DetailLine label="Road" value={property.road_frontage} />
+      </div>
+      {property.notes && <p style={{ ...bodyText, fontSize: 12, marginTop: 10 }}>{property.notes}</p>}
+      <HygieneChecklist items={[
+        { label: "Parcel or address", ok: Boolean(property.parcel_id || property.address) },
+        { label: "County and state", ok: Boolean(property.county && property.state) },
+        { label: "Acreage", ok: typeof property.acreage === "number" },
+        { label: "Zoning or land use", ok: Boolean(property.zoning || property.land_use) },
+        { label: "Connected deal packet", ok: deals.length > 0 },
+      ]} />
+      <DetailSection title="Connected deals">
+        {deals.map(deal => (
+          <button key={deal.id} onClick={() => onOpenDeal(deal.id)} style={workRow}>
+            <strong style={rowTitle}>{deal.title}</strong>
+            <span style={rowMeta}>{deal.status} · {money(deal.asking_price)}</span>
+          </button>
+        ))}
+        {deals.length === 0 && <EmptyText>No deal packet is linked to this property yet.</EmptyText>}
+      </DetailSection>
+    </div>
+  );
+}
+
+function BuyerDetailCard({ buyer, offers }: { buyer: CrmBuyer; offers: BuyerOffer[] }) {
+  return (
+    <div style={panel}>
+      <p style={eyebrowSmall}>Buyer record</p>
+      <h3 style={smallHeading}>{buyer.buyer_name}</h3>
+      <p style={{ ...bodyText, fontSize: 12, marginTop: 4 }}>{buyer.buyer_type || "Buyer type pending"} · {statusLabel(buyer.relationship_strength)} · POF {statusLabel(buyer.proof_of_funds_status)}</p>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 12 }}>
+        <DetailLine label="Markets" value={buyer.markets.join(", ") || "N/A"} />
+        <DetailLine label="Property types" value={buyer.property_types.join(", ") || "N/A"} />
+        <DetailLine label="Price range" value={`${money(buyer.min_price)} - ${money(buyer.max_price)}`} />
+        <DetailLine label="Acreage" value={`${buyer.min_acreage ?? "N/A"} - ${buyer.max_acreage ?? "N/A"}`} />
+        <DetailLine label="Last touch" value={formatDate(buyer.last_contacted_at)} />
+        <DetailLine label="Offers" value={offers.length} />
+      </div>
+      <DetailSection title="Buy box">
+        <EmptyText>{buyer.buy_box || "No detailed buy box yet."}</EmptyText>
+      </DetailSection>
+      <HygieneChecklist items={[
+        { label: "Market criteria", ok: buyer.markets.length > 0 },
+        { label: "Buy box written", ok: Boolean(buyer.buy_box) },
+        { label: "Max price set", ok: typeof buyer.max_price === "number" },
+        { label: "POF requested or received", ok: buyer.proof_of_funds_status !== "unknown" },
+        { label: "Relationship strength set", ok: Boolean(buyer.relationship_strength) },
+      ]} />
+      <DetailSection title="Offer history">
+        {offers.map(offer => (
+          <div key={offer.id} style={{ display: "grid", gap: 3, borderBottom: "1px solid var(--fog)", paddingBottom: 8 }}>
+            <strong style={rowTitle}>{money(offer.offer_amount)} · {statusLabel(offer.status)}</strong>
+            <span style={rowMeta}>{offer.close_date ? `Close ${formatDate(offer.close_date)}` : "Close date pending"}</span>
+          </div>
+        ))}
+        {offers.length === 0 && <EmptyText>No offers recorded from this buyer yet.</EmptyText>}
+      </DetailSection>
+    </div>
+  );
+}
+
+function CampaignDetailCard({ campaign, offers, onOpenDeal }: { campaign: DispositionCampaign; offers: BuyerOffer[]; onOpenDeal: (dealId: string) => void }) {
+  return (
+    <div style={panel}>
+      <p style={eyebrowSmall}>Disposition campaign</p>
+      <h3 style={smallHeading}>{campaign.campaign_name}</h3>
+      <p style={{ ...bodyText, fontSize: 12, marginTop: 4 }}>{statusLabel(campaign.status)} · {campaign.owner || "Owner pending"}</p>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 12 }}>
+        <DetailLine label="Target" value={money(campaign.target_price)} />
+        <DetailLine label="Minimum" value={money(campaign.minimum_price)} />
+        <DetailLine label="Exit" value={campaign.exit_strategy} />
+        <DetailLine label="Buyer type" value={campaign.target_buyer_type} />
+        <DetailLine label="Channels" value={campaign.channels.join(", ") || "N/A"} />
+        <DetailLine label="Buyer list" value={campaign.buyer_list_count} />
+      </div>
+      {campaign.deal_id && <button onClick={() => onOpenDeal(campaign.deal_id!)} style={{ ...secondaryButton, marginTop: 12 }}>Open Deal Packet</button>}
+      <HygieneChecklist items={[
+        { label: "Connected deal packet", ok: Boolean(campaign.deal_id) },
+        { label: "Owner assigned", ok: Boolean(campaign.owner) },
+        { label: "Target price set", ok: typeof campaign.target_price === "number" },
+        { label: "Buyer list started", ok: campaign.buyer_list_count > 0 },
+        { label: "Outreach channel set", ok: campaign.channels.length > 0 },
+        { label: "Offer history exists", ok: offers.length > 0 },
+      ]} />
+      <DetailSection title="Offers in campaign">
+        {offers.map(offer => (
+          <div key={offer.id} style={{ display: "grid", gap: 3, borderBottom: "1px solid var(--fog)", paddingBottom: 8 }}>
+            <strong style={rowTitle}>{offer.buyer_name}</strong>
+            <span style={rowMeta}>{money(offer.offer_amount)} · {statusLabel(offer.status)}</span>
+          </div>
+        ))}
+        {offers.length === 0 && <EmptyText>No buyer offers have been recorded for this campaign.</EmptyText>}
+      </DetailSection>
+    </div>
+  );
+}
+
+function OfferDetailCard({ offer, onOpenDeal }: { offer: BuyerOffer; onOpenDeal: (dealId: string) => void }) {
+  return (
+    <div style={panel}>
+      <p style={eyebrowSmall}>Buyer offer</p>
+      <h3 style={smallHeading}>{offer.buyer_name}</h3>
+      <p style={{ ...bodyText, fontSize: 12, marginTop: 4 }}>{money(offer.offer_amount)} · {statusLabel(offer.status)}</p>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 12 }}>
+        <DetailLine label="Earnest" value={money(offer.earnest_money)} />
+        <DetailLine label="Close date" value={formatDate(offer.close_date)} />
+        <DetailLine label="POF" value={offer.proof_of_funds_status ? statusLabel(offer.proof_of_funds_status) : "N/A"} />
+        <DetailLine label="Contingencies" value={offer.contingencies} />
+      </div>
+      {offer.notes && <p style={{ ...bodyText, fontSize: 12, marginTop: 10 }}>{offer.notes}</p>}
+      <HygieneChecklist items={[
+        { label: "Connected deal packet", ok: Boolean(offer.deal_id) },
+        { label: "Buyer name", ok: Boolean(offer.buyer_name) },
+        { label: "Offer amount", ok: offer.offer_amount > 0 },
+        { label: "Close date", ok: Boolean(offer.close_date) },
+        { label: "Proof of funds status", ok: Boolean(offer.proof_of_funds_status) },
+      ]} />
+      {offer.deal_id && <button onClick={() => onOpenDeal(offer.deal_id!)} style={{ ...secondaryButton, marginTop: 12 }}>Open Deal Packet</button>}
+    </div>
+  );
+}
+
+function CrmList<T extends { id: string }>({ title, items, render, onSelect, selectedId }: { title: string; items: T[]; render: (item: T) => React.ReactNode; onSelect?: (item: T) => void; selectedId?: string | null }) {
   return (
     <div style={panel}>
       <p style={eyebrowSmall}>{title}</p>
       <div style={{ display: "grid", gap: 8, marginTop: 8 }}>
-        {items.map(item => (
-          <div key={item.id} style={{ borderBottom: "1px solid var(--fog)", paddingBottom: 8, display: "grid", gap: 3, fontSize: 12, color: "var(--muted)" }}>
-            {render(item)}
-          </div>
-        ))}
+        {items.map(item => {
+          const content = render(item);
+          const isSelected = selectedId === item.id;
+          const itemStyle: React.CSSProperties = {
+            border: onSelect ? "1px solid var(--fog)" : "0",
+            borderBottom: onSelect ? "1px solid var(--fog)" : "1px solid var(--fog)",
+            borderColor: isSelected ? "var(--brass)" : "var(--fog)",
+            borderRadius: onSelect ? 8 : 0,
+            background: isSelected ? "rgba(176,137,84,0.08)" : "transparent",
+            padding: onSelect ? 10 : "0 0 8px",
+            display: "grid",
+            gap: 3,
+            fontSize: 12,
+            color: "var(--muted)",
+            textAlign: "left",
+            cursor: onSelect ? "pointer" : "default",
+          };
+          return onSelect ? (
+            <button key={item.id} onClick={() => onSelect(item)} style={itemStyle}>{content}</button>
+          ) : (
+            <div key={item.id} style={itemStyle}>{content}</div>
+          );
+        })}
         {items.length === 0 && <EmptyText>Nothing here yet.</EmptyText>}
       </div>
     </div>

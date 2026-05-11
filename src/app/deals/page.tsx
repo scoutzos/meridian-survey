@@ -39,8 +39,21 @@ import { supabase } from "@/lib/supabase";
 import { MEMBERS } from "@/data/questions";
 import { isVaUser } from "@/lib/identity";
 import { fetchCommunicationEvents, type CommunicationEvent } from "@/lib/communications";
+import ConversationPanel from "@/components/ConversationPanel";
+import { labelForStatus } from "@/lib/status-map";
+import { getDealNextAction, type WorkflowAction } from "@/lib/workflow-actions";
 
 const DISPLAY_FONT = "var(--font-display)";
+
+type DealDetailTab = "packet" | "communications" | "agreement" | "vote" | "diligence";
+
+function actionTargetToDealTab(target: WorkflowAction["target"]): DealDetailTab {
+  if (target === "communications") return "communications";
+  if (target === "vote") return "vote";
+  if (target === "agreement") return "agreement";
+  if (target === "diligence" || target === "project") return "diligence";
+  return "packet";
+}
 
 const PROPERTY_TYPES: Array<{ value: DealPropertyType; label: string }> = [
   { value: "land", label: "Land" },
@@ -175,7 +188,7 @@ function formatDate(iso: string): string {
 }
 
 function statusLabel(value: string): string {
-  return value.split("-").map(p => p.charAt(0).toUpperCase() + p.slice(1)).join(" ");
+  return labelForStatus(value);
 }
 
 function addDays(days: number): string {
@@ -259,6 +272,7 @@ export default function DealsPage() {
   const [smsSending, setSmsSending] = useState(false);
   const [draft, setDraft] = useState(EMPTY_DRAFT);
   const [editingDealId, setEditingDealId] = useState<string | null>(null);
+  const [activeDealTab, setActiveDealTab] = useState<DealDetailTab>("packet");
 
   const reload = useCallback(async () => {
     setLoading(true);
@@ -317,7 +331,7 @@ export default function DealsPage() {
         body: message,
         priority: deal.urgency === "hot" ? "urgent" : "high",
         assigned_to: member,
-        href: `/deals?deal=${deal.id}`,
+        href: `/opportunity?deal=${deal.id}`,
         source_table: "meridian_deals",
         source_id: deal.id,
         notification_type: "deal_vote",
@@ -628,19 +642,73 @@ export default function DealsPage() {
     return "";
   };
   const canConvert = !!selected && !conversionBlockReason();
+  const dealDetailTabs: { id: DealDetailTab; label: string; count?: number }[] = [
+    { id: "packet", label: "Packet" },
+    { id: "communications", label: "Communications", count: communicationEvents.length },
+    { id: "agreement", label: "Agreement", count: agreementReady ? 1 : 0 },
+    { id: "vote", label: "Vote", count: votes.length },
+    { id: "diligence", label: "Diligence", count: blocked || checklist.length },
+  ];
+  const decisionPathCards = selected ? [
+    {
+      label: "1. Packet",
+      title: selected.submission_summary || vaHandoffVisible ? "Review VA handoff" : "Packet details",
+      detail: selected.requested_next_step || "Confirm what decision is being requested.",
+      state: vaHandoffVisible ? "active" : "open",
+      tab: "packet" as DealDetailTab,
+    },
+    {
+      label: "2. Calculator",
+      title: selected.analysis.recommendation,
+      detail: `${money(selected.analysis.acquisition.recommendedOffer)} recommended offer · ${selected.analysis.disposition.exitConfidence} exit confidence`,
+      state: selected.analysis.missingInfo.length ? "active" : "done",
+      tab: "packet" as DealDetailTab,
+    },
+    {
+      label: "3. Vote",
+      title: decisionStatus,
+      detail: votes.length ? `${votes.length}/${MEMBERS.length} members responded` : "No member votes yet.",
+      state: quorumReached ? "done" : selected.status === "under-review" ? "active" : "open",
+      tab: "vote" as DealDetailTab,
+    },
+    {
+      label: "4. Agreement",
+      title: agreement ? statusLabel(agreement.status) : "Not started",
+      detail: agreementReady ? "Deal terms are approved for execution." : "Define capital, roles, risk, and approval threshold.",
+      state: agreementReady ? "done" : votes.length ? "active" : "open",
+      tab: "agreement" as DealDetailTab,
+    },
+    {
+      label: "5. Execution",
+      title: canConvert ? "Ready to convert" : "Blocked",
+      detail: conversionBlockReason() || "Create the project when member approval and deal terms are complete.",
+      state: canConvert ? "done" : "open",
+      tab: "diligence" as DealDetailTab,
+    },
+  ] : [];
+  const memberNextAction = selected
+    ? getDealNextAction({
+        deal: selected,
+        votes,
+        agreement,
+        checklist,
+        communications: communicationEvents,
+        currentUser: user,
+        quorumNeeded,
+      })
+    : null;
 
   return (
     <div className="deals-root" style={{ maxWidth: 1180, margin: "0 auto", padding: "84px 20px 100px" }}>
       <header style={{ marginBottom: 24, display: "flex", justifyContent: "space-between", alignItems: "flex-end", gap: 16, flexWrap: "wrap" }}>
         <div>
-          <p style={eyebrow}>Deal Desk</p>
+          <p style={eyebrow}>Member Portal</p>
           <h1 style={{ fontFamily: DISPLAY_FONT, fontSize: "clamp(34px, 5vw, 50px)", fontWeight: 500, color: "var(--obsidian)", marginBottom: 6 }}>
-            Deal intake & decisions
+            Deal Reviews
           </h1>
           <p style={{ color: "var(--ink)", opacity: 0.66, fontSize: 14, maxWidth: 680 }}>
-            Capture leads from land portals and calls, analyze the numbers, generate diligence, and get the group to a clear next step.
+            Review VA-submitted packets, seller communications, calculator output, deal terms, votes, and due diligence from one member workspace.
           </p>
-          <p style={comingSoonPill}>Land portal + call tool sync coming soon</p>
         </div>
         <button
           onClick={() => {
@@ -650,7 +718,7 @@ export default function DealsPage() {
           }}
           style={showNew ? secondaryButton : primaryButton}
         >
-          {showNew ? "Cancel" : "New Deal"}
+          {showNew ? "Cancel" : "New Packet"}
         </button>
       </header>
 
@@ -790,7 +858,7 @@ export default function DealsPage() {
           </div>
           {loading && <p style={{ color: "var(--muted)", fontSize: 13 }}>Loading...</p>}
           {!loading && deals.length === 0 && (
-            <p style={{ color: "var(--muted)", fontSize: 13 }}>No deals yet. Create the first intake packet above.</p>
+            <p style={{ color: "var(--muted)", fontSize: 13 }}>No deal packets yet. Create or submit the first packet above.</p>
           )}
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {deals.map(deal => {
@@ -832,6 +900,61 @@ export default function DealsPage() {
             </section>
           ) : (
             <>
+              <section className="member-decision-path">
+                {decisionPathCards.map(card => (
+                  <button
+                    key={card.label}
+                    onClick={() => setActiveDealTab(card.tab)}
+                    className={`decision-path-card ${card.state} ${activeDealTab === card.tab ? "active-tab" : ""}`}
+                  >
+                    <span>{card.label}</span>
+                    <strong>{card.title}</strong>
+                    <p>{card.detail}</p>
+                  </button>
+                ))}
+              </section>
+
+              {memberNextAction && (
+                <section className={`member-next-action ${memberNextAction.tone}`}>
+                  <div>
+                    <p>{memberNextAction.label}</p>
+                    <h2>{memberNextAction.title}</h2>
+                    <span>{memberNextAction.detail}</span>
+                  </div>
+                  <div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (memberNextAction.target === "project") {
+                          void handleConvertToProject();
+                        } else {
+                          setActiveDealTab(actionTargetToDealTab(memberNextAction.target));
+                        }
+                      }}
+                      disabled={memberNextAction.target === "project" && (converting || !canConvert)}
+                    >
+                      {memberNextAction.target === "project" && converting ? "Converting..." : memberNextAction.primary}
+                    </button>
+                    <button type="button" onClick={() => router.push(`/opportunity?deal=${selected.id}`)}>
+                      Open Shared File
+                    </button>
+                  </div>
+                </section>
+              )}
+
+              <nav className="deal-detail-tabs" aria-label="Deal review sections">
+                {dealDetailTabs.map(tab => (
+                  <DealDetailTabButton
+                    key={tab.id}
+                    label={tab.label}
+                    count={tab.count}
+                    active={activeDealTab === tab.id}
+                    onClick={() => setActiveDealTab(tab.id)}
+                  />
+                ))}
+              </nav>
+
+              {activeDealTab === "packet" && (
               <section style={panel}>
                 <div style={{ display: "flex", justifyContent: "space-between", gap: 16, alignItems: "flex-start", flexWrap: "wrap", marginBottom: 14 }}>
                   <div>
@@ -1010,7 +1133,9 @@ export default function DealsPage() {
                   </div>
                 )}
               </section>
+              )}
 
+              {activeDealTab === "communications" && (
               <section style={panel}>
                 <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "baseline", marginBottom: 12 }}>
                   <div>
@@ -1019,31 +1144,16 @@ export default function DealsPage() {
                   </div>
                   <span style={pill}>{selected.seller_phone || "No seller phone"}</span>
                 </div>
-                <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 300px", gap: 12 }} className="two-col">
-                  <div style={subPanel}>
-                    <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 280, overflow: "auto" }}>
-                      {communicationEvents.length === 0 && <p style={{ fontSize: 12, color: "var(--muted)" }}>No Sakari messages are attached to this deal yet.</p>}
-                      {communicationEvents.map(event => (
-                        <div key={event.id} style={{
-                          border: "1px solid var(--fog)",
-                          borderRadius: 8,
-                          padding: 10,
-                          background: event.direction === "inbound" ? "rgba(176,137,84,0.08)" : "var(--surface)",
-                        }}>
-                          <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap", marginBottom: 5 }}>
-                            <strong style={{ color: "var(--obsidian)", fontSize: 12 }}>
-                              {event.direction === "inbound" ? "Seller reply" : event.direction === "outbound" ? "Meridian sent" : "Sakari update"}
-                            </strong>
-                            <span style={miniLabel}>{formatDate(event.provider_created_at || event.created_at)}</span>
-                          </div>
-                          <p style={{ color: "var(--ink)", fontSize: 13, lineHeight: 1.45 }}>{event.body || event.status || event.provider_event_type}</p>
-                          <p style={{ fontSize: 11, color: "var(--muted)", marginTop: 6 }}>{event.status || event.provider_event_type}</p>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                  <div style={subPanel}>
-                    <p style={eyebrowSmall}>Member reply</p>
+                <ConversationPanel
+                  eyebrow="Seller communications"
+                  title="Conversation panel"
+                  subject={selected.seller_phone || "No seller phone"}
+                  communications={communicationEvents}
+                  emptyText="No Sakari messages are attached to this deal yet."
+                  maxHeight={360}
+                  composer={(
+                    <div>
+                      <p style={eyebrowSmall}>Member reply</p>
                     <textarea
                       rows={5}
                       value={smsDraft}
@@ -1062,11 +1172,13 @@ export default function DealsPage() {
                         {smsSending ? "Sending..." : "Send SMS"}
                       </button>
                     </div>
-                  </div>
-                </div>
+                    </div>
+                  )}
+                />
               </section>
+              )}
 
-              {(attachments.length > 0 || activity.length > 0) && (
+              {activeDealTab === "packet" && (attachments.length > 0 || activity.length > 0) && (
                 <section style={panel}>
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }} className="two-col">
                     <div style={subPanel}>
@@ -1096,6 +1208,7 @@ export default function DealsPage() {
                 </section>
               )}
 
+              {activeDealTab === "agreement" && (
               <section style={panel}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap", marginBottom: 12 }}>
                   <div>
@@ -1157,7 +1270,9 @@ export default function DealsPage() {
                   </p>
                 )}
               </section>
+              )}
 
+              {activeDealTab === "vote" && (
               <section style={panel}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12, flexWrap: "wrap", marginBottom: 12 }}>
                   <div>
@@ -1195,7 +1310,9 @@ export default function DealsPage() {
                   </div>
                 )}
               </section>
+              )}
 
+              {activeDealTab === "diligence" && (
               <section style={panel}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12, flexWrap: "wrap", marginBottom: 12 }}>
                   <div>
@@ -1228,16 +1345,160 @@ export default function DealsPage() {
                   ))}
                 </div>
               </section>
+              )}
             </>
           )}
         </main>
       </div>
 
       <style jsx>{`
+        .member-decision-path {
+          display: grid;
+          grid-template-columns: repeat(5, minmax(0, 1fr));
+          gap: 10px;
+        }
+        .decision-path-card {
+          appearance: none;
+          background: var(--surface);
+          border: 1px solid var(--fog);
+          border-radius: 8px;
+          cursor: pointer;
+          min-height: 132px;
+          padding: 14px;
+          text-align: left;
+        }
+        .decision-path-card.active {
+          border-color: var(--brass);
+          background: rgba(176,137,84,0.10);
+        }
+        .decision-path-card.done {
+          border-color: rgba(176,137,84,0.42);
+        }
+        .decision-path-card.active-tab {
+          box-shadow: 0 0 0 2px rgba(176,137,84,0.18);
+        }
+        .decision-path-card span {
+          color: var(--brass);
+          display: block;
+          font-size: 10px;
+          font-weight: 800;
+          letter-spacing: 0.16em;
+          text-transform: uppercase;
+          margin-bottom: 10px;
+        }
+        .decision-path-card strong {
+          color: var(--obsidian);
+          display: block;
+          font-size: 14px;
+          line-height: 1.28;
+          margin-bottom: 8px;
+        }
+        .decision-path-card p {
+          color: var(--ink);
+          font-size: 12px;
+          line-height: 1.42;
+          opacity: 0.68;
+        }
+        .member-next-action {
+          align-items: center;
+          background: var(--obsidian);
+          border: 1px solid rgba(176,137,84,0.28);
+          border-radius: 8px;
+          box-shadow: 0 18px 42px rgba(17,14,10,0.12);
+          color: var(--bone);
+          display: grid;
+          gap: 14px;
+          grid-template-columns: minmax(0, 1fr) auto;
+          padding: 16px;
+        }
+        .member-next-action.warn {
+          background: linear-gradient(135deg, var(--obsidian), #2b2115);
+        }
+        .member-next-action.hot {
+          background: linear-gradient(135deg, #16120d, #3a2810);
+        }
+        .member-next-action.success {
+          background: linear-gradient(135deg, #11160f, #25321d);
+        }
+        .member-next-action p {
+          color: var(--brass);
+          font-size: 10px;
+          font-weight: 800;
+          letter-spacing: 0.16em;
+          margin: 0 0 6px;
+          text-transform: uppercase;
+        }
+        .member-next-action h2 {
+          color: var(--bone);
+          font-family: ${DISPLAY_FONT};
+          font-size: 25px;
+          font-weight: 500;
+          line-height: 1.08;
+          margin: 0;
+        }
+        .member-next-action span {
+          color: rgba(247,242,232,0.72);
+          display: block;
+          font-size: 13px;
+          line-height: 1.45;
+          margin-top: 7px;
+        }
+        .member-next-action > div:last-child {
+          display: flex;
+          gap: 8px;
+          justify-content: flex-end;
+        }
+        .member-next-action button {
+          border: 1px solid rgba(247,242,232,0.18);
+          border-radius: 8px;
+          cursor: pointer;
+          font-size: 11px;
+          font-weight: 800;
+          letter-spacing: 0.12em;
+          min-height: 40px;
+          padding: 10px 13px;
+          text-transform: uppercase;
+          white-space: nowrap;
+        }
+        .member-next-action button:first-child {
+          background: var(--brass);
+          border-color: var(--brass);
+          color: var(--obsidian);
+        }
+        .member-next-action button:last-child {
+          background: rgba(247,242,232,0.08);
+          color: var(--bone);
+        }
+        .member-next-action button:disabled {
+          cursor: not-allowed;
+          opacity: 0.58;
+        }
+        .deal-detail-tabs {
+          position: sticky;
+          top: 78px;
+          z-index: 8;
+          display: flex;
+          gap: 8px;
+          overflow-x: auto;
+          padding: 0 0 10px;
+          margin-bottom: 4px;
+          background: linear-gradient(180deg, var(--bone) 0%, rgba(237,230,214,0.92) 74%, rgba(237,230,214,0) 100%);
+          scrollbar-width: thin;
+        }
         @media (max-width: 900px) {
           .deal-workspace,
-          .deal-form-grid {
+          .deal-form-grid,
+          .member-decision-path {
             grid-template-columns: 1fr !important;
+          }
+          .member-next-action {
+            grid-template-columns: 1fr !important;
+          }
+          .member-next-action > div:last-child {
+            justify-content: flex-start;
+          }
+          .deal-detail-tabs {
+            position: static !important;
           }
         }
         @media (max-width: 680px) {
@@ -1252,6 +1513,51 @@ export default function DealsPage() {
         }
       `}</style>
     </div>
+  );
+}
+
+function DealDetailTabButton({ label, count, active, onClick }: { label: string; count?: number; active: boolean; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 8,
+        minHeight: 40,
+        border: active ? "1px solid var(--obsidian)" : "1px solid var(--fog)",
+        borderRadius: 999,
+        background: active ? "var(--obsidian)" : "rgba(255,255,255,0.74)",
+        color: active ? "var(--bone)" : "var(--ink)",
+        padding: "8px 12px",
+        fontSize: 11,
+        fontWeight: 800,
+        letterSpacing: "0.12em",
+        textTransform: "uppercase",
+        whiteSpace: "nowrap",
+        cursor: "pointer",
+      }}
+    >
+      {label}
+      {typeof count === "number" && (
+        <span
+          style={{
+            minWidth: 22,
+            height: 22,
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            borderRadius: 999,
+            background: active ? "rgba(237,230,214,0.16)" : "var(--bone)",
+            color: active ? "var(--bone)" : "var(--muted)",
+            fontSize: 10,
+            letterSpacing: 0,
+          }}
+        >
+          {count}
+        </span>
+      )}
+    </button>
   );
 }
 
