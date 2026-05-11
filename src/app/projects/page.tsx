@@ -59,6 +59,7 @@ export default function ProjectsPage() {
   const [vendorDraft, setVendorDraft] = useState({ name: "", company: "", role: "Contractor", phone: "", email: "", reliability: "", pricing_notes: "", general_notes: "" });
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<ProjectTab>("overview");
+  const [message, setMessage] = useState("");
 
   const reload = useCallback(async () => {
     setLoading(true);
@@ -118,9 +119,10 @@ export default function ProjectsPage() {
       owner: riskDraft.owner,
       next_review_date: riskDraft.next_review_date,
     }, user);
-    if (error) { alert(error); return; }
+    if (error) { setMessage(error); return; }
     if (data) setRisks(prev => [data, ...prev]);
     setRiskDraft({ title: "", likelihood: "medium", impact: "medium", mitigation: "", owner: "", next_review_date: "" });
+    setMessage("Project risk added.");
   };
 
   const addDocument = async () => {
@@ -132,23 +134,26 @@ export default function ProjectsPage() {
       url: docDraft.url,
       notes: docDraft.notes,
     }, user);
-    if (error) { alert(error); return; }
+    if (error) { setMessage(error); return; }
     if (data) setDocuments(prev => [data, ...prev]);
     setDocDraft({ title: "", category: "Due Diligence", url: "", notes: "" });
+    setMessage("Project document linked.");
   };
 
   const addVendor = async () => {
     if (!vendorDraft.name.trim()) return;
     const { data, error } = await createVendor(vendorDraft, user);
-    if (error) { alert(error); return; }
+    if (error) { setMessage(error); return; }
     if (data) setVendors(prev => [data, ...prev].sort((a, b) => a.name.localeCompare(b.name)));
     setVendorDraft({ name: "", company: "", role: "Contractor", phone: "", email: "", reliability: "", pricing_notes: "", general_notes: "" });
+    setMessage("Vendor added.");
   };
 
   const setRiskStatus = async (risk: ProjectRisk, status: RiskStatus) => {
     const { error } = await updateProjectRiskStatus(risk.id, status, user);
-    if (error) { alert(error); return; }
+    if (error) { setMessage(error); return; }
     setRisks(prev => prev.map(r => r.id === risk.id ? { ...r, status, updated_at: new Date().toISOString(), updated_by: user } : r));
+    setMessage(`Risk marked ${statusLabel(status)}.`);
   };
 
   return (
@@ -169,6 +174,26 @@ export default function ProjectsPage() {
           <button onClick={() => router.push("/deals")} style={primaryButton}>Deal Reviews</button>
         </div>
       </header>
+
+      {message && (
+        <div style={{
+          border: "1px solid rgba(176,137,84,0.36)",
+          background: "rgba(176,137,84,0.10)",
+          color: "var(--obsidian)",
+          borderRadius: 10,
+          padding: "11px 13px",
+          marginBottom: 16,
+          display: "flex",
+          justifyContent: "space-between",
+          gap: 12,
+          alignItems: "flex-start",
+          fontSize: 13,
+          lineHeight: 1.45,
+        }}>
+          <span>{message}</span>
+          <button onClick={() => setMessage("")} style={{ background: "transparent", border: "none", color: "var(--brass)", fontSize: 11, fontWeight: 800, letterSpacing: "0.12em", textTransform: "uppercase", cursor: "pointer" }}>Clear</button>
+        </div>
+      )}
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, marginBottom: 18 }} className="stat-grid">
         <Stat label="Projects" value={String(projects.length)} />

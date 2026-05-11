@@ -1634,6 +1634,7 @@ Completed in this pass:
 - Added the Production QA Runbook and Supabase Auth Cutover Runbook to `public/docs` and the Document Library so launch/testing docs are accessible from the portal.
 - Replaced Operations browser alerts with an in-page status banner for approvals, time edits, reimbursements, distributions, scenarios, VA brief reviews, and blocked-task responses.
 - Added member dashboard in-page feedback for clearing notifications and marking tasks done.
+- Replaced Projects browser alerts with an in-page status banner for risks, documents, vendors, and risk status changes.
 
 Risk: Medium.
 
