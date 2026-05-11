@@ -2,6 +2,7 @@ import { supabase } from "./supabase";
 
 export const VA_DEFAULT_HOURLY_RATE = 4.5;
 export const VA_PAY_PERIOD_ANCHOR = "2026-06-01";
+export const VA_TIME_ZONE = "America/New_York";
 
 export type VaTimeStatus = "open" | "submitted" | "approved" | "void";
 export type VaTimeChangeRequestType = "add-shift" | "edit-shift" | "void-shift";
@@ -70,6 +71,14 @@ export interface VaTimeChangeRequestInput {
   reason: string;
 }
 
+export interface VaTimeEntryUpdateInput {
+  entryId: string;
+  clockInAt: string;
+  clockOutAt: string;
+  notes?: string | null;
+  actor: string;
+}
+
 const LOCAL_TIME_ENTRIES = "meridian_va_time_entries_local";
 const LOCAL_TIME_CHANGE_REQUESTS = "meridian_va_time_change_requests_local";
 const MISSING_TIME_TABLE_MESSAGE = "VA time tracking needs the latest database migration before clock entries can be saved.";
@@ -100,6 +109,79 @@ function addDays(isoDate: string, days: number): string {
 
 function minutesBetween(startIso: string, endIso: string): number {
   return Math.max(0, Math.round((new Date(endIso).getTime() - new Date(startIso).getTime()) / 60000));
+}
+
+function timeZoneParts(date: Date): Record<string, string> {
+  return Object.fromEntries(new Intl.DateTimeFormat("en-US", {
+    timeZone: VA_TIME_ZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(date).map(part => [part.type, part.value]));
+}
+
+function wallTimeMs(parts: { year: number; month: number; day: number; hour: number; minute: number }): number {
+  return Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute);
+}
+
+export function vaDateKey(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return iso.slice(0, 10);
+  const parts = timeZoneParts(date);
+  return `${parts.year}-${parts.month}-${parts.day}`;
+}
+
+export function formatVaDateTime(iso: string | null | undefined): string {
+  if (!iso) return "No date";
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return iso;
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone: VA_TIME_ZONE,
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    timeZoneName: "short",
+  }).format(date);
+}
+
+export function toVaDateTimeInput(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+  const parts = timeZoneParts(date);
+  return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}`;
+}
+
+export function fromVaDateTimeInput(value: string): string | null {
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/);
+  if (!match) return null;
+  const desired = {
+    year: Number(match[1]),
+    month: Number(match[2]),
+    day: Number(match[3]),
+    hour: Number(match[4]),
+    minute: Number(match[5]),
+  };
+  let utcMs = wallTimeMs(desired);
+  for (let i = 0; i < 3; i += 1) {
+    const parts = timeZoneParts(new Date(utcMs));
+    const actual = {
+      year: Number(parts.year),
+      month: Number(parts.month),
+      day: Number(parts.day),
+      hour: Number(parts.hour),
+      minute: Number(parts.minute),
+    };
+    const diff = wallTimeMs(desired) - wallTimeMs(actual);
+    if (diff === 0) break;
+    utcMs += diff;
+  }
+  return new Date(utcMs).toISOString();
 }
 
 export function getBiweeklyPayPeriod(input: Date | string = new Date()): { periodStart: string; periodEnd: string } {
@@ -280,6 +362,73 @@ export async function clockOutVa(entry: VaTimeEntry, notes = ""): Promise<{ data
     .single();
   if (isMissingVaTimeTable(error)) return { data: null, error: MISSING_TIME_TABLE_MESSAGE };
   return { data: data ? normalizeEntry(data as VaTimeEntry) : null, error: error?.message ?? null };
+}
+
+export async function updateVaTimeEntry(input: VaTimeEntryUpdateInput): Promise<{ data: VaTimeEntry | null; error: string | null }> {
+  if (!input.clockInAt || !input.clockOutAt) return { data: null, error: "Clock in and clock out are required." };
+  if (new Date(input.clockOutAt) < new Date(input.clockInAt)) return { data: null, error: "Clock out cannot be before clock in." };
+
+  if (!supabase) {
+    const rows = localGet<VaTimeEntry[]>(LOCAL_TIME_ENTRIES, []);
+    const existing = rows.find(row => row.id === input.entryId);
+    if (!existing) return { data: null, error: "Could not find the shift." };
+    const patch = buildShiftPatch({
+      clockInAt: input.clockInAt,
+      clockOutAt: input.clockOutAt,
+      hourlyRate: existing.hourly_rate,
+      notes: input.notes ?? existing.notes,
+    });
+    const next = rows.map(row => row.id === input.entryId ? { ...row, ...patch } : row);
+    localSet(LOCAL_TIME_ENTRIES, next);
+    return { data: normalizeEntry(next.find(row => row.id === input.entryId) as VaTimeEntry), error: null };
+  }
+
+  const { data: existing, error: existingError } = await supabase
+    .from("meridian_va_time_entries")
+    .select("*")
+    .eq("id", input.entryId)
+    .maybeSingle();
+  if (isMissingVaTimeTable(existingError)) return { data: null, error: MISSING_TIME_TABLE_MESSAGE };
+  if (existingError || !existing) return { data: null, error: existingError?.message ?? "Could not find the shift." };
+
+  const entry = normalizeEntry(existing as VaTimeEntry);
+  const patch = buildShiftPatch({
+    clockInAt: input.clockInAt,
+    clockOutAt: input.clockOutAt,
+    hourlyRate: entry.hourly_rate,
+    notes: input.notes ?? entry.notes,
+  });
+  const { data, error } = await supabase
+    .from("meridian_va_time_entries")
+    .update(patch)
+    .eq("id", input.entryId)
+    .select()
+    .single();
+  if (isMissingVaTimeTable(error)) return { data: null, error: MISSING_TIME_TABLE_MESSAGE };
+  return { data: data ? normalizeEntry(data as VaTimeEntry) : null, error: error?.message ?? null };
+}
+
+export async function voidVaTimeEntry(entryId: string): Promise<{ error: string | null }> {
+  const now = new Date().toISOString();
+  if (!supabase) {
+    const rows = localGet<VaTimeEntry[]>(LOCAL_TIME_ENTRIES, []);
+    localSet(LOCAL_TIME_ENTRIES, rows.map(row => row.id === entryId ? {
+      ...row,
+      status: "void",
+      deleted_at: now,
+      updated_at: now,
+      tracker_expense_id: null,
+      reviewed_by: null,
+      reviewed_at: null,
+    } : row));
+    return { error: null };
+  }
+  const { error } = await supabase
+    .from("meridian_va_time_entries")
+    .update({ status: "void", deleted_at: now, updated_at: now, tracker_expense_id: null, reviewed_by: null, reviewed_at: null })
+    .eq("id", entryId);
+  if (isMissingVaTimeTable(error)) return { error: MISSING_TIME_TABLE_MESSAGE };
+  return { error: error?.message ?? null };
 }
 
 export function summarizeVaPayPeriods(entries: VaTimeEntry[]): VaPayPeriodSummary[] {
