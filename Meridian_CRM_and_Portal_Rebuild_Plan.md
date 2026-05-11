@@ -1636,6 +1636,7 @@ Completed in this pass:
 - Added member dashboard in-page feedback for clearing notifications and marking tasks done.
 - Replaced Projects browser alerts with an in-page status banner for risks, documents, vendors, and risk status changes.
 - Replaced Tasks browser alerts with in-page feedback for status changes, comments, reassignment, deletion, and task creation.
+- Replaced Deal Reviews browser alerts with in-page feedback for packet saves, review notifications, checklist updates, seller SMS, votes, agreement saves, project conversion gates, and generated memos.
 
 Risk: Medium.
 

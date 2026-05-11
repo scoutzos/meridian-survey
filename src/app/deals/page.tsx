@@ -273,6 +273,7 @@ export default function DealsPage() {
   const [draft, setDraft] = useState(EMPTY_DRAFT);
   const [editingDealId, setEditingDealId] = useState<string | null>(null);
   const [activeDealTab, setActiveDealTab] = useState<DealDetailTab>("packet");
+  const [message, setMessage] = useState("");
 
   const reload = useCallback(async () => {
     setLoading(true);
@@ -347,7 +348,7 @@ export default function DealsPage() {
   };
 
   const handleCreate = async () => {
-    if (!draft.title.trim()) { alert("Deal title is required."); return; }
+    if (!draft.title.trim()) { setMessage("Deal title is required."); return; }
     setSaving(true);
     const payload: DealInput = {
       ...liveInput,
@@ -380,9 +381,9 @@ export default function DealsPage() {
       ? await updateDeal(editingDealId, payload, user)
       : await createDeal(payload, user);
     setSaving(false);
-    if (error && !data) { alert(error); return; }
+    if (error && !data) { setMessage(error); return; }
     if (error && data) {
-      alert(`Deal saved, but one follow-up step did not finish: ${error}`);
+      setMessage(`Deal saved, but one follow-up step did not finish: ${error}`);
     }
     if (data) {
       const workErrors = await notifyDealReviewWork(
@@ -392,7 +393,9 @@ export default function DealsPage() {
           : `${data.analysis?.recommendation ?? "Needs Review"} · ${data.address || data.parcel_id || "Location pending"}`,
       );
       if (workErrors.length) {
-        alert(`Deal saved, but member vote notifications or action items did not fully create: ${workErrors[0]}`);
+        setMessage(`Deal saved, but member vote notifications or action items did not fully create: ${workErrors[0]}`);
+      } else if (!error) {
+        setMessage(editingDealId ? "Deal packet updated and members notified." : "Deal packet created and members notified.");
       }
     }
     setDraft(EMPTY_DRAFT);
@@ -411,16 +414,17 @@ export default function DealsPage() {
 
   const handleChecklistStatus = async (item: DealDueDiligenceItem, status: ChecklistStatus) => {
     const { error } = await updateChecklistItemStatus(item.id, status, user);
-    if (error) { alert(error); return; }
+    if (error) { setMessage(error); return; }
     setChecklist(prev => prev.map(i => i.id === item.id ? { ...i, status, updated_by: user, updated_at: new Date().toISOString() } : i));
+    setMessage(`Checklist item marked ${statusLabel(status)}.`);
   };
 
   const sendSmsFromDeal = async () => {
     if (!selected) return;
     const toNumber = selected.seller_phone?.trim();
-    if (!toNumber) { alert("This deal does not have a seller phone number."); return; }
+    if (!toNumber) { setMessage("This deal does not have a seller phone number."); return; }
     const message = smsDraft.trim();
-    if (!message) { alert("Write a text message before sending."); return; }
+    if (!message) { setMessage("Write a text message before sending."); return; }
     setSmsSending(true);
     try {
       const response = await fetch("/api/sakari/send", {
@@ -435,12 +439,13 @@ export default function DealsPage() {
       });
       const result = await response.json().catch(() => ({})) as { error?: string };
       if (!response.ok || result.error) {
-        alert(`SMS failed: ${result.error || response.statusText}`);
+        setMessage(`SMS failed: ${result.error || response.statusText}`);
         return;
       }
       setSmsDraft("");
       setCommunicationEvents(await fetchCommunicationEvents({ dealId: selected.id, limit: 30 }));
       setActivity(await fetchDealActivity(selected.id));
+      setMessage("SMS sent and conversation updated.");
     } finally {
       setSmsSending(false);
     }
@@ -449,20 +454,21 @@ export default function DealsPage() {
   const handleVote = async (vote: DealVoteOption) => {
     if (!selected) return;
     const { error } = await upsertDealVote(selected.id, user, vote, voteNote);
-    if (error) { alert(error); return; }
+    if (error) { setMessage(error); return; }
     await markDealVoteWorkComplete(selected, user);
     setVoteNote("");
     setVotes(await fetchDealVotes(selected.id));
+    setMessage(`Vote recorded: ${statusLabel(vote)}.`);
   };
 
   const handleConvertToProject = async () => {
     if (!selected) return;
     const gate = conversionBlockReason();
-    if (gate) { alert(gate); return; }
+    if (gate) { setMessage(gate); return; }
     setConverting(true);
     const { data, error } = await createProjectFromDeal(selected, user);
     setConverting(false);
-    if (error) { alert(error); return; }
+    if (error) { setMessage(error); return; }
     if (data) {
       await createNotification({
         title: `Project created: ${data.name}`,
@@ -561,9 +567,10 @@ export default function DealsPage() {
     setAgreementSaving(true);
     const { data, error } = await upsertDealAgreement({ ...agreementDraft, deal_id: selected.id }, user);
     setAgreementSaving(false);
-    if (error) { alert(error); return; }
+    if (error) { setMessage(error); return; }
     setAgreement(data);
     if (data) setAgreementDraft(data);
+    setMessage("Deal agreement saved.");
   };
 
   const handleSaveAgreementMemo = async () => {
@@ -577,9 +584,9 @@ export default function DealsPage() {
       memo_type: "deal-agreement",
     }, user);
     setMemoSaving(false);
-    if (error) { alert(error); return; }
+    if (error) { setMessage(error); return; }
     await navigator.clipboard?.writeText(body).catch(() => undefined);
-    alert("Deal Approval Memo saved. I also copied the memo text when browser permissions allowed it.");
+    setMessage("Deal Approval Memo saved. I also copied the memo text when browser permissions allowed it.");
   };
 
   const handleSaveMemo = async () => {
@@ -593,9 +600,9 @@ export default function DealsPage() {
       memo_type: "deal-brief",
     }, user);
     setMemoSaving(false);
-    if (error) { alert(error); return; }
+    if (error) { setMessage(error); return; }
     await navigator.clipboard?.writeText(body).catch(() => undefined);
-    alert("Deal brief saved. I also copied the memo text when browser permissions allowed it.");
+    setMessage("Deal brief saved. I also copied the memo text when browser permissions allowed it.");
   };
 
   const cleared = checklist.filter(i => i.status === "cleared" || i.status === "not-applicable").length;
@@ -721,6 +728,26 @@ export default function DealsPage() {
           {showNew ? "Cancel" : "New Packet"}
         </button>
       </header>
+
+      {message && (
+        <div style={{
+          border: "1px solid rgba(176,137,84,0.36)",
+          background: "rgba(176,137,84,0.10)",
+          color: "var(--obsidian)",
+          borderRadius: 10,
+          padding: "11px 13px",
+          marginBottom: 16,
+          display: "flex",
+          justifyContent: "space-between",
+          gap: 12,
+          alignItems: "flex-start",
+          fontSize: 13,
+          lineHeight: 1.45,
+        }}>
+          <span>{message}</span>
+          <button onClick={() => setMessage("")} style={{ background: "transparent", border: "none", color: "var(--brass)", fontSize: 11, fontWeight: 800, letterSpacing: "0.12em", textTransform: "uppercase", cursor: "pointer" }}>Clear</button>
+        </div>
+      )}
 
       {showNew && (
         <section style={panel}>
