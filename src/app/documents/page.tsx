@@ -21,6 +21,14 @@ const DOC_FILTERS: Array<DocCategory | "All"> = ["All", "Governance", "Money", "
 
 const DOCS: Doc[] = [
   {
+    title: "Member And VA Onboarding Guide",
+    description: "Launch-week guide for what each role does, where work belongs, VA daily brief expectations, CRM rules, and escalation paths.",
+    type: "Doc",
+    category: "Platform",
+    href: "/docs/meridian-member-va-onboarding-guide.md",
+    dateAdded: "2026-05-11",
+  },
+  {
     title: "Operating Agreement Working Draft",
     description: "Governing document for Meridian Collective LLC. Currently in revision with the LegalShield attorney.",
     type: "Working Draft",

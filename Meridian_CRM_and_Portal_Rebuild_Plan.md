@@ -1,6 +1,6 @@
 # Meridian CRM and Portal Rebuild Plan
 
-Last updated: May 10, 2026
+Last updated: May 11, 2026
 
 ## Plain-English Goal
 
@@ -18,18 +18,18 @@ Imported list -> seller outreach -> interested lead -> deal packet -> calculator
 
 | Area | Status | Notes |
 | --- | --- | --- |
-| VA Workdesk | Mostly built | Imports, queues, SMS, dispositions, packet creation, time, and daily brief exist. Needs final polish and real-data testing. |
-| CRM Command Center | In progress | Core CRM views exist. Conversation panel is now added. Needs stronger records/details screens and status consistency. |
-| Member Dashboard | In progress | Better operating home exists. Needs unified status language and clearer task routing. |
+| VA Workdesk | Mostly built | Imports, queues, SMS, dispositions, packet creation, time, VA tasks, and daily brief exist. Needs live import/SMS/brief QA. |
+| CRM Command Center | Structurally built | Core CRM views, conversation panel, record detail panels, disposition board, offer decisions, and closing handoff exist. Needs live data/RLS QA and edit/cleanup tools. |
+| Member Dashboard | Structurally built | Operating home, review queue, task preview, VA brief, communications, and deduped review signals exist. Needs real-user walkthrough. |
 | Deal Reviews | Mostly built | Guided packet, calculator, communications, vote, agreement, diligence, and project conversion flow exist. Needs final QA and edge cases. |
 | Opportunity File | Mostly built | Shared file connects lead, deal, timeline, notes, calculator, review, buyer/disposition context. Needs richer action buttons and real-data QA. |
-| Communications/SMS | In progress | Sakari inbound/outbound and shared conversation panel exist. Needs conversation ownership rules, unmatched routing, and bulk-safety polish. |
-| Dispositions | Partial | Campaigns/offers exist, but disposition statuses need a clean operating map and better member connection. |
+| Communications/SMS | Mostly built | Sakari inbound/outbound, unmatched routing, bulk send, and shared conversation panel exist. Needs live Sakari test numbers and opt-out QA. |
+| Dispositions | Structurally built | Campaigns, offers, member decisions, campaign touch history, project/closing handoff, and fall-through follow-up exist. Needs live accepted/rejected offer QA. |
 | Money/Tracker | Partial | Tracker pages exist and are linked. Needs deeper connection to approvals, projects, and deal agreements. |
 | Documents/Meetings/Decisions | Partial | Pages were reorganized and connected. Needs final feature audit and removal of confusing legacy behavior. |
-| Navigation/IA | In progress | CRM no longer fully takes over the member portal. Needs final sitemap and page retirement decisions. |
+| Navigation/IA | Structurally built | Member nav, mobile nav, CRM access, Hub/archive role, and secondary tools are organized. Needs real-user label walkthrough. |
 
-Estimated structural completion: **88%**
+Estimated structural completion: **92%**
 
 ## What Has Been Built In This Rebuild
 
@@ -44,9 +44,8 @@ The app now separates the main experiences better:
 
 Remaining:
 
-- Finalize what belongs in the primary nav versus secondary tools.
-- Decide which older pages should be legacy, hidden, or merged.
-- Make the mobile nav match the final IA.
+- Real-user walkthrough to confirm labels and page placement feel natural.
+- Decide whether older survey/result pages remain visible after onboarding.
 
 ### 2. VA Workdesk
 
@@ -1614,7 +1613,7 @@ Risk: High until complete.
 
 ### Phase 6: Polish And Launch
 
-Status: Upcoming
+Status: In Progress
 
 Work:
 
@@ -1624,6 +1623,13 @@ Work:
 - Error messages.
 - Member/VA onboarding instructions.
 - Final documentation.
+
+Completed in this pass:
+
+- Added `Meridian_Member_VA_Onboarding_Guide.md`.
+- Added a served copy at `/docs/meridian-member-va-onboarding-guide.md`.
+- Added the onboarding guide to the Document Library under Platform.
+- Refreshed the current completion snapshot so the plan reflects the CRM, disposition, navigation, and dashboard work already completed.
 
 Risk: Medium.
 
