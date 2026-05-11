@@ -46,19 +46,22 @@ import { attachCommunicationEventToDeal, attachCommunicationEventToLead, fetchCo
 import {
   createVaDailyBrief,
   fetchVaDailyBriefs,
+  updateVaDailyBrief,
   type VaDailyBrief,
   type VaDailyBriefInput,
 } from "@/lib/va-briefs";
 import {
   clockInVa,
   clockOutVa,
+  createVaTimeChangeRequest,
   currentShiftMinutes,
+  fetchVaTimeChangeRequests,
   fetchOpenVaTimeEntry,
   fetchVaTimeEntries,
   formatDuration,
-  getBiweeklyPayPeriod,
-  summarizeVaPayPeriods,
   type VaTimeEntry,
+  type VaTimeChangeRequest,
+  type VaTimeChangeRequestType,
 } from "@/lib/va-time";
 
 const DISPLAY_FONT = "var(--font-display)";
@@ -130,15 +133,14 @@ const DISPOSITION_STATUSES: Array<{ value: DispositionStatus; label: string }> =
   { value: "fell-through", label: "Fell Through" },
 ];
 
-type VaTab = "workdesk" | "leads" | "imports" | "follow-ups" | "diligence" | "brief";
+type VaTab = "today" | "outreach" | "lists" | "packet" | "brief";
 
 const TABS: Array<{ value: VaTab; label: string }> = [
-  { value: "workdesk", label: "Workdesk" },
-  { value: "leads", label: "Leads" },
-  { value: "imports", label: "Imports" },
-  { value: "follow-ups", label: "Follow-ups" },
-  { value: "diligence", label: "Diligence" },
-  { value: "brief", label: "Daily Brief" },
+  { value: "today", label: "Today" },
+  { value: "outreach", label: "Outreach" },
+  { value: "lists", label: "Lists" },
+  { value: "packet", label: "Deal Packet" },
+  { value: "brief", label: "Brief" },
 ];
 
 const IMPORT_STATUS_FILTERS = [
@@ -299,12 +301,98 @@ function formatCurrency(value: number): string {
   return value.toLocaleString(undefined, { style: "currency", currency: "USD", maximumFractionDigits: 2 });
 }
 
+type ConversationItem = {
+  id: string;
+  kind: "sms-in" | "sms-out" | "activity";
+  title: string;
+  date: string;
+  body: string;
+  meta?: string;
+};
+
+function sellerActionState(lead: ImportedLandLead): { label: string; detail: string; tone: "calm" | "hot"; primary: string } {
+  if (lead.sms_opt_status === "opted-out") {
+    return { label: "Do Not Contact", detail: "Seller opted out. Keep SMS disabled and log only non-text updates.", tone: "hot", primary: "Log Note" };
+  }
+  if (!lead.phone && !lead.phone_2) {
+    return { label: "Needs Phone", detail: "No phone is available. Use research or skip-trace before outreach.", tone: "calm", primary: "Log Research" };
+  }
+  if (lead.status === "interested") {
+    return { label: "Ready For Packet", detail: "Seller has shown interest. Confirm facts, then build the member packet.", tone: "hot", primary: "Build Packet" };
+  }
+  if (lead.last_sms_direction === "inbound") {
+    return { label: "Seller Replied", detail: "Reply, mark the outcome, or convert if the seller wants an offer.", tone: "hot", primary: "Reply" };
+  }
+  if (lead.next_follow_up_date) {
+    const isDue = lead.next_follow_up_date <= new Date().toISOString().slice(0, 10);
+    return { label: isDue ? "Follow-Up Due" : "Follow-Up Scheduled", detail: `Next follow-up: ${lead.next_follow_up_date}.`, tone: isDue ? "hot" : "calm", primary: isDue ? "Follow Up" : "Review" };
+  }
+  if (lead.last_sms_direction === "outbound") {
+    return { label: "Waiting On Seller", detail: `Last text sent ${lead.last_sms_at ? formatDate(lead.last_sms_at) : "recently"}.`, tone: "calm", primary: "Set Follow-Up" };
+  }
+  return { label: "Needs First Touch", detail: "Start with SMS, a call attempt, or pass if the record is not usable.", tone: "calm", primary: "Send First SMS" };
+}
+
+function buildConversationItems(communications: CommunicationEvent[], activities: ImportedLandLeadActivity[]): ConversationItem[] {
+  return [
+    ...communications.map(event => ({
+      id: `comm-${event.id}`,
+      kind: event.direction === "inbound" ? "sms-in" as const : "sms-out" as const,
+      title: event.direction === "inbound" ? "Seller SMS" : event.direction === "outbound" ? "Meridian SMS" : "SMS update",
+      date: event.provider_created_at || event.created_at,
+      body: event.body || event.status || event.provider_event_type,
+      meta: event.status || event.provider_event_type,
+    })),
+    ...activities.map(activity => ({
+      id: `activity-${activity.id}`,
+      kind: "activity" as const,
+      title: statusLabel(activity.activity_type),
+      date: activity.created_at,
+      body: activity.summary,
+      meta: activity.next_follow_up_date ? `Follow up ${activity.next_follow_up_date}` : undefined,
+    })),
+  ].sort((a, b) => b.date.localeCompare(a.date));
+}
+
+function toDateTimeLocal(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+  const offsetMs = date.getTimezoneOffset() * 60000;
+  return new Date(date.getTime() - offsetMs).toISOString().slice(0, 16);
+}
+
+function fromDateTimeLocal(value: string): string | null {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date.toISOString();
+}
+
 function isSameDay(iso: string | null | undefined, date: string): boolean {
   return !!iso && iso.slice(0, 10) === date;
 }
 
 function isDueTodayOrPast(date: string | null | undefined, today: string): boolean {
   return !!date && date <= today;
+}
+
+function collectSearchText(value: unknown): string {
+  if (value === null || value === undefined) return "";
+  if (["string", "number", "boolean"].includes(typeof value)) return String(value);
+  if (Array.isArray(value)) return value.map(collectSearchText).join(" ");
+  if (typeof value === "object") {
+    return Object.entries(value as Record<string, unknown>)
+      .map(([key, entry]) => `${key} ${collectSearchText(entry)}`)
+      .join(" ");
+  }
+  return "";
+}
+
+function importedLeadMatchesQuery(lead: ImportedLandLead, query: string): boolean {
+  const terms = query.split(/\s+/).filter(Boolean);
+  if (!terms.length) return true;
+  const haystack = collectSearchText(lead).toLowerCase();
+  return terms.every(term => haystack.includes(term));
 }
 
 function draftFromDeal(deal: Deal): DealInput & { linksText: string } {
@@ -451,8 +539,20 @@ export default function VaPage() {
   const [briefDraft, setBriefDraft] = useState<VaDailyBriefInput>(EMPTY_BRIEF);
   const [briefs, setBriefs] = useState<VaDailyBrief[]>([]);
   const [timeEntries, setTimeEntries] = useState<VaTimeEntry[]>([]);
+  const [timeChangeRequests, setTimeChangeRequests] = useState<VaTimeChangeRequest[]>([]);
   const [openShift, setOpenShift] = useState<VaTimeEntry | null>(null);
   const [shiftNotes, setShiftNotes] = useState("");
+  const [timeRequestDraft, setTimeRequestDraft] = useState<{
+    entryId: string;
+    requestType: VaTimeChangeRequestType;
+    clockIn: string;
+    clockOut: string;
+    notes: string;
+    reason: string;
+  }>({ entryId: "", requestType: "add-shift", clockIn: "", clockOut: "", notes: "", reason: "" });
+  const [timeRequestSaving, setTimeRequestSaving] = useState(false);
+  const [editingBriefId, setEditingBriefId] = useState<string | null>(null);
+  const [briefRevisionNote, setBriefRevisionNote] = useState("");
   const [clockBusy, setClockBusy] = useState(false);
   const [, setClockTick] = useState(0);
   const [importedLeads, setImportedLeads] = useState<ImportedLandLead[]>([]);
@@ -484,15 +584,16 @@ export default function VaPage() {
   const [importing, setImporting] = useState(false);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
-  const [activeTab, setActiveTab] = useState<VaTab>("workdesk");
+  const [activeTab, setActiveTab] = useState<VaTab>("today");
   const [notifyReviewUpdate, setNotifyReviewUpdate] = useState(false);
 
   const reload = useCallback(async (memberName = user) => {
     setLoading(true);
-    const [rows, briefRows, timeRows, currentShift, importRows, batchRows, smsRows] = await Promise.all([
+    const [rows, briefRows, timeRows, requestRows, currentShift, importRows, batchRows, smsRows] = await Promise.all([
       fetchDeals(),
       fetchVaDailyBriefs(8),
       fetchVaTimeEntries(80),
+      fetchVaTimeChangeRequests(50),
       memberName ? fetchOpenVaTimeEntry(memberName) : Promise.resolve(null),
       fetchImportedLandLeads(500),
       fetchLandLeadBatches(),
@@ -505,6 +606,7 @@ export default function VaPage() {
     setDeals(activeRows);
     setBriefs(briefRows);
     setTimeEntries(timeRows);
+    setTimeChangeRequests(requestRows.filter(request => !memberName || request.operator_name === memberName));
     setOpenShift(currentShift);
     setImportedLeads(importRows);
     setLeadBatches(batchRows);
@@ -531,12 +633,6 @@ export default function VaPage() {
   const liveAnalysis = useMemo(() => calculateDealAnalysis(liveInput), [liveInput]);
   const liveChecklist = useMemo(() => generateDueDiligenceChecklist(liveInput), [liveInput]);
   const today = useMemo(() => new Date().toISOString().slice(0, 10), []);
-  const currentPayPeriod = useMemo(() => getBiweeklyPayPeriod(today), [today]);
-  const payPeriods = useMemo(() => summarizeVaPayPeriods(timeEntries), [timeEntries]);
-  const currentPeriodSummary = useMemo(
-    () => payPeriods.find(period => period.periodStart === currentPayPeriod.periodStart && period.periodEnd === currentPayPeriod.periodEnd) ?? null,
-    [currentPayPeriod, payPeriods],
-  );
   const todaysSubmittedMinutes = useMemo(() => timeEntries
     .filter(entry => entry.clock_in_at.slice(0, 10) === briefDraft.work_date && entry.duration_minutes)
     .reduce((sum, entry) => sum + (entry.duration_minutes ?? 0), 0),
@@ -545,7 +641,6 @@ export default function VaPage() {
   const liveShiftMinutes = openShift ? currentShiftMinutes(openShift) : 0;
   const followUpsDue = useMemo(() => deals.filter(deal => isDueTodayOrPast(deal.next_follow_up_date, today)), [deals, today]);
   const draftLeads = useMemo(() => deals.filter(deal => deal.status === "lead"), [deals]);
-  const submittedDeals = useMemo(() => deals.filter(deal => deal.status === "under-review"), [deals]);
   const interestedLeads = useMemo(() => importedLeads.filter(lead => lead.status === "interested"), [importedLeads]);
   const selectedImportedLead = useMemo(() => importedLeads.find(lead => lead.id === selectedImportedLeadId) ?? null, [importedLeads, selectedImportedLeadId]);
   const selectedBatch = useMemo(() => leadBatches.find(batch => batch.id === selectedBatchId) ?? null, [leadBatches, selectedBatchId]);
@@ -566,17 +661,7 @@ export default function VaPage() {
       if (["new", "contacted", "interested", "passed"].includes(leadFilter) && lead.status !== leadFilter) return false;
       if (min !== null && (lead.acreage ?? 0) < min) return false;
       if (max !== null && (lead.acreage ?? 0) > max) return false;
-      if (!query) return true;
-      return [
-      lead.owner_name,
-      lead.phone,
-      lead.phone_2,
-      lead.property_address,
-      lead.parcel_id,
-      lead.county,
-      lead.city,
-      lead.campaign_source,
-      ].filter(Boolean).join(" ").toLowerCase().includes(query);
+      return importedLeadMatchesQuery(lead, query);
     });
     return rows.sort((a, b) => (b.lead_score ?? 0) - (a.lead_score ?? 0)).slice(0, 120);
   }, [importedLeads, leadFilter, leadSearch, maxAcreage, minAcreage, selectedBatchId]);
@@ -604,6 +689,16 @@ export default function VaPage() {
       return ((b.lead_score ?? 0) + bDue + bFresh) - ((a.lead_score ?? 0) + aDue + aFresh);
     })
     .slice(0, 12), [filteredImportedLeads, today]);
+  const workdeskLeadRows = useMemo(() => {
+    const seen = new Set<string>();
+    return [...interestedLeads, ...priorityImportedLeads, ...filteredImportedLeads]
+      .filter(lead => {
+        if (seen.has(lead.id)) return false;
+        seen.add(lead.id);
+        return lead.status !== "converted" && lead.status !== "passed";
+      })
+      .slice(0, 10);
+  }, [filteredImportedLeads, interestedLeads, priorityImportedLeads]);
   const importStats = useMemo(() => ({
     newRows: importedLeads.filter(lead => lead.status === "new").length,
     contacted: importedLeads.filter(lead => lead.status === "contacted").length,
@@ -612,7 +707,6 @@ export default function VaPage() {
     converted: importedLeads.filter(lead => lead.status === "converted").length,
     avgScore: importedLeads.length ? Math.round(importedLeads.reduce((sum, lead) => sum + (lead.lead_score ?? 0), 0) / importedLeads.length) : 0,
   }), [importedLeads]);
-  const blockedItems = useMemo(() => checklist.filter(item => item.status === "blocked"), [checklist]);
   const portalStats = useMemo(() => ({
     addedToday: deals.filter(deal => isSameDay(deal.created_at, today)).length,
     updatedToday: deals.filter(deal => isSameDay(deal.updated_at, today)).length,
@@ -675,17 +769,17 @@ export default function VaPage() {
     }));
   };
 
-  const applyLeadDisposition = async () => {
+  const saveLeadDisposition = async (disposition: LeadDisposition, note = dispositionDraft.note, nextFollowUpDate = dispositionDraft.nextFollowUpDate) => {
     if (!selectedImportedLead) { setMessage("Select an imported lead first."); return; }
-    const config = LEAD_DISPOSITIONS.find(item => item.value === dispositionDraft.disposition);
+    const config = LEAD_DISPOSITIONS.find(item => item.value === disposition);
     if (!config) return;
-    const summary = dispositionDraft.note.trim() || config.label;
+    const summary = note.trim() || config.label;
     const { error } = await createImportedLandLeadActivity({
       leadId: selectedImportedLead.id,
       actor: user,
       activityType: config.activityType,
       summary,
-      nextFollowUpDate: dispositionDraft.nextFollowUpDate || null,
+      nextFollowUpDate: nextFollowUpDate || null,
     });
     if (error) { setMessage(error); return; }
     await updateImportedLandLeadStatus(selectedImportedLead.id, config.nextStatus, selectedImportedLead.deal_id);
@@ -701,21 +795,44 @@ export default function VaPage() {
       outreach_sent: config.briefType === "outreach" ? (briefDraft.outreach_sent ?? 0) + 1 : briefDraft.outreach_sent,
       seller_replies: config.briefType === "reply" ? (briefDraft.seller_replies ?? 0) + 1 : briefDraft.seller_replies,
       leads_updated: (briefDraft.leads_updated ?? 0) + 1,
-      follow_ups_needed: config.briefType === "follow-up" ? appendBriefText(briefDraft.follow_ups_needed, `${leadLabel(selectedImportedLead)} follow-up set for ${dispositionDraft.nextFollowUpDate || "next available date"}.`) : briefDraft.follow_ups_needed,
+      follow_ups_needed: config.briefType === "follow-up" ? appendBriefText(briefDraft.follow_ups_needed, `${leadLabel(selectedImportedLead)} follow-up set for ${nextFollowUpDate || "next available date"}.`) : briefDraft.follow_ups_needed,
     });
     setMessage(`${config.label} saved for ${leadLabel(selectedImportedLead)}.`);
   };
 
+  const applyLeadDisposition = async () => {
+    await saveLeadDisposition(dispositionDraft.disposition);
+  };
+
+  const quickLeadDisposition = async (disposition: LeadDisposition, note: string, followUpDays?: number) => {
+    await saveLeadDisposition(disposition, note, followUpDays ? addDays(followUpDays) : "");
+  };
+
   const startNew = () => {
     setSelectedId(null);
+    setSelectedImportedLeadId(null);
     setChecklist([]);
     setAttachments([]);
     setDraft(EMPTY_DRAFT);
     setAttachmentDraft(EMPTY_ATTACHMENT());
     setDraftCommunicationEventId(null);
     setMessage("");
-    setActiveTab("leads");
+    setActiveTab("packet");
     setNotifyReviewUpdate(false);
+  };
+
+  const openDealBrief = (deal: Deal) => {
+    setSelectedImportedLeadId(null);
+    setSelectedId(deal.id);
+    setMessage("");
+    setActiveTab("packet");
+  };
+
+  const selectImportedLead = (lead: ImportedLandLead, tab: VaTab = "today") => {
+    setSelectedId(null);
+    setSelectedImportedLeadId(lead.id);
+    setActiveTab(tab);
+    setMessage("");
   };
 
   const saveDeal = async (status: DealStatus) => {
@@ -726,7 +843,7 @@ export default function VaPage() {
     const shouldNotifyMembers = isReviewSubmit && (!selected?.last_review_notification_at || selected.status !== "under-review" || notifyReviewUpdate);
     if (isReviewSubmit) {
       if (!submissionReady) {
-        setActiveTab("leads");
+        setActiveTab("packet");
         setMessage([
           missingReadyItems.length ? `Complete before submitting: ${missingReadyItems.join(", ")}.` : "",
           !liveInput.submission_summary ? "Add a VA submission summary." : "",
@@ -848,8 +965,8 @@ export default function VaPage() {
     if (preview.error) { setMessage(preview.error); return; }
     setImportPreview(preview);
     setImportStep("preview");
-    setMessage(`Preview ready. Review the import preview card and click Confirm Import to save ${preview.usableLeads} usable leads.`);
-    setActiveTab("imports");
+    setMessage(`Preview ready. Meridian found ${preview.safeToImport} new lead${preview.safeToImport === 1 ? "" : "s"} to import and ${preview.skippedDuplicates} overlap${preview.skippedDuplicates === 1 ? "" : "s"} to skip.`);
+    setActiveTab("lists");
   };
 
   const confirmLeadImport = async () => {
@@ -883,10 +1000,11 @@ export default function VaPage() {
       setImportStep("work");
       setImportStage("done");
       setMessage([
-        `Imported ${result.importedCount ?? importPreview.usableLeads} lead${(result.importedCount ?? importPreview.usableLeads) === 1 ? "" : "s"} from ${importPreview.filename}.`,
+        `Imported ${result.importedCount ?? importPreview.safeToImport} new lead${(result.importedCount ?? importPreview.safeToImport) === 1 ? "" : "s"} from ${importPreview.filename}.`,
+        importPreview.skippedDuplicates ? `Skipped ${importPreview.skippedDuplicates} overlapping record${importPreview.skippedDuplicates === 1 ? "" : "s"} already in Meridian.` : "",
         result.warning || "",
       ].filter(Boolean).join(" "));
-      setActiveTab("imports");
+      setActiveTab("lists");
     } catch (error) {
       const detail = error instanceof Error ? error.message : "Unknown upload error.";
       setImportStep("preview");
@@ -911,7 +1029,7 @@ export default function VaPage() {
       source: imported.source || lead.source_system,
       campaign_source: imported.campaign_source || lead.campaign_source || "",
     });
-    setActiveTab("leads");
+    setActiveTab("packet");
     setSelectedImportedLeadId(lead.id);
     setMessage("Imported lead loaded into the deal form.");
     if (markInterested && lead.status !== "interested") {
@@ -1054,7 +1172,7 @@ export default function VaPage() {
       campaign_source: "Inbound SMS",
       lead_temperature: event.direction === "inbound" ? "hot" : "warm",
     });
-    setActiveTab("leads");
+    setActiveTab("packet");
     setMessage("Unmatched SMS loaded as a new lead draft. Add property details before saving.");
   };
 
@@ -1113,6 +1231,82 @@ export default function VaPage() {
     }
     void reload(user);
     setMessage("Clocked out. Submitted time is ready for member review.");
+  };
+
+  const startTimeChangeRequest = (entry?: VaTimeEntry, requestType: VaTimeChangeRequestType = entry ? "edit-shift" : "add-shift") => {
+    setTimeRequestDraft({
+      entryId: entry?.id ?? "",
+      requestType,
+      clockIn: toDateTimeLocal(entry?.clock_in_at),
+      clockOut: toDateTimeLocal(entry?.clock_out_at),
+      notes: entry?.notes ?? "",
+      reason: "",
+    });
+  };
+
+  const submitTimeChangeRequest = async () => {
+    if (!user) return;
+    setTimeRequestSaving(true);
+    setMessage("");
+    const selectedEntry = timeEntries.find(entry => entry.id === timeRequestDraft.entryId);
+    const { data, error } = await createVaTimeChangeRequest({
+      entryId: timeRequestDraft.entryId || null,
+      operatorName: user,
+      requestType: timeRequestDraft.requestType,
+      requestedClockInAt: timeRequestDraft.requestType === "void-shift"
+        ? selectedEntry?.clock_in_at ?? null
+        : fromDateTimeLocal(timeRequestDraft.clockIn),
+      requestedClockOutAt: timeRequestDraft.requestType === "void-shift"
+        ? selectedEntry?.clock_out_at ?? null
+        : fromDateTimeLocal(timeRequestDraft.clockOut),
+      requestedNotes: timeRequestDraft.notes,
+      reason: timeRequestDraft.reason,
+    });
+    setTimeRequestSaving(false);
+    if (error) { setMessage(error); return; }
+    if (data) {
+      setTimeChangeRequests(prev => [data, ...prev].slice(0, 50));
+      await Promise.all(MEMBERS.map(member => createNotification({
+        title: `VA time correction requested: ${user}`,
+        body: `${statusLabel(data.request_type)} · ${data.reason}`,
+        priority: "high",
+        assigned_to: member,
+        href: "/operations",
+        source_table: "meridian_va_time_change_requests",
+        source_id: data.id,
+        notification_type: "va-time-change-request",
+      }, user)));
+    }
+    setTimeRequestDraft({ entryId: "", requestType: "add-shift", clockIn: "", clockOut: "", notes: "", reason: "" });
+    setMessage("Time change request sent for member review.");
+  };
+
+  const startBriefEdit = (brief: VaDailyBrief) => {
+    setEditingBriefId(brief.id);
+    setBriefRevisionNote("");
+    setBriefDraft({
+      work_date: brief.work_date,
+      hours_worked: brief.hours_worked ?? null,
+      leads_added: brief.leads_added ?? null,
+      leads_updated: brief.leads_updated ?? null,
+      outreach_sent: brief.outreach_sent ?? null,
+      seller_replies: brief.seller_replies ?? null,
+      calls_completed: brief.calls_completed ?? null,
+      deals_submitted: brief.deals_submitted ?? null,
+      checklist_items_cleared: brief.checklist_items_cleared ?? null,
+      activities_completed: brief.activities_completed,
+      follow_ups_needed: brief.follow_ups_needed ?? "",
+      blockers: brief.blockers ?? "",
+      tomorrow_plan: brief.tomorrow_plan ?? "",
+    });
+    setActiveTab("brief");
+    setMessage("Brief loaded for editing.");
+  };
+
+  const cancelBriefEdit = () => {
+    setEditingBriefId(null);
+    setBriefRevisionNote("");
+    setBriefDraft(EMPTY_BRIEF());
   };
 
   const autofillBriefStats = () => {
@@ -1174,23 +1368,29 @@ export default function VaPage() {
   const submitDailyBrief = async () => {
     setBriefSaving(true);
     setMessage("");
-    const { data, error } = await createVaDailyBrief(briefDraft, user);
+    const { data, error } = editingBriefId
+      ? await updateVaDailyBrief(editingBriefId, briefDraft, user, briefRevisionNote)
+      : await createVaDailyBrief(briefDraft, user);
     setBriefSaving(false);
     if (error) { setMessage(error); return; }
     if (data) {
       await Promise.all(MEMBERS.map(member => createNotification({
-        title: `VA daily brief ready: ${data.submitted_by}`,
+        title: editingBriefId ? `VA daily brief updated: ${data.submitted_by}` : `VA daily brief ready: ${data.submitted_by}`,
         body: `${data.work_date} · ${data.hours_worked ?? 0} hours · ${data.leads_added ?? 0} leads added · ${data.deals_submitted ?? 0} deals submitted`,
         priority: data.blockers ? "high" : "normal",
         assigned_to: member,
         href: "/operations",
         source_table: "meridian_va_daily_briefs",
         source_id: data.id,
-        notification_type: "va-daily-brief",
+        notification_type: editingBriefId ? "va-daily-brief-update" : "va-daily-brief",
       }, user)));
-      setBriefs(prev => [data, ...prev].slice(0, 8));
+      setBriefs(prev => editingBriefId
+        ? prev.map(brief => brief.id === data.id ? data : brief)
+        : [data, ...prev].slice(0, 8));
       setBriefDraft(EMPTY_BRIEF());
-      setMessage("Daily brief submitted for member review.");
+      setEditingBriefId(null);
+      setBriefRevisionNote("");
+      setMessage(editingBriefId ? "Daily brief updated for member review." : "Daily brief submitted for member review.");
     }
   };
 
@@ -1198,21 +1398,21 @@ export default function VaPage() {
   const blocked = checklist.filter(i => i.status === "blocked").length;
 
   return (
-    <div className="va-root" style={{ maxWidth: 1180, margin: "0 auto", padding: "84px 20px 100px" }}>
+    <div className="va-root" style={{ maxWidth: 1680, margin: "0 auto", padding: "82px 20px 100px" }}>
       <header style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", gap: 16, flexWrap: "wrap", marginBottom: 24 }}>
         <div>
-          <p style={eyebrow}>VA Desk</p>
-          <h1 style={{ fontFamily: DISPLAY_FONT, fontSize: "clamp(34px, 5vw, 50px)", fontWeight: 500, color: "var(--obsidian)", marginBottom: 6 }}>
+          <h1 style={{ fontFamily: DISPLAY_FONT, fontSize: "clamp(30px, 4vw, 44px)", fontWeight: 500, color: "var(--obsidian)", marginBottom: 3 }}>
             VA Workdesk
           </h1>
           <p style={{ color: "var(--ink)", opacity: 0.66, fontSize: 14, maxWidth: 720 }}>
-            Work today&apos;s seller replies, imported leads, follow-ups, deal briefs, and end-of-shift reporting from one place.
+            Your daily workspace to manage seller replies, update leads, build deal briefs, and close the shift with a member-ready summary.
           </p>
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <button onClick={() => setActiveTab("imports")} style={secondaryButton}>Import List</button>
+          <button onClick={() => setActiveTab("lists")} style={secondaryButton}>Import List</button>
+          <button onClick={() => selectedImportedLead ? document.getElementById("va-workdesk-note")?.focus() : setActiveTab("today")} style={secondaryButton}>Log Call</button>
+          <button onClick={startNew} style={primaryButton}>New Deal Brief</button>
           <button onClick={() => setActiveTab("brief")} style={secondaryButton}>End Shift Brief</button>
-          <button onClick={startNew} style={primaryButton}>New Lead</button>
         </div>
       </header>
 
@@ -1222,75 +1422,33 @@ export default function VaPage() {
         </div>
       )}
 
-      <section style={{ ...darkPanel, marginBottom: 16 }}>
+      {activeTab !== "today" && <section style={{ ...compactShiftPanel, marginBottom: 16 }}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 14, flexWrap: "wrap", alignItems: "flex-start", marginBottom: 14 }}>
           <div>
             <p style={{ ...eyebrowSmall, color: "var(--brass)" }}>Today&apos;s work</p>
-            <h2 style={{ ...sectionTitle, color: "var(--bone)" }}>Shift dashboard</h2>
+            <h2 style={{ ...sectionTitle, color: "var(--obsidian)" }}>Shift status</h2>
           </div>
           <span style={portalStats.briefSubmitted ? hotPill : pill}>
             {portalStats.briefSubmitted ? "Brief submitted" : "Brief pending"}
           </span>
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 280px", gap: 12, marginBottom: 12 }} className="two-col">
-          <div style={{ background: "rgba(247,242,232,0.08)", border: "1px solid rgba(247,242,232,0.16)", borderRadius: 8, padding: 12 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-              <div>
-                <p style={{ ...eyebrowSmall, color: "var(--brass)", marginBottom: 4 }}>Biweekly pay period</p>
-                <p style={{ color: "var(--bone)", fontSize: 14, fontWeight: 700 }}>
-                  {currentPayPeriod.periodStart} to {currentPayPeriod.periodEnd}
-                </p>
-                <p style={{ color: "rgba(247,242,232,0.68)", fontSize: 12, marginTop: 4 }}>
-                  {currentPeriodSummary ? `${currentPeriodSummary.totalHours.toFixed(2)} hrs submitted · ${formatCurrency(currentPeriodSummary.totalCost)}` : "No submitted time in this period yet"}
-                </p>
-              </div>
-              <div style={{ textAlign: "right" }}>
-                <p style={{ color: "rgba(247,242,232,0.68)", fontSize: 11, textTransform: "uppercase", letterSpacing: "0.12em", marginBottom: 4 }}>
-                  {openShift ? "Clocked in" : "Time clock"}
-                </p>
-                <p style={{ color: "var(--brass)", fontSize: 26, fontWeight: 800, lineHeight: 1 }}>
-                  {openShift ? formatDuration(liveShiftMinutes) : "Ready"}
-                </p>
-              </div>
-            </div>
-            {openShift && (
-              <textarea
-                rows={2}
-                value={shiftNotes}
-                onChange={e => setShiftNotes(e.target.value)}
-                placeholder="Optional shift notes before clocking out."
-                style={{ marginTop: 10, background: "rgba(247,242,232,0.95)" }}
-              />
-            )}
-          </div>
-          <div style={{ display: "grid", gap: 8 }}>
-            <button
-              onClick={openShift ? handleClockOut : handleClockIn}
-              disabled={clockBusy}
-              style={{ ...primaryButton, background: openShift ? "var(--brass)" : "var(--bone)", color: "var(--obsidian)", borderColor: openShift ? "var(--brass)" : "var(--bone)", opacity: clockBusy ? 0.65 : 1 }}
-            >
-              {clockBusy ? "Saving..." : openShift ? "Clock Out" : "Clock In"}
-            </button>
-            <button onClick={() => setActiveTab("brief")} style={{ ...secondaryButton, color: "var(--bone)", borderColor: "rgba(247,242,232,0.22)" }}>
-              End Shift Brief
-            </button>
-          </div>
+        <div style={{ display: "grid", gridTemplateColumns: "180px repeat(4, 1fr) 160px", gap: 10, alignItems: "stretch" }} className="number-grid compact-shift-grid">
+          <ShiftCard label="Clock" value={openShift ? formatDuration(liveShiftMinutes) : "Ready"} tone={openShift ? "hot" : "calm"} />
+          <ShiftCard label="Replies" value={String(unmatchedSms.length)} tone={unmatchedSms.length ? "hot" : "calm"} />
+          <ShiftCard label="Follow-ups" value={String(followUpsDue.length)} tone={followUpsDue.length ? "hot" : "calm"} />
+          <ShiftCard label="Draft packets" value={String(draftLeads.length)} />
+          <ShiftCard label="Interested" value={String(interestedLeads.length)} tone={interestedLeads.length ? "hot" : "calm"} />
+          <button
+            onClick={openShift ? handleClockOut : handleClockIn}
+            disabled={clockBusy}
+            style={{ ...primaryButton, minHeight: 72, opacity: clockBusy ? 0.65 : 1 }}
+          >
+            {clockBusy ? "Saving..." : openShift ? "Clock Out" : "Clock In"}
+          </button>
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10 }} className="number-grid">
-          <ShiftCard label="Follow-ups due" value={String(followUpsDue.length)} tone={followUpsDue.length ? "hot" : "calm"} />
-          <ShiftCard label="Draft leads" value={String(draftLeads.length)} />
-          <ShiftCard label="Submitted today" value={String(portalStats.submittedToday)} />
-          <ShiftCard label="Blocked items" value={String(blockedItems.length)} tone={blockedItems.length ? "hot" : "calm"} />
-        </div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, marginTop: 10 }} className="number-grid">
-          <ShiftCard label="Leads added" value={String(portalStats.addedToday)} />
-          <ShiftCard label="Leads updated" value={String(portalStats.updatedToday)} />
-          <ShiftCard label="Under review" value={String(submittedDeals.length)} />
-          <ShiftCard label="Interested imports" value={String(interestedLeads.length)} tone={interestedLeads.length ? "hot" : "calm"} />
-        </div>
-      </section>
+      </section>}
 
-      <div style={{ ...panel, padding: 8, marginBottom: 16, display: "flex", gap: 8, flexWrap: "wrap" }}>
+      <div className="va-tabs" style={{ ...panel, padding: 8, marginBottom: 16, display: activeTab === "today" ? "none" : "flex", gap: 8, flexWrap: "wrap" }}>
         {TABS.map(tab => (
           <button
             key={tab.value}
@@ -1302,21 +1460,21 @@ export default function VaPage() {
         ))}
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: activeTab === "workdesk" ? "1fr" : "330px minmax(0, 1fr)", gap: 18 }} className="va-workspace">
-        {activeTab !== "workdesk" && <aside style={panel}>
+      <div style={{ display: "grid", gridTemplateColumns: activeTab === "packet" || activeTab === "outreach" ? "330px minmax(0, 1fr)" : "1fr", gap: 18 }} className="va-workspace">
+        {(activeTab === "packet" || activeTab === "outreach") && <aside style={panel}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 12 }}>
-            <h2 style={sectionTitle}>Lead Queue</h2>
+            <h2 style={sectionTitle}>Deal Packets</h2>
             <span style={{ fontSize: 11, color: "var(--muted)" }}>{deals.length} active</span>
           </div>
           {loading && <p style={{ color: "var(--muted)", fontSize: 13 }}>Loading...</p>}
-          {!loading && deals.length === 0 && <p style={{ color: "var(--muted)", fontSize: 13 }}>No active leads yet.</p>}
+          {!loading && deals.length === 0 && <p style={{ color: "var(--muted)", fontSize: 13 }}>No active packets yet.</p>}
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {deals.map(deal => {
               const active = selected?.id === deal.id;
               return (
                 <button
                   key={deal.id}
-                  onClick={() => { setSelectedId(deal.id); setMessage(""); }}
+                  onClick={() => { setSelectedImportedLeadId(null); setSelectedId(deal.id); setMessage(""); }}
                   style={{
                     textAlign: "left",
                     background: active ? "rgba(176,137,84,0.16)" : "var(--surface)",
@@ -1331,7 +1489,7 @@ export default function VaPage() {
                     <span style={deal.status === "under-review" ? hotPill : pill}>{statusLabel(deal.status)}</span>
                   </div>
                   <p style={{ fontSize: 12, color: "var(--ink)", opacity: 0.66, marginBottom: 6 }}>
-                    {deal.address || deal.parcel_id || "No location added"}
+                  {deal.address || deal.parcel_id || "No property detail added"}
                   </p>
                   <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "var(--muted)" }}>
                     <span>{deal.analysis?.recommendation ?? "Needs Review"}</span>
@@ -1345,7 +1503,7 @@ export default function VaPage() {
             <h3 style={{ ...sectionTitle, fontSize: 18 }}>Follow-ups</h3>
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               {deals.filter(deal => deal.next_follow_up_date).slice(0, 6).map(deal => (
-                <button key={`follow-${deal.id}`} onClick={() => setSelectedId(deal.id)} style={{
+                <button key={`follow-${deal.id}`} onClick={() => { setSelectedImportedLeadId(null); setSelectedId(deal.id); }} style={{
                   textAlign: "left",
                   background: "var(--surface)",
                   border: "1px solid var(--fog)",
@@ -1365,252 +1523,181 @@ export default function VaPage() {
         </aside>}
 
         <main style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-          {activeTab === "workdesk" && (
+          {activeTab === "today" && (
           <section style={panel}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12, flexWrap: "wrap", marginBottom: 14 }}>
               <div>
-                <p style={eyebrowSmall}>Daily cockpit</p>
+                <p style={eyebrowSmall}>Today</p>
                 <h2 style={sectionTitle}>What needs action next</h2>
               </div>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                <button onClick={() => setActiveTab("imports")} style={secondaryButton}>Work imports</button>
-                <button onClick={() => setActiveTab("leads")} style={secondaryButton}>Build brief</button>
+                <button onClick={() => setActiveTab("outreach")} style={secondaryButton}>Work outreach</button>
+                <button onClick={() => draftLeads[0] ? openDealBrief(draftLeads[0]) : setActiveTab("packet")} style={secondaryButton}>Build packet</button>
                 <button onClick={() => setActiveTab("brief")} style={primaryButton}>End shift</button>
               </div>
             </div>
 
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 10, marginBottom: 14 }} className="number-grid">
-              <ShiftCard label="Seller replies" value={String(unmatchedSms.length)} tone={unmatchedSms.length ? "hot" : "calm"} />
-              <ShiftCard label="Follow-ups due" value={String(followUpsDue.length)} tone={followUpsDue.length ? "hot" : "calm"} />
-              <ShiftCard label="Interested" value={String(interestedLeads.length)} tone={interestedLeads.length ? "hot" : "calm"} />
-              <ShiftCard label="Draft briefs" value={String(draftLeads.length)} />
-              <ShiftCard label="Submitted" value={String(submittedDeals.length)} />
-            </div>
-
-            <div style={{ display: "grid", gridTemplateColumns: "280px minmax(0, 1fr) 300px", gap: 12 }} className="workdesk-grid">
-              <aside style={subPanel}>
-                <p style={eyebrowSmall}>Priority queue</p>
-                <div style={{ display: "grid", gap: 8, marginTop: 8, maxHeight: 690, overflow: "auto" }}>
-                  {unmatchedSms.slice(0, 4).map(event => (
-                    <WorkQueueCard
-                      key={`sms-${event.id}`}
-                      eyebrow="Seller reply"
-                      title={event.contact_number || event.from_number || "Unknown number"}
-                      detail={event.body || event.status || "Inbound message"}
-                      tone="hot"
-                      actionLabel="Create lead"
-                      onAction={() => createLeadDraftFromSms(event)}
-                    />
-                  ))}
-                  {followUpsDue.slice(0, 5).map(deal => (
-                    <WorkQueueCard
-                      key={`follow-${deal.id}`}
-                      eyebrow="Follow-up due"
-                      title={deal.seller_name || deal.title}
-                      detail={`${deal.next_follow_up_date || "Due"} · ${deal.seller_phone || deal.address || "No phone/location"}`}
-                      actionLabel="Open brief"
-                      onAction={() => { setSelectedId(deal.id); setActiveTab("leads"); }}
-                    />
-                  ))}
-                  {interestedLeads.slice(0, 5).map(lead => (
-                    <WorkQueueCard
-                      key={`interested-${lead.id}`}
-                      eyebrow="Interested seller"
-                      title={lead.owner_name || "Owner unknown"}
-                      detail={`${lead.property_address || lead.parcel_id || "No address"} · Score ${lead.lead_score ?? 0}`}
-                      tone="hot"
-                      actionLabel="Text / work"
-                      onAction={() => {
-                        setSelectedImportedLeadId(lead.id);
-                        window.setTimeout(() => document.getElementById("va-workdesk-sms")?.focus(), 80);
-                      }}
-                    />
-                  ))}
-                  {priorityImportedLeads.map(lead => (
-                    <WorkQueueCard
-                      key={`lead-${lead.id}`}
-                      eyebrow={statusLabel(lead.status)}
-                      title={lead.owner_name || "Owner unknown"}
-                      detail={`${lead.phone || lead.phone_2 || "No phone"} · ${lead.property_address || lead.parcel_id || "No address"} · Score ${lead.lead_score ?? 0}`}
-                      actionLabel="Text lead"
-                      onAction={() => {
-                        setSelectedImportedLeadId(lead.id);
-                        window.setTimeout(() => document.getElementById("va-workdesk-sms")?.focus(), 80);
-                      }}
-                    />
-                  ))}
-                  {!unmatchedSms.length && !followUpsDue.length && !interestedLeads.length && !priorityImportedLeads.length && (
-                    <p style={{ color: "var(--muted)", fontSize: 13, lineHeight: 1.5 }}>No VA queue items yet. Import a list or create a lead to start the day.</p>
-                  )}
-                </div>
+            <div style={{ display: "grid", gridTemplateColumns: "250px minmax(0, 1fr) 420px", gap: 14 }} className="workdesk-grid">
+              <aside style={{ display: "grid", gap: 12, alignContent: "start" }}>
+                <section style={subPanel}>
+                  <p style={eyebrowSmall}>Today&apos;s queues</p>
+                  <div style={{ display: "grid", gap: 8, marginTop: 10 }}>
+                    <QueueButton label="New imported leads" detail="Fresh from land lists" count={importStats.newRows} onClick={() => { setActiveTab("lists"); setLeadFilter("new"); }} />
+                    <QueueButton label="Seller replies" detail="Unmatched SMS" count={unmatchedSms.length} hot={!!unmatchedSms.length} onClick={() => setActiveTab("outreach")} />
+                    <QueueButton label="Interested sellers" detail="Replied and expressed interest" count={interestedLeads.length} hot={!!interestedLeads.length} onClick={() => setLeadFilter("interested")} />
+                    <QueueButton label="Follow-up due" detail="No reply in 24-72 hrs" count={followUpsDue.length} hot={!!followUpsDue.length} onClick={() => setActiveTab("outreach")} />
+                    <QueueButton label="Bad numbers / DNC" detail="Invalid or do not contact" count={importedLeads.filter(lead => lead.status === "passed" || lead.sms_opt_status === "opted-out").length} onClick={() => setLeadFilter("passed")} />
+                    <QueueButton label="Deal brief drafts" detail="In progress" count={draftLeads.length} onClick={() => draftLeads[0] ? openDealBrief(draftLeads[0]) : setActiveTab("packet")} />
+                  </div>
+                </section>
+                <section style={subPanel}>
+                  <p style={eyebrowSmall}>My stats today</p>
+                  <div style={{ display: "grid", gap: 8, marginTop: 10 }}>
+                    <MiniStat label="Texts sent" value={String(briefDraft.outreach_sent ?? 0)} />
+                    <MiniStat label="Replies received" value={String(briefDraft.seller_replies ?? unmatchedSms.length)} />
+                    <MiniStat label="Leads updated" value={String(briefDraft.leads_updated ?? portalStats.updatedToday)} />
+                    <MiniStat label="On shift" value={openShift ? formatDuration(liveShiftMinutes) : "Ready"} />
+                  </div>
+                  <button onClick={openShift ? handleClockOut : handleClockIn} disabled={clockBusy} style={{ ...primaryButton, width: "100%", marginTop: 10, opacity: clockBusy ? 0.65 : 1 }}>
+                    {clockBusy ? "Saving..." : openShift ? "Clock Out" : "Clock In"}
+                  </button>
+                </section>
               </aside>
 
               <section style={subPanel}>
-                <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "start", marginBottom: 12 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", marginBottom: 12 }}>
                   <div>
-                    <p style={eyebrowSmall}>Selected lead</p>
-                    <h3 style={{ ...sectionTitle, fontSize: 26 }}>{selectedImportedLead?.owner_name || selected?.seller_name || selected?.title || "Pick a lead to work"}</h3>
+                    <p style={eyebrowSmall}>Work queue</p>
+                    <h2 style={{ ...sectionTitle, fontSize: 22 }}>Seller replies and lead actions</h2>
                   </div>
-                  {(selectedImportedLead || selected) && <span style={selectedImportedLead?.status === "interested" || selected?.urgency === "hot" ? hotPill : pill}>{statusLabel(selectedImportedLead?.status || selected?.status || "lead")}</span>}
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    <button style={secondaryButton}>Priority</button>
+                    <button onClick={() => void reload(user)} style={secondaryButton}>Refresh</button>
+                  </div>
                 </div>
-
-                {!selectedImportedLead && !selected && (
-                  <div style={{ ...subPanel, background: "var(--surface)" }}>
-                    <p style={eyebrowSmall}>Start here</p>
-                    <p style={{ color: "var(--ink)", fontSize: 14, lineHeight: 1.55 }}>
-                      Select a seller reply, imported lead, or follow-up from the queue. The VA should update the record, log what happened, and either set the next action or convert it into a deal brief.
-                    </p>
-                  </div>
-                )}
-
-                {selectedImportedLead && (
-                  <div style={{ display: "grid", gap: 12 }}>
-                    <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }} className="number-grid">
-                      <MiniStat label="Score" value={String(selectedImportedLead.lead_score ?? 0)} />
-                      <MiniStat label="Touches" value={String(selectedImportedLead.outreach_count ?? 0)} />
-                      <MiniStat label="Acres" value={selectedImportedLead.acreage ? String(selectedImportedLead.acreage) : "N/A"} />
-                      <MiniStat label="Value" value={selectedImportedLead.market_value ? `$${selectedImportedLead.market_value.toLocaleString()}` : "N/A"} />
-                    </div>
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }} className="two-col">
-                      <InfoStack title="Contact">
-                        <p>Phone: {selectedImportedLead.phone || selectedImportedLead.phone_2 || "Missing"}</p>
-                        <p>Email: {selectedImportedLead.email || "Missing"}</p>
-                        <p>SMS: {statusLabel(selectedImportedLead.sms_opt_status || "unknown")}</p>
-                      </InfoStack>
-                      <InfoStack title="Property">
-                        <p>{selectedImportedLead.property_address || "No address"}</p>
-                        <p>Parcel: {selectedImportedLead.parcel_id || "Missing"}</p>
-                        <p>{selectedImportedLead.county || "County pending"} · {selectedImportedLead.land_use || "Use pending"}</p>
-                      </InfoStack>
-                    </div>
-                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                      <button onClick={() => router.push(`/opportunity?lead=${selectedImportedLead.id}`)} style={secondaryButton}>Open file</button>
-                      <button
-                        onClick={() => document.getElementById("va-workdesk-sms")?.focus()}
-                        disabled={!selectedImportedLead.phone && !selectedImportedLead.phone_2}
-                        style={{ ...secondaryButton, opacity: !selectedImportedLead.phone && !selectedImportedLead.phone_2 ? 0.55 : 1 }}
-                      >
-                        Send text
-                      </button>
-                      <button onClick={() => loadImportedLead(selectedImportedLead, true)} style={primaryButton}>Convert to deal brief</button>
-                    </div>
-                    <div style={{ ...subPanel, background: "var(--surface)", borderColor: selectedImportedLead.sms_opt_status === "opted-out" ? "#e3b2a9" : "var(--brass)" }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap", marginBottom: 8 }}>
-                        <div>
-                          <p style={eyebrowSmall}>Send text to lead</p>
-                          <p style={{ margin: "3px 0 0", color: "var(--muted)", fontSize: 13 }}>
-                            {selectedImportedLead.phone || selectedImportedLead.phone_2 || "No phone on this lead"} · SMS {statusLabel(selectedImportedLead.sms_opt_status || "unknown")}
-                          </p>
-                        </div>
-                        <button
-                          onClick={sendSmsToLead}
-                          disabled={smsSending || (!selectedImportedLead.phone && !selectedImportedLead.phone_2) || selectedImportedLead.sms_opt_status === "opted-out"}
-                          style={{ ...primaryButton, opacity: smsSending || (!selectedImportedLead.phone && !selectedImportedLead.phone_2) || selectedImportedLead.sms_opt_status === "opted-out" ? 0.6 : 1 }}
-                        >
-                          {smsSending ? "Sending..." : "Send SMS"}
-                        </button>
-                      </div>
-                      <textarea
-                        id="va-workdesk-sms"
-                        rows={3}
-                        value={smsDraft}
-                        onChange={e => setSmsDraft(e.target.value)}
-                        placeholder="Type the SMS to send through Sakari."
-                        disabled={!selectedImportedLead.phone && !selectedImportedLead.phone_2}
-                      />
-                      <div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginTop: 6, color: "var(--muted)", fontSize: 12 }}>
-                        <span>{smsDraft.trim().length} chars</span>
-                        {selectedImportedLead.sms_opt_status === "opted-out" && <span>Seller opted out. Do not text.</span>}
-                      </div>
-                    </div>
-                    <div style={{ ...subPanel, background: "var(--surface)" }}>
-                      <p style={eyebrowSmall}>Disposition</p>
-                      <div style={{ display: "grid", gridTemplateColumns: "170px 1fr 140px", gap: 8 }} className="three-col">
-                        <select value={dispositionDraft.disposition} onChange={e => setDispositionDraft({ ...dispositionDraft, disposition: e.target.value as LeadDisposition })}>
-                          {LEAD_DISPOSITIONS.map(item => <option key={item.value} value={item.value}>{item.label}</option>)}
-                        </select>
-                        <input value={dispositionDraft.note} onChange={e => setDispositionDraft({ ...dispositionDraft, note: e.target.value })} placeholder="Short result note" />
-                        <input value={dispositionDraft.nextFollowUpDate} onChange={e => setDispositionDraft({ ...dispositionDraft, nextFollowUpDate: e.target.value })} type="date" />
-                      </div>
-                      <button onClick={applyLeadDisposition} style={{ ...primaryButton, marginTop: 8 }}>Save Disposition</button>
-                    </div>
-                    <div>
-                      <div>
-                        <p style={eyebrowSmall}>Log activity</p>
-                        <div style={{ display: "grid", gridTemplateColumns: "150px 1fr", gap: 8 }} className="two-col">
-                          <select value={activityDraft.activityType} onChange={e => setActivityDraft({ ...activityDraft, activityType: e.target.value as ImportedLandLeadActivity["activity_type"] })}>
-                            {LEAD_ACTIVITY_TYPES.map(type => <option key={type.value} value={type.value}>{type.label}</option>)}
-                          </select>
-                          <input value={activityDraft.nextFollowUpDate} onChange={e => setActivityDraft({ ...activityDraft, nextFollowUpDate: e.target.value })} type="date" />
-                        </div>
-                        <textarea rows={3} value={activityDraft.summary} onChange={e => setActivityDraft({ ...activityDraft, summary: e.target.value })} placeholder="What happened? What is the next step?" style={{ marginTop: 8 }} />
-                        <button onClick={logLeadActivity} style={{ ...secondaryButton, marginTop: 8 }}>Save activity</button>
-                      </div>
-                    </div>
-                    <div style={{ borderTop: "1px solid var(--fog)", paddingTop: 12 }}>
-                      <p style={eyebrowSmall}>Recent activity</p>
-                      <div style={{ display: "grid", gap: 8, maxHeight: 220, overflow: "auto" }}>
-                        {communicationEvents.slice(0, 4).map(event => (
-                          <TimelineCard key={`wd-comm-${event.id}`} title={event.direction === "inbound" ? "SMS received" : "SMS sent"} date={formatDate(event.provider_created_at || event.created_at)} body={event.body || event.status || event.provider_event_type} />
+                <div style={{ overflowX: "auto", border: "1px solid var(--fog)", borderRadius: 8 }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 760 }}>
+                    <thead>
+                      <tr>
+                        {["Priority", "Owner / phone", "County", "Acres", "Parcel ID", "Source list", "Status", "Last touch", "Next action", "Actions"].map(head => (
+                          <th key={head} style={tableHead}>{head}</th>
                         ))}
-                        {leadActivities.slice(0, 5).map(activity => (
-                          <TimelineCard key={`wd-act-${activity.id}`} title={statusLabel(activity.activity_type)} date={formatDate(activity.created_at)} body={activity.summary} />
-                        ))}
-                        {communicationEvents.length === 0 && leadActivities.length === 0 && <p style={{ color: "var(--muted)", fontSize: 13 }}>No activity yet.</p>}
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {!selectedImportedLead && selected && (
-                  <div style={{ display: "grid", gap: 12 }}>
-                    <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }} className="number-grid">
-                      <MiniStat label="Recommended" value={liveAnalysis.acquisition.recommendedOffer ? `$${liveAnalysis.acquisition.recommendedOffer.toLocaleString()}` : "N/A"} />
-                      <MiniStat label="Max offer" value={liveAnalysis.acquisition.maxOffer ? `$${liveAnalysis.acquisition.maxOffer.toLocaleString()}` : "N/A"} />
-                      <MiniStat label="Missing" value={String(liveAnalysis.missingInfo.length)} />
-                      <MiniStat label="Readiness" value={`${readyCount}/${readinessItems.length}`} />
-                    </div>
-                    <p style={{ color: "var(--muted)", fontSize: 13, lineHeight: 1.5 }}>{selected.submission_summary || selected.notes || "No VA summary yet."}</p>
-                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                      <button onClick={() => router.push(`/opportunity?deal=${selected.id}`)} style={secondaryButton}>Open shared file</button>
-                      <button onClick={() => setActiveTab("leads")} style={primaryButton}>Edit deal brief</button>
-                      <button onClick={() => saveDeal("under-review")} disabled={saving} style={{ ...secondaryButton, opacity: saving ? 0.6 : 1 }}>Submit for review</button>
-                    </div>
-                  </div>
-                )}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {workdeskLeadRows.map(lead => {
+                        const active = selectedImportedLeadId === lead.id;
+                        const phone = lead.phone || lead.phone_2 || "No phone";
+                        return (
+                          <tr key={lead.id} onClick={() => selectImportedLead(lead)} style={{ background: active ? "rgba(176,137,84,0.14)" : "var(--surface)", cursor: "pointer" }}>
+                            <td style={tableCell}>{(lead.lead_score ?? 0) >= 70 || lead.status === "interested" ? "★" : "☆"}</td>
+                            <td style={tableCell}><strong>{lead.owner_name || "Owner unknown"}</strong><br /><span>{phone}</span></td>
+                            <td style={tableCell}>{lead.county || "—"}</td>
+                            <td style={tableCell}>{lead.acreage ?? "—"}</td>
+                            <td style={tableCell}>{lead.parcel_id || "—"}</td>
+                            <td style={tableCell}>{lead.campaign_source || lead.source_system || "List"}</td>
+                            <td style={tableCell}><span style={lead.status === "interested" ? hotPill : pill}>{statusLabel(lead.status)}</span></td>
+                            <td style={tableCell}>{lead.last_sms_at ? formatDate(lead.last_sms_at) : lead.last_activity_at ? formatDate(lead.last_activity_at) : "—"}</td>
+                            <td style={tableCell}>{sellerActionState(lead).primary}</td>
+                            <td style={tableCell}>
+                              <div style={{ display: "flex", gap: 5 }}>
+                                <button onClick={event => { event.stopPropagation(); setActivityDraft({ activityType: "called", summary: "", nextFollowUpDate: "" }); selectImportedLead(lead); }} style={iconButton}>Call</button>
+                                <button onClick={event => { event.stopPropagation(); selectImportedLead(lead); window.setTimeout(() => document.getElementById("va-workdesk-sms")?.focus(), 80); }} style={iconButton}>Text</button>
+                                <button onClick={event => { event.stopPropagation(); router.push(`/opportunity?lead=${lead.id}`); }} style={iconButton}>File</button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                  {workdeskLeadRows.length === 0 && <p style={{ color: "var(--muted)", fontSize: 13, padding: 14 }}>No seller work items yet. Import a list or wait for inbound replies.</p>}
+                </div>
               </section>
 
-              <aside style={subPanel}>
-                <p style={eyebrowSmall}>End-of-shift brief</p>
-                <h3 style={{ ...sectionTitle, fontSize: 22 }}>Daily summary</h3>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, margin: "10px 0" }}>
-                  <MiniStat label="Leads updated" value={String(briefDraft.leads_updated ?? portalStats.updatedToday)} />
-                  <MiniStat label="Outreach" value={String(briefDraft.outreach_sent ?? 0)} />
-                  <MiniStat label="Replies" value={String(briefDraft.seller_replies ?? unmatchedSms.length)} />
-                  <MiniStat label="Submitted" value={String(briefDraft.deals_submitted ?? portalStats.submittedToday)} />
-                </div>
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
-                  <button onClick={autofillBriefStats} style={secondaryButton}>Auto-fill</button>
-                  <button onClick={pullSakariBrief} style={secondaryButton}>Pull SMS</button>
-                </div>
-                <label style={label}>Completed today</label>
-                <textarea rows={4} value={briefDraft.activities_completed} onChange={e => setBriefDraft({ ...briefDraft, activities_completed: e.target.value })} placeholder="Calls, texts, records updated, leads converted, research completed." />
-                <label style={{ ...label, marginTop: 10 }}>Follow-ups / blockers</label>
-                <textarea rows={3} value={briefDraft.follow_ups_needed ?? ""} onChange={e => setBriefDraft({ ...briefDraft, follow_ups_needed: e.target.value })} placeholder="Who needs follow-up and what members need to know." />
-                <button onClick={submitDailyBrief} disabled={briefSaving} style={{ ...primaryButton, width: "100%", marginTop: 10, opacity: briefSaving ? 0.6 : 1 }}>
-                  {briefSaving ? "Submitting..." : "Submit brief"}
-                </button>
+              <aside style={{ display: "grid", gap: 12, alignContent: "start" }}>
+                {selectedImportedLead ? (
+                  <SellerCommandCenter
+                    lead={selectedImportedLead}
+                    communications={communicationEvents}
+                    activities={leadActivities}
+                    smsDraft={smsDraft}
+                    setSmsDraft={setSmsDraft}
+                    smsSending={smsSending}
+                    onSendSms={sendSmsToLead}
+                    dispositionDraft={dispositionDraft}
+                    setDispositionDraft={setDispositionDraft}
+                    onSaveDisposition={applyLeadDisposition}
+                    onQuickDisposition={quickLeadDisposition}
+                    activityDraft={activityDraft}
+                    setActivityDraft={setActivityDraft}
+                    onLogActivity={logLeadActivity}
+                    onOpenFile={() => router.push(`/opportunity?lead=${selectedImportedLead.id}`)}
+                    onBuildPacket={() => loadImportedLead(selectedImportedLead, true)}
+                    onPass={async () => { await updateImportedLandLeadStatus(selectedImportedLead.id, "passed", selectedImportedLead.deal_id); setImportedLeads(await fetchImportedLandLeads(500)); }}
+                    compact
+                  />
+                ) : (
+                  <section style={subPanel}>
+                    <p style={eyebrowSmall}>Lead panel</p>
+                    <h3 style={{ ...sectionTitle, fontSize: 22 }}>Pick a seller</h3>
+                    <p style={{ color: "var(--muted)", fontSize: 13, lineHeight: 1.5, marginTop: 8 }}>Select a row to see property data, communication history, text composer, dispositions, calculator quick estimates, and packet actions.</p>
+                  </section>
+                )}
               </aside>
             </div>
+
+            <section style={{ ...subPanel, marginTop: 14 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "baseline", marginBottom: 10 }}>
+                <div>
+                  <p style={eyebrowSmall}>Daily shift brief</p>
+                  <h3 style={{ ...sectionTitle, fontSize: 22 }}>Member review summary</h3>
+                </div>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <button onClick={autofillBriefStats} style={secondaryButton}>Auto-fill</button>
+                  <button onClick={pullSakariBrief} style={secondaryButton}>Pull SMS</button>
+                  <button onClick={() => setActiveTab("brief")} style={secondaryButton}>Edit Brief</button>
+                </div>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, marginBottom: 10 }} className="number-grid">
+                <ShiftCard label="Calls made" value={String(briefDraft.calls_completed ?? 0)} />
+                <ShiftCard label="Texts sent" value={String(briefDraft.outreach_sent ?? 0)} />
+                <ShiftCard label="Replies received" value={String(briefDraft.seller_replies ?? unmatchedSms.length)} tone={unmatchedSms.length ? "hot" : "calm"} />
+                <ShiftCard label="Deals submitted" value={String(briefDraft.deals_submitted ?? portalStats.submittedToday)} />
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr) 260px", gap: 12 }} className="workdesk-brief-grid">
+                <div>
+                  <label style={label}>Top activities</label>
+                  <textarea rows={4} value={briefDraft.activities_completed} onChange={e => setBriefDraft({ ...briefDraft, activities_completed: e.target.value })} placeholder="Calls, texts, records updated, leads converted, research completed." />
+                </div>
+                <div>
+                  <label style={label}>Blockers / notes to members</label>
+                  <textarea rows={4} value={briefDraft.follow_ups_needed ?? ""} onChange={e => setBriefDraft({ ...briefDraft, follow_ups_needed: e.target.value })} placeholder="Who needs follow-up and what members need to know." />
+                </div>
+                <div style={{ display: "grid", gap: 8, alignContent: "end" }}>
+                  <MiniStat label="Clock" value={openShift ? formatDuration(liveShiftMinutes) : "Not clocked in"} />
+                  <button onClick={submitDailyBrief} disabled={briefSaving} style={{ ...primaryButton, width: "100%", opacity: briefSaving ? 0.6 : 1 }}>
+                    {briefSaving ? "Submitting..." : "Submit Brief"}
+                  </button>
+                </div>
+              </div>
+            </section>
           </section>
           )}
 
-          {activeTab === "leads" && (
+          {activeTab === "packet" && (
           <section style={panel}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12, flexWrap: "wrap", marginBottom: 14 }}>
+              <div>
+                <p style={eyebrowSmall}>Member review packet</p>
+                <h2 style={sectionTitle}>Build the deal packet</h2>
+              </div>
+              <span style={submissionReady ? hotPill : pill}>{submissionReady ? "Ready to submit" : `${readyCount}/${readinessItems.length} ready`}</span>
+            </div>
             <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1.1fr) minmax(300px, 0.9fr)", gap: 18 }} className="va-form-grid">
               <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
                 <div>
-                  <label style={label}>Deal title</label>
+                  <label style={label}>Packet title</label>
                   <input type="text" value={draft.title} onChange={e => setDraft({ ...draft, title: e.target.value })} placeholder="1842 Oakview Dr SW or Parcel 14-..." />
                 </div>
                 <div style={twoCol} className="two-col">
@@ -1661,7 +1748,7 @@ export default function VaPage() {
                   <input type="text" value={draft.strategy} onChange={e => setDraft({ ...draft, strategy: e.target.value })} placeholder="wholesale, list retail, land resale, needs review" />
                 </div>
                 <div style={subPanel}>
-                  <p style={eyebrowSmall}>Member submission packet</p>
+                  <p style={eyebrowSmall}>Member-facing ask</p>
                   <div style={twoCol} className="two-col">
                     <div>
                       <label style={label}>Review type</label>
@@ -1703,7 +1790,7 @@ export default function VaPage() {
                   </div>
                   <div>
                     <label style={label}>Seller phone</label>
-                    <input type="text" value={draft.seller_phone ?? ""} onChange={e => setDraft({ ...draft, seller_phone: e.target.value })} />
+                    <input type="text" autoComplete="off" inputMode="tel" value={draft.seller_phone ?? ""} onChange={e => setDraft({ ...draft, seller_phone: e.target.value })} />
                   </div>
                 </div>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10 }} className="number-grid">
@@ -1713,7 +1800,7 @@ export default function VaPage() {
                   <NumberField label="Acres" value={draft.acreage} onChange={v => setDraft({ ...draft, acreage: v })} />
                 </div>
                 <div style={subPanel}>
-                  <p style={eyebrowSmall}>Connected acquisition + disposition calculator</p>
+                  <p style={eyebrowSmall}>Acquisition + disposition math</p>
                   <div style={twoCol} className="two-col">
                     <div>
                       <label style={label}>Exit strategy</label>
@@ -1861,12 +1948,12 @@ export default function VaPage() {
           </section>
           )}
 
-          {activeTab === "imports" && (
+          {activeTab === "lists" && (
           <section style={panel}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12, flexWrap: "wrap", marginBottom: 12 }}>
               <div>
-                <p style={eyebrowSmall}>Land lists</p>
-                <h2 style={sectionTitle}>{selectedBatch ? selectedBatch.campaign_source || selectedBatch.original_filename || "Work imported batch" : "Import land list"}</h2>
+                <p style={eyebrowSmall}>Lists</p>
+                <h2 style={sectionTitle}>{selectedBatch ? selectedBatch.campaign_source || selectedBatch.original_filename || "Work imported batch" : "Import and work land lists"}</h2>
               </div>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                 <button onClick={() => { setImportStep("upload"); setImportPreview(null); setSelectedBatchId(null); }} style={secondaryButton}>New Import</button>
@@ -1899,7 +1986,149 @@ export default function VaPage() {
             <div style={{ ...subPanel, marginBottom: 12 }}>
               <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "baseline", marginBottom: 10 }}>
                 <div>
-                  <p style={eyebrowSmall}>Bulk SMS campaign</p>
+                  <p style={eyebrowSmall}>All imported leads</p>
+                  <h3 style={{ ...sectionTitle, fontSize: 22 }}>
+                    {filteredImportedLeads.length} visible of {importedLeads.filter(lead => lead.status !== "converted").length} active imported leads
+                  </h3>
+                </div>
+                {selectedBatch && <span style={hotPill}>{batchLeads.length} in selected batch</span>}
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 0.95fr) minmax(320px, 1.05fr)", gap: 12 }} className="va-form-grid">
+                <div>
+                  <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 160px", gap: 8, marginBottom: 8 }} className="two-col">
+                    <div>
+                      <label style={label}>Search all imported leads</label>
+                      <input value={leadSearch} onChange={e => setLeadSearch(e.target.value)} placeholder="Search any imported lead field" />
+                    </div>
+                    <div>
+                      <label style={label}>Filter</label>
+                      <select value={leadFilter} onChange={e => setLeadFilter(e.target.value as ImportStatusFilter)}>
+                        {IMPORT_STATUS_FILTERS.map(filter => <option key={filter.value} value={filter.value}>{filter.label}</option>)}
+                      </select>
+                    </div>
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 12 }} className="two-col">
+                    <input value={minAcreage} onChange={e => setMinAcreage(e.target.value)} placeholder="Min acreage" />
+                    <input value={maxAcreage} onChange={e => setMaxAcreage(e.target.value)} placeholder="Max acreage" />
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 760, overflow: "auto", paddingRight: 2 }}>
+                    {filteredImportedLeads.map(lead => (
+                      <button
+                        key={lead.id}
+                        onClick={() => selectImportedLead(lead, "lists")}
+                        style={{
+                          ...subPanel,
+                          textAlign: "left",
+                          cursor: "pointer",
+                          background: selectedImportedLeadId === lead.id ? "rgba(176,137,84,0.14)" : "var(--bone)",
+                        }}
+                      >
+                        <div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginBottom: 8 }}>
+                          <strong style={{ color: "var(--obsidian)", fontSize: 14 }}>{lead.owner_name || "Owner unknown"}</strong>
+                          <span style={lead.status === "interested" ? hotPill : pill}>Score {lead.lead_score ?? 0}</span>
+                        </div>
+                        <p style={{ fontSize: 12, color: "var(--muted)", lineHeight: 1.45 }}>
+                          {lead.property_address || "No property address"}{lead.parcel_id ? ` · ${lead.parcel_id}` : ""}
+                        </p>
+                        <p style={{ fontSize: 12, color: "var(--muted)", lineHeight: 1.45, marginTop: 4 }}>
+                          {lead.phone || lead.phone_2 || "No phone"}{lead.acreage ? ` · ${lead.acreage} acres` : ""}{lead.county ? ` · ${lead.county}` : ""}
+                        </p>
+                        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8 }}>
+                          <span style={lead.status === "interested" ? hotPill : pill}>{statusLabel(lead.status)}</span>
+                          {lead.duplicate_status && lead.duplicate_status !== "new" && <span style={pill}>{statusLabel(lead.duplicate_status)}</span>}
+                          {!!lead.outreach_count && <span style={pill}>{lead.outreach_count} touches</span>}
+                        </div>
+                      </button>
+                    ))}
+                    {filteredImportedLeads.length === 0 && (
+                      <p style={{ fontSize: 13, color: "var(--muted)" }}>No imported leads match this search yet.</p>
+                    )}
+                  </div>
+                </div>
+
+                <aside style={subPanel}>
+                  {!selectedImportedLead && <p style={{ fontSize: 13, color: "var(--muted)" }}>Select any imported lead to review details, log outreach, text the seller, pass it, or build a deal packet.</p>}
+                  {selectedImportedLead && (
+                    <SellerCommandCenter
+                      lead={selectedImportedLead}
+                      communications={communicationEvents}
+                      activities={leadActivities}
+                      smsDraft={smsDraft}
+                      setSmsDraft={setSmsDraft}
+                      smsSending={smsSending}
+                      onSendSms={sendSmsToLead}
+                      dispositionDraft={dispositionDraft}
+                      setDispositionDraft={setDispositionDraft}
+                      onSaveDisposition={applyLeadDisposition}
+                      onQuickDisposition={quickLeadDisposition}
+                      activityDraft={activityDraft}
+                      setActivityDraft={setActivityDraft}
+                      onLogActivity={logLeadActivity}
+                      onOpenFile={() => router.push(`/opportunity?lead=${selectedImportedLead.id}`)}
+                      onBuildPacket={() => loadImportedLead(selectedImportedLead, true)}
+                      onPass={async () => { await updateImportedLandLeadStatus(selectedImportedLead.id, "passed", selectedImportedLead.deal_id); setImportedLeads(await fetchImportedLandLeads(500)); }}
+                      compact
+                    />
+                  )}
+                </aside>
+              </div>
+            </div>
+
+            {(importStep === "upload" || (!importPreview && importedLeads.length === 0)) && (
+              <div style={{ ...subPanel, marginBottom: 12 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "220px minmax(0, 1fr)", gap: 12 }} className="two-col">
+                  <label style={{
+                    border: "1px dashed var(--brass)",
+                    borderRadius: 8,
+                    minHeight: 156,
+                    display: "grid",
+                    placeItems: "center",
+                    textAlign: "center",
+                    cursor: importing ? "default" : "pointer",
+                    background: "rgba(176,137,84,0.08)",
+                    padding: 16,
+                  }}>
+                    <input
+                      type="file"
+                      accept=".csv,text/csv"
+                      disabled={importing}
+                      onChange={e => { void handleLeadCsvUpload(e.target.files?.[0] ?? null); e.currentTarget.value = ""; }}
+                      style={{ display: "none" }}
+                    />
+                    <span>
+                      <strong style={{ display: "block", color: "var(--obsidian)", fontSize: 15, marginBottom: 6 }}>{importing && importStage === "previewing" ? "Reading CSV..." : "Choose CSV"}</strong>
+                      <span style={{ display: "block", color: "var(--muted)", fontSize: 12, lineHeight: 1.45 }}>Land Portal or Land Insights export</span>
+                    </span>
+                  </label>
+                  <div>
+                    <div style={twoCol} className="two-col">
+                      <div>
+                        <label style={label}>Source</label>
+                        <select value={uploadSource} onChange={e => setUploadSource(e.target.value)}>
+                          <option>Land Portal</option>
+                          <option>Land Insights</option>
+                          <option>County Export</option>
+                          <option>Skip Trace List</option>
+                          <option>Other Land List</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label style={label}>Campaign / list name</label>
+                        <input value={uploadCampaign} onChange={e => setUploadCampaign(e.target.value)} placeholder="Gwinnett County GA Odessa" />
+                      </div>
+                    </div>
+                    <p style={{ fontSize: 12, color: "var(--muted)", marginTop: 12, lineHeight: 1.55 }}>
+                      Import first, then use campaign outreach once the list has eligible seller records.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div style={{ ...subPanel, marginBottom: 12 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "baseline", marginBottom: 10 }}>
+                <div>
+                  <p style={eyebrowSmall}>Campaign outreach</p>
                   <h3 style={{ ...sectionTitle, fontSize: 20 }}>{bulkEligibleLeads.length} eligible in current view</h3>
                   <p style={{ color: "var(--muted)", fontSize: 12, marginTop: 4 }}>
                     Excludes opt-outs, no-phone leads, passed/converted leads, duplicates, and leads texted in the last 7 days. {bulkExcludedCount > 0 ? `${bulkExcludedCount} filtered lead${bulkExcludedCount === 1 ? "" : "s"} excluded.` : ""}
@@ -1951,7 +2180,7 @@ export default function VaPage() {
               <div style={{ ...subPanel, marginBottom: 12, borderColor: "var(--brass)" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "baseline", marginBottom: 10 }}>
                   <div>
-                    <p style={eyebrowSmall}>Unmatched SMS inbox</p>
+                  <p style={eyebrowSmall}>Unmatched seller replies</p>
                     <h3 style={{ ...sectionTitle, fontSize: 20 }}>{unmatchedSms.length} message{unmatchedSms.length === 1 ? "" : "s"} need matching</h3>
                   </div>
                   <button onClick={() => { void fetchCommunicationEvents({ unmatched: true, limit: 25 }).then(setUnmatchedSms); }} style={secondaryButton}>Refresh</button>
@@ -1966,61 +2195,10 @@ export default function VaPage() {
                       <p style={{ color: "var(--ink)", fontSize: 13, lineHeight: 1.45, marginBottom: 10 }}>{event.body || event.status || event.provider_event_type}</p>
                       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                         <button onClick={() => attachUnmatchedSmsToLead(event)} style={secondaryButton}>Attach To Selected Lead</button>
-                        <button onClick={() => createLeadDraftFromSms(event)} style={primaryButton}>Create New Lead</button>
+                        <button onClick={() => createLeadDraftFromSms(event)} style={primaryButton}>Create Packet</button>
                       </div>
                     </div>
                   ))}
-                </div>
-              </div>
-            )}
-
-            {(importStep === "upload" || (!importPreview && importedLeads.length === 0)) && (
-              <div style={{ ...subPanel, marginBottom: 12 }}>
-                <div style={{ display: "grid", gridTemplateColumns: "220px minmax(0, 1fr)", gap: 12 }} className="two-col">
-                  <label style={{
-                    border: "1px dashed var(--brass)",
-                    borderRadius: 8,
-                    minHeight: 156,
-                    display: "grid",
-                    placeItems: "center",
-                    textAlign: "center",
-                    cursor: importing ? "default" : "pointer",
-                    background: "rgba(176,137,84,0.08)",
-                    padding: 16,
-                  }}>
-                    <input
-                      type="file"
-                      accept=".csv,text/csv"
-                      disabled={importing}
-                      onChange={e => { void handleLeadCsvUpload(e.target.files?.[0] ?? null); e.currentTarget.value = ""; }}
-                      style={{ display: "none" }}
-                    />
-                    <span>
-                      <strong style={{ display: "block", color: "var(--obsidian)", fontSize: 15, marginBottom: 6 }}>{importing && importStage === "previewing" ? "Reading CSV..." : "Choose CSV"}</strong>
-                      <span style={{ display: "block", color: "var(--muted)", fontSize: 12, lineHeight: 1.45 }}>Land Portal or Land Insights export</span>
-                    </span>
-                  </label>
-                  <div>
-                    <div style={twoCol} className="two-col">
-                      <div>
-                        <label style={label}>Source</label>
-                        <select value={uploadSource} onChange={e => setUploadSource(e.target.value)}>
-                          <option>Land Portal</option>
-                          <option>Land Insights</option>
-                          <option>County Export</option>
-                          <option>Skip Trace List</option>
-                          <option>Other Land List</option>
-                        </select>
-                      </div>
-                      <div>
-                        <label style={label}>Campaign / list name</label>
-                        <input value={uploadCampaign} onChange={e => setUploadCampaign(e.target.value)} placeholder="Gwinnett County GA Odessa" />
-                      </div>
-                    </div>
-                    <p style={{ fontSize: 12, color: "var(--muted)", marginTop: 12, lineHeight: 1.55 }}>
-                      CSV uploads are validated before saving. Apple Numbers files should be exported to CSV first.
-                    </p>
-                  </div>
                 </div>
               </div>
             )}
@@ -2035,19 +2213,49 @@ export default function VaPage() {
                   </div>
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                     <button onClick={() => { setImportPreview(null); setImportStep("upload"); }} style={secondaryButton}>Cancel</button>
-                    <button onClick={confirmLeadImport} disabled={importing} style={{ ...primaryButton, opacity: importing ? 0.6 : 1 }}>
-                      {importing ? "Importing..." : `Import ${importPreview.usableLeads} Leads`}
+                    <button onClick={confirmLeadImport} disabled={importing || importPreview.safeToImport === 0} style={{ ...primaryButton, opacity: importing || importPreview.safeToImport === 0 ? 0.6 : 1 }}>
+                      {importing ? "Importing..." : `Import ${importPreview.safeToImport} New Leads`}
                     </button>
                   </div>
                 </div>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 8 }} className="number-grid">
                   <MiniStat label="Rows" value={String(importPreview.rowsFound)} />
                   <MiniStat label="Usable" value={String(importPreview.usableLeads)} />
+                  <MiniStat label="New to save" value={String(importPreview.safeToImport)} />
+                  <MiniStat label="Exact match" value={String(importPreview.exactDuplicates)} />
+                  <MiniStat label="Possible match" value={String(importPreview.possibleDuplicates - importPreview.exactDuplicates)} />
+                  <MiniStat label="Converted" value={String(importPreview.alreadyConverted)} />
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8, marginTop: 8 }} className="number-grid">
                   <MiniStat label="No phone" value={String(importPreview.missingPhone)} />
                   <MiniStat label="No owner" value={String(importPreview.missingOwner)} />
-                  <MiniStat label="Duplicates" value={String(importPreview.possibleDuplicates + importPreview.alreadyConverted)} />
+                  <MiniStat label="Skipped" value={String(importPreview.skippedDuplicates)} />
                   <MiniStat label="Avg score" value={String(importPreview.averageScore)} />
                 </div>
+                {importPreview.skippedDuplicates > 0 && (
+                  <div style={{ ...subPanel, marginTop: 12, background: "rgba(176,137,84,0.10)", borderColor: "var(--brass)" }}>
+                    <p style={eyebrowSmall}>Overlap review</p>
+                    <p style={{ color: "var(--muted)", fontSize: 12, lineHeight: 1.5, marginBottom: 10 }}>
+                      Meridian will skip overlapping Land Insights/Land Portal records by default. Review these matches before deciding whether to update an existing lead.
+                    </p>
+                    <div style={{ display: "grid", gap: 8 }}>
+                      {importPreview.duplicateMatches.map(match => (
+                        <div key={`${match.duplicateOf}-${match.incomingLabel}`} style={{ border: "1px solid var(--fog)", borderRadius: 8, padding: 10, background: "var(--surface)" }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap", marginBottom: 5 }}>
+                            <strong style={{ color: "var(--obsidian)", fontSize: 13 }}>{match.incomingLabel}</strong>
+                            <span style={match.confidence === "already-converted" ? hotPill : pill}>{statusLabel(match.confidence)}</span>
+                          </div>
+                          <p style={{ color: "var(--muted)", fontSize: 12, lineHeight: 1.45 }}>
+                            Existing: {match.existingLabel} · {match.existingStatus ? statusLabel(match.existingStatus) : "Status unknown"}{match.existingDealId ? " · already has deal" : ""}
+                          </p>
+                          <p style={{ color: "var(--muted)", fontSize: 12, lineHeight: 1.45, marginTop: 4 }}>
+                            Why: {match.reasons.join(", ")}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
                 <div style={{ overflowX: "auto", marginTop: 12 }}>
                   <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
                     <thead>
@@ -2136,190 +2344,65 @@ export default function VaPage() {
                     <p style={{ color: "var(--muted)", fontSize: 12, marginTop: 4 }}>{nextBestLead.property_address || nextBestLead.parcel_id || "No address"} · Score {nextBestLead.lead_score ?? 0}</p>
                   </div>
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                    <button onClick={() => setSelectedImportedLeadId(nextBestLead.id)} style={secondaryButton}>Review</button>
-                    <button onClick={() => loadImportedLead(nextBestLead, true)} style={primaryButton}>Create Deal</button>
+                    <button onClick={() => selectImportedLead(nextBestLead, "lists")} style={secondaryButton}>Review</button>
+                        <button onClick={() => loadImportedLead(nextBestLead, true)} style={primaryButton}>Build Packet</button>
                   </div>
                 </div>
               </div>
             )}
 
-            <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 0.95fr) minmax(320px, 1.05fr)", gap: 12 }} className="va-form-grid">
-              <div>
-                <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 160px", gap: 8, marginBottom: 8 }} className="two-col">
-                  <div>
-                    <label style={label}>Search imported list</label>
-                    <input value={leadSearch} onChange={e => setLeadSearch(e.target.value)} placeholder="Search owner, phone, parcel, address, county, city, or campaign" />
-                  </div>
-                  <div>
-                    <label style={label}>Filter</label>
-                    <select value={leadFilter} onChange={e => setLeadFilter(e.target.value as ImportStatusFilter)}>
-                      {IMPORT_STATUS_FILTERS.map(filter => <option key={filter.value} value={filter.value}>{filter.label}</option>)}
-                    </select>
-                  </div>
-                </div>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 12 }} className="two-col">
-                  <input value={minAcreage} onChange={e => setMinAcreage(e.target.value)} placeholder="Min acreage" />
-                  <input value={maxAcreage} onChange={e => setMaxAcreage(e.target.value)} placeholder="Max acreage" />
-                </div>
-                <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 760, overflow: "auto", paddingRight: 2 }}>
-                  {filteredImportedLeads.map(lead => (
-                    <button
-                      key={lead.id}
-                      onClick={() => setSelectedImportedLeadId(lead.id)}
-                      style={{
-                        ...subPanel,
-                        textAlign: "left",
-                        cursor: "pointer",
-                        background: selectedImportedLeadId === lead.id ? "rgba(176,137,84,0.14)" : "var(--bone)",
-                      }}
-                    >
-                      <div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginBottom: 8 }}>
-                        <strong style={{ color: "var(--obsidian)", fontSize: 14 }}>{lead.owner_name || "Owner unknown"}</strong>
-                        <span style={lead.status === "interested" ? hotPill : pill}>Score {lead.lead_score ?? 0}</span>
-                      </div>
-                      <p style={{ fontSize: 12, color: "var(--muted)", lineHeight: 1.45 }}>
-                        {lead.property_address || "No property address"}{lead.parcel_id ? ` · ${lead.parcel_id}` : ""}
-                      </p>
-                      <p style={{ fontSize: 12, color: "var(--muted)", lineHeight: 1.45, marginTop: 4 }}>
-                        {lead.phone || lead.phone_2 || "No phone"}{lead.acreage ? ` · ${lead.acreage} acres` : ""}{lead.county ? ` · ${lead.county}` : ""}
-                      </p>
-                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8 }}>
-                        <span style={lead.status === "interested" ? hotPill : pill}>{statusLabel(lead.status)}</span>
-                        {lead.duplicate_status && lead.duplicate_status !== "new" && <span style={pill}>{statusLabel(lead.duplicate_status)}</span>}
-                        {!!lead.outreach_count && <span style={pill}>{lead.outreach_count} touches</span>}
-                      </div>
-                    </button>
-                  ))}
-                  {filteredImportedLeads.length === 0 && (
-                    <p style={{ fontSize: 13, color: "var(--muted)" }}>No imported leads match this search yet.</p>
-                  )}
-                </div>
-              </div>
-
-              <aside style={subPanel}>
-                {!selectedImportedLead && <p style={{ fontSize: 13, color: "var(--muted)" }}>Select a lead to review details, log outreach, or convert it to a deal packet.</p>}
-                {selectedImportedLead && (
-                  <div>
-                    <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "baseline", marginBottom: 10 }}>
-                      <div>
-                        <p style={eyebrowSmall}>Lead detail</p>
-                        <h3 style={{ ...sectionTitle, fontSize: 22 }}>{selectedImportedLead.owner_name || "Owner unknown"}</h3>
-                      </div>
-                      <span style={selectedImportedLead.status === "interested" ? hotPill : pill}>{statusLabel(selectedImportedLead.status)}</span>
-                    </div>
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 12 }} className="two-col">
-                      <MiniStat label="Score" value={String(selectedImportedLead.lead_score ?? 0)} />
-                      <MiniStat label="Touches" value={String(selectedImportedLead.outreach_count ?? 0)} />
-                      <MiniStat label="Acreage" value={selectedImportedLead.acreage ? String(selectedImportedLead.acreage) : "N/A"} />
-                      <MiniStat label="Value" value={selectedImportedLead.market_value ? `$${selectedImportedLead.market_value.toLocaleString()}` : "N/A"} />
-                    </div>
-                    <div style={{ display: "grid", gap: 8, fontSize: 13, color: "var(--ink)", marginBottom: 12 }}>
-                      <p><strong>Parcel:</strong> {selectedImportedLead.parcel_id || "N/A"}</p>
-                      <p><strong>Address:</strong> {selectedImportedLead.property_address || "N/A"}</p>
-                      <p><strong>Mailing:</strong> {selectedImportedLead.mailing_address || "N/A"}</p>
-                      <p><strong>Phone:</strong> {[selectedImportedLead.phone, selectedImportedLead.phone_2].filter(Boolean).join(" / ") || "N/A"}</p>
-                      <p><strong>Email:</strong> {selectedImportedLead.email || "N/A"}</p>
-                      <p><strong>SMS:</strong> {statusLabel(selectedImportedLead.sms_opt_status || "unknown")}{selectedImportedLead.last_sms_at ? ` · Last ${selectedImportedLead.last_sms_direction || "SMS"} ${formatDate(selectedImportedLead.last_sms_at)}` : ""}</p>
-                      {selectedImportedLead.last_sms_body && <p><strong>Last SMS:</strong> {selectedImportedLead.last_sms_body}</p>}
-                      <p><strong>Zoning / use:</strong> {[selectedImportedLead.zoning, selectedImportedLead.land_use].filter(Boolean).join(" / ") || "N/A"}</p>
-                      <p><strong>Flags:</strong> Land locked {String(selectedImportedLead.raw_data?.["Land Locked"] ?? selectedImportedLead.raw_data?.["Tag:Land Locked"] ?? "N/A")} · Flood {String(selectedImportedLead.raw_data?.["Flood Zone Percent"] ?? "0")} · Wetlands {String(selectedImportedLead.raw_data?.["Wetlands Percent"] ?? "0")}</p>
-                    </div>
-                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 14 }}>
-                      {selectedImportedLead.property_url && <a href={selectedImportedLead.property_url} target="_blank" rel="noreferrer" style={secondaryButton}>Open Parcel</a>}
-                      {typeof selectedImportedLead.raw_data?.["Google Map"] === "string" && <a href={selectedImportedLead.raw_data["Google Map"]} target="_blank" rel="noreferrer" style={secondaryButton}>Map</a>}
-                      <button onClick={() => router.push(`/opportunity?lead=${selectedImportedLead.id}`)} style={secondaryButton}>Open File</button>
-                      <button onClick={() => loadImportedLead(selectedImportedLead, true)} style={primaryButton}>Use Lead</button>
-                      <button onClick={async () => { await updateImportedLandLeadStatus(selectedImportedLead.id, "passed", selectedImportedLead.deal_id); setImportedLeads(await fetchImportedLandLeads(500)); }} style={secondaryButton}>Pass</button>
-                    </div>
-                    {!!selectedImportedLead.score_reasons?.length && (
-                      <div style={{ marginBottom: 14 }}>
-                        <p style={miniLabel}>Score reasons</p>
-                        <p style={{ fontSize: 12, color: "var(--muted)", lineHeight: 1.5 }}>{selectedImportedLead.score_reasons.join(", ")}</p>
-                      </div>
-                    )}
-                    <div style={{ borderTop: "1px solid var(--fog)", paddingTop: 12 }}>
-                      <p style={eyebrowSmall}>Log outreach</p>
-                      <div style={{ display: "grid", gridTemplateColumns: "160px minmax(0, 1fr)", gap: 8 }} className="two-col">
-                        <select value={activityDraft.activityType} onChange={e => setActivityDraft({ ...activityDraft, activityType: e.target.value as ImportedLandLeadActivity["activity_type"] })}>
-                          {LEAD_ACTIVITY_TYPES.map(type => <option key={type.value} value={type.value}>{type.label}</option>)}
-                        </select>
-                        <input value={activityDraft.nextFollowUpDate} onChange={e => setActivityDraft({ ...activityDraft, nextFollowUpDate: e.target.value })} type="date" />
-                      </div>
-                      <textarea rows={3} value={activityDraft.summary} onChange={e => setActivityDraft({ ...activityDraft, summary: e.target.value })} placeholder="What happened? Include seller response, wrong number, voicemail, follow-up notes, or next action." style={{ marginTop: 8 }} />
-                      <button onClick={logLeadActivity} style={{ ...secondaryButton, marginTop: 8 }}>Save Activity</button>
-                    </div>
-                    <div style={{ borderTop: "1px solid var(--fog)", paddingTop: 12, marginTop: 12 }}>
-                      <p style={eyebrowSmall}>Sakari SMS</p>
-                      <div style={{ border: "1px solid var(--fog)", borderRadius: 8, padding: 10, background: "var(--surface)", marginBottom: 12 }}>
-                        <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 8 }}>
-                          <strong style={{ color: "var(--obsidian)", fontSize: 13 }}>Send text</strong>
-                          <span style={pill}>{selectedImportedLead.phone || selectedImportedLead.phone_2 || "No phone"}</span>
-                        </div>
-                        <textarea
-                          rows={3}
-                          value={smsDraft}
-                          onChange={e => setSmsDraft(e.target.value)}
-                          placeholder="Type the SMS to send through Sakari."
-                          disabled={!selectedImportedLead.phone && !selectedImportedLead.phone_2}
-                        />
-                        <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", marginTop: 8 }}>
-                          <span style={{ fontSize: 12, color: "var(--muted)" }}>{smsDraft.trim().length} chars</span>
-                          <button
-                            onClick={sendSmsToLead}
-                            disabled={smsSending || (!selectedImportedLead.phone && !selectedImportedLead.phone_2) || selectedImportedLead.sms_opt_status === "opted-out"}
-                            style={{ ...primaryButton, opacity: smsSending || selectedImportedLead.sms_opt_status === "opted-out" ? 0.6 : 1 }}
-                          >
-                            {smsSending ? "Sending..." : "Send SMS"}
-                          </button>
-                        </div>
-                      </div>
-                      <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 220, overflow: "auto", marginBottom: 12 }}>
-                        {communicationEvents.map(event => (
-                          <div key={event.id} style={{ border: "1px solid var(--fog)", borderRadius: 8, padding: 8, background: "var(--surface)" }}>
-                            <strong style={{ display: "block", color: "var(--obsidian)", fontSize: 12 }}>
-                              {event.direction === "inbound" ? "SMS Received" : event.direction === "outbound" ? "SMS Sent" : "SMS Status"} · {formatDate(event.provider_created_at || event.created_at)}
-                            </strong>
-                            <p style={{ color: "var(--muted)", fontSize: 12, marginTop: 4 }}>{event.body || event.status || event.provider_event_type}</p>
-                            <p style={{ ...miniLabel, marginTop: 6 }}>{event.status || event.provider_event_type}</p>
-                          </div>
-                        ))}
-                        {communicationEvents.length === 0 && <p style={{ fontSize: 12, color: "var(--muted)" }}>No Sakari messages matched to this lead yet.</p>}
-                      </div>
-                    </div>
-                    <div style={{ borderTop: "1px solid var(--fog)", paddingTop: 12, marginTop: 12 }}>
-                      <p style={eyebrowSmall}>Activity history</p>
-                      <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 220, overflow: "auto" }}>
-                        {leadActivities.map(activity => (
-                          <div key={activity.id} style={{ border: "1px solid var(--fog)", borderRadius: 8, padding: 8, background: "var(--surface)" }}>
-                            <strong style={{ display: "block", color: "var(--obsidian)", fontSize: 12 }}>{statusLabel(activity.activity_type)} · {formatDate(activity.created_at)}</strong>
-                            <p style={{ color: "var(--muted)", fontSize: 12, marginTop: 4 }}>{activity.summary}</p>
-                            {activity.next_follow_up_date && <p style={{ ...miniLabel, marginTop: 6 }}>Follow up {activity.next_follow_up_date}</p>}
-                          </div>
-                        ))}
-                        {leadActivities.length === 0 && <p style={{ fontSize: 12, color: "var(--muted)" }}>No activity logged for this lead yet.</p>}
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </aside>
-            </div>
           </section>
           )}
 
-          {activeTab === "follow-ups" && (
+          {activeTab === "outreach" && (
           <section style={panel}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12, flexWrap: "wrap", marginBottom: 12 }}>
               <div>
-                <p style={eyebrowSmall}>Next actions</p>
-                <h2 style={sectionTitle}>Follow-up queue</h2>
+                <p style={eyebrowSmall}>Outreach</p>
+                <h2 style={sectionTitle}>Seller replies and follow-ups</h2>
               </div>
-              <span style={followUpsDue.length ? hotPill : pill}>{followUpsDue.length} due now</span>
+              <span style={(followUpsDue.length || unmatchedSms.length || interestedLeads.length) ? hotPill : pill}>
+                {followUpsDue.length + unmatchedSms.length + interestedLeads.length} needs action
+              </span>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10, marginBottom: 14 }} className="number-grid">
+              <ShiftCard label="Seller replies" value={String(unmatchedSms.length)} tone={unmatchedSms.length ? "hot" : "calm"} />
+              <ShiftCard label="Due follow-ups" value={String(followUpsDue.length)} tone={followUpsDue.length ? "hot" : "calm"} />
+              <ShiftCard label="Interested sellers" value={String(interestedLeads.length)} tone={interestedLeads.length ? "hot" : "calm"} />
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 12 }} className="two-col">
+              {unmatchedSms.slice(0, 8).map(event => (
+                <button
+                  key={`outreach-sms-${event.id}`}
+                  onClick={() => createLeadDraftFromSms(event)}
+                  style={{ ...subPanel, textAlign: "left", cursor: "pointer", background: "rgba(176,137,84,0.12)", borderColor: "var(--brass)" }}
+                >
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginBottom: 8 }}>
+                    <strong style={{ color: "var(--obsidian)", fontSize: 14 }}>{event.contact_number || event.from_number || "Unknown number"}</strong>
+                    <span style={hotPill}>Seller reply</span>
+                  </div>
+                  <p style={{ fontSize: 13, color: "var(--ink)", whiteSpace: "pre-wrap", marginBottom: 8 }}>{event.body || event.status || "Inbound message"}</p>
+                  <span style={miniLabel}>Create packet or match to an existing lead</span>
+                </button>
+              ))}
+              {interestedLeads.slice(0, 8).map(lead => (
+                <button
+                  key={`outreach-interest-${lead.id}`}
+                  onClick={() => selectImportedLead(lead, "lists")}
+                  style={{ ...subPanel, textAlign: "left", cursor: "pointer", background: "rgba(176,137,84,0.12)", borderColor: "var(--brass)" }}
+                >
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginBottom: 8 }}>
+                    <strong style={{ color: "var(--obsidian)", fontSize: 14 }}>{lead.owner_name || "Owner unknown"}</strong>
+                    <span style={hotPill}>Interested</span>
+                  </div>
+                  <p style={{ fontSize: 12, color: "var(--muted)", marginBottom: 8 }}>{lead.phone || lead.phone_2 || "Phone pending"} · {lead.property_address || lead.parcel_id || "No property detail"}</p>
+                  <p style={{ fontSize: 13, color: "var(--ink)" }}>Score {lead.lead_score ?? 0}. Work the seller response, log outcome, or build a packet.</p>
+                </button>
+              ))}
               {(followUpsDue.length ? followUpsDue : deals.filter(deal => deal.next_follow_up_date).slice(0, 8)).map(deal => (
                 <button
                   key={deal.id}
-                  onClick={() => { setSelectedId(deal.id); setActiveTab("leads"); }}
+                  onClick={() => openDealBrief(deal)}
                   style={{
                     ...subPanel,
                     textAlign: "left",
@@ -2335,14 +2418,14 @@ export default function VaPage() {
                   <p style={{ fontSize: 13, color: "var(--ink)", whiteSpace: "pre-wrap" }}>{deal.notes || "No follow-up notes yet."}</p>
                 </button>
               ))}
-              {deals.filter(deal => deal.next_follow_up_date).length === 0 && (
-                <p style={{ fontSize: 13, color: "var(--muted)" }}>No follow-ups have been dated yet.</p>
+              {!unmatchedSms.length && !interestedLeads.length && deals.filter(deal => deal.next_follow_up_date).length === 0 && (
+                <p style={{ fontSize: 13, color: "var(--muted)" }}>No seller replies or dated follow-ups yet.</p>
               )}
             </div>
           </section>
           )}
 
-          {activeTab === "diligence" && (
+          {activeTab === "packet" && (
           <section style={panel}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12, flexWrap: "wrap", marginBottom: 12 }}>
               <div>
@@ -2454,15 +2537,100 @@ export default function VaPage() {
               </div>
               <div style={{ display: "grid", gap: 6 }}>
                 {timeEntries.filter(entry => entry.clock_in_at.slice(0, 10) === briefDraft.work_date).slice(0, 4).map(entry => (
-                  <div key={entry.id} style={{ display: "flex", justifyContent: "space-between", gap: 10, fontSize: 12, color: "var(--ink)" }}>
+                  <div key={entry.id} style={{ display: "flex", justifyContent: "space-between", gap: 10, fontSize: 12, color: "var(--ink)", alignItems: "center", flexWrap: "wrap" }}>
                     <span>{formatDate(entry.clock_in_at)}{entry.clock_out_at ? ` - ${formatDate(entry.clock_out_at)}` : " - active"}</span>
                     <span>{formatDuration(entry.duration_minutes ?? currentShiftMinutes(entry))} · {formatCurrency(Number(entry.cost_amount ?? 0))}</span>
+                    <span style={{ display: "flex", gap: 6 }}>
+                      <button onClick={() => startTimeChangeRequest(entry, "edit-shift")} style={secondaryButton}>Edit Time</button>
+                      <button onClick={() => startTimeChangeRequest(entry, "void-shift")} style={secondaryButton}>Void</button>
+                    </span>
                   </div>
                 ))}
                 {timeEntries.filter(entry => entry.clock_in_at.slice(0, 10) === briefDraft.work_date).length === 0 && (
                   <p style={{ color: "var(--muted)", fontSize: 12 }}>No clocked shifts for this date yet.</p>
                 )}
               </div>
+            </div>
+            <div style={{ ...subPanel, marginTop: 12 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
+                <div>
+                  <p style={eyebrowSmall}>Time correction</p>
+                  <strong style={{ color: "var(--obsidian)" }}>Request an edit</strong>
+                </div>
+                <span style={pill}>{timeChangeRequests.filter(request => request.status === "pending").length} pending</span>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "150px minmax(0, 1fr)", gap: 8, marginBottom: 8 }} className="two-col">
+                <div>
+                  <label style={label}>Request</label>
+                  <select
+                    value={timeRequestDraft.requestType}
+                    onChange={e => setTimeRequestDraft({ ...timeRequestDraft, requestType: e.target.value as VaTimeChangeRequestType })}
+                  >
+                    <option value="add-shift">Forgot to clock in/out</option>
+                    <option value="edit-shift">Edit a shift</option>
+                    <option value="void-shift">Delete / void a shift</option>
+                  </select>
+                </div>
+                <div>
+                  <label style={label}>Shift</label>
+                  <select
+                    value={timeRequestDraft.entryId}
+                    onChange={e => {
+                      const entry = timeEntries.find(row => row.id === e.target.value);
+                      setTimeRequestDraft({
+                        ...timeRequestDraft,
+                        entryId: e.target.value,
+                        clockIn: toDateTimeLocal(entry?.clock_in_at),
+                        clockOut: toDateTimeLocal(entry?.clock_out_at),
+                        notes: entry?.notes ?? timeRequestDraft.notes,
+                      });
+                    }}
+                    disabled={timeRequestDraft.requestType === "add-shift"}
+                  >
+                    <option value="">{timeRequestDraft.requestType === "add-shift" ? "New missing shift" : "Select shift"}</option>
+                    {timeEntries.slice(0, 20).map(entry => (
+                      <option key={entry.id} value={entry.id}>
+                        {formatDate(entry.clock_in_at)} · {entry.clock_out_at ? formatDuration(entry.duration_minutes ?? 0) : "active"}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              {timeRequestDraft.requestType !== "void-shift" && (
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 8 }} className="two-col">
+                  <div>
+                    <label style={label}>Clock in</label>
+                    <input type="datetime-local" value={timeRequestDraft.clockIn} onChange={e => setTimeRequestDraft({ ...timeRequestDraft, clockIn: e.target.value })} />
+                  </div>
+                  <div>
+                    <label style={label}>Clock out</label>
+                    <input type="datetime-local" value={timeRequestDraft.clockOut} onChange={e => setTimeRequestDraft({ ...timeRequestDraft, clockOut: e.target.value })} />
+                  </div>
+                </div>
+              )}
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }} className="two-col">
+                <div>
+                  <label style={label}>Notes</label>
+                  <input value={timeRequestDraft.notes} onChange={e => setTimeRequestDraft({ ...timeRequestDraft, notes: e.target.value })} placeholder="Optional shift note" />
+                </div>
+                <div>
+                  <label style={label}>Reason</label>
+                  <input value={timeRequestDraft.reason} onChange={e => setTimeRequestDraft({ ...timeRequestDraft, reason: e.target.value })} placeholder="Why this correction is needed" />
+                </div>
+              </div>
+              <button onClick={submitTimeChangeRequest} disabled={timeRequestSaving} style={{ ...secondaryButton, marginTop: 10, opacity: timeRequestSaving ? 0.6 : 1 }}>
+                {timeRequestSaving ? "Sending..." : "Send Time Change Request"}
+              </button>
+              {timeChangeRequests.length > 0 && (
+                <div style={{ display: "grid", gap: 6, marginTop: 10 }}>
+                  {timeChangeRequests.slice(0, 4).map(request => (
+                    <div key={request.id} style={{ display: "flex", justifyContent: "space-between", gap: 10, fontSize: 12, color: "var(--ink)" }}>
+                      <span>{statusLabel(request.request_type)} · {request.reason}</span>
+                      <span style={pill}>{statusLabel(request.status)}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 12 }} className="two-col">
               <div>
@@ -2482,8 +2650,15 @@ export default function VaPage() {
                 <textarea rows={4} value={briefDraft.tomorrow_plan ?? ""} onChange={e => setBriefDraft({ ...briefDraft, tomorrow_plan: e.target.value })} placeholder="What you will pick up next." />
               </div>
             </div>
+            {editingBriefId && (
+              <div style={{ ...subPanel, marginTop: 12 }}>
+                <label style={label}>Revision note</label>
+                <input value={briefRevisionNote} onChange={e => setBriefRevisionNote(e.target.value)} placeholder="What changed in this brief?" />
+                <button onClick={cancelBriefEdit} style={{ ...secondaryButton, marginTop: 10 }}>Cancel Edit</button>
+              </div>
+            )}
             <button onClick={submitDailyBrief} disabled={briefSaving} style={{ ...primaryButton, marginTop: 12, opacity: briefSaving ? 0.6 : 1 }}>
-              {briefSaving ? "Submitting..." : "Submit Daily Brief"}
+              {briefSaving ? "Saving..." : editingBriefId ? "Update Daily Brief" : "Submit Daily Brief"}
             </button>
 
             <div style={{ marginTop: 18 }}>
@@ -2494,11 +2669,19 @@ export default function VaPage() {
                   <div key={brief.id} style={subPanel}>
                     <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", marginBottom: 8 }}>
                       <strong style={{ color: "var(--obsidian)" }}>{formatDate(brief.work_date)}</strong>
-                      <span style={pill}>{brief.hours_worked ?? 0} hrs</span>
+                      <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+                        <span style={pill}>{brief.hours_worked ?? 0} hrs</span>
+                        <button onClick={() => startBriefEdit(brief)} style={secondaryButton}>Edit</button>
+                      </div>
                     </div>
                     <p style={{ fontSize: 12, color: "var(--muted)", marginBottom: 6 }}>
                       Leads {brief.leads_added ?? 0} added / {brief.leads_updated ?? 0} updated · Outreach {brief.outreach_sent ?? 0} · Deals submitted {brief.deals_submitted ?? 0}
                     </p>
+                    {brief.revised_at && (
+                      <p style={{ fontSize: 12, color: "var(--muted)", marginBottom: 6 }}>
+                        Revised {formatDate(brief.revised_at)}{brief.revision_note ? ` · ${brief.revision_note}` : ""}
+                      </p>
+                    )}
                     <p style={{ fontSize: 13, color: "var(--ink)", whiteSpace: "pre-wrap" }}>{brief.activities_completed}</p>
                   </div>
                 ))}
@@ -2523,8 +2706,16 @@ export default function VaPage() {
         textarea { resize: vertical; line-height: 1.45; }
         @media (max-width: 880px) {
           .va-root { padding-top: 28px !important; }
+          .va-tabs {
+            position: sticky;
+            top: 0;
+            z-index: 20;
+          }
           .va-workspace, .va-form-grid, .workdesk-grid, .two-col, .three-col, .number-grid {
             grid-template-columns: 1fr !important;
+          }
+          .compact-shift-grid button {
+            min-height: 52px !important;
           }
         }
       `}</style>
@@ -2542,6 +2733,215 @@ function NumberField({ label: text, value, onChange }: { label: string; value: n
         value={value ?? ""}
         onChange={e => onChange(toNumber(e.target.value))}
       />
+    </div>
+  );
+}
+
+function SellerCommandCenter({
+  lead,
+  communications,
+  activities,
+  smsDraft,
+  setSmsDraft,
+  smsSending,
+  onSendSms,
+  dispositionDraft,
+  setDispositionDraft,
+  onSaveDisposition,
+  onQuickDisposition,
+  activityDraft,
+  setActivityDraft,
+  onLogActivity,
+  onOpenFile,
+  onBuildPacket,
+  onPass,
+  compact = false,
+}: {
+  lead: ImportedLandLead;
+  communications: CommunicationEvent[];
+  activities: ImportedLandLeadActivity[];
+  smsDraft: string;
+  setSmsDraft: (value: string) => void;
+  smsSending: boolean;
+  onSendSms: () => void;
+  dispositionDraft: { disposition: LeadDisposition; note: string; nextFollowUpDate: string };
+  setDispositionDraft: (draft: { disposition: LeadDisposition; note: string; nextFollowUpDate: string }) => void;
+  onSaveDisposition: () => void;
+  onQuickDisposition: (disposition: LeadDisposition, note: string, followUpDays?: number) => void;
+  activityDraft: { activityType: ImportedLandLeadActivity["activity_type"]; summary: string; nextFollowUpDate: string };
+  setActivityDraft: (draft: { activityType: ImportedLandLeadActivity["activity_type"]; summary: string; nextFollowUpDate: string }) => void;
+  onLogActivity: () => void;
+  onOpenFile: () => void;
+  onBuildPacket: () => void;
+  onPass: () => void;
+  compact?: boolean;
+}) {
+  const action = sellerActionState(lead);
+  const conversation = buildConversationItems(communications, activities);
+  const smsDisabled = smsSending || (!lead.phone && !lead.phone_2) || lead.sms_opt_status === "opted-out";
+  const primaryAction = action.primary === "Build Packet" ? onBuildPacket : action.primary === "Set Follow-Up"
+    ? () => setDispositionDraft({ ...dispositionDraft, disposition: "follow-up", nextFollowUpDate: addDays(2) })
+    : undefined;
+
+  return (
+    <div style={{ display: "grid", gap: 12 }}>
+      <div style={{
+        border: action.tone === "hot" ? "1px solid var(--brass)" : "1px solid var(--fog)",
+        borderRadius: 8,
+        padding: 12,
+        background: action.tone === "hot" ? "rgba(176,137,84,0.12)" : "var(--surface)",
+        display: "flex",
+        justifyContent: "space-between",
+        gap: 12,
+        flexWrap: "wrap",
+        alignItems: "center",
+      }}>
+        <div>
+          <p style={eyebrowSmall}>Next action</p>
+          <h3 style={{ ...sectionTitle, fontSize: 22 }}>{action.label}</h3>
+          <p style={{ color: "var(--muted)", fontSize: 12, lineHeight: 1.45, marginTop: 4 }}>{action.detail}</p>
+        </div>
+        <button onClick={primaryAction || onSendSms} disabled={action.primary.includes("SMS") && smsDisabled} style={{ ...primaryButton, opacity: action.primary.includes("SMS") && smsDisabled ? 0.55 : 1 }}>
+          {action.primary}
+        </button>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: compact ? "1fr" : "minmax(0, 1fr) 300px", gap: 12 }} className="two-col">
+        <section style={subPanel}>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "baseline", flexWrap: "wrap", marginBottom: 10 }}>
+            <div>
+              <p style={eyebrowSmall}>Seller record</p>
+              <h3 style={{ ...sectionTitle, fontSize: 24 }}>{lead.owner_name || "Owner unknown"}</h3>
+            </div>
+            <span style={lead.status === "interested" ? hotPill : pill}>{statusLabel(lead.status)}</span>
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8, marginBottom: 12 }} className="number-grid">
+            <MiniStat label="Last touch" value={lead.last_sms_at ? formatDate(lead.last_sms_at) : lead.last_activity_at ? formatDate(lead.last_activity_at) : "None"} />
+            <MiniStat label="Touches" value={String(lead.outreach_count ?? 0)} />
+            <MiniStat label="Follow-up" value={lead.next_follow_up_date || "None"} />
+            <MiniStat label="SMS" value={statusLabel(lead.sms_opt_status || "unknown")} />
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 12 }} className="two-col">
+            <InfoStack title="Contact">
+              <p>Phone: {[lead.phone, lead.phone_2].filter(Boolean).join(" / ") || "Missing"}</p>
+              <p>Email: {lead.email || "Missing"}</p>
+              <p>Source: {lead.source_system || "Unknown"}{lead.campaign_source ? ` / ${lead.campaign_source}` : ""}</p>
+            </InfoStack>
+            <InfoStack title="Property">
+              <p>{lead.property_address || "No address"}</p>
+              <p>Parcel: {lead.parcel_id || "Missing"}</p>
+              <p>{lead.county || "County pending"} · {lead.acreage ? `${lead.acreage} acres` : "Acres pending"}</p>
+            </InfoStack>
+          </div>
+
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
+            {lead.property_url && <a href={lead.property_url} target="_blank" rel="noreferrer" style={secondaryButton}>Open Parcel</a>}
+            {typeof lead.raw_data?.["Google Map"] === "string" && <a href={lead.raw_data["Google Map"]} target="_blank" rel="noreferrer" style={secondaryButton}>Map</a>}
+            <button onClick={onOpenFile} style={secondaryButton}>Open File</button>
+            <button onClick={onBuildPacket} style={primaryButton}>Build Packet</button>
+            <button onClick={onPass} style={secondaryButton}>Pass</button>
+          </div>
+
+          <div style={{ borderTop: "1px solid var(--fog)", paddingTop: 12 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "baseline", marginBottom: 10 }}>
+              <div>
+                <p style={eyebrowSmall}>Conversation</p>
+                <h3 style={{ ...sectionTitle, fontSize: 20 }}>Seller timeline</h3>
+              </div>
+              <span style={pill}>{conversation.length} item{conversation.length === 1 ? "" : "s"}</span>
+            </div>
+            <div style={{ display: "grid", gap: 8, maxHeight: compact ? 340 : 520, overflow: "auto" }}>
+              {conversation.map(item => (
+                <ConversationBubble key={item.id} item={item} />
+              ))}
+              {conversation.length === 0 && <p style={{ color: "var(--muted)", fontSize: 13 }}>No communication yet. Start with a text, call, or outcome note.</p>}
+            </div>
+          </div>
+        </section>
+
+        <aside style={subPanel}>
+          <p style={eyebrowSmall}>Action panel</p>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 12 }}>
+            <button onClick={() => onQuickDisposition("no-answer", "No answer")} style={secondaryButton}>No Answer</button>
+            <button onClick={() => onQuickDisposition("left-voicemail", "Left voicemail")} style={secondaryButton}>Voicemail</button>
+            <button onClick={() => onQuickDisposition("wrong-number", "Wrong number")} style={secondaryButton}>Wrong #</button>
+            <button onClick={() => onQuickDisposition("interested", "Seller is interested")} style={secondaryButton}>Interested</button>
+            <button onClick={() => onQuickDisposition("follow-up", "Follow-up set", 2)} style={secondaryButton}>Follow Up</button>
+          </div>
+
+          <div style={{ border: "1px solid var(--fog)", borderRadius: 8, padding: 10, background: "var(--surface)", marginBottom: 12 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 8 }}>
+              <strong style={{ color: "var(--obsidian)", fontSize: 13 }}>Reply by SMS</strong>
+              <span style={pill}>{lead.phone || lead.phone_2 || "No phone"}</span>
+            </div>
+            {lead.sms_opt_status === "opted-out" && (
+              <p style={{ color: "var(--obsidian)", background: "rgba(176,137,84,0.14)", border: "1px solid var(--brass)", borderRadius: 8, padding: 8, fontSize: 12, lineHeight: 1.4, marginBottom: 8 }}>
+                Do not text this seller. Opt-out is recorded.
+              </p>
+            )}
+            <textarea
+              id="va-workdesk-sms"
+              rows={4}
+              value={smsDraft}
+              onChange={e => setSmsDraft(e.target.value)}
+              placeholder="Type SMS to send through Sakari."
+              disabled={!lead.phone && !lead.phone_2}
+            />
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", marginTop: 8 }}>
+              <span style={{ fontSize: 12, color: "var(--muted)" }}>{smsDraft.trim().length} chars</span>
+              <button onClick={onSendSms} disabled={smsDisabled} style={{ ...primaryButton, opacity: smsDisabled ? 0.55 : 1 }}>
+                {smsSending ? "Sending..." : "Send SMS"}
+              </button>
+            </div>
+          </div>
+
+          <div style={{ borderTop: "1px solid var(--fog)", paddingTop: 12 }}>
+            <p style={eyebrowSmall}>Log outcome</p>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 8 }}>
+              <select value={dispositionDraft.disposition} onChange={e => setDispositionDraft({ ...dispositionDraft, disposition: e.target.value as LeadDisposition })}>
+                {LEAD_DISPOSITIONS.map(item => <option key={item.value} value={item.value}>{item.label}</option>)}
+              </select>
+              <input value={dispositionDraft.note} onChange={e => setDispositionDraft({ ...dispositionDraft, note: e.target.value })} placeholder="Short result note" />
+              <input value={dispositionDraft.nextFollowUpDate} onChange={e => setDispositionDraft({ ...dispositionDraft, nextFollowUpDate: e.target.value })} type="date" />
+              <button onClick={onSaveDisposition} style={primaryButton}>Save Outcome</button>
+            </div>
+          </div>
+
+          <div style={{ borderTop: "1px solid var(--fog)", paddingTop: 12, marginTop: 12 }}>
+            <p style={eyebrowSmall}>Manual note</p>
+            <select value={activityDraft.activityType} onChange={e => setActivityDraft({ ...activityDraft, activityType: e.target.value as ImportedLandLeadActivity["activity_type"] })}>
+              {LEAD_ACTIVITY_TYPES.map(type => <option key={type.value} value={type.value}>{type.label}</option>)}
+            </select>
+            <input style={{ marginTop: 8 }} value={activityDraft.nextFollowUpDate} onChange={e => setActivityDraft({ ...activityDraft, nextFollowUpDate: e.target.value })} type="date" />
+            <textarea id="va-workdesk-note" rows={3} value={activityDraft.summary} onChange={e => setActivityDraft({ ...activityDraft, summary: e.target.value })} placeholder="Call notes, email notes, seller response, or research context." style={{ marginTop: 8 }} />
+            <button onClick={onLogActivity} style={{ ...secondaryButton, marginTop: 8 }}>Save Note</button>
+          </div>
+        </aside>
+      </div>
+    </div>
+  );
+}
+
+function ConversationBubble({ item }: { item: ConversationItem }) {
+  const isInbound = item.kind === "sms-in";
+  const isOutbound = item.kind === "sms-out";
+  return (
+    <div style={{
+      border: isInbound ? "1px solid var(--brass)" : "1px solid var(--fog)",
+      borderRadius: 8,
+      padding: 10,
+      background: isInbound ? "rgba(176,137,84,0.10)" : isOutbound ? "var(--surface)" : "rgba(255,255,255,0.58)",
+      marginLeft: isOutbound ? 26 : 0,
+      marginRight: isInbound ? 26 : 0,
+    }}>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap", marginBottom: 5 }}>
+        <strong style={{ color: "var(--obsidian)", fontSize: 12 }}>{item.title}</strong>
+        <span style={miniLabel}>{formatDate(item.date)}</span>
+      </div>
+      <p style={{ color: "var(--ink)", fontSize: 13, lineHeight: 1.45, whiteSpace: "pre-wrap" }}>{item.body}</p>
+      {item.meta && <p style={{ color: "var(--muted)", fontSize: 11, marginTop: 6 }}>{item.meta}</p>}
     </div>
   );
 }
@@ -2606,28 +3006,29 @@ function FlagRow({ lead }: { lead: Partial<ImportedLandLead> }) {
   );
 }
 
-function WorkQueueCard({
-  eyebrow: overline,
-  title,
-  detail,
-  actionLabel,
-  onAction,
-  tone = "calm",
-}: {
-  eyebrow: string;
-  title: string;
-  detail: string;
-  actionLabel: string;
-  onAction: () => void;
-  tone?: "calm" | "hot";
-}) {
+function QueueButton({ label: text, detail, count, hot = false, onClick }: { label: string; detail: string; count: number; hot?: boolean; onClick: () => void }) {
   return (
-    <div style={{ border: tone === "hot" ? "1px solid var(--brass)" : "1px solid var(--fog)", borderRadius: 8, padding: 10, background: tone === "hot" ? "rgba(176,137,84,0.12)" : "var(--surface)" }}>
-      <p style={miniLabel}>{overline}</p>
-      <strong style={{ display: "block", color: "var(--obsidian)", fontSize: 13, lineHeight: 1.25 }}>{title}</strong>
-      <p style={{ color: "var(--muted)", fontSize: 12, lineHeight: 1.4, margin: "5px 0 8px" }}>{detail}</p>
-      <button onClick={onAction} style={{ ...secondaryButton, minHeight: 34, padding: "7px 9px" }}>{actionLabel}</button>
-    </div>
+    <button
+      type="button"
+      onClick={onClick}
+      style={{
+        display: "grid",
+        gridTemplateColumns: "minmax(0, 1fr) auto",
+        gap: 10,
+        alignItems: "center",
+        textAlign: "left",
+        border: hot ? "1px solid var(--brass)" : "1px solid var(--fog)",
+        borderRadius: 8,
+        padding: "10px 12px",
+        background: hot ? "rgba(176,137,84,0.14)" : "var(--surface)",
+      }}
+    >
+      <span>
+        <strong style={{ display: "block", color: "var(--obsidian)", fontSize: 13 }}>{text}</strong>
+        <span style={{ display: "block", color: "var(--muted)", fontSize: 11, marginTop: 2 }}>{detail}</span>
+      </span>
+      <span style={{ ...pill, color: hot ? "var(--obsidian)" : "var(--muted)", background: hot ? "rgba(176,137,84,0.18)" : "rgba(255,255,255,0.5)" }}>{count}</span>
+    </button>
   );
 }
 
@@ -2640,16 +3041,6 @@ function InfoStack({ title, children }: { title: string; children: React.ReactNo
   );
 }
 
-function TimelineCard({ title, date, body }: { title: string; date: string; body: string }) {
-  return (
-    <div style={{ border: "1px solid var(--fog)", borderRadius: 8, padding: 9, background: "var(--surface)" }}>
-      <strong style={{ color: "var(--obsidian)", fontSize: 12 }}>{title}</strong>
-      <p style={{ color: "var(--muted)", fontSize: 11, marginTop: 3 }}>{date}</p>
-      <p style={{ color: "var(--ink)", fontSize: 12, lineHeight: 1.45, marginTop: 5 }}>{body}</p>
-    </div>
-  );
-}
-
 const panel: React.CSSProperties = {
   background: "rgba(255,255,255,0.78)",
   border: "1px solid var(--fog)",
@@ -2658,12 +3049,12 @@ const panel: React.CSSProperties = {
   boxShadow: "0 16px 44px rgba(20,17,13,0.06)",
 };
 
-const darkPanel: React.CSSProperties = {
-  background: "linear-gradient(180deg, #1b1712 0%, #2c241a 100%)",
-  border: "1px solid rgba(27,23,18,0.8)",
+const compactShiftPanel: React.CSSProperties = {
+  background: "rgba(255,255,255,0.78)",
+  border: "1px solid var(--fog)",
   borderRadius: 8,
-  padding: 16,
-  boxShadow: "0 16px 44px rgba(20,17,13,0.12)",
+  padding: 12,
+  boxShadow: "0 10px 30px rgba(20,17,13,0.05)",
 };
 
 const subPanel: React.CSSProperties = {
@@ -2820,6 +3211,41 @@ const td: React.CSSProperties = {
   padding: "9px 8px 9px 0",
   color: "var(--ink)",
   verticalAlign: "top",
+};
+
+const tableHead: React.CSSProperties = {
+  padding: "10px 8px",
+  borderBottom: "1px solid var(--fog)",
+  color: "var(--muted)",
+  fontSize: 10,
+  fontWeight: 800,
+  letterSpacing: "0.12em",
+  textTransform: "uppercase",
+  textAlign: "left",
+  background: "rgba(245,239,224,0.82)",
+  whiteSpace: "nowrap",
+};
+
+const tableCell: React.CSSProperties = {
+  padding: "11px 8px",
+  borderBottom: "1px solid var(--fog)",
+  color: "var(--ink)",
+  fontSize: 12,
+  lineHeight: 1.35,
+  verticalAlign: "middle",
+};
+
+const iconButton: React.CSSProperties = {
+  border: "1px solid var(--fog)",
+  background: "rgba(255,255,255,0.55)",
+  color: "var(--obsidian)",
+  borderRadius: 6,
+  minHeight: 30,
+  padding: "5px 7px",
+  fontSize: 10,
+  fontWeight: 800,
+  letterSpacing: "0.08em",
+  textTransform: "uppercase",
 };
 
 const flagChip: React.CSSProperties = {
