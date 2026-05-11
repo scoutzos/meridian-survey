@@ -146,6 +146,7 @@ export default function OperationsPage() {
   const [distributionDraft, setDistributionDraft] = useState({ distribution_date: "", total_amount: "", reason: "", project_id: "" });
   const [scenarioDraft, setScenarioDraft] = useState({ name: "", strategy: "flip", purchase_price: "", rehab_or_site_cost: "", closing_costs: "", holding_costs: "", financing_costs: "", exit_value: "", expected_rent: "", notes: "", project_id: "" });
   const [activeTab, setActiveTab] = useState<OperationsTab>("overview");
+  const [message, setMessage] = useState("");
 
   useEffect(() => {
     const u = localStorage.getItem("meridian_user");
@@ -219,8 +220,9 @@ export default function OperationsPage() {
     setApprovingPeriod(periodKey);
     const { error } = await approveVaPayPeriod(period, user);
     setApprovingPeriod(null);
-    if (error) { alert(error); return; }
+    if (error) { setMessage(error); return; }
     setVaTimeEntries(await fetchVaTimeEntries(120));
+    setMessage("VA pay period approved.");
   };
 
   const reviewTimeRequest = async (request: VaTimeChangeRequest, decision: "approved" | "rejected") => {
@@ -228,11 +230,12 @@ export default function OperationsPage() {
     setReviewingTimeRequest(request.id);
     const { error } = await reviewVaTimeChangeRequest(request, decision, user, timeRequestNotes[request.id] ?? "");
     setReviewingTimeRequest(null);
-    if (error) { alert(error); return; }
+    if (error) { setMessage(error); return; }
     const [timeRows, requestRows] = await Promise.all([fetchVaTimeEntries(120), fetchVaTimeChangeRequests(100)]);
     setVaTimeEntries(timeRows);
     setVaTimeChangeRequests(requestRows);
     setTimeRequestNotes(prev => ({ ...prev, [request.id]: "" }));
+    setMessage(`Time change ${decision}.`);
   };
 
   const startShiftEdit = (entry: VaTimeEntry) => {
@@ -249,7 +252,7 @@ export default function OperationsPage() {
     if (!user || !editingShiftId) return;
     const clockInAt = fromVaDateTimeInput(shiftEditDraft.clockIn);
     const clockOutAt = fromVaDateTimeInput(shiftEditDraft.clockOut);
-    if (!clockInAt || !clockOutAt) { alert("Clock in and clock out are required."); return; }
+    if (!clockInAt || !clockOutAt) { setMessage("Clock in and clock out are required."); return; }
     setSavingShiftEdit(true);
     const { error } = await updateVaTimeEntry({
       entryId: editingShiftId,
@@ -259,18 +262,19 @@ export default function OperationsPage() {
       actor: user,
     });
     setSavingShiftEdit(false);
-    if (error) { alert(error); return; }
+    if (error) { setMessage(error); return; }
     setEditingShiftId(null);
     setVaTimeEntries(await fetchVaTimeEntries(120));
-    alert("Shift updated.");
+    setMessage("Shift updated.");
   };
 
   const voidShift = async (entry: VaTimeEntry) => {
     if (!user) return;
     if (!confirm("Void this VA shift? This removes it from submitted pay-period totals.")) return;
     const { error } = await voidVaTimeEntry(entry.id);
-    if (error) { alert(error); return; }
+    if (error) { setMessage(error); return; }
     setVaTimeEntries(await fetchVaTimeEntries(120));
+    setMessage("VA shift voided.");
   };
 
   if (!user) return null;
@@ -285,9 +289,10 @@ export default function OperationsPage() {
       notes: eventDraft.notes || null,
       project_id: eventDraft.project_id || null,
     }, user);
-    if (error) { alert(error); return; }
+    if (error) { setMessage(error); return; }
     if (data) setEvents(prev => [...prev, data].sort((a, b) => a.event_date.localeCompare(b.event_date)));
     setEventDraft({ title: "", event_date: "", event_type: "deadline", assigned_to: "", notes: "", project_id: "" });
+    setMessage("Calendar event added.");
   };
 
   const addReimbursement = async () => {
@@ -303,15 +308,17 @@ export default function OperationsPage() {
       notes: reimbursementDraft.notes,
       project_id: reimbursementDraft.project_id || null,
     }, user);
-    if (error) { alert(error); return; }
+    if (error) { setMessage(error); return; }
     if (data) setReimbursements(prev => [data, ...prev]);
     setReimbursementDraft({ member_name: user, amount: "", vendor: "", category: "Project", expense_date: "", receipt_url: "", notes: "", project_id: "" });
+    setMessage("Reimbursement submitted.");
   };
 
   const setReimbursementStatus = async (item: Reimbursement, status: ReimbursementStatus) => {
     const { error } = await updateReimbursementStatus(item.id, status, user);
-    if (error) { alert(error); return; }
+    if (error) { setMessage(error); return; }
     setReimbursements(prev => prev.map(r => r.id === item.id ? { ...r, status, reviewed_by: user, reviewed_at: new Date().toISOString() } : r));
+    setMessage(`Reimbursement marked ${labelize(status)}.`);
   };
 
   const addDistribution = async () => {
@@ -323,9 +330,10 @@ export default function OperationsPage() {
       reason: distributionDraft.reason,
       project_id: distributionDraft.project_id || null,
     }, user);
-    if (error) { alert(error); return; }
+    if (error) { setMessage(error); return; }
     if (data) setDistributions(prev => [data, ...prev]);
     setDistributionDraft({ distribution_date: "", total_amount: "", reason: "", project_id: "" });
+    setMessage("Distribution proposal created.");
   };
 
   const addScenario = async () => {
@@ -343,9 +351,10 @@ export default function OperationsPage() {
       expected_rent: toNumber(scenarioDraft.expected_rent),
       notes: scenarioDraft.notes,
     }, user);
-    if (error) { alert(error); return; }
+    if (error) { setMessage(error); return; }
     if (data) setScenarios(prev => [data, ...prev]);
     setScenarioDraft({ name: "", strategy: "flip", purchase_price: "", rehab_or_site_cost: "", closing_costs: "", holding_costs: "", financing_costs: "", exit_value: "", expected_rent: "", notes: "", project_id: "" });
+    setMessage("Scenario saved.");
   };
 
   const sendEscalationResponse = async (task: ActionItem) => {
@@ -353,11 +362,11 @@ export default function OperationsPage() {
     const note = (escalationResponses[task.id] || "").trim();
     if (!note) return;
     const { error } = await addActionItemComment(task.id, user, note);
-    if (error) { alert(error); return; }
+    if (error) { setMessage(error); return; }
     const reopenResult = task.status === "blocked"
       ? await updateActionItemStatus(task.id, "open", user, "Member responded to blocker.")
       : { error: null };
-    if (reopenResult.error) { alert(reopenResult.error); return; }
+    if (reopenResult.error) { setMessage(reopenResult.error); return; }
     const now = new Date().toISOString();
     setActionItemEvents(prev => [
       ...prev,
@@ -401,6 +410,7 @@ export default function OperationsPage() {
       notification_type: "va-task-member-response",
       dedupe: true,
     }, user);
+    setMessage("Response sent and VA task reopened.");
   };
 
   const pendingReimbursements = reimbursements.filter(r => r.status === "submitted" || r.status === "approved");
@@ -419,7 +429,7 @@ export default function OperationsPage() {
 
   const reviewBrief = async (brief: VaDailyBrief) => {
     const { data, error } = await upsertVaDailyBriefReview(brief.id, user, briefReviewNotes[brief.id] ?? "");
-    if (error) { alert(error); return; }
+    if (error) { setMessage(error); return; }
     if (data) {
       setVaBriefReviews(prev => [data, ...prev.filter(review => !(review.brief_id === brief.id && review.member_name === user))]);
       setVaBriefs(prev => prev.map(row => row.id === brief.id ? {
@@ -430,6 +440,7 @@ export default function OperationsPage() {
         review_note: data.note,
       } : row));
       setBriefReviewNotes(prev => ({ ...prev, [brief.id]: "" }));
+      setMessage("VA daily brief reviewed.");
     }
   };
 
@@ -444,6 +455,26 @@ export default function OperationsPage() {
           Review VA accountability, imported lead progress, reimbursements, operating dates, and scenario work from one member workspace.
         </p>
       </header>
+
+      {message && (
+        <div style={{
+          border: "1px solid rgba(176,137,84,0.36)",
+          background: "rgba(176,137,84,0.10)",
+          color: "var(--obsidian)",
+          borderRadius: 10,
+          padding: "11px 13px",
+          marginBottom: 16,
+          display: "flex",
+          justifyContent: "space-between",
+          gap: 12,
+          alignItems: "flex-start",
+          fontSize: 13,
+          lineHeight: 1.45,
+        }}>
+          <span>{message}</span>
+          <button onClick={() => setMessage("")} style={{ background: "transparent", border: "none", color: "var(--brass)", fontSize: 11, fontWeight: 800, letterSpacing: "0.12em", textTransform: "uppercase", cursor: "pointer" }}>Clear</button>
+        </div>
+      )}
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 10, marginBottom: 18 }} className="stat-grid">
         <Stat label="Calendar items" value={String(events.length)} />
