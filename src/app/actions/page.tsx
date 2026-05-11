@@ -16,6 +16,10 @@ import {
   type PendingExpenseProposalVote,
 } from "@/lib/expense-proposal-votes";
 import {
+  fetchPendingDealVotes,
+  type PendingDealVote,
+} from "@/lib/deal-votes";
+import {
   ALL_MEMBERS_LABEL,
   createActionItem,
   deleteActionItem,
@@ -61,6 +65,7 @@ export default function ActionsPage() {
   const [profiles, setProfiles] = useState<MemberProfile[]>([]);
   const [candidateVotes, setCandidateVotes] = useState<MembershipCandidate[]>([]);
   const [proposalVotes, setProposalVotes] = useState<PendingExpenseProposalVote[]>([]);
+  const [dealVotes, setDealVotes] = useState<PendingDealVote[]>([]);
   const [capitalCalls, setCapitalCalls] = useState<CapitalCall[]>([]);
   const [surveyCounts, setSurveyCounts] = useState<Record<string, number>>({});
   const [filter, setFilter] = useState<TaskFilter>("needs-me");
@@ -78,15 +83,17 @@ export default function ActionsPage() {
     const currentUser = localStorage.getItem("meridian_user");
     if (!currentUser) return;
     setLoading(true);
-    const [data, pendingCandidates, pendingProposals, trackerData] = await Promise.all([
+    const [data, pendingCandidates, pendingProposals, pendingDeals, trackerData] = await Promise.all([
       fetchActionItems(),
       fetchPendingMembershipCandidateVotes(currentUser),
       fetchPendingExpenseProposalVotes(currentUser),
+      fetchPendingDealVotes(currentUser),
       fetchAll(),
     ]);
     setItems(data);
     setCandidateVotes(pendingCandidates);
     setProposalVotes(pendingProposals);
+    setDealVotes(pendingDeals);
     setCapitalCalls(trackerData?.capitalCalls ?? []);
 
     const surveys = getAllSurveys();
@@ -170,6 +177,15 @@ export default function ActionsPage() {
       title: `Review application: ${candidate.full_name}`,
       detail: "Member application vote needed.",
       href: `/members/candidates?candidate=${candidate.id}`,
+      status: "Open" as const,
+      due: null,
+    })),
+    ...dealVotes.map(deal => ({
+      id: `deal-${deal.id}`,
+      kind: "Vote" as const,
+      title: `Review deal: ${deal.title}`,
+      detail: `${deal.recommendation ?? "Needs Review"} · ${deal.urgency === "hot" ? "Hot deal" : "Review requested"}`,
+      href: `/deals?deal=${deal.id}`,
       status: "Open" as const,
       due: null,
     })),

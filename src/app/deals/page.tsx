@@ -602,7 +602,7 @@ export default function DealsPage() {
   const blockedDiligence = checklist.filter(item => item.status === "blocked").length;
   const agreementReady = agreement?.status === "approved" || agreement?.status === "signed";
   const sellerTouchCount = communicationEvents.length + activity.filter(item =>
-    ["created", "updated", "submitted-review", "status-change"].includes(item.activity_type) === false
+    ["created", "updated", "submitted-review", "status-change", "note"].includes(item.activity_type) === false
   ).length;
   const vaHandoffVisible = !!selected && (
     !!selected.submitted_by
@@ -724,7 +724,7 @@ export default function DealsPage() {
                 </div>
                 <div>
                   <label style={label}>Seller phone</label>
-                  <input type="text" value={draft.seller_phone ?? ""} onChange={e => setDraft({ ...draft, seller_phone: e.target.value })} />
+                  <input type="text" autoComplete="off" inputMode="tel" value={draft.seller_phone ?? ""} onChange={e => setDraft({ ...draft, seller_phone: e.target.value })} />
                 </div>
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10 }} className="number-grid">

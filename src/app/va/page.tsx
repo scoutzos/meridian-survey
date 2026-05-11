@@ -58,7 +58,11 @@ import {
   fetchVaTimeChangeRequests,
   fetchOpenVaTimeEntry,
   fetchVaTimeEntries,
+  formatVaDateTime,
   formatDuration,
+  fromVaDateTimeInput,
+  toVaDateTimeInput,
+  vaDateKey,
   type VaTimeEntry,
   type VaTimeChangeRequest,
   type VaTimeChangeRequestType,
@@ -354,20 +358,6 @@ function buildConversationItems(communications: CommunicationEvent[], activities
   ].sort((a, b) => b.date.localeCompare(a.date));
 }
 
-function toDateTimeLocal(iso: string | null | undefined): string {
-  if (!iso) return "";
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return "";
-  const offsetMs = date.getTimezoneOffset() * 60000;
-  return new Date(date.getTime() - offsetMs).toISOString().slice(0, 16);
-}
-
-function fromDateTimeLocal(value: string): string | null {
-  if (!value) return null;
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? null : date.toISOString();
-}
-
 function isSameDay(iso: string | null | undefined, date: string): boolean {
   return !!iso && iso.slice(0, 10) === date;
 }
@@ -634,7 +624,7 @@ export default function VaPage() {
   const liveChecklist = useMemo(() => generateDueDiligenceChecklist(liveInput), [liveInput]);
   const today = useMemo(() => new Date().toISOString().slice(0, 10), []);
   const todaysSubmittedMinutes = useMemo(() => timeEntries
-    .filter(entry => entry.clock_in_at.slice(0, 10) === briefDraft.work_date && entry.duration_minutes)
+    .filter(entry => vaDateKey(entry.clock_in_at) === briefDraft.work_date && entry.duration_minutes)
     .reduce((sum, entry) => sum + (entry.duration_minutes ?? 0), 0),
     [briefDraft.work_date, timeEntries],
   );
@@ -1225,7 +1215,7 @@ export default function VaPage() {
     if (data) {
       setBriefDraft(prev => ({
         ...prev,
-        work_date: data.clock_in_at.slice(0, 10),
+        work_date: vaDateKey(data.clock_in_at),
         hours_worked: Number(((todaysSubmittedMinutes + (data.duration_minutes ?? 0)) / 60).toFixed(2)),
       }));
     }
@@ -1237,8 +1227,8 @@ export default function VaPage() {
     setTimeRequestDraft({
       entryId: entry?.id ?? "",
       requestType,
-      clockIn: toDateTimeLocal(entry?.clock_in_at),
-      clockOut: toDateTimeLocal(entry?.clock_out_at),
+      clockIn: toVaDateTimeInput(entry?.clock_in_at),
+      clockOut: toVaDateTimeInput(entry?.clock_out_at),
       notes: entry?.notes ?? "",
       reason: "",
     });
@@ -1255,10 +1245,10 @@ export default function VaPage() {
       requestType: timeRequestDraft.requestType,
       requestedClockInAt: timeRequestDraft.requestType === "void-shift"
         ? selectedEntry?.clock_in_at ?? null
-        : fromDateTimeLocal(timeRequestDraft.clockIn),
+        : fromVaDateTimeInput(timeRequestDraft.clockIn),
       requestedClockOutAt: timeRequestDraft.requestType === "void-shift"
         ? selectedEntry?.clock_out_at ?? null
-        : fromDateTimeLocal(timeRequestDraft.clockOut),
+        : fromVaDateTimeInput(timeRequestDraft.clockOut),
       requestedNotes: timeRequestDraft.notes,
       reason: timeRequestDraft.reason,
     });
@@ -2536,9 +2526,9 @@ export default function VaPage() {
                 <span style={pill}>{(todaysSubmittedMinutes / 60).toFixed(2)} submitted hrs</span>
               </div>
               <div style={{ display: "grid", gap: 6 }}>
-                {timeEntries.filter(entry => entry.clock_in_at.slice(0, 10) === briefDraft.work_date).slice(0, 4).map(entry => (
+                {timeEntries.filter(entry => vaDateKey(entry.clock_in_at) === briefDraft.work_date).slice(0, 4).map(entry => (
                   <div key={entry.id} style={{ display: "flex", justifyContent: "space-between", gap: 10, fontSize: 12, color: "var(--ink)", alignItems: "center", flexWrap: "wrap" }}>
-                    <span>{formatDate(entry.clock_in_at)}{entry.clock_out_at ? ` - ${formatDate(entry.clock_out_at)}` : " - active"}</span>
+                    <span>{formatVaDateTime(entry.clock_in_at)}{entry.clock_out_at ? ` - ${formatVaDateTime(entry.clock_out_at)}` : " - active"}</span>
                     <span>{formatDuration(entry.duration_minutes ?? currentShiftMinutes(entry))} · {formatCurrency(Number(entry.cost_amount ?? 0))}</span>
                     <span style={{ display: "flex", gap: 6 }}>
                       <button onClick={() => startTimeChangeRequest(entry, "edit-shift")} style={secondaryButton}>Edit Time</button>
@@ -2546,7 +2536,7 @@ export default function VaPage() {
                     </span>
                   </div>
                 ))}
-                {timeEntries.filter(entry => entry.clock_in_at.slice(0, 10) === briefDraft.work_date).length === 0 && (
+                {timeEntries.filter(entry => vaDateKey(entry.clock_in_at) === briefDraft.work_date).length === 0 && (
                   <p style={{ color: "var(--muted)", fontSize: 12 }}>No clocked shifts for this date yet.</p>
                 )}
               </div>
@@ -2580,8 +2570,8 @@ export default function VaPage() {
                       setTimeRequestDraft({
                         ...timeRequestDraft,
                         entryId: e.target.value,
-                        clockIn: toDateTimeLocal(entry?.clock_in_at),
-                        clockOut: toDateTimeLocal(entry?.clock_out_at),
+                        clockIn: toVaDateTimeInput(entry?.clock_in_at),
+                        clockOut: toVaDateTimeInput(entry?.clock_out_at),
                         notes: entry?.notes ?? timeRequestDraft.notes,
                       });
                     }}
@@ -2590,7 +2580,7 @@ export default function VaPage() {
                     <option value="">{timeRequestDraft.requestType === "add-shift" ? "New missing shift" : "Select shift"}</option>
                     {timeEntries.slice(0, 20).map(entry => (
                       <option key={entry.id} value={entry.id}>
-                        {formatDate(entry.clock_in_at)} · {entry.clock_out_at ? formatDuration(entry.duration_minutes ?? 0) : "active"}
+                        {formatVaDateTime(entry.clock_in_at)} · {entry.clock_out_at ? formatDuration(entry.duration_minutes ?? 0) : "active"}
                       </option>
                     ))}
                   </select>

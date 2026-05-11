@@ -136,7 +136,7 @@ function CandidateReviewsContent() {
           <h1 style={heading}>New Member Reviews</h1>
           <p style={muted}>Review submitted applicants, see applications that have been started, and submit your vote.</p>
         </div>
-        <button onClick={() => router.push("/members")} style={buttonGhost}>Back to Portal</button>
+        <button onClick={() => router.push("/dashboard")} style={buttonGhost}>Back to Portal</button>
       </header>
 
       <section style={viewPanel}>
