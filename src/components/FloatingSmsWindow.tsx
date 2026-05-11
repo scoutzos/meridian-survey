@@ -21,6 +21,7 @@ type FloatingSmsWindowProps = {
   user: string;
   leads: ImportedLandLead[];
   events: CommunicationEvent[];
+  canSend?: boolean;
   onOpenLead?: (lead: ImportedLandLead) => void;
   onCreateDealBrief?: (lead: ImportedLandLead) => void;
   onMarkInterested?: (lead: ImportedLandLead) => void;
@@ -104,6 +105,7 @@ export default function FloatingSmsWindow({
   user,
   leads,
   events,
+  canSend = true,
   onOpenLead,
   onCreateDealBrief,
   onMarkInterested,
@@ -183,6 +185,7 @@ export default function FloatingSmsWindow({
   };
 
   const sendText = async (toNumber: string, message: string, leadId?: string | null) => {
+    if (!canSend) { setStatus("You can review SMS history, but sending is limited to VA/admin users."); return; }
     const body = message.trim();
     if (!last10(toNumber)) { setStatus("Add a phone number first."); return; }
     if (!body) { setStatus("Write a message before sending."); return; }
@@ -249,7 +252,7 @@ export default function FloatingSmsWindow({
       {!minimized && (
         <div style={body}>
           <aside style={threadList}>
-            <button type="button" onClick={() => setShowNew(value => !value)} style={newButton}>+ Start New Text</button>
+            {canSend && <button type="button" onClick={() => setShowNew(value => !value)} style={newButton}>+ Start New Text</button>}
             {threads.map(thread => (
               <button
                 type="button"
@@ -309,7 +312,7 @@ export default function FloatingSmsWindow({
                   <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
                     {selectedLead && <button type="button" onClick={() => onOpenLead?.(selectedLead)} style={smallAction}>Open Lead</button>}
                     {selectedLead && <button type="button" onClick={() => onCreateDealBrief?.(selectedLead)} style={smallAction}>Deal Brief</button>}
-                    {selectedLead && selectedLead.status !== "interested" && <button type="button" onClick={() => onMarkInterested?.(selectedLead)} style={smallAction}>Interested</button>}
+                    {canSend && selectedLead && selectedLead.status !== "interested" && <button type="button" onClick={() => onMarkInterested?.(selectedLead)} style={smallAction}>Interested</button>}
                   </div>
                 </div>
 
@@ -326,15 +329,21 @@ export default function FloatingSmsWindow({
                   {threadEvents.length === 0 && <p style={emptyText}>No messages in this thread yet.</p>}
                 </div>
 
-                <div style={composer}>
-                  <textarea value={reply} onChange={event => setReply(event.target.value)} rows={3} placeholder="Reply to this seller..." style={textarea} />
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
-                    <span style={counter}>{reply.trim().length}/1200</span>
-                    <button type="button" onClick={() => sendText(selectedPhone, reply, selectedLead?.id ?? null)} disabled={sending || !reply.trim()} style={{ ...sendButton, opacity: sending || !reply.trim() ? 0.55 : 1 }}>
-                      {sending ? "Sending..." : "Send Reply"}
-                    </button>
+                {canSend ? (
+                  <div style={composer}>
+                    <textarea value={reply} onChange={event => setReply(event.target.value)} rows={3} placeholder="Reply to this seller..." style={textarea} />
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                      <span style={counter}>{reply.trim().length}/1200</span>
+                      <button type="button" onClick={() => sendText(selectedPhone, reply, selectedLead?.id ?? null)} disabled={sending || !reply.trim()} style={{ ...sendButton, opacity: sending || !reply.trim() ? 0.55 : 1 }}>
+                        {sending ? "Sending..." : "Send Reply"}
+                      </button>
+                    </div>
                   </div>
-                </div>
+                ) : (
+                  <div style={composer}>
+                    <p style={emptyText}>SMS replies are view-only here. VA/admin users can send texts from this window.</p>
+                  </div>
+                )}
               </>
             ) : (
               <p style={emptyText}>Select a thread or start a new text.</p>

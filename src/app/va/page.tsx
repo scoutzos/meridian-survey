@@ -74,7 +74,6 @@ import {
   type VaTimeChangeRequestType,
 } from "@/lib/va-time";
 import ConversationPanel from "@/components/ConversationPanel";
-import FloatingSmsWindow from "@/components/FloatingSmsWindow";
 import { labelForStatus } from "@/lib/status-map";
 import { getLeadNextAction, type WorkflowTone } from "@/lib/workflow-actions";
 import OperatingHeader from "@/components/OperatingHeader";
@@ -564,7 +563,6 @@ export default function VaPage() {
   const [communicationEvents, setCommunicationEvents] = useState<CommunicationEvent[]>([]);
   const [unmatchedSms, setUnmatchedSms] = useState<CommunicationEvent[]>([]);
   const [recentInboundSms, setRecentInboundSms] = useState<CommunicationEvent[]>([]);
-  const [recentSmsEvents, setRecentSmsEvents] = useState<CommunicationEvent[]>([]);
   const [importPreview, setImportPreview] = useState<LandLeadImportPreview | null>(null);
   const [importStep, setImportStep] = useState<ImportStep>("upload");
   const [importStage, setImportStage] = useState<ImportStage>("idle");
@@ -620,7 +618,6 @@ export default function VaPage() {
     setImportedLeads(importRows);
     setLeadBatches(batchRows);
     setUnmatchedSms(smsRows);
-    setRecentSmsEvents(recentSmsRows);
     setRecentInboundSms(recentSmsRows.filter(event => event.direction === "inbound").slice(0, 40));
     setActiveMemberNames(memberNames);
     setSelectedId(prev => prev && activeRows.some(d => d.id === prev) ? prev : activeRows[0]?.id ?? null);
@@ -799,23 +796,6 @@ export default function VaPage() {
       setCommunicationEvents(comms);
     });
   }, [selectedImportedLeadId]);
-
-  useEffect(() => {
-    if (!user) return;
-    const refreshSms = async () => {
-      const [leadRows, unmatchedRows, recentRows] = await Promise.all([
-        fetchImportedLandLeads(500),
-        fetchCommunicationEvents({ unmatched: true, limit: 25 }),
-        fetchCommunicationEvents({ limit: 120 }),
-      ]);
-      setImportedLeads(leadRows);
-      setUnmatchedSms(unmatchedRows);
-      setRecentSmsEvents(recentRows);
-      setRecentInboundSms(recentRows.filter(event => event.direction === "inbound").slice(0, 40));
-    };
-    const timer = window.setInterval(() => { void refreshSms(); }, 30000);
-    return () => window.clearInterval(timer);
-  }, [user]);
 
   if (!user) return null;
 
@@ -1144,7 +1124,6 @@ export default function VaPage() {
     setLeadActivities(activityRows);
     setCommunicationEvents(commRows);
     setUnmatchedSms(unmatchedRows);
-    setRecentSmsEvents(recentRows);
     setRecentInboundSms(recentRows.filter(event => event.direction === "inbound").slice(0, 40));
   };
 
@@ -1185,33 +1164,6 @@ export default function VaPage() {
     } finally {
       setSmsSending(false);
     }
-  };
-
-  const refreshFloatingSms = async (leadId?: string | null) => {
-    const [leadRows, unmatchedRows, recentRows, leadComms] = await Promise.all([
-      fetchImportedLandLeads(500),
-      fetchCommunicationEvents({ unmatched: true, limit: 25 }),
-      fetchCommunicationEvents({ limit: 120 }),
-      leadId ? fetchCommunicationEvents({ leadId, limit: 30 }) : Promise.resolve(null),
-    ]);
-    setImportedLeads(leadRows);
-    setUnmatchedSms(unmatchedRows);
-    setRecentSmsEvents(recentRows);
-    setRecentInboundSms(recentRows.filter(event => event.direction === "inbound").slice(0, 40));
-    if (leadId === selectedImportedLeadId && leadComms) setCommunicationEvents(leadComms);
-  };
-
-  const openLeadFromSms = (lead: ImportedLandLead) => {
-    setSelectedImportedLeadId(lead.id);
-    setLeadFilter("new");
-    goToTab("outreach");
-    setMessage(`Opened SMS thread for ${leadLabel(lead)}.`);
-  };
-
-  const markSmsLeadInterested = async (lead: ImportedLandLead) => {
-    await updateImportedLandLeadStatus(lead.id, "interested", lead.deal_id);
-    await refreshFloatingSms(lead.id);
-    setMessage(`${leadLabel(lead)} marked interested from the SMS window.`);
   };
 
   const sendBulkSms = async () => {
@@ -1734,16 +1686,6 @@ export default function VaPage() {
           <p style={{ fontSize: 13, color: "var(--ink)" }}>{message}</p>
         </div>
       )}
-
-      <FloatingSmsWindow
-        user={user}
-        leads={importedLeads}
-        events={recentSmsEvents}
-        onOpenLead={openLeadFromSms}
-        onCreateDealBrief={lead => { void loadImportedLead(lead, lead.status !== "interested"); }}
-        onMarkInterested={lead => { void markSmsLeadInterested(lead); }}
-        onSent={refreshFloatingSms}
-      />
 
       <div className="va-tabs" style={{ ...panel, padding: 8, marginBottom: 16, display: "flex", gap: 8, flexWrap: "wrap" }}>
         {TABS.map(tab => (

@@ -1661,6 +1661,7 @@ Completed in this pass:
 - Fixed VA tab routing so links such as Daily Brief update the active VA workspace tab immediately, keep the URL in sync, and scroll the Daily Brief panel into view.
 - Updated VA "New Import" so it opens the CSV file chooser directly instead of just navigating or scrolling to an upload section.
 - Added a draggable floating SMS command window to the VA workspace with live thread grouping, inbound/reply history, outbound replies, start-new-text, and lead actions for opening a lead, creating a deal brief, or marking a seller interested.
+- Promoted the floating SMS command window into the global app shell so it is consistent across the VA portal, CRM, deal pages, and member portal, with sending permission-gated to VA users.
 
 Risk: Medium.
 
