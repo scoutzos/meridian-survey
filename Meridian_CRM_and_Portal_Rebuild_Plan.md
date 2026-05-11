@@ -1517,10 +1517,12 @@ Completed in this pass:
   - Login now uses Supabase Auth automatically for users with `auth_email` populated, while legacy table passwords continue to work for unmigrated users.
   - Supabase Auth password reset emails are used for migrated users; legacy default-password reset remains for unmigrated users.
   - Sign out now clears the Meridian local identity and signs out of Supabase Auth when a Supabase session exists.
+  - Existing Supabase Auth sessions now hydrate the Meridian local identity automatically and route users to the right workspace.
+  - Added `Supabase_Auth_Cutover_Runbook.md` with the exact account creation, metadata, `auth_email`, test, and prototype policy removal steps.
 
 Remaining:
 
-- Create Supabase Auth users for each member/VA, set their `user_metadata.member_name`, populate `meridian_members.auth_email`, then remove prototype anon policies and verify staged RLS with real accounts.
+- Operational Supabase setup: create Auth users for each member/VA, set their `user_metadata.member_name`, populate `meridian_members.auth_email`, then remove prototype anon policies after the runbook tests pass.
 
 Risk: High if skipped. Members will keep assigning VA work through texts or side conversations, which defeats the purpose of the portal.
 

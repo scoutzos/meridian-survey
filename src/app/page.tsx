@@ -1,7 +1,7 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { LOGIN_USERS, getUserRole, setCurrentMeridianUser } from "@/lib/identity";
+import { LOGIN_USERS, getUserRole, hydrateMeridianUserFromAuth, setCurrentMeridianUser } from "@/lib/identity";
 import { supabase } from "@/lib/supabase";
 import Logo from "@/components/Logo";
 
@@ -59,6 +59,14 @@ export default function LoginPage() {
   const [resetSuccess, setResetSuccess] = useState(false);
   const [resetEmailSent, setResetEmailSent] = useState(false);
   const router = useRouter();
+
+  useEffect(() => {
+    let mounted = true;
+    void hydrateMeridianUserFromAuth().then(memberName => {
+      if (mounted && memberName) router.push(homeFor(memberName));
+    });
+    return () => { mounted = false; };
+  }, [router]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
