@@ -1664,6 +1664,7 @@ Completed in this pass:
 - Promoted the floating SMS command window into the global app shell so it is consistent across the VA portal, CRM, deal pages, and member portal, with sending permission-gated to VA users.
 - Restyled the SMS dock closer to the working mockup and added deal-aware thread routing so matched deal messages can open the connected opportunity instead of only showing lead actions.
 - Added sender attribution for outbound SMS events so new messages sent from Meridian show which team member sent the text inside the thread.
+- Wired the Live SMS controls: unread-only filtering, click-to-mark-read thread state, working phone action, and a Note composer that saves internal notes to the connected lead or deal.
 
 Risk: Medium.
 

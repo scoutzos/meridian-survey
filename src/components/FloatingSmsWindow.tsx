@@ -3,7 +3,8 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import type { CommunicationEvent } from "@/lib/communications";
 import { fetchCommunicationEvents } from "@/lib/communications";
-import type { ImportedLandLead } from "@/lib/land-leads";
+import { createImportedLandLeadActivity, type ImportedLandLead } from "@/lib/land-leads";
+import { createDealActivity } from "@/lib/deals";
 
 type SmsThread = {
   key: string;
@@ -72,7 +73,13 @@ function sentByLabel(event: CommunicationEvent): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
-function buildThreads(events: CommunicationEvent[], leads: ImportedLandLead[]): SmsThread[] {
+type ReadState = Record<string, string>;
+
+function readStorageKey(user: string): string {
+  return `meridian_sms_read_threads:${user}`;
+}
+
+function buildThreads(events: CommunicationEvent[], leads: ImportedLandLead[], readState: ReadState): SmsThread[] {
   const leadById = new Map(leads.map(lead => [lead.id, lead]));
   const leadByPhone = new Map<string, ImportedLandLead>();
   leads.forEach(lead => {
@@ -107,7 +114,7 @@ function buildThreads(events: CommunicationEvent[], leads: ImportedLandLead[]): 
       lead,
       events: sorted,
       lastAt: eventTime(first),
-      unread: sorted.filter(event => event.direction === "inbound").length,
+      unread: sorted.filter(event => event.direction === "inbound" && eventTime(event) > (readState[key] ?? "")).length,
     };
   }).sort((a, b) => b.lastAt.localeCompare(a.lastAt));
 }
@@ -134,11 +141,23 @@ export default function FloatingSmsWindow({
   const [newBody, setNewBody] = useState("");
   const [newSearch, setNewSearch] = useState("");
   const [showNew, setShowNew] = useState(false);
+  const [unreadOnly, setUnreadOnly] = useState(false);
+  const [composerMode, setComposerMode] = useState<"text" | "note">("text");
+  const [noteDraft, setNoteDraft] = useState("");
+  const [readState, setReadState] = useState<ReadState>({});
   const [sending, setSending] = useState(false);
   const [status, setStatus] = useState("");
   const dragRef = useRef({ pointerId: 0, startX: 0, startY: 0, originX: 0, originY: 0 });
 
-  const threads = useMemo(() => buildThreads(events, leads), [events, leads]);
+  useEffect(() => {
+    try {
+      setReadState(JSON.parse(localStorage.getItem(readStorageKey(user)) || "{}") as ReadState);
+    } catch {
+      setReadState({});
+    }
+  }, [user]);
+
+  const threads = useMemo(() => buildThreads(events, leads, readState), [events, leads, readState]);
   const selectedThread = threads.find(thread => thread.key === selectedKey) ?? threads[0] ?? null;
   const selectedLead = selectedThread?.lead ?? null;
   const selectedPhone = selectedThread?.phone ?? last10(newPhone);
@@ -153,6 +172,14 @@ export default function FloatingSmsWindow({
   const openSelectedRecord = () => {
     if (selectedThread?.dealId) onOpenDeal?.(selectedThread.dealId);
     else if (selectedLead) onOpenLead?.(selectedLead);
+  };
+  const markThreadRead = (thread: SmsThread) => {
+    if (!thread.unread) return;
+    setReadState(prev => {
+      const next = { ...prev, [thread.key]: thread.lastAt };
+      localStorage.setItem(readStorageKey(user), JSON.stringify(next));
+      return next;
+    });
   };
 
   useEffect(() => {
@@ -246,6 +273,40 @@ export default function FloatingSmsWindow({
     }
   };
 
+  const saveNote = async () => {
+    const body = noteDraft.trim();
+    if (!body) { setStatus("Write a note before saving."); return; }
+    setSending(true);
+    setStatus("");
+    try {
+      if (selectedLead?.id) {
+        const { error } = await createImportedLandLeadActivity({
+          leadId: selectedLead.id,
+          actor: user,
+          activityType: "note",
+          summary: body,
+        });
+        if (error) { setStatus(`Note failed: ${error}`); return; }
+      } else if (selectedThread?.dealId) {
+        const { error } = await createDealActivity({
+          deal_id: selectedThread.dealId,
+          actor: user,
+          activity_type: "note",
+          summary: body,
+          field_changes: { source: "live-sms-thread", phone: selectedPhone },
+        });
+        if (error) { setStatus(`Note failed: ${error}`); return; }
+      } else {
+        setStatus("Link this SMS to a lead or deal before saving a note.");
+        return;
+      }
+      setNoteDraft("");
+      setStatus("Note saved to the connected record.");
+    } finally {
+      setSending(false);
+    }
+  };
+
   if (!open) {
     return (
       <button type="button" onClick={() => { setOpen(true); setMinimized(false); }} style={launcher}>
@@ -281,19 +342,27 @@ export default function FloatingSmsWindow({
             <div style={searchWrap}>
               <span style={{ color: "var(--muted)", fontSize: 13 }}>⌕</span>
               <input value={newSearch} onChange={event => setNewSearch(event.target.value)} placeholder="Search threads by name or phone..." style={threadSearch} />
-              <button type="button" style={filterButton}>☷</button>
+              <button
+                type="button"
+                onClick={() => setUnreadOnly(value => !value)}
+                style={{ ...filterButton, ...(unreadOnly ? activeFilterButton : {}) }}
+                title="Filter unread threads"
+              >
+                {unreadOnly ? "Unread" : "☷"}
+              </button>
             </div>
             {canSend && <button type="button" onClick={() => setShowNew(value => !value)} style={newButton}>+ Start New Text</button>}
             {threads.filter(thread => {
               if (showNew) return true;
               const query = newSearch.trim().toLowerCase();
+              if (unreadOnly && thread.unread === 0) return false;
               if (!query) return true;
               return [thread.label, thread.phone, thread.subtitle, thread.status].some(value => value.toLowerCase().includes(query));
             }).map(thread => (
               <button
                 type="button"
                 key={thread.key}
-                onClick={() => { setSelectedKey(thread.key); setShowNew(false); }}
+                onClick={() => { setSelectedKey(thread.key); setShowNew(false); markThreadRead(thread); }}
                 style={{ ...threadButton, ...(selectedThread?.key === thread.key && !showNew ? activeThread : {}) }}
               >
                 <span style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
@@ -345,7 +414,7 @@ export default function FloatingSmsWindow({
                     <p style={personMeta}>{displayPhone(selectedPhone)}</p>
                   </div>
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
-                    <button type="button" onClick={openSelectedRecord} style={roundAction}>☎</button>
+                    <button type="button" onClick={() => { if (selectedPhone) window.location.href = `tel:${selectedPhone}`; }} style={roundAction} title="Call seller">☎</button>
                     <button type="button" onClick={() => selectedLead ? onCreateDealBrief?.(selectedLead) : selectedThread.dealId ? onOpenDeal?.(selectedThread.dealId) : undefined} style={roundAction}>◇</button>
                     <button type="button" onClick={openSelectedRecord} style={roundAction}>…</button>
                   </div>
@@ -387,14 +456,31 @@ export default function FloatingSmsWindow({
 
                 {canSend ? (
                   <div style={composer}>
-                    <div style={composerTabs}><span style={activeComposerTab}>Text</span><span>Note</span></div>
-                    <textarea value={reply} onChange={event => setReply(event.target.value)} rows={3} placeholder="Reply to this seller..." style={textarea} />
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
-                      <span style={counter}>{reply.trim().length}/1200</span>
-                      <button type="button" onClick={() => sendText(selectedPhone, reply, selectedLead?.id ?? null)} disabled={sending || !reply.trim()} style={{ ...sendButton, opacity: sending || !reply.trim() ? 0.55 : 1 }}>
-                        {sending ? "Sending..." : "Send Reply"}
-                      </button>
+                    <div style={composerTabs}>
+                      <button type="button" onClick={() => setComposerMode("text")} style={composerMode === "text" ? activeComposerTab : composerTab}>Text</button>
+                      <button type="button" onClick={() => setComposerMode("note")} style={composerMode === "note" ? activeComposerTab : composerTab}>Note</button>
                     </div>
+                    {composerMode === "text" ? (
+                      <>
+                        <textarea value={reply} onChange={event => setReply(event.target.value)} rows={3} placeholder="Reply to this seller..." style={textarea} />
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                          <span style={counter}>{reply.trim().length}/1200</span>
+                          <button type="button" onClick={() => sendText(selectedPhone, reply, selectedLead?.id ?? null)} disabled={sending || !reply.trim()} style={{ ...sendButton, opacity: sending || !reply.trim() ? 0.55 : 1 }}>
+                            {sending ? "Sending..." : "Send Reply"}
+                          </button>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <textarea value={noteDraft} onChange={event => setNoteDraft(event.target.value)} rows={3} placeholder="Save an internal note to the connected lead or deal..." style={textarea} />
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                          <span style={counter}>Internal note</span>
+                          <button type="button" onClick={saveNote} disabled={sending || !noteDraft.trim()} style={{ ...sendButton, opacity: sending || !noteDraft.trim() ? 0.55 : 1 }}>
+                            {sending ? "Saving..." : "Save Note"}
+                          </button>
+                        </div>
+                      </>
+                    )}
                   </div>
                 ) : (
                   <div style={composer}>
@@ -696,9 +782,20 @@ const composerTabs: CSSProperties = {
 };
 
 const activeComposerTab: CSSProperties = {
+  background: "transparent",
+  border: "none",
   borderBottom: "1px solid var(--brass)",
   color: "var(--brass)",
+  fontSize: 12,
   paddingBottom: 4,
+};
+
+const composerTab: CSSProperties = {
+  background: "transparent",
+  border: "none",
+  color: "var(--muted)",
+  fontSize: 12,
+  padding: "0 0 4px",
 };
 
 const searchWrap: CSSProperties = {
@@ -726,7 +823,12 @@ const filterButton: CSSProperties = {
   background: "transparent",
   border: "none",
   color: "var(--muted)",
-  fontSize: 14,
+  fontSize: 11,
+  fontWeight: 800,
+};
+
+const activeFilterButton: CSSProperties = {
+  color: "var(--brass)",
 };
 
 const textarea: CSSProperties = {
