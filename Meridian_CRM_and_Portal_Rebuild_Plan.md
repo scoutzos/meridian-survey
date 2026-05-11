@@ -1630,6 +1630,7 @@ Completed in this pass:
 - Added a served copy at `/docs/meridian-member-va-onboarding-guide.md`.
 - Added the onboarding guide to the Document Library under Platform.
 - Refreshed the current completion snapshot so the plan reflects the CRM, disposition, navigation, and dashboard work already completed.
+- Added a richer first-list empty state to the VA Lists tab so a new VA sees the import -> confirm -> work sellers path before any data exists.
 
 Risk: Medium.
 

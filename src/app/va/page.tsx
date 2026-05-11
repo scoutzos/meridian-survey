@@ -2139,6 +2139,27 @@ export default function VaPage() {
               <ShiftCard label="Converted" value={String(importStats.converted)} />
             </div>
 
+            {!loading && importedLeads.length === 0 && (
+              <div style={{ ...subPanel, marginBottom: 12, borderColor: "rgba(176,137,84,0.45)", background: "rgba(176,137,84,0.08)" }}>
+                <p style={eyebrowSmall}>First list setup</p>
+                <h3 style={{ ...sectionTitle, fontSize: 22 }}>Upload a Land Portal or Land Insights CSV to start the VA queue.</h3>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, marginTop: 12 }} className="number-grid">
+                  <div style={subPanel}>
+                    <p style={miniLabel}>1. Choose CSV</p>
+                    <p style={{ color: "var(--muted)", fontSize: 12, lineHeight: 1.45 }}>Use the export from the list source. Owner, phone, parcel, county, acreage, and address will be mapped when available.</p>
+                  </div>
+                  <div style={subPanel}>
+                    <p style={miniLabel}>2. Confirm import</p>
+                    <p style={{ color: "var(--muted)", fontSize: 12, lineHeight: 1.45 }}>Review the preview, skipped rows, duplicate signals, and safe-to-import count before saving the list.</p>
+                  </div>
+                  <div style={subPanel}>
+                    <p style={miniLabel}>3. Work sellers</p>
+                    <p style={{ color: "var(--muted)", fontSize: 12, lineHeight: 1.45 }}>Search, text eligible owners, log outcomes, and convert interested sellers into deal briefs.</p>
+                  </div>
+                </div>
+              </div>
+            )}
+
             <div style={{ ...subPanel, marginBottom: 12 }}>
               <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "baseline", marginBottom: 10 }}>
                 <div>
