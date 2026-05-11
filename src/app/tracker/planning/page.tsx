@@ -228,6 +228,7 @@ export default function ExpensePlanningPage() {
   const [expandedProposalId, setExpandedProposalId] = useState<string | null>(null);
   const [revisionTarget, setRevisionTarget] = useState<ExpenseProposal | null>(null);
   const [revisionNote, setRevisionNote] = useState("");
+  const [message, setMessage] = useState("");
 
   const [title, setTitle] = useState("New VA");
   const [category, setCategory] = useState("VA");
@@ -397,7 +398,7 @@ export default function ExpensePlanningPage() {
         .select()
         .single();
       setSaving(false);
-      if (error) { alert(error.message); return; }
+      if (error) { setMessage(error.message); return; }
       await supabase
         .from("tracker_expense_proposal_offsets")
         .update({ deleted_at: new Date().toISOString(), updated_by: user })
@@ -416,7 +417,7 @@ export default function ExpensePlanningPage() {
           updated_by: user,
         }));
         const { error: offsetError } = await supabase.from("tracker_expense_proposal_offsets").insert(offsetRows);
-        if (offsetError) { alert(offsetError.message); return; }
+        if (offsetError) { setMessage(offsetError.message); return; }
       }
       await logAudit({
         actor: user,
@@ -448,12 +449,13 @@ export default function ExpensePlanningPage() {
       setBuilderOpen(false);
       setInboxOpen(true);
       setExpandedProposalId(revisionTarget.id);
+      setMessage("Proposal revision sent for member review.");
       void load();
       return;
     }
     const { data, error } = await supabase.from("tracker_expense_proposals").insert({ ...row, created_by: user }).select().single();
     setSaving(false);
-    if (error) { alert(error.message); return; }
+    if (error) { setMessage(error.message); return; }
     const proposal = data as ExpenseProposal;
     if (offsetDrafts.length) {
       const offsetRows = offsetDrafts.map(o => ({
@@ -468,7 +470,7 @@ export default function ExpensePlanningPage() {
         updated_by: user,
       }));
       const { error: offsetError } = await supabase.from("tracker_expense_proposal_offsets").insert(offsetRows);
-      if (offsetError) { alert(offsetError.message); return; }
+      if (offsetError) { setMessage(offsetError.message); return; }
     }
     await logAudit({
       actor: user,
@@ -498,6 +500,7 @@ export default function ExpensePlanningPage() {
     setBuilderOpen(false);
     setInboxOpen(true);
     setExpandedProposalId(proposal.id);
+    setMessage("Proposal sent for member review.");
     void load();
   }
 
@@ -514,7 +517,7 @@ export default function ExpensePlanningPage() {
     const { error } = await supabase
       .from("tracker_expense_proposal_votes")
       .upsert(row, { onConflict: "proposal_id,member_name,proposal_version" });
-    if (error) { alert(error.message); return; }
+    if (error) { setMessage(error.message); return; }
     await markProposalVoteWorkComplete(proposal, user);
     const existing = votesFor(proposal.id).filter(v => v.member_name !== user);
     const simulatedVote: ProposalVote = {
@@ -571,6 +574,7 @@ export default function ExpensePlanningPage() {
       diff: { after: row },
     });
     setVoteNote("");
+    setMessage(`Vote recorded: ${decisionLabel(decision)}.`);
     void load();
   }
 
@@ -673,7 +677,7 @@ export default function ExpensePlanningPage() {
     if (!rows.length) return;
 
     const { data, error } = await supabase.from("tracker_expenses").insert(rows).select();
-    if (error) { alert(error.message); return; }
+    if (error) { setMessage(error.message); return; }
     const createdExpenses = (data as Expense[] | null) ?? [];
     const first = (data as Expense[] | null)?.[0];
     const { error: updateError } = await supabase
@@ -685,7 +689,7 @@ export default function ExpensePlanningPage() {
         updated_by: user,
       })
       .eq("id", proposal.id);
-    if (updateError) { alert(updateError.message); return; }
+    if (updateError) { setMessage(updateError.message); return; }
     const [expenseRes, contributionRes, callRes] = await Promise.all([
       supabase.from("tracker_expenses").select("*").is("deleted_at", null),
       supabase.from("tracker_contributions").select("*").is("deleted_at", null),
@@ -715,7 +719,7 @@ export default function ExpensePlanningPage() {
         })
         .select()
         .single();
-      if (callError) { alert(callError.message); return; }
+      if (callError) { setMessage(callError.message); return; }
       suggestedCall = callData;
     }
     await logAudit({
@@ -746,6 +750,9 @@ export default function ExpensePlanningPage() {
       source_id: proposal.id,
       notification_type: "expense_proposal_converted",
     }, user)));
+    setMessage(suggestedCall
+      ? "Proposal converted to expenses. A suggested capital call was opened for review."
+      : "Proposal converted to tracker expenses.");
     void load();
   }
 
@@ -816,6 +823,11 @@ export default function ExpensePlanningPage() {
 
   return (
     <TrackerShell title="Expense Planning" subtitle="Model proposed expenses, collect member sign-off, then convert approved proposals into tracker expenses.">
+      {message && (
+        <div style={{ ...trackerCard, marginBottom: 16, padding: "12px 14px", background: "rgba(201,168,120,0.12)", fontSize: 13 }}>
+          {message}
+        </div>
+      )}
       {loading && <div style={{ color: "var(--muted)", marginBottom: 12 }}>Loading...</div>}
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 16 }}>

@@ -1641,6 +1641,7 @@ Completed in this pass:
 - Replaced Platform Archive browser alerts with in-page feedback for announcements, legacy decisions, resource links, legacy uploads, transcripts, downloads, and member profile saves.
 - Replaced Money Center and Capital Calls browser alerts with in-page feedback for suggested calls, manual calls, approvals, status changes, and deletes.
 - Replaced Contributions and Expenses browser alerts with in-page feedback for permission limits, deposit logs, expense logs, edits, deletes, and save errors.
+- Replaced Expense Planning browser alerts with in-page feedback for proposal saves, revisions, offset failures, votes, expense conversion, and generated capital-call suggestions.
 
 Risk: Medium.
 
