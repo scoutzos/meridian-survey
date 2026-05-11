@@ -1547,10 +1547,10 @@ Completed in this pass:
 - Disposition view now includes a member offer decision queue for received/countered offers.
 - Recording a buyer offer now creates high-priority member notifications and action items tied to the offer record.
 - Buyer-offer action items now open back to CRM Dispo so members can review the connected campaign, offer, and deal context.
+- Disposition campaign detail now includes campaign touch history combining offer milestones and linked SMS activity.
 
 Remaining:
 
-- Add buyer outreach activity/campaign touch history beyond existing SMS conversation panel.
 - Auto-resolve or supersede member offer decision tasks after an offer is accepted, countered, rejected, or withdrawn.
 - Add disposition close/fall-through checklist and project/closing handoff.
 

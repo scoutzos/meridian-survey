@@ -570,10 +570,16 @@ function CrmContent() {
       )}
 
       {view === "dispo" && selectedCampaign && (
-        <CampaignDetailCard campaign={selectedCampaign} offers={data.offers.filter(offer => offer.disposition_campaign_id === selectedCampaign.id || offer.deal_id === selectedCampaign.deal_id)} onChangeStage={status => changeCampaignStage(selectedCampaign, status)} onOpenDeal={dealId => {
-          setSelectedDealId(dealId);
-          selectView("deals");
-        }} />
+        <CampaignDetailCard
+          campaign={selectedCampaign}
+          offers={data.offers.filter(offer => offer.disposition_campaign_id === selectedCampaign.id || offer.deal_id === selectedCampaign.deal_id)}
+          communications={data.communications.filter(event => selectedCampaign.deal_id && event.matched_deal_id === selectedCampaign.deal_id)}
+          onChangeStage={status => changeCampaignStage(selectedCampaign, status)}
+          onOpenDeal={dealId => {
+            setSelectedDealId(dealId);
+            selectView("deals");
+          }}
+        />
       )}
 
       {view === "dispo" && selectedOffer && (
@@ -1114,14 +1120,33 @@ function BuyerDetailCard({ buyer, offers }: { buyer: CrmBuyer; offers: BuyerOffe
 function CampaignDetailCard({
   campaign,
   offers,
+  communications,
   onChangeStage,
   onOpenDeal,
 }: {
   campaign: DispositionCampaign;
   offers: BuyerOffer[];
+  communications: CommunicationEvent[];
   onChangeStage: (status: DispositionCampaign["status"]) => void;
   onOpenDeal: (dealId: string) => void;
 }) {
+  const touchHistory = [
+    ...offers.map(offer => ({
+      id: `offer-${offer.id}`,
+      date: offer.created_at,
+      title: `${offer.buyer_name} offer`,
+      meta: `${money(offer.offer_amount)} · ${statusLabel(offer.status)}`,
+      body: offer.notes || (offer.close_date ? `Close proposed ${formatDate(offer.close_date)}` : "Offer recorded for member review."),
+    })),
+    ...communications.map(event => ({
+      id: `comm-${event.id}`,
+      date: event.provider_created_at || event.created_at,
+      title: `${statusLabel(event.direction)} ${event.channel}`,
+      meta: [event.contact_name || event.contact_number || "Unknown contact", event.status].filter(Boolean).join(" · "),
+      body: event.body || "No message body captured.",
+    })),
+  ].sort((a, b) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime()).slice(0, 8);
+
   return (
     <div style={panel}>
       <p style={eyebrowSmall}>Disposition campaign</p>
@@ -1160,6 +1185,16 @@ function CampaignDetailCard({
           </div>
         ))}
         {offers.length === 0 && <EmptyText>No buyer offers have been recorded for this campaign.</EmptyText>}
+      </DetailSection>
+      <DetailSection title="Campaign touch history">
+        {touchHistory.map(item => (
+          <div key={item.id} style={{ display: "grid", gap: 3, borderBottom: "1px solid var(--fog)", paddingBottom: 8 }}>
+            <strong style={rowTitle}>{item.title}</strong>
+            <span style={rowMeta}>{formatDate(item.date)} · {item.meta}</span>
+            <span style={{ ...bodyText, fontSize: 12 }}>{item.body}</span>
+          </div>
+        ))}
+        {touchHistory.length === 0 && <EmptyText>No buyer outreach, SMS activity, or offers are attached to this campaign yet.</EmptyText>}
       </DetailSection>
     </div>
   );
