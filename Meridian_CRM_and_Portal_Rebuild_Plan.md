@@ -1528,7 +1528,7 @@ Risk: High if skipped. Members will keep assigning VA work through texts or side
 
 ### Phase 3: Disposition Workspace
 
-Status: In Progress
+Status: Complete structurally
 
 Work:
 
@@ -1560,7 +1560,7 @@ Risk: High. Disposition is a core part of land/deal monetization.
 
 ### Phase 4: Member Portal Final IA
 
-Status: Upcoming
+Status: In Progress
 
 Work:
 
@@ -1569,6 +1569,13 @@ Work:
 - Deduplicate actions/notifications.
 - Decide what Hub becomes.
 - Move legacy survey pages to secondary role.
+
+Completed in this pass:
+
+- Member top navigation now separates daily operating pages from secondary/reference pages.
+- Home, Tasks, Deal Reviews, CRM, Money, Operations, and Projects remain first-level member destinations.
+- Docs, Meetings, Applications, Decisions, Surveys, and Hub moved under a More menu instead of competing with daily work.
+- CRM is now a normal member navigation destination, while the header CTA focuses on creating a new deal brief.
 
 Risk: Medium.
 
@@ -1614,7 +1621,7 @@ Needs decision:
 
 ## Next Recommended Work
 
-Continue **Phase 2: CRM Record Depth**, then move into **Phase 2A: Member-To-VA Task Assignment**.
+Continue **Phase 4: Member Portal Final IA**, starting with member navigation, dashboard/action deduplication, and clear placement for Hub, Decisions, Surveys, Money, Documents, and Meetings.
 
 Reason:
 

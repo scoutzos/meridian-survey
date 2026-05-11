@@ -45,6 +45,7 @@ export default function NavBar() {
   const pathname = usePathname();
   const [user, setUser] = useState<string | null>(null);
   const [crmView, setCrmView] = useState<string | null>(null);
+  const [moreOpen, setMoreOpen] = useState(false);
 
   useEffect(() => {
     setUser(getCurrentMeridianUser());
@@ -72,14 +73,17 @@ export default function NavBar() {
     { href: "/dashboard",  label: "Home" },
     { href: "/actions",    label: "Tasks" },
     { href: "/deals",      label: "Deal Reviews" },
+    { href: "/crm",        label: "CRM" },
     { href: "/tracker",    label: "Money" },
     { href: "/operations", label: "Operations" },
     { href: "/projects",   label: "Projects" },
+  ];
+  const secondaryMemberLinks = [
     { href: "/documents",  label: "Docs" },
     { href: "/meetings",   label: "Meetings" },
     { href: "/members/candidates", label: "Applications" },
-    { href: "/surveys",    label: "Surveys" },
     { href: "/decisions",  label: "Decisions" },
+    { href: "/surveys",    label: "Surveys" },
     { href: "/hub",        label: "Hub" },
   ];
   const vaLinks = [
@@ -180,7 +184,10 @@ export default function NavBar() {
             return (
               <button
                 key={l.href}
-                onClick={() => router.push(l.href)}
+                onClick={() => {
+                  setMoreOpen(false);
+                  router.push(l.href);
+                }}
                 style={{
                   background: "transparent",
                   color: active ? "var(--brass)" : "var(--fog)",
@@ -202,12 +209,78 @@ export default function NavBar() {
               </button>
             );
           })}
+          {!isVaUser(user) && (
+            <div style={{ position: "relative", flexShrink: 0 }}>
+              <button
+                onClick={() => setMoreOpen(open => !open)}
+                style={{
+                  background: moreOpen ? "rgba(201,168,120,0.16)" : "transparent",
+                  color: moreOpen || secondaryMemberLinks.some(l => isActive(l.href)) ? "var(--brass)" : "var(--fog)",
+                  border: "1px solid rgba(214,205,183,0.18)",
+                  borderRadius: 7,
+                  padding: "8px 12px",
+                  fontSize: 11,
+                  fontFamily: "var(--font-body)",
+                  fontWeight: 600,
+                  letterSpacing: "0.18em",
+                  textTransform: "uppercase",
+                  cursor: "pointer",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                More
+              </button>
+              {moreOpen && (
+                <div style={{
+                  position: "absolute",
+                  top: 38,
+                  right: 0,
+                  minWidth: 210,
+                  background: "var(--obsidian)",
+                  border: "1px solid rgba(201,168,120,0.32)",
+                  borderRadius: 10,
+                  padding: 8,
+                  boxShadow: "0 18px 40px rgba(0,0,0,0.22)",
+                  display: "grid",
+                  gap: 2,
+                }}>
+                  {secondaryMemberLinks.map(l => {
+                    const active = isActive(l.href);
+                    return (
+                      <button
+                        key={l.href}
+                        onClick={() => {
+                          setMoreOpen(false);
+                          router.push(l.href);
+                        }}
+                        style={{
+                          background: active ? "rgba(201,168,120,0.16)" : "transparent",
+                          color: active ? "var(--brass)" : "var(--fog)",
+                          border: "none",
+                          borderRadius: 7,
+                          padding: "10px 11px",
+                          textAlign: "left",
+                          fontSize: 11,
+                          fontWeight: active ? 700 : 600,
+                          letterSpacing: "0.12em",
+                          textTransform: "uppercase",
+                          cursor: "pointer",
+                        }}
+                      >
+                        {l.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 16, flexShrink: 0 }}>
         {!isVaUser(user) && (
-          <button onClick={() => router.push("/crm")} style={crmCreateButton}>
-            CRM Workspace
+          <button onClick={() => router.push("/va")} style={crmCreateButton}>
+            New Deal Brief
           </button>
         )}
         <span style={{
