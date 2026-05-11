@@ -1,8 +1,7 @@
 import { MEMBERS } from "@/data/questions";
 import { getAllSurveys } from "@/data/surveys";
-import { supabase } from "./supabase";
+import { supabase, supabasePrototypeAnon } from "./supabase";
 import { createNotification, markNotificationRead } from "./operations";
-import { logAudit } from "./tracker";
 
 export type CandidateStatus = "started" | "under_review" | "approved" | "declined" | "withdrawn";
 export type CandidateVoteDecision = "approve" | "discuss" | "hold" | "decline";
@@ -265,7 +264,8 @@ export async function voteOnMembershipCandidate(
 }
 
 export async function admitMembershipCandidate(input: MemberAdmissionInput): Promise<{ error: string | null }> {
-  if (!supabase) return { error: "Supabase not configured" };
+  const writeClient = supabasePrototypeAnon ?? supabase;
+  if (!writeClient) return { error: "Supabase not configured" };
 
   const memberName = input.memberName.trim();
   if (!memberName) return { error: "Member name is required" };
@@ -274,14 +274,14 @@ export async function admitMembershipCandidate(input: MemberAdmissionInput): Pro
   const llcName = input.llcName.trim() || memberName;
   const now = new Date().toISOString();
 
-  const { data: candidate, error: candidateError } = await supabase
+  const { data: candidate, error: candidateError } = await writeClient
     .from("membership_candidates")
     .select("*")
     .eq("id", input.candidateId)
     .single();
   if (candidateError || !candidate) return { error: candidateError?.message ?? "Candidate not found" };
 
-  const { error: memberError } = await supabase
+  const { error: memberError } = await writeClient
     .from("meridian_members")
     .upsert({
       name: memberName,
@@ -291,7 +291,7 @@ export async function admitMembershipCandidate(input: MemberAdmissionInput): Pro
     }, { onConflict: "name" });
   if (memberError) return { error: memberError.message };
 
-  const { error: profileError } = await supabase
+  const { error: profileError } = await writeClient
     .from("tracker_member_profiles")
     .upsert({
       member_name: memberName,
@@ -301,13 +301,13 @@ export async function admitMembershipCandidate(input: MemberAdmissionInput): Pro
     }, { onConflict: "member_name" });
   if (profileError) return { error: profileError.message };
 
-  const { error: statusError } = await supabase
+  const { error: statusError } = await writeClient
     .from("membership_candidates")
     .update({ status: "approved" as CandidateStatus, updated_at: now })
     .eq("id", input.candidateId);
   if (statusError) return { error: statusError.message };
 
-  await logAudit({
+  const { error: auditError } = await writeClient.from("tracker_audit_log").insert({
     actor: input.actor,
     table_name: "meridian_members",
     row_id: memberName,
@@ -320,9 +320,10 @@ export async function admitMembershipCandidate(input: MemberAdmissionInput): Pro
       is_admin: input.isAdmin,
     },
   });
+  if (auditError) return { error: `Member admitted, but audit log could not be saved: ${auditError.message}` };
 
   const surveys = getAllSurveys().filter(survey => input.assignedSurveyIds.includes(survey.id));
-  const assignmentResults = await Promise.all(surveys.map(survey => createNotification({
+  const assignmentResults = await Promise.all(surveys.map(survey => upsertAdmissionNotification(writeClient, {
     title: `Survey assigned: ${survey.title}`,
     body: "Complete this as part of your Meridian member onboarding. Your responses will flow into the portal results and decision tools.",
     priority: "high",
@@ -331,13 +332,13 @@ export async function admitMembershipCandidate(input: MemberAdmissionInput): Pro
     source_table: "membership_candidates",
     source_id: input.candidateId,
     notification_type: "survey_assignment",
-    dedupe: true,
-  }, input.actor)));
+    created_by: input.actor,
+  })));
 
   const assignmentError = assignmentResults.find(result => result.error)?.error;
   if (assignmentError) return { error: `Member admitted, but survey assignments could not be created: ${assignmentError}` };
 
-  await createNotification({
+  const groupNotice = await upsertAdmissionNotification(writeClient, {
     title: `${memberName} has portal access`,
     body: `${memberName} was admitted from the membership application. Tracker balances now include ${llcName}.`,
     priority: "normal",
@@ -346,8 +347,45 @@ export async function admitMembershipCandidate(input: MemberAdmissionInput): Pro
     source_table: "membership_candidates",
     source_id: input.candidateId,
     notification_type: "member_admitted",
-    dedupe: true,
-  }, input.actor);
+    created_by: input.actor,
+  });
+  if (groupNotice.error) return { error: `Member admitted, but group notification could not be created: ${groupNotice.error}` };
 
   return { error: null };
+}
+
+async function upsertAdmissionNotification(
+  client: NonNullable<typeof supabase>,
+  row: {
+    title: string;
+    body: string | null;
+    priority: "normal" | "high" | "urgent";
+    assigned_to: string | null;
+    href: string;
+    source_table: string;
+    source_id: string;
+    notification_type: string;
+    created_by: string;
+  },
+): Promise<{ error: string | null }> {
+  const existingQuery = client
+    .from("meridian_notifications")
+    .select("id")
+    .eq("notification_type", row.notification_type)
+    .eq("source_table", row.source_table)
+    .eq("source_id", row.source_id)
+    .is("read_at", null)
+    .limit(1);
+
+  const { data: existing } = row.assigned_to
+    ? await existingQuery.eq("assigned_to", row.assigned_to).maybeSingle()
+    : await existingQuery.is("assigned_to", null).maybeSingle();
+
+  if (existing?.id) {
+    const { error } = await client.from("meridian_notifications").update(row).eq("id", existing.id);
+    return { error: error?.message ?? null };
+  }
+
+  const { error } = await client.from("meridian_notifications").insert(row);
+  return { error: error?.message ?? null };
 }

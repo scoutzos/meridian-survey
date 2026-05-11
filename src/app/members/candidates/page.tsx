@@ -458,6 +458,7 @@ function CandidateReviewsContent() {
                   </div>
                 </div>
 
+                {error && <div style={errorBox}>{error}</div>}
                 {admissionMessage && <div style={successBox}>{admissionMessage}</div>}
 
                 <div className="admission-grid">
