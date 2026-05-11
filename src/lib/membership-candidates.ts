@@ -1,5 +1,6 @@
 import { MEMBERS } from "@/data/questions";
 import { getAllSurveys } from "@/data/surveys";
+import { fetchActiveMemberNames } from "./members";
 import { supabase, supabasePrototypeAnon } from "./supabase";
 import { createNotification, markNotificationRead } from "./operations";
 
@@ -59,13 +60,6 @@ export interface MemberAdmissionInput {
 }
 
 export const MEMBERSHIP_CANDIDATE_VOTE = "membership_candidate_vote";
-
-async function fetchActiveMemberNames(): Promise<string[]> {
-  if (!supabase) return [...MEMBERS];
-  const { data, error } = await supabase.from("meridian_members").select("name").order("name");
-  if (error || !data) return [...MEMBERS];
-  return (data as Array<{ name: string }>).map(row => row.name).filter(Boolean);
-}
 
 export function parseMoney(value: string): number | null {
   const cleaned = value.replace(/[$,\s]/g, "");

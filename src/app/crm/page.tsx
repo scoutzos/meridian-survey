@@ -2,7 +2,6 @@
 
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { MEMBERS } from "@/data/questions";
 import { ALL_MEMBERS_LABEL, createActionItem, resolveActionItemsForSource } from "@/lib/action-items";
 import { calculateDealAnalysis } from "@/lib/deals";
 import {
@@ -35,6 +34,7 @@ import { createNotification } from "@/lib/operations";
 import { createProjectFromDeal } from "@/lib/projects";
 import { labelForStatus } from "@/lib/status-map";
 import { getDealNextAction } from "@/lib/workflow-actions";
+import { fetchActiveMemberNames } from "@/lib/members";
 
 const DISPLAY_FONT = "var(--font-display)";
 type CrmView = "inbox" | "deals" | "buyers" | "dispo" | "records";
@@ -126,11 +126,13 @@ function CrmContent() {
   const [linkDraft, setLinkDraft] = useState({ contact_id: "", role: "seller" as OpportunityContactRole, notes: "" });
   const [smsDraft, setSmsDraft] = useState({ contact_id: "", body: "" });
   const [smsSending, setSmsSending] = useState(false);
+  const [activeMemberNames, setActiveMemberNames] = useState<string[]>([]);
 
   const reload = useCallback(async () => {
     setLoading(true);
-    const rows = await fetchCrmDashboardData();
+    const [rows, members] = await Promise.all([fetchCrmDashboardData(), fetchActiveMemberNames()]);
     setData(rows);
+    setActiveMemberNames(members);
     setSelectedDealId(prev => prev && rows.deals.some(deal => deal.id === prev) ? prev : rows.deals[0]?.id ?? null);
     setSelectedContactId(prev => prev && rows.contacts.some(contact => contact.id === prev) ? prev : rows.contacts[0]?.id ?? null);
     setSelectedBuyerId(prev => prev && rows.buyers.some(buyer => buyer.id === prev) ? prev : rows.buyers[0]?.id ?? null);
@@ -265,7 +267,7 @@ function CrmContent() {
         offer.notes ? `Notes: ${offer.notes}` : null,
         "Review in CRM Dispo and choose accept, counter, reject, or continue negotiation.",
       ].filter(Boolean).join("\n");
-      const workResults = await Promise.all(MEMBERS.flatMap(member => [
+      const workResults = await Promise.all(activeMemberNames.flatMap(member => [
         createNotification({
           title: `Buyer offer needs decision: ${selectedDeal.title}`,
           body: `${offer.buyer_name} offered ${money(offer.offer_amount)}. Review in CRM Dispo.`,

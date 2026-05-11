@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { MEMBERS } from "@/data/questions";
 import {
   calculateDealAnalysis,
   createDeal,
@@ -78,6 +77,7 @@ import ConversationPanel from "@/components/ConversationPanel";
 import { labelForStatus } from "@/lib/status-map";
 import { getLeadNextAction, type WorkflowTone } from "@/lib/workflow-actions";
 import OperatingHeader from "@/components/OperatingHeader";
+import { fetchActiveMemberNames } from "@/lib/members";
 
 const DISPLAY_FONT = "var(--font-display)";
 
@@ -498,13 +498,13 @@ function buildPayload(draft: DealInput & { linksText: string }, status: DealStat
   };
 }
 
-async function notifyMembersForReview(deal: Deal, actor: string, shouldCreateVoteTasks: boolean): Promise<string[]> {
+async function notifyMembersForReview(deal: Deal, actor: string, shouldCreateVoteTasks: boolean, memberNames: string[]): Promise<string[]> {
   const message = [
     deal.submission_summary || deal.analysis?.recommendation || "Needs Review",
     deal.requested_next_step ? `Next: ${deal.requested_next_step}` : "",
     deal.submit_uncertainties ? `Uncertain: ${deal.submit_uncertainties}` : "",
   ].filter(Boolean).join(" · ");
-  const notifications = MEMBERS.map(member =>
+  const notifications = memberNames.map(member =>
     createNotification({
       title: shouldCreateVoteTasks ? `Deal needs your vote: ${deal.title}` : `Deal needs review: ${deal.title}`,
       body: message,
@@ -516,7 +516,7 @@ async function notifyMembersForReview(deal: Deal, actor: string, shouldCreateVot
       notification_type: shouldCreateVoteTasks ? "deal_vote" : "deal-review",
     }, actor)
   );
-  const actionItems = shouldCreateVoteTasks ? MEMBERS.map(member => createActionItem({
+  const actionItems = shouldCreateVoteTasks ? memberNames.map(member => createActionItem({
       title: `Review deal: ${deal.title}`,
       description: message,
       assigned_to: member,
@@ -586,10 +586,11 @@ export default function VaPage() {
   const [message, setMessage] = useState("");
   const [activeTab, setActiveTab] = useState<VaTab>("today");
   const [notifyReviewUpdate, setNotifyReviewUpdate] = useState(false);
+  const [activeMemberNames, setActiveMemberNames] = useState<string[]>([]);
 
   const reload = useCallback(async (memberName = user) => {
     setLoading(true);
-    const [rows, briefRows, timeRows, requestRows, currentShift, importRows, batchRows, smsRows, taskRows] = await Promise.all([
+    const [rows, briefRows, timeRows, requestRows, currentShift, importRows, batchRows, smsRows, taskRows, memberNames] = await Promise.all([
       fetchDeals(),
       fetchVaDailyBriefs(8),
       fetchVaTimeEntries(80),
@@ -599,6 +600,7 @@ export default function VaPage() {
       fetchLandLeadBatches(),
       fetchCommunicationEvents({ unmatched: true, limit: 25 }),
       fetchActionItems(),
+      fetchActiveMemberNames(),
     ]);
     const activeRows = rows.filter(deal =>
       !["closed", "active-project", "stabilized", "sold"].includes(deal.status)
@@ -613,6 +615,7 @@ export default function VaPage() {
     setImportedLeads(importRows);
     setLeadBatches(batchRows);
     setUnmatchedSms(smsRows);
+    setActiveMemberNames(memberNames);
     setSelectedId(prev => prev && activeRows.some(d => d.id === prev) ? prev : activeRows[0]?.id ?? null);
     setLoading(false);
   }, [user]);
@@ -913,7 +916,7 @@ export default function VaPage() {
     }
     if (status === "under-review") {
       if (shouldNotifyMembers) {
-        const errors = await notifyMembersForReview(result.data, user, result.data.review_intent === "ready-for-vote");
+        const errors = await notifyMembersForReview(result.data, user, result.data.review_intent === "ready-for-vote", activeMemberNames);
         await createDealActivity({
           deal_id: result.data.id,
           actor: user,
@@ -1281,7 +1284,7 @@ export default function VaPage() {
     if (error) { setMessage(error); return; }
     if (data) {
       setTimeChangeRequests(prev => [data, ...prev].slice(0, 50));
-      await Promise.all(MEMBERS.map(member => createNotification({
+      await Promise.all(activeMemberNames.map(member => createNotification({
         title: `VA time correction requested: ${user}`,
         body: `${statusLabel(data.request_type)} · ${data.reason}`,
         priority: "high",
@@ -1379,7 +1382,7 @@ export default function VaPage() {
       }, user)));
     }
     if (status === "blocked") {
-      const blockedRecipients = Array.from(new Set([task.created_by, ...MEMBERS].filter(Boolean))) as string[];
+      const blockedRecipients = Array.from(new Set([task.created_by, ...activeMemberNames].filter(Boolean))) as string[];
       await Promise.all(blockedRecipients.map(recipient => createNotification({
         title: `VA task blocked: ${task.title}`,
         body: `${note.trim() || `${user} marked this task blocked.`} ${taskRecordLabel(task)}.`,
@@ -1442,7 +1445,7 @@ export default function VaPage() {
     setBriefSaving(false);
     if (error) { setMessage(error); return; }
     if (data) {
-      await Promise.all(MEMBERS.map(member => createNotification({
+      await Promise.all(activeMemberNames.map(member => createNotification({
         title: editingBriefId ? `VA daily brief updated: ${data.submitted_by}` : `VA daily brief ready: ${data.submitted_by}`,
         body: `${data.work_date} · ${data.hours_worked ?? 0} hours · ${data.leads_added ?? 0} leads added · ${data.deals_submitted ?? 0} deals submitted`,
         priority: data.blockers ? "high" : "normal",

@@ -1,12 +1,12 @@
 "use client";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { MEMBERS } from "@/data/questions";
 import { getAllSurveys } from "@/data/surveys";
 import { supabase } from "@/lib/supabase";
 import { getStorageKey } from "@/lib/migration";
 import { isAdmin, type CapitalCall, type MemberProfile } from "@/lib/tracker";
 import { fetchAll } from "@/lib/tracker";
+import { activeMemberNamesFromProfiles } from "@/lib/members";
 import {
   fetchPendingMembershipCandidateVotes,
   type MembershipCandidate,
@@ -308,6 +308,7 @@ export default function ActionsPage() {
 
   if (!user) return null;
   const admin = isAdmin(profiles, user);
+  const activeMemberNames = activeMemberNamesFromProfiles(profiles);
   const surveys = getAllSurveys();
   const openCapitalCalls = capitalCalls.filter(c => !c.deleted_at && c.status === "open");
   const suggestedCapitalCalls = capitalCalls.filter(c => !c.deleted_at && c.status === "suggested");
@@ -641,7 +642,7 @@ export default function ActionsPage() {
               >
                 <option value={ALL_MEMBERS_LABEL}>{ALL_MEMBERS_LABEL}</option>
                 <option value={VA_ASSIGNEE_LABEL}>{VA_ASSIGNEE_LABEL}</option>
-                {MEMBERS.map(m => <option key={m} value={m}>{m}</option>)}
+                {activeMemberNames.map(m => <option key={m} value={m}>{m}</option>)}
               </select>
             </div>
             <div>
@@ -852,7 +853,7 @@ export default function ActionsPage() {
               events={taskEventsById[selectedTask.id] ?? []}
               commentValue={taskComments[selectedTask.id] || ""}
               assigneeValue={taskAssignees[selectedTask.id] || selectedTask.assigned_to || ALL_MEMBERS_LABEL}
-              assigneeOptions={[ALL_MEMBERS_LABEL, VA_ASSIGNEE_LABEL, ...MEMBERS]}
+              assigneeOptions={[ALL_MEMBERS_LABEL, VA_ASSIGNEE_LABEL, ...activeMemberNames]}
               onCommentChange={value => setTaskComments(prev => ({ ...prev, [selectedTask.id]: value }))}
               onAddComment={() => handleAddTaskComment(selectedTask)}
               onAssigneeChange={value => setTaskAssignees(prev => ({ ...prev, [selectedTask.id]: value }))}
