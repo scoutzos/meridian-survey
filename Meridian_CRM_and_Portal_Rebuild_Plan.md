@@ -1548,10 +1548,10 @@ Completed in this pass:
 - Recording a buyer offer now creates high-priority member notifications and action items tied to the offer record.
 - Buyer-offer action items now open back to CRM Dispo so members can review the connected campaign, offer, and deal context.
 - Disposition campaign detail now includes campaign touch history combining offer milestones and linked SMS activity.
+- Offer decision tasks now auto-complete when an offer is accepted, countered, rejected, or withdrawn, with task event history preserved.
 
 Remaining:
 
-- Auto-resolve or supersede member offer decision tasks after an offer is accepted, countered, rejected, or withdrawn.
 - Add disposition close/fall-through checklist and project/closing handoff.
 
 Risk: High. Disposition is a core part of land/deal monetization.

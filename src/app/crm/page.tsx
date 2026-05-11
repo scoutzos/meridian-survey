@@ -3,7 +3,7 @@
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { MEMBERS } from "@/data/questions";
-import { createActionItem } from "@/lib/action-items";
+import { createActionItem, resolveActionItemsForSource } from "@/lib/action-items";
 import { calculateDealAnalysis } from "@/lib/deals";
 import {
   createBuyerOffer,
@@ -262,7 +262,17 @@ function CrmContent() {
   const changeOfferStatus = async (offer: BuyerOffer, status: BuyerOffer["status"]) => {
     const { error } = await updateBuyerOfferStatus(offer, status, user);
     if (error) { setMessage(error); return; }
-    setMessage(`Offer marked ${statusLabel(status)}.`);
+    const resolution = ["accepted", "countered", "rejected", "withdrawn"].includes(status)
+      ? await resolveActionItemsForSource(
+        "meridian_buyer_offers",
+        offer.id,
+        user || "Meridian",
+        `Offer marked ${statusLabel(status)} in CRM Dispo.`,
+      )
+      : { count: 0, error: null };
+    setMessage(resolution.error
+      ? `Offer marked ${statusLabel(status)}, but related tasks could not be resolved: ${resolution.error}`
+      : `Offer marked ${statusLabel(status)}${resolution.count ? ` and ${resolution.count} related task${resolution.count === 1 ? "" : "s"} completed` : ""}.`);
     await reload();
   };
 

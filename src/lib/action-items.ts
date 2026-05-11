@@ -169,6 +169,50 @@ export async function updateActionItemStatus(
   return { error: error?.message ?? null };
 }
 
+export async function resolveActionItemsForSource(
+  sourceTable: string,
+  sourceId: string,
+  actor: string,
+  note: string,
+): Promise<{ count: number; error: string | null }> {
+  if (!supabase) return { count: 0, error: "Supabase not configured" };
+  const { data: existing, error: fetchError } = await supabase
+    .from("action_items")
+    .select("id, status")
+    .eq("source_table", sourceTable)
+    .eq("source_id", sourceId)
+    .is("deleted_at", null)
+    .neq("status", "done");
+  if (fetchError || !existing) return { count: 0, error: fetchError?.message ?? "Could not fetch action items." };
+
+  const items = existing as Array<{ id: string; status: ActionItemStatus }>;
+  if (items.length === 0) return { count: 0, error: null };
+
+  const now = new Date().toISOString();
+  const { error } = await supabase
+    .from("action_items")
+    .update({
+      status: "done",
+      completed_at: now,
+      completed_by: actor,
+      completion_note: note.trim() || null,
+      updated_at: now,
+      updated_by: actor,
+    })
+    .eq("source_table", sourceTable)
+    .eq("source_id", sourceId)
+    .is("deleted_at", null)
+    .neq("status", "done");
+  if (error) return { count: 0, error: error.message };
+
+  await Promise.all(items.map(item => recordActionItemEvent(item.id, "completed", actor, {
+    previous_status: item.status,
+    next_status: "done",
+    note,
+  })));
+  return { count: items.length, error: null };
+}
+
 export async function addActionItemComment(id: string, actor: string, note: string): Promise<{ error: string | null }> {
   if (!supabase) return { error: "Supabase not configured" };
   const trimmed = note.trim();
