@@ -1652,6 +1652,7 @@ Completed in this pass:
 - Reworked the Member Portal dashboard body into a consolidated decision desk: Needs My Attention queue first, then Deal Review Queue, VA Daily Brief, Money & Approvals, Active Projects & Closings, Seller Communication Alerts, Recent Activity, Upcoming Meeting, and compact secondary tools.
 - Replaced the Member Portal seller alert card with a CRM Relationship Command module that shows the seller-to-opportunity-to-buyer-to-offer path, live reply/unmatched/buyer/offer counts, exact CRM action links, and recent seller replies inside the member dashboard.
 - Wired the Member Portal dashboard into exact destinations wherever the records exist: member tasks open the selected task, VA brief cards open the VA brief tab, finance/reimbursement cards open Operations Finance, projects open the selected project, candidate/survey cards open the selected record, and CRM offer/action links open the relevant CRM panel.
+- Reorganized the VA shell so `/va` is the VA Home / Command Center, while Lead Inbox, Lists, Deal Packets, and Daily Brief have direct tab URLs and section-specific header actions/stats. This keeps clock-in and end-of-shift context out of the focused Lead Inbox view.
 
 Risk: Medium.
 

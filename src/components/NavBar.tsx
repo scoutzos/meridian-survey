@@ -9,11 +9,23 @@ const crmRoutes = ["/crm", "/va"];
 const crmLinks = [
   { href: "/dashboard", label: "Member Portal" },
   { href: "/crm", label: "Command Center" },
-  { href: "/va", label: "Lead Inbox" },
+  { href: "/va", label: "VA Home" },
+  { href: "/va?tab=outreach", label: "Lead Inbox" },
+  { href: "/va?tab=lists", label: "Lists" },
   { href: "/crm?view=deals", label: "Deal Reviews" },
   { href: "/crm?view=buyers", label: "Buyers" },
   { href: "/crm?view=dispo", label: "Disposition" },
   { href: "/crm?view=records", label: "Records" },
+];
+const vaLinks = [
+  { href: "/dashboard", label: "Member Portal" },
+  { href: "/va", label: "VA Home" },
+  { href: "/va?tab=outreach", label: "Lead Inbox" },
+  { href: "/va?tab=lists", label: "Lists" },
+  { href: "/va?tab=packet", label: "Deal Packets" },
+  { href: "/va?tab=brief", label: "Daily Brief" },
+  { href: "/crm", label: "CRM Command" },
+  { href: "/crm?view=records", label: "CRM Records" },
 ];
 
 const crmCreateButton: CSSProperties = {
@@ -45,6 +57,7 @@ export default function NavBar() {
   const pathname = usePathname();
   const [user, setUser] = useState<string | null>(null);
   const [crmView, setCrmView] = useState<string | null>(null);
+  const [vaTab, setVaTab] = useState<string | null>(null);
   const [moreOpen, setMoreOpen] = useState(false);
 
   useEffect(() => {
@@ -53,6 +66,11 @@ export default function NavBar() {
       setCrmView(new URLSearchParams(window.location.search).get("view"));
     } else {
       setCrmView(null);
+    }
+    if (pathname === "/va") {
+      setVaTab(new URLSearchParams(window.location.search).get("tab") || "today");
+    } else {
+      setVaTab(null);
     }
   }, [pathname]);
 
@@ -87,11 +105,11 @@ export default function NavBar() {
     { href: "/surveys",    label: "Surveys" },
     { href: "/hub",        label: "Hub" },
   ];
-  const vaLinks = [
+  const mainVaLinks = [
     { href: "/va", label: "VA Desk" },
     { href: "/crm", label: "CRM" },
   ];
-  const links = isVaUser(user) ? vaLinks : memberLinks;
+  const links = isVaUser(user) ? mainVaLinks : memberLinks;
 
   const isActive = (href: string) => {
     if (pathname === href) return true;
@@ -113,19 +131,23 @@ export default function NavBar() {
             </div>
           </div>
           <div style={{ display: "grid", gap: 4 }}>
-            {crmLinks.filter(link => !isVaUser(user) || ["/dashboard", "/crm", "/va", "/actions", "/meetings"].some(href => link.href.startsWith(href))).map(link => {
+            {(isVaUser(user) ? vaLinks : crmLinks).map(link => {
               const baseHref = link.href.split("?")[0];
               const linkView = new URLSearchParams(link.href.split("?")[1] ?? "").get("view");
+              const linkTab = new URLSearchParams(link.href.split("?")[1] ?? "").get("tab") || (baseHref === "/va" ? "today" : null);
               const active = link.href === "/crm"
                 ? pathname === "/crm" && !crmView
                 : linkView
                   ? pathname === "/crm" && crmView === linkView
+                  : linkTab
+                    ? pathname === "/va" && vaTab === linkTab
                   : pathname === baseHref || pathname.startsWith(baseHref + "/");
               return (
                 <button
                   key={link.href}
                   onClick={() => {
                     setCrmView(linkView);
+                    setVaTab(linkTab);
                     router.push(link.href);
                   }}
                   className={active ? "crm-side-link crm-side-link-active" : "crm-side-link"}
@@ -148,7 +170,7 @@ export default function NavBar() {
         </aside>
         <nav className="crm-top-bar">
           <button onClick={() => router.push("/dashboard")} style={crmPortalButton}>Member Portal</button>
-          <button onClick={() => router.push("/va")} style={crmCreateButton}>+ Create</button>
+          <button onClick={() => router.push(isVaUser(user) ? "/va?tab=packet" : "/va")} style={crmCreateButton}>{isVaUser(user) ? "+ Deal Brief" : "+ Create"}</button>
           <span style={{ color: "var(--fog)", fontSize: 12 }}>●</span>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <span style={{ display: "grid", placeItems: "center", width: 28, height: 28, borderRadius: 999, background: "var(--obsidian)", color: "var(--bone)", fontSize: 11 }}>{user.split(/\s+/).map(part => part[0]).join("").slice(0, 2)}</span>

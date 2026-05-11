@@ -151,11 +151,11 @@ const DISPOSITION_STATUSES: Array<{ value: DispositionStatus; label: string }> =
 type VaTab = "today" | "outreach" | "lists" | "packet" | "brief";
 
 const TABS: Array<{ value: VaTab; label: string }> = [
-  { value: "today", label: "Today" },
-  { value: "outreach", label: "Outreach" },
+  { value: "today", label: "VA Home" },
+  { value: "outreach", label: "Lead Inbox" },
   { value: "lists", label: "Lists" },
   { value: "packet", label: "Deal Packet" },
-  { value: "brief", label: "Brief" },
+  { value: "brief", label: "Daily Brief" },
 ];
 
 const IMPORT_STATUS_FILTERS = [
@@ -624,6 +624,8 @@ export default function VaPage() {
     const u = localStorage.getItem("meridian_user");
     if (!u) { router.push("/"); return; }
     setUser(u);
+    const tab = new URLSearchParams(window.location.search).get("tab");
+    if (tab && TABS.some(item => item.value === tab)) setActiveTab(tab as VaTab);
     void reload(u);
   }, [router, reload]);
 
@@ -778,6 +780,10 @@ export default function VaPage() {
   if (!user) return null;
 
   const leadLabel = (lead: ImportedLandLead) => lead.owner_name || lead.property_address || lead.parcel_id || "Selected lead";
+  const goToTab = (tab: VaTab) => {
+    setActiveTab(tab);
+    window.history.replaceState(null, "", tab === "today" ? "/va" : `/va?tab=${tab}`);
+  };
 
   const addToDailyBrief = (line: string, patch: Partial<VaDailyBriefInput> = {}) => {
     setBriefDraft(prev => ({
@@ -1482,7 +1488,7 @@ export default function VaPage() {
       value: String(importedLeads.length),
       detail: "Imported leads available",
       action: "Open Lists",
-      onAction: () => setActiveTab("lists"),
+      onAction: () => goToTab("lists"),
       hot: importStats.newRows > 0,
     },
     {
@@ -1490,7 +1496,7 @@ export default function VaPage() {
       value: String(workdeskLeadRows.length),
       detail: "Seller records in queue",
       action: "Work Queue",
-      onAction: () => setActiveTab("today"),
+      onAction: () => goToTab("outreach"),
       hot: unmatchedSms.length > 0 || followUpsDue.length > 0,
     },
     {
@@ -1498,7 +1504,7 @@ export default function VaPage() {
       value: String(draftLeads.length),
       detail: "Draft deal briefs",
       action: "Build Packet",
-      onAction: () => draftLeads[0] ? openDealBrief(draftLeads[0]) : setActiveTab("packet"),
+      onAction: () => draftLeads[0] ? openDealBrief(draftLeads[0]) : goToTab("packet"),
       hot: interestedLeads.length > 0,
     },
     {
@@ -1506,35 +1512,116 @@ export default function VaPage() {
       value: portalStats.briefSubmitted ? "Done" : "Open",
       detail: "Member daily summary",
       action: "End Shift",
-      onAction: () => setActiveTab("brief"),
+      onAction: () => goToTab("brief"),
       hot: !portalStats.briefSubmitted,
     },
+  ];
+  const headerCopy: Record<VaTab, { eyebrow: string; title: string; subtitle: string }> = {
+    today: {
+      eyebrow: "VA Home",
+      title: "VA Command Center",
+      subtitle: "Start the shift, pick the next priority, handle assigned work, and keep the member-facing brief moving.",
+    },
+    outreach: {
+      eyebrow: "Lead Inbox",
+      title: "Seller Outreach Queue",
+      subtitle: "Work seller replies, follow-ups, interested owners, calls, texts, and dispositions without time-clock clutter.",
+    },
+    lists: {
+      eyebrow: "List Operations",
+      title: "Import and Work Lists",
+      subtitle: "Upload Land Portal or Land Insights CSVs, validate records, filter leads, and prepare compliant outreach.",
+    },
+    packet: {
+      eyebrow: "Deal Packet Desk",
+      title: "Build Member Review Packets",
+      subtitle: "Turn interested sellers into shared deal files with calculator support, diligence, notes, and a clear member ask.",
+    },
+    brief: {
+      eyebrow: "End of Shift",
+      title: "Daily Brief and Time",
+      subtitle: "Review clocked time, auto-fill activity counts, document completed work, and submit the summary to members.",
+    },
+  };
+  const headerActions: Record<VaTab, React.ReactNode> = {
+    today: (
+      <>
+      <button onClick={() => goToTab("lists")} style={secondaryButton}>Import List</button>
+      <button onClick={() => selectedImportedLead ? document.getElementById("va-workdesk-note")?.focus() : goToTab("outreach")} style={secondaryButton}>Log Call</button>
+      <button onClick={startNew} style={primaryButton}>New Deal Brief</button>
+      <button onClick={() => goToTab("brief")} style={secondaryButton}>End Shift Brief</button>
+      </>
+    ),
+    outreach: (
+      <>
+      <button onClick={() => goToTab("lists")} style={secondaryButton}>Open Lists</button>
+      <button onClick={() => selectedImportedLead ? document.getElementById("va-workdesk-sms")?.focus() : undefined} style={secondaryButton}>Send Text</button>
+      <button onClick={startNew} style={primaryButton}>New Deal Brief</button>
+      </>
+    ),
+    lists: (
+      <>
+      <button onClick={() => { setImportStep("upload"); setImportPreview(null); setSelectedBatchId(null); }} style={secondaryButton}>New Import</button>
+      <button onClick={() => setBulkSmsPreviewOpen(prev => !prev)} style={secondaryButton}>Bulk SMS</button>
+      <button onClick={() => goToTab("outreach")} style={primaryButton}>Work Lead Inbox</button>
+      </>
+    ),
+    packet: (
+      <>
+      <button onClick={startNew} style={secondaryButton}>New Packet</button>
+      {selected && <button onClick={() => router.push(`/opportunity?deal=${selected.id}`)} style={secondaryButton}>Shared File</button>}
+      <button onClick={() => saveDeal("under-review")} disabled={saving} style={{ ...primaryButton, opacity: saving ? 0.6 : 1 }}>Submit Review</button>
+      </>
+    ),
+    brief: (
+      <>
+      <button onClick={autofillBriefStats} style={secondaryButton}>Auto-fill</button>
+      <button onClick={pullSakariBrief} style={secondaryButton}>Pull SMS</button>
+      <button onClick={openShift ? handleClockOut : handleClockIn} disabled={clockBusy} style={{ ...primaryButton, opacity: clockBusy ? 0.65 : 1 }}>
+        {clockBusy ? "Saving..." : openShift ? "Clock Out" : "Clock In"}
+      </button>
+      </>
+    ),
+  };
+  const headerStats = activeTab === "today" ? vaFlowCards.map(card => ({
+    label: card.label,
+    value: card.value,
+    detail: card.detail,
+    action: card.action,
+    onAction: card.disabled ? undefined : card.onAction,
+    tone: card.hot ? "hot" as const : card.label === "Brief" && portalStats.briefSubmitted ? "good" as const : "default" as const,
+  })) : activeTab === "outreach" ? [
+    { label: "Seller Replies", value: String(unmatchedSms.length), detail: "Unmatched SMS needing triage", action: "Refresh", onAction: () => void reload(user), tone: unmatchedSms.length ? "hot" as const : "default" as const },
+    { label: "Follow-ups", value: String(followUpsDue.length), detail: "Dated follow-ups due", action: "Review", onAction: () => goToTab("outreach"), tone: followUpsDue.length ? "hot" as const : "default" as const },
+    { label: "Interested", value: String(interestedLeads.length), detail: "Sellers showing interest", action: "Open Leads", onAction: () => { setLeadFilter("interested"); goToTab("lists"); }, tone: interestedLeads.length ? "hot" as const : "default" as const },
+    { label: "Draft Packets", value: String(draftLeads.length), detail: "Leads ready to package", action: "Build", onAction: () => draftLeads[0] ? openDealBrief(draftLeads[0]) : goToTab("packet"), tone: draftLeads.length ? "hot" as const : "default" as const },
+  ] : activeTab === "lists" ? [
+    { label: "Imported", value: String(importedLeads.length), detail: "Total list records", action: "Upload", onAction: () => { setImportStep("upload"); setImportPreview(null); }, tone: "default" as const },
+    { label: "New", value: String(importStats.newRows), detail: "Fresh from lists", action: "Filter", onAction: () => setLeadFilter("new"), tone: importStats.newRows ? "hot" as const : "default" as const },
+    { label: "SMS Eligible", value: String(bulkEligibleLeads.length), detail: "Current view recipients", action: "Bulk SMS", onAction: () => setBulkSmsPreviewOpen(true), tone: bulkEligibleLeads.length ? "hot" as const : "default" as const },
+    { label: "Converted", value: String(importStats.converted), detail: "Moved into deal flow", action: "Packets", onAction: () => goToTab("packet"), tone: "default" as const },
+  ] : activeTab === "packet" ? [
+    { label: "Active Packets", value: String(deals.length), detail: "Drafts and reviews", action: "New", onAction: startNew, tone: "default" as const },
+    { label: "Ready Checks", value: `${readyCount}/${readinessItems.length}`, detail: "Quality checks complete", action: "Review", onAction: () => goToTab("packet"), tone: submissionReady ? "hot" as const : "default" as const },
+    { label: "Submitted Today", value: String(portalStats.submittedToday), detail: "Member review packets", action: "Open CRM", onAction: () => router.push("/crm?view=deals"), tone: "default" as const },
+    { label: "Missing Items", value: String(missingReadyItems.length), detail: "Before packet is clean", action: "Fix", onAction: () => goToTab("packet"), tone: missingReadyItems.length ? "hot" as const : "default" as const },
+  ] : [
+    { label: "Clock", value: openShift ? formatDuration(liveShiftMinutes) : "Ready", detail: openShift ? "Shift is running" : "Not clocked in", action: openShift ? "Clock Out" : "Clock In", onAction: openShift ? handleClockOut : handleClockIn, tone: openShift ? "hot" as const : "default" as const },
+    { label: "Hours", value: String(briefDraft.hours_worked ?? (todaysSubmittedMinutes / 60).toFixed(2)), detail: "For this brief date", action: "Auto-fill", onAction: autofillBriefStats, tone: "default" as const },
+    { label: "Tasks Done", value: String(briefDraft.va_tasks_completed ?? completedAssignedTasksToday.length), detail: "Member-assigned work completed", action: "Review", onAction: () => goToTab("today"), tone: "default" as const },
+    { label: "Brief", value: portalStats.briefSubmitted ? "Done" : "Open", detail: "Member daily summary", action: "Submit", onAction: submitDailyBrief, tone: portalStats.briefSubmitted ? "good" as const : "hot" as const },
   ];
 
   return (
     <div className="va-root" style={{ maxWidth: 1680, margin: "0 auto", padding: "82px 20px 100px" }}>
       <OperatingHeader
-        eyebrow="Acquisitions Desk"
-        title="VA Workdesk"
-        subtitle="A focused daily workspace for list imports, seller replies, follow-ups, deal briefs, and the end-of-shift member summary."
+        eyebrow={headerCopy[activeTab].eyebrow}
+        title={headerCopy[activeTab].title}
+        subtitle={headerCopy[activeTab].subtitle}
         user={user}
         mode="va"
-        actions={
-          <>
-          <button onClick={() => setActiveTab("lists")} style={secondaryButton}>Import List</button>
-          <button onClick={() => selectedImportedLead ? document.getElementById("va-workdesk-note")?.focus() : setActiveTab("today")} style={secondaryButton}>Log Call</button>
-          <button onClick={startNew} style={primaryButton}>New Deal Brief</button>
-          <button onClick={() => setActiveTab("brief")} style={secondaryButton}>End Shift Brief</button>
-          </>
-        }
-        stats={vaFlowCards.map(card => ({
-          label: card.label,
-          value: card.value,
-          detail: card.detail,
-          action: card.action,
-          onAction: card.disabled ? undefined : card.onAction,
-          tone: card.hot ? "hot" : card.label === "Brief" && portalStats.briefSubmitted ? "good" : "default",
-        }))}
+        actions={headerActions[activeTab]}
+        stats={headerStats}
       />
 
       {message && (
@@ -1543,37 +1630,11 @@ export default function VaPage() {
         </div>
       )}
 
-      {activeTab !== "today" && <section style={{ ...compactShiftPanel, marginBottom: 16 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 14, flexWrap: "wrap", alignItems: "flex-start", marginBottom: 14 }}>
-          <div>
-            <p style={{ ...eyebrowSmall, color: "var(--brass)" }}>Today&apos;s work</p>
-            <h2 style={{ ...sectionTitle, color: "var(--obsidian)" }}>Shift status</h2>
-          </div>
-          <span style={portalStats.briefSubmitted ? hotPill : pill}>
-            {portalStats.briefSubmitted ? "Brief submitted" : "Brief pending"}
-          </span>
-        </div>
-        <div style={{ display: "grid", gridTemplateColumns: "180px repeat(4, 1fr) 160px", gap: 10, alignItems: "stretch" }} className="number-grid compact-shift-grid">
-          <ShiftCard label="Clock" value={openShift ? formatDuration(liveShiftMinutes) : "Ready"} tone={openShift ? "hot" : "calm"} />
-          <ShiftCard label="Replies" value={String(unmatchedSms.length)} tone={unmatchedSms.length ? "hot" : "calm"} />
-          <ShiftCard label="Follow-ups" value={String(followUpsDue.length)} tone={followUpsDue.length ? "hot" : "calm"} />
-          <ShiftCard label="Draft packets" value={String(draftLeads.length)} />
-          <ShiftCard label="Interested" value={String(interestedLeads.length)} tone={interestedLeads.length ? "hot" : "calm"} />
-          <button
-            onClick={openShift ? handleClockOut : handleClockIn}
-            disabled={clockBusy}
-            style={{ ...primaryButton, minHeight: 72, opacity: clockBusy ? 0.65 : 1 }}
-          >
-            {clockBusy ? "Saving..." : openShift ? "Clock Out" : "Clock In"}
-          </button>
-        </div>
-      </section>}
-
       <div className="va-tabs" style={{ ...panel, padding: 8, marginBottom: 16, display: "flex", gap: 8, flexWrap: "wrap" }}>
         {TABS.map(tab => (
           <button
             key={tab.value}
-            onClick={() => setActiveTab(tab.value)}
+            onClick={() => goToTab(tab.value)}
             style={activeTab === tab.value ? tabActive : tabButton}
           >
             {tab.label}
@@ -3279,14 +3340,6 @@ const panel: React.CSSProperties = {
   borderRadius: 8,
   padding: 16,
   boxShadow: "0 16px 44px rgba(20,17,13,0.06)",
-};
-
-const compactShiftPanel: React.CSSProperties = {
-  background: "rgba(255,255,255,0.78)",
-  border: "1px solid var(--fog)",
-  borderRadius: 8,
-  padding: 12,
-  boxShadow: "0 10px 30px rgba(20,17,13,0.05)",
 };
 
 const subPanel: React.CSSProperties = {
