@@ -2976,8 +2976,11 @@ export default function VaPage() {
               </div>
               <div style={{ display: "grid", gap: 6 }}>
                 {timeEntries.filter(entry => vaDateKey(entry.clock_in_at) === briefDraft.work_date).slice(0, 4).map(entry => (
-                  <div key={entry.id} style={{ display: "flex", justifyContent: "space-between", gap: 10, fontSize: 12, color: "var(--ink)", alignItems: "center", flexWrap: "wrap" }}>
-                    <span>{formatVaDateTime(entry.clock_in_at)}{entry.clock_out_at ? ` - ${formatVaDateTime(entry.clock_out_at)}` : " - active"}</span>
+                  <div key={entry.id} style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto auto", gap: 10, fontSize: 12, color: "var(--ink)", alignItems: "center" }} className="brief-grid">
+                    <span style={{ display: "grid", gap: 5 }}>
+                      <span><strong>Clock in:</strong> {formatVaDateTime(entry.clock_in_at)}</span>
+                      <span><strong>Clock out:</strong> {entry.clock_out_at ? formatVaDateTime(entry.clock_out_at) : "Still clocked in"}</span>
+                    </span>
                     <span>{formatDuration(entry.duration_minutes ?? currentShiftMinutes(entry))} · {formatCurrency(Number(entry.cost_amount ?? 0))}</span>
                     <span style={{ display: "flex", gap: 6 }}>
                       <button onClick={() => startTimeChangeRequest(entry, "edit-shift")} style={secondaryButton}>Edit Time</button>
@@ -3029,7 +3032,7 @@ export default function VaPage() {
                     <option value="">{timeRequestDraft.requestType === "add-shift" ? "New missing shift" : "Select shift"}</option>
                     {timeEntries.slice(0, 20).map(entry => (
                       <option key={entry.id} value={entry.id}>
-                        {formatVaDateTime(entry.clock_in_at)} · {entry.clock_out_at ? formatDuration(entry.duration_minutes ?? 0) : "active"}
+                        Clock in: {formatVaDateTime(entry.clock_in_at)} · Clock out: {entry.clock_out_at ? formatVaDateTime(entry.clock_out_at) : "still clocked in"}
                       </option>
                     ))}
                   </select>
