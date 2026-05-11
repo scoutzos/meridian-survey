@@ -3123,16 +3123,6 @@ function InfoStack({ title, children }: { title: string; children: React.ReactNo
   );
 }
 
-function TimelineCard({ title, date, body }: { title: string; date: string; body: string }) {
-  return (
-    <div style={{ border: "1px solid var(--fog)", borderRadius: 8, padding: 9, background: "var(--surface)" }}>
-      <strong style={{ color: "var(--obsidian)", fontSize: 12 }}>{title}</strong>
-      <p style={{ color: "var(--muted)", fontSize: 11, marginTop: 3 }}>{date}</p>
-      <p style={{ color: "var(--ink)", fontSize: 12, lineHeight: 1.45, marginTop: 5 }}>{body}</p>
-    </div>
-  );
-}
-
 const panel: React.CSSProperties = {
   background: "rgba(255,255,255,0.78)",
   border: "1px solid var(--fog)",

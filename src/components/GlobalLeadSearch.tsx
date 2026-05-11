@@ -128,6 +128,7 @@ export default function GlobalLeadSearch() {
 
   return (
     <div className="global-lead-search">
+      <span className="global-lead-search-label">Lead search</span>
       <div style={{ position: "relative" }}>
         <input
           value={query}
@@ -139,7 +140,7 @@ export default function GlobalLeadSearch() {
             height: 38,
             borderRadius: 6,
             border: "1px solid rgba(201,168,120,0.45)",
-            background: "rgba(247,242,232,0.96)",
+            background: "var(--bone)",
             color: "var(--ink)",
             padding: "0 12px",
             fontSize: 13,
@@ -193,18 +194,40 @@ export default function GlobalLeadSearch() {
       <style jsx>{`
         .global-lead-search {
           position: fixed;
-          top: 11px;
-          right: 190px;
-          width: min(360px, 32vw);
+          top: 70px;
+          left: 50%;
+          width: min(680px, calc(100vw - 40px));
+          transform: translateX(-50%);
           z-index: 260;
+          display: grid;
+          grid-template-columns: auto minmax(0, 1fr);
+          gap: 10px;
+          align-items: center;
+          padding: 8px;
+          border: 1px solid rgba(201,168,120,0.32);
+          border-radius: 10px;
+          background: rgba(27,23,18,0.92);
+          box-shadow: 0 16px 42px rgba(20,17,13,0.2);
+          backdrop-filter: blur(10px);
+        }
+        .global-lead-search-label {
+          color: var(--brass);
+          font-size: 10px;
+          font-weight: 800;
+          letter-spacing: 0.14em;
+          text-transform: uppercase;
+          white-space: nowrap;
         }
         @media (max-width: 767px) {
           .global-lead-search {
-            top: auto;
+            top: calc(10px + env(safe-area-inset-top));
             left: 12px;
             right: 12px;
-            bottom: calc(66px + env(safe-area-inset-bottom));
+            bottom: auto;
             width: auto;
+            transform: none;
+            grid-template-columns: 1fr;
+            gap: 6px;
           }
         }
       `}</style>
