@@ -418,23 +418,42 @@ export default function DashboardPage() {
               Review votes, deal packets, money items, VA updates, and operating work from one member home.
             </p>
           </div>
-          <button
-            onClick={() => router.push("/actions")}
-            style={{
-              background: obsidian,
-              color: bone,
-              border: "none",
-              borderRadius: 8,
-              padding: "12px 16px",
-              fontSize: 11,
-              fontWeight: 800,
-              letterSpacing: "0.14em",
-              textTransform: "uppercase",
-              cursor: "pointer",
-            }}
-          >
-            Open My Tasks
-          </button>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+            <button
+              onClick={() => router.push("/actions?new=va")}
+              style={{
+                background: "transparent",
+                color: obsidian,
+                border: `1px solid ${brass}`,
+                borderRadius: 8,
+                padding: "12px 16px",
+                fontSize: 11,
+                fontWeight: 800,
+                letterSpacing: "0.14em",
+                textTransform: "uppercase",
+                cursor: "pointer",
+              }}
+            >
+              Assign VA Task
+            </button>
+            <button
+              onClick={() => router.push("/actions")}
+              style={{
+                background: obsidian,
+                color: bone,
+                border: "none",
+                borderRadius: 8,
+                padding: "12px 16px",
+                fontSize: 11,
+                fontWeight: 800,
+                letterSpacing: "0.14em",
+                textTransform: "uppercase",
+                cursor: "pointer",
+              }}
+            >
+              Open My Tasks
+            </button>
+          </div>
         </header>
 
         {message && (

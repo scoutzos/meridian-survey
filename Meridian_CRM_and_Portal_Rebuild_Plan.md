@@ -1643,6 +1643,7 @@ Completed in this pass:
 - Replaced Contributions and Expenses browser alerts with in-page feedback for permission limits, deposit logs, expense logs, edits, deletes, and save errors.
 - Replaced Expense Planning browser alerts with in-page feedback for proposal saves, revisions, offset failures, votes, expense conversion, and generated capital-call suggestions.
 - Verified the member-to-VA task path is already wired: members can assign VA tasks from My Tasks, link them to records, the VA sees them in the VA Desk Today queue, and completed VA tasks count into the daily brief.
+- Added a direct Member Home "Assign VA Task" entry point that opens My Tasks with the task form already set to Sophie / VA.
 
 Risk: Medium.
 

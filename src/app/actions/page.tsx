@@ -239,6 +239,16 @@ export default function ActionsPage() {
     const u = localStorage.getItem("meridian_user");
     if (!u) { router.push("/"); return; }
     setUser(u);
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("new") === "va") {
+      setShowNew(true);
+      setFilter("va");
+      setDraft(prev => ({
+        ...prev,
+        assigned_to: VA_ASSIGNEE_LABEL,
+        task_type: "va-work",
+      }));
+    }
     void reload();
   }, [router, reload]);
 
