@@ -7,7 +7,6 @@ import {
   EXPENSE_CATEGORIES,
   CapitalCall,
   Contribution,
-  MEMBER_COUNT,
   MemberProfile,
   TrackerSettings,
   computeFundingStatus,
@@ -16,7 +15,7 @@ import {
   logAudit,
   monthBucket,
 } from "@/lib/tracker";
-import { MEMBERS } from "@/data/questions";
+import { activeMemberNamesFromProfiles } from "@/lib/members";
 import { createActionItem } from "@/lib/action-items";
 import { createNotification, markNotificationRead } from "@/lib/operations";
 import TrackerShell, {
@@ -116,12 +115,13 @@ function resolveRule(args: {
   amount: number;
   isBudgeted: boolean;
   cadence: Cadence;
+  memberCount: number;
 }): { approvalRule: string; minimumApprovals: number; requiredApprovals: number } {
   if (args.amount > 10000) {
     return {
       approvalRule: "All-member written consent required: proposed spend is over the $10,000 signature-authority working default.",
-      minimumApprovals: 6,
-      requiredApprovals: 6,
+      minimumApprovals: args.memberCount,
+      requiredApprovals: args.memberCount,
     };
   }
   if (!args.isBudgeted) {
@@ -168,13 +168,13 @@ function addDays(days: number): string {
   return d.toISOString().slice(0, 10);
 }
 
-function nextProposalStatus(proposal: ExpenseProposal, proposalVotes: ProposalVote[]): ProposalStatus {
+function nextProposalStatus(proposal: ExpenseProposal, proposalVotes: ProposalVote[], memberCount: number): ProposalStatus {
   if (proposal.status === "converted") return "converted";
   if (proposalVotes.some(v => v.decision === "request_changes")) return "revision_needed";
   const approved = proposalVotes.filter(v => v.decision === "approve").length;
   const rejected = proposalVotes.filter(v => v.decision === "reject").length;
   if (approved >= proposal.required_approvals) return "approved";
-  if (MEMBER_COUNT - rejected < proposal.required_approvals) return "rejected";
+  if (memberCount - rejected < proposal.required_approvals) return "rejected";
   return "review";
 }
 
@@ -311,8 +311,10 @@ export default function ExpensePlanningPage() {
   if (!user) return null;
 
   const admin = isAdmin(profiles, user);
+  const activeMemberNames = activeMemberNamesFromProfiles(profiles);
+  const memberCount = activeMemberNames.length;
   const cap = toNumber(memberCap);
-  const teamCap = cap * MEMBER_COUNT;
+  const teamCap = cap * memberCount;
   const duration = Math.max(1, Math.round(toNumber(durationMonths)));
   const hourlyCost = toNumber(hourlyRate) * toNumber(hoursPerMonth);
   const enteredFixed = toNumber(fixedAmount);
@@ -328,12 +330,12 @@ export default function ExpensePlanningPage() {
   const ongoingMonthlyImpact = grossOngoingMonthlyImpact + budgetChangeOngoingMonthlyImpact;
   const newMonthlyTotal = currentMonthly.amount + firstMonthImpact;
   const ongoingMonthlyTotal = currentMonthly.amount + ongoingMonthlyImpact;
-  const newPerMember = MEMBER_COUNT > 0 ? newMonthlyTotal / MEMBER_COUNT : 0;
-  const ongoingPerMember = MEMBER_COUNT > 0 ? ongoingMonthlyTotal / MEMBER_COUNT : 0;
+  const newPerMember = memberCount > 0 ? newMonthlyTotal / memberCount : 0;
+  const ongoingPerMember = memberCount > 0 ? ongoingMonthlyTotal / memberCount : 0;
   const availableRoom = teamCap - currentMonthly.amount;
   const overUnder = teamCap - newMonthlyTotal;
   const ongoingOverUnder = teamCap - ongoingMonthlyTotal;
-  const rule = resolveRule({ amount: Math.max(grossFirstMonthImpact, grossOngoingMonthlyImpact), isBudgeted, cadence });
+  const rule = resolveRule({ amount: Math.max(grossFirstMonthImpact, grossOngoingMonthlyImpact), isBudgeted, cadence, memberCount });
 
   function addOffsetDraft() {
     const amount = toNumber(offsetAmount);
@@ -426,7 +428,7 @@ export default function ExpensePlanningPage() {
         action: "update",
         diff: { before: revisionTarget, after: data, offsets: offsetDrafts, revisionNote },
       });
-      await Promise.all(MEMBERS.map(member => createNotification({
+      await Promise.all(activeMemberNames.map(member => createNotification({
         title: `Expense proposal needs your vote: ${title.trim()}`,
         body: `Version ${nextVersion} is ready for a new vote. ${revisionNote.trim() || "Review the updated proposal details."}`,
         priority: "high",
@@ -436,7 +438,7 @@ export default function ExpensePlanningPage() {
         source_id: revisionTarget.id,
         notification_type: "expense_proposal_vote",
       }, user)));
-      await Promise.all(MEMBERS.map(member => createActionItem({
+      await Promise.all(activeMemberNames.map(member => createActionItem({
         title: `Review expense proposal: ${title.trim()}`,
         description: `Review and vote on version ${nextVersion} in Money -> Planning.`,
         assigned_to: member,
@@ -479,9 +481,9 @@ export default function ExpensePlanningPage() {
       action: "create",
       diff: { after: data, offsets: offsetDrafts },
     });
-    await Promise.all(MEMBERS.map(member => createNotification({
+    await Promise.all(activeMemberNames.map(member => createNotification({
       title: `Expense proposal needs your vote: ${proposal.title}`,
-      body: `${fmtUSD(firstMonthImpact)} net first-month impact. Approval required: ${proposal.required_approvals} of ${MEMBER_COUNT}.`,
+      body: `${fmtUSD(firstMonthImpact)} net first-month impact. Approval required: ${proposal.required_approvals} of ${memberCount}.`,
       priority: "high",
       assigned_to: member,
       href: `/tracker/planning?proposal=${proposal.id}`,
@@ -489,7 +491,7 @@ export default function ExpensePlanningPage() {
       source_id: proposal.id,
       notification_type: "expense_proposal_vote",
     }, user)));
-    await Promise.all(MEMBERS.map(member => createActionItem({
+    await Promise.all(activeMemberNames.map(member => createActionItem({
       title: `Review expense proposal: ${proposal.title}`,
       description: `Review and vote on the expense proposal in Money -> Planning. Net first-month impact: ${fmtUSD(firstMonthImpact)}.`,
       assigned_to: member,
@@ -530,7 +532,7 @@ export default function ExpensePlanningPage() {
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     };
-    const nextStatus = nextProposalStatus(proposal, [...existing, simulatedVote]);
+    const nextStatus = nextProposalStatus(proposal, [...existing, simulatedVote], memberCount);
     if (nextStatus !== proposal.status) {
       await supabase
         .from("tracker_expense_proposals")
@@ -540,7 +542,7 @@ export default function ExpensePlanningPage() {
         await closeProposalVoteWork(proposal, user);
       }
       if (nextStatus === "approved" || nextStatus === "rejected") {
-        await Promise.all(MEMBERS.map(member => createNotification({
+        await Promise.all(activeMemberNames.map(member => createNotification({
           title: `Expense proposal ${nextStatus}: ${proposal.title}`,
           body: nextStatus === "approved"
             ? "The proposal reached the required approvals and is ready for admin conversion."
@@ -554,7 +556,7 @@ export default function ExpensePlanningPage() {
         }, user)));
       }
       if (nextStatus === "revision_needed") {
-        await Promise.all(MEMBERS.map(member => createNotification({
+        await Promise.all(activeMemberNames.map(member => createNotification({
           title: `Changes requested: ${proposal.title}`,
           body: `${user} requested changes before approval. Review the note and revise the proposal for a new vote.`,
           priority: "high",
@@ -699,6 +701,7 @@ export default function ExpensePlanningPage() {
       (expenseRes.data as Expense[] | null) ?? [],
       (contributionRes.data as Contribution[] | null) ?? [],
       (callRes.data as CapitalCall[] | null) ?? [],
+      memberCount,
     );
     let suggestedCall = null;
     const existingCalls = (callRes.data as CapitalCall[] | null) ?? [];
@@ -711,7 +714,7 @@ export default function ExpensePlanningPage() {
           date_called: new Date().toISOString().slice(0, 10),
           reason: `Auto-suggested after approved proposal "${proposal.title}": cover funding shortfall of ${fmtUSD(fundingStatus.shortfall)}`,
           total_amount: Number(fundingStatus.shortfall.toFixed(2)),
-          per_member_amount: MEMBER_COUNT > 0 ? Number((fundingStatus.shortfall / MEMBER_COUNT).toFixed(2)) : 0,
+          per_member_amount: memberCount > 0 ? Number((fundingStatus.shortfall / memberCount).toFixed(2)) : 0,
           status: "suggested",
           auto_suggested: true,
           created_by: user,
@@ -738,7 +741,7 @@ export default function ExpensePlanningPage() {
         diff: { after: suggestedCall, source: "proposal-conversion", proposalId: proposal.id },
       });
     }
-    await Promise.all(MEMBERS.map(member => createNotification({
+    await Promise.all(activeMemberNames.map(member => createNotification({
       title: `Approved expense proposal converted: ${proposal.title}`,
       body: suggestedCall
         ? "Expense rows were created and a suggested capital call was opened for review."
@@ -1047,7 +1050,7 @@ export default function ExpensePlanningPage() {
           <div style={{ marginTop: 14, padding: 12, borderRadius: 8, background: "var(--surface2)", border: "1px solid var(--border)", fontSize: 12, color: "var(--muted)", lineHeight: 1.5 }}>
             <strong style={{ color: "var(--fg)" }}>Approval rule:</strong> {rule.approvalRule}
             <div style={{ marginTop: 6 }}>
-              System requires <b style={{ color: "var(--fg)" }}>{rule.requiredApprovals} of {MEMBER_COUNT}</b> approvals.
+              System requires <b style={{ color: "var(--fg)" }}>{rule.requiredApprovals} of {memberCount}</b> approvals.
             </div>
           </div>
         </div>
@@ -1129,11 +1132,11 @@ export default function ExpensePlanningPage() {
           const netOngoingMonthlyAmount = ongoingMonthlyAmount + proposalBudgetChangeOngoing;
           const firstMonthTotal = currentMonthly.amount + firstMonthAmount;
           const ongoingTotal = currentMonthly.amount + netOngoingMonthlyAmount;
-          const currentMonthlyPerMember = MEMBER_COUNT > 0 ? currentMonthly.amount / MEMBER_COUNT : 0;
-          const firstMonthPerMember = MEMBER_COUNT > 0 ? firstMonthTotal / MEMBER_COUNT : 0;
-          const ongoingPerMemberForProposal = MEMBER_COUNT > 0 ? ongoingTotal / MEMBER_COUNT : 0;
-          const firstMonthImpactPerMember = MEMBER_COUNT > 0 ? firstMonthAmount / MEMBER_COUNT : 0;
-          const ongoingImpactPerMember = MEMBER_COUNT > 0 ? netOngoingMonthlyAmount / MEMBER_COUNT : 0;
+          const currentMonthlyPerMember = memberCount > 0 ? currentMonthly.amount / memberCount : 0;
+          const firstMonthPerMember = memberCount > 0 ? firstMonthTotal / memberCount : 0;
+          const ongoingPerMemberForProposal = memberCount > 0 ? ongoingTotal / memberCount : 0;
+          const firstMonthImpactPerMember = memberCount > 0 ? firstMonthAmount / memberCount : 0;
+          const ongoingImpactPerMember = memberCount > 0 ? netOngoingMonthlyAmount / memberCount : 0;
           const expanded = expandedProposalId === proposal.id;
 
           return (
@@ -1315,11 +1318,11 @@ export default function ExpensePlanningPage() {
                 <MiniStat label="Approvals" value={`${approved}/${proposal.required_approvals}`} />
                 <MiniStat label="Reject" value={String(rejected)} />
                 <MiniStat label="Abstain" value={String(abstained)} />
-                <MiniStat label="OA minimum" value={`${proposal.minimum_oa_approvals}/${MEMBER_COUNT}`} />
+                <MiniStat label="OA minimum" value={`${proposal.minimum_oa_approvals}/${memberCount}`} />
               </div>
 
               <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 8, marginTop: 14 }}>
-                {MEMBERS.map(member => {
+                {activeMemberNames.map(member => {
                   const v = proposalVotes.find(row => row.member_name === member);
                   return (
                     <div key={member} style={{ padding: 10, borderRadius: 8, background: "var(--surface2)", border: "1px solid var(--border)", minHeight: 74 }}>

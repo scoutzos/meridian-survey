@@ -1,10 +1,10 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { MEMBERS } from "@/data/questions";
 import { supabase } from "@/lib/supabase";
 import { isAdmin, type MemberProfile } from "@/lib/tracker";
 import { createActionItem } from "@/lib/action-items";
+import { activeMemberNamesFromProfiles } from "@/lib/members";
 import {
   createMeetingNote,
   deleteMeetingNote,
@@ -88,6 +88,7 @@ export default function MeetingsPage() {
 
   if (!user) return null;
   const admin = isAdmin(profiles, user);
+  const activeMemberNames = activeMemberNamesFromProfiles(profiles);
   const transcriptCount = notes.filter(n => n.transcript_filename).length;
   const actionReadyLabel = extraction ? `${confirmedItems.size} ready` : "Transcript tool";
 
@@ -200,7 +201,7 @@ export default function MeetingsPage() {
       const res = await fetch("/api/extract-meeting", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ transcript: transcriptText, members: MEMBERS }),
+        body: JSON.stringify({ transcript: transcriptText, members: activeMemberNames }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -549,7 +550,7 @@ export default function MeetingsPage() {
             <div>
               <label style={labelStyle}>Attendees</label>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-                {MEMBERS.map(m => {
+                {activeMemberNames.map(m => {
                   const on = newNote.attendees.includes(m);
                   return (
                     <button

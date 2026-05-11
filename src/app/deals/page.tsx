@@ -36,12 +36,12 @@ import { createActionItem } from "@/lib/action-items";
 import { createNotification, markNotificationRead } from "@/lib/operations";
 import { saveGeneratedMemo } from "@/lib/governance";
 import { supabase } from "@/lib/supabase";
-import { MEMBERS } from "@/data/questions";
 import { isVaUser } from "@/lib/identity";
 import { fetchCommunicationEvents, type CommunicationEvent } from "@/lib/communications";
 import ConversationPanel from "@/components/ConversationPanel";
 import { labelForStatus } from "@/lib/status-map";
 import { getDealNextAction, type WorkflowAction } from "@/lib/workflow-actions";
+import { fetchActiveMemberNames } from "@/lib/members";
 
 const DISPLAY_FONT = "var(--font-display)";
 
@@ -273,12 +273,14 @@ export default function DealsPage() {
   const [draft, setDraft] = useState(EMPTY_DRAFT);
   const [editingDealId, setEditingDealId] = useState<string | null>(null);
   const [activeDealTab, setActiveDealTab] = useState<DealDetailTab>("packet");
+  const [activeMemberNames, setActiveMemberNames] = useState<string[]>([]);
   const [message, setMessage] = useState("");
 
   const reload = useCallback(async () => {
     setLoading(true);
-    const rows = await fetchDeals();
+    const [rows, members] = await Promise.all([fetchDeals(), fetchActiveMemberNames()]);
     setDeals(rows);
+    setActiveMemberNames(members);
     const focusedDealId = new URLSearchParams(window.location.search).get("deal");
     setSelectedId(prev => focusedDealId || prev || rows[0]?.id || null);
     setLoading(false);
@@ -326,7 +328,7 @@ export default function DealsPage() {
   if (!user) return null;
 
   const notifyDealReviewWork = async (deal: Deal, message: string): Promise<string[]> => {
-    const results = await Promise.all(MEMBERS.flatMap(member => [
+    const results = await Promise.all(activeMemberNames.flatMap(member => [
       createNotification({
         title: `Deal needs your vote: ${deal.title}`,
         body: message,
@@ -609,7 +611,7 @@ export default function DealsPage() {
   const blocked = checklist.filter(i => i.status === "blocked").length;
   const myVote = selected ? votes.find(v => v.member_name === user) : null;
   const voteCounts = VOTES.map(v => ({ ...v, count: votes.filter(row => row.vote === v.value).length })).filter(v => v.count > 0);
-  const quorumNeeded = 4;
+  const quorumNeeded = Math.max(1, Math.floor(activeMemberNames.length / 2) + 1);
   const approvalVotes = votes.filter(v => v.vote === "make-offer" || v.vote === "counter").length;
   const passVotes = votes.filter(v => v.vote === "pass").length;
   const quorumReached = votes.length >= quorumNeeded;
@@ -674,7 +676,7 @@ export default function DealsPage() {
     {
       label: "3. Vote",
       title: decisionStatus,
-      detail: votes.length ? `${votes.length}/${MEMBERS.length} members responded` : "No member votes yet.",
+      detail: votes.length ? `${votes.length}/${activeMemberNames.length} members responded` : "No member votes yet.",
       state: quorumReached ? "done" : selected.status === "under-review" ? "active" : "open",
       tab: "vote" as DealDetailTab,
     },
@@ -1315,7 +1317,7 @@ export default function DealsPage() {
                 </div>
                 <div style={{ background: "var(--bone)", border: "1px solid var(--fog)", borderRadius: 8, padding: 10, marginBottom: 10 }}>
                   <p style={{ fontSize: 12, color: "var(--ink)", opacity: 0.72 }}>
-                    Quorum rule: {quorumNeeded} of {MEMBERS.length} members must respond. Offer authority is reached when {quorumNeeded} members vote Make Offer or Counter.
+                    Quorum rule: {quorumNeeded} of {activeMemberNames.length} members must respond. Offer authority is reached when {quorumNeeded} members vote Make Offer or Counter.
                   </p>
                 </div>
                 <textarea rows={2} value={voteNote} onChange={e => setVoteNote(e.target.value)} placeholder="Optional note for the group" />
