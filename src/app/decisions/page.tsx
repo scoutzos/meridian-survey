@@ -29,6 +29,7 @@ export default function DecisionsPage() {
   const [profiles, setProfiles] = useState<MemberProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [message, setMessage] = useState("");
   const [draft, setDraft] = useState<{ status: DecisionStatus; final_answer: string; notes: string }>(
     { status: "remaining", final_answer: "", notes: "" },
   );
@@ -97,8 +98,9 @@ export default function DecisionsPage() {
         ? (rows.find(r => r.id === editingId)?.meeting_date ?? new Date().toISOString().slice(0, 10))
         : null,
     }, user);
-    if (error) { alert(error); return; }
+    if (error) { setMessage(error); return; }
     setEditingId(null);
+    setMessage("Decision updated.");
     void load();
   }
 
@@ -118,6 +120,26 @@ export default function DecisionsPage() {
           </p>
         </div>
       </header>
+
+      {message && (
+        <div style={{
+          border: "1px solid rgba(176,137,84,0.36)",
+          background: "rgba(176,137,84,0.10)",
+          color: "var(--obsidian)",
+          borderRadius: 10,
+          padding: "11px 13px",
+          marginBottom: 16,
+          display: "flex",
+          justifyContent: "space-between",
+          gap: 12,
+          alignItems: "flex-start",
+          fontSize: 13,
+          lineHeight: 1.45,
+        }}>
+          <span>{message}</span>
+          <button onClick={() => setMessage("")} style={{ background: "transparent", border: "none", color: "var(--brass)", fontSize: 11, fontWeight: 800, letterSpacing: "0.12em", textTransform: "uppercase", cursor: "pointer" }}>Clear</button>
+        </div>
+      )}
 
       <section className="decision-bridge-grid">
         <article className="decision-bridge-card">

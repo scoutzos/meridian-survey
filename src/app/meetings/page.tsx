@@ -59,6 +59,7 @@ export default function MeetingsPage() {
   const [extraction, setExtraction] = useState<ExtractionResult | null>(null);
   const [confirmedItems, setConfirmedItems] = useState<Set<number>>(new Set());
   const [dragOver, setDragOver] = useState(false);
+  const [message, setMessage] = useState("");
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const reload = useCallback(async () => {
@@ -104,13 +105,14 @@ export default function MeetingsPage() {
       meeting_time: nextDraft.meeting_time.trim() || null,
       agenda: nextDraft.agenda.trim() || null,
     }, user);
-    if (error) { alert(error); return; }
+    if (error) { setMessage(error); return; }
     setEditingNext(false);
+    setMessage("Next meeting updated.");
     void reload();
   };
 
   const saveNote = async () => {
-    if (!newNote.meeting_date) { alert("Pick a meeting date."); return; }
+    if (!newNote.meeting_date) { setMessage("Pick a meeting date."); return; }
     const { data, error } = await createMeetingNote({
       meeting_date: newNote.meeting_date,
       agenda: newNote.agenda,
@@ -119,7 +121,7 @@ export default function MeetingsPage() {
       transcript: transcriptText || null,
       transcript_filename: transcriptFilename || null,
     }, user);
-    if (error) { alert(error); return; }
+    if (error) { setMessage(error); return; }
 
     // Create any confirmed action items from the extraction.
     if (extraction && data) {
@@ -136,14 +138,16 @@ export default function MeetingsPage() {
 
     resetNewNoteForm();
     setShowNewNote(false);
+    setMessage("Meeting saved.");
     void reload();
   };
 
   const removeNote = async (note: MeetingNote) => {
     if (!confirm(`Delete notes for ${formatLong(note.meeting_date)}?`)) return;
     const { error } = await deleteMeetingNote(note.id, user);
-    if (error) { alert(error); return; }
+    if (error) { setMessage(error); return; }
     setNotes(prev => prev.filter(n => n.id !== note.id));
+    setMessage("Meeting note deleted.");
   };
 
   const toggleAttendee = (m: string) => {
@@ -169,7 +173,7 @@ export default function MeetingsPage() {
       }
       setTranscriptFilename(file.name);
     } catch (err) {
-      alert(`Could not read file: ${err instanceof Error ? err.message : "unknown error"}`);
+      setMessage(`Could not read file: ${err instanceof Error ? err.message : "unknown error"}`);
     } finally {
       setParsingFile(false);
     }
@@ -189,7 +193,7 @@ export default function MeetingsPage() {
   };
 
   const runExtraction = async () => {
-    if (!transcriptText.trim()) { alert("Upload a transcript first."); return; }
+    if (!transcriptText.trim()) { setMessage("Upload a transcript first."); return; }
     setExtracting(true);
     setExtraction(null);
     try {
@@ -200,7 +204,7 @@ export default function MeetingsPage() {
       });
       const data = await res.json();
       if (!res.ok) {
-        alert(data.error || "Extraction failed");
+        setMessage(data.error || "Extraction failed");
         return;
       }
       const result = data as ExtractionResult;
@@ -214,8 +218,9 @@ export default function MeetingsPage() {
         noteParts.push("\nDecisions:\n" + result.decisions.map(d => `• ${d}`).join("\n"));
       }
       if (noteParts.length > 0) setNewNote(prev => ({ ...prev, notes: noteParts.join("\n") }));
+      setMessage("Transcript extraction complete.");
     } catch (err) {
-      alert(`Extraction failed: ${err instanceof Error ? err.message : "unknown"}`);
+      setMessage(`Extraction failed: ${err instanceof Error ? err.message : "unknown"}`);
     } finally {
       setExtracting(false);
     }
@@ -250,6 +255,26 @@ export default function MeetingsPage() {
           <button onClick={() => router.push("/documents")} style={primaryBtn}>Documents</button>
         </div>
       </header>
+
+      {message && (
+        <div style={{
+          border: "1px solid rgba(176,137,84,0.36)",
+          background: "rgba(176,137,84,0.10)",
+          color: "var(--obsidian)",
+          borderRadius: 10,
+          padding: "11px 13px",
+          marginBottom: 16,
+          display: "flex",
+          justifyContent: "space-between",
+          gap: 12,
+          alignItems: "flex-start",
+          fontSize: 13,
+          lineHeight: 1.45,
+        }}>
+          <span>{message}</span>
+          <button onClick={() => setMessage("")} style={{ background: "transparent", border: "none", color: "var(--brass)", fontSize: 11, fontWeight: 800, letterSpacing: "0.12em", textTransform: "uppercase", cursor: "pointer" }}>Clear</button>
+        </div>
+      )}
 
       <section className="meeting-bridge-grid">
         <article className="meeting-bridge-card">
