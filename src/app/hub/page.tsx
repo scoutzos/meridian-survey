@@ -57,6 +57,7 @@ export default function HubPage() {
   const transcriptSearchTimer = useRef<NodeJS.Timeout | null>(null);
   const [links, setLinks] = useState<SharedLink[]>([]);
   const [profiles, setProfiles] = useState<Record<string, MemberProfile>>({});
+  const [message, setMessage] = useState("");
 
   // Form state
   const [newAnnouncement, setNewAnnouncement] = useState("");
@@ -124,25 +125,28 @@ export default function HubPage() {
   const addAnnouncement = async () => {
     if (!newAnnouncement.trim() || !user) return;
     const { data, error } = await saveAnnouncement(user, newAnnouncement.trim());
-    if (error) { alert(error); return; }
+    if (error) { setMessage(error); return; }
     if (data) setAnnouncements(prev => [data, ...prev]);
     setNewAnnouncement("");
+    setMessage("Announcement posted.");
   };
 
   const addDecision = async () => {
     if (!newDecision.description.trim() || !user) return;
     const { data, error } = await saveDecision(user, newDecision);
-    if (error) { alert(error); return; }
+    if (error) { setMessage(error); return; }
     if (data) setDecisions(prev => [data, ...prev]);
     setNewDecision({ description: "", present: [], outcome: "" });
+    setMessage("Decision logged.");
   };
 
   const addLink = async () => {
     if (!newLink.url.trim() || !newLink.title.trim() || !user) return;
     const { data, error } = await saveSharedLink(user, newLink);
-    if (error) { alert(error); return; }
+    if (error) { setMessage(error); return; }
     if (data) setLinks(prev => [data, ...prev]);
     setNewLink({ url: "", title: "", category: "Other" });
+    setMessage("Link saved.");
   };
 
   const handleFileUpload = () => {
@@ -155,8 +159,9 @@ export default function HubPage() {
       reader.onload = async () => {
         const data = reader.result as string;
         const { data: doc, error } = await saveHubDocument(user, { filename: file.name, category: docCategory, data, mimeType: file.type });
-        if (error) { alert(error); return; }
+        if (error) { setMessage(error); return; }
         if (doc) setDocuments(prev => [doc, ...prev]);
+        setMessage("Document uploaded.");
       };
       reader.readAsDataURL(file);
     };
@@ -180,7 +185,7 @@ export default function HubPage() {
       setTranscriptUploading(true);
       const result = await uploadTranscript({ file, title, occurredAt, uploader: user });
       setTranscriptUploading(false);
-      if (result.error) { alert(`Upload failed: ${result.error}`); return; }
+      if (result.error) { setMessage(`Upload failed: ${result.error}`); return; }
       if (!result.fileStored) {
         // Body still saved; just couldn't push the original file. Common cause:
         // Storage bucket "transcripts" doesn't exist yet — alert once so the
@@ -192,6 +197,7 @@ export default function HubPage() {
         ? await searchTranscripts(transcriptDebounced)
         : await fetchTranscripts();
       setTranscripts(next);
+      setMessage(result.fileStored ? "Transcript uploaded." : "Transcript text saved. Original file storage still needs setup.");
     };
     input.click();
   };
@@ -200,14 +206,15 @@ export default function HubPage() {
     if (!user) return;
     if (!confirm("Delete this transcript?")) return;
     const { error } = await deleteTranscript(id, user);
-    if (error) { alert(error); return; }
+    if (error) { setMessage(error); return; }
     setTranscripts(prev => prev.filter(t => t.id !== id));
+    setMessage("Transcript deleted.");
   };
 
   const handleTranscriptDownload = async (t: Transcript) => {
     const url = await transcriptDownloadUrl(t);
     if (!url) {
-      alert("Original file isn't available — only the extracted text is stored for this transcript.");
+      setMessage("Original file isn't available. Only the extracted text is stored for this transcript.");
       return;
     }
     window.open(url, "_blank");
@@ -224,9 +231,10 @@ export default function HubPage() {
     if (!user) return;
     const profile = { ...(profiles[user] || {}), name: user, role: profileEdit.role, contact: profileEdit.contact, lastActive: new Date().toISOString() };
     const { data, error } = await upsertHubProfile(profile);
-    if (error) { alert(error); return; }
+    if (error) { setMessage(error); return; }
     setProfiles(prev => ({ ...prev, [user]: data ?? profile }));
     setEditingProfile(false);
+    setMessage("Profile saved.");
   };
 
   const formatDate = (d: string) => {
@@ -255,6 +263,12 @@ export default function HubPage() {
           A shared archive for announcements, member profiles, resource links, transcript history, and legacy uploads. Daily operating work now lives in Dashboard, Tasks, CRM, Deals, Operations, Money, Projects, Documents, and Meetings.
         </p>
       </header>
+
+      {message && (
+        <div className="hub-message" role="status">
+          {message}
+        </div>
+      )}
 
       <section className="hub-status-grid">
         <article className="hub-status-card">
@@ -592,6 +606,16 @@ export default function HubPage() {
           grid-template-columns: repeat(4, minmax(0, 1fr));
           gap: 12px;
           margin-bottom: 18px;
+        }
+        .hub-message {
+          background: rgba(201,168,120,0.14);
+          border: 1px solid rgba(201,168,120,0.34);
+          border-radius: 10px;
+          color: var(--obsidian);
+          font-size: 13px;
+          line-height: 1.45;
+          margin: -6px 0 18px;
+          padding: 11px 14px;
         }
         .hub-status-card {
           background: var(--surface);
