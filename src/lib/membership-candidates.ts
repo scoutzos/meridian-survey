@@ -287,7 +287,6 @@ export async function admitMembershipCandidate(input: MemberAdmissionInput): Pro
       name: memberName,
       password,
       password_changed: false,
-      updated_at: now,
     }, { onConflict: "name" });
   if (memberError) return { error: memberError.message };
 
