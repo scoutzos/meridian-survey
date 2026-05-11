@@ -1545,11 +1545,13 @@ Completed in this pass:
 - Buyer offers now have visible member decision controls: accept, counter, reject, withdrawn.
 - Offer decision changes update the linked deal with best buyer offer and disposition status where appropriate.
 - Disposition view now includes a member offer decision queue for received/countered offers.
+- Recording a buyer offer now creates high-priority member notifications and action items tied to the offer record.
+- Buyer-offer action items now open back to CRM Dispo so members can review the connected campaign, offer, and deal context.
 
 Remaining:
 
 - Add buyer outreach activity/campaign touch history beyond existing SMS conversation panel.
-- Add offer decision notifications/tasks for members when a buyer offer is received.
+- Auto-resolve or supersede member offer decision tasks after an offer is accepted, countered, rejected, or withdrawn.
 - Add disposition close/fall-through checklist and project/closing handoff.
 
 Risk: High. Disposition is a core part of land/deal monetization.

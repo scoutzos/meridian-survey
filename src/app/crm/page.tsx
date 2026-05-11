@@ -2,6 +2,8 @@
 
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { MEMBERS } from "@/data/questions";
+import { createActionItem } from "@/lib/action-items";
 import { calculateDealAnalysis } from "@/lib/deals";
 import {
   createBuyerOffer,
@@ -23,6 +25,7 @@ import {
 } from "@/lib/crm";
 import type { CommunicationEvent } from "@/lib/communications";
 import ConversationPanel from "@/components/ConversationPanel";
+import { createNotification } from "@/lib/operations";
 import { labelForStatus } from "@/lib/status-map";
 import { getDealNextAction } from "@/lib/workflow-actions";
 
@@ -199,7 +202,7 @@ function CrmContent() {
   const createOffer = async () => {
     if (!selectedDeal) { setMessage("Select a deal first."); return; }
     const campaign = selectedCampaigns[0];
-    const { error } = await createBuyerOffer({
+    const { data: offer, error } = await createBuyerOffer({
       deal_id: selectedDeal.id,
       disposition_campaign_id: campaign?.id ?? null,
       buyer_name: offerDraft.buyer_name,
@@ -210,7 +213,42 @@ function CrmContent() {
     }, user);
     if (error) { setMessage(error); return; }
     setOfferDraft({ buyer_name: "", offer_amount: "", earnest_money: "", close_date: "", notes: "" });
-    setMessage("Buyer offer recorded.");
+    if (offer) {
+      const due = offer.close_date || new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+      const description = [
+        `${offer.buyer_name} offered ${money(offer.offer_amount)} for ${selectedDeal.title}.`,
+        offer.close_date ? `Proposed close: ${formatDate(offer.close_date)}.` : "Close date is not set.",
+        offer.notes ? `Notes: ${offer.notes}` : null,
+        "Review in CRM Dispo and choose accept, counter, reject, or continue negotiation.",
+      ].filter(Boolean).join("\n");
+      const workResults = await Promise.all(MEMBERS.flatMap(member => [
+        createNotification({
+          title: `Buyer offer needs decision: ${selectedDeal.title}`,
+          body: `${offer.buyer_name} offered ${money(offer.offer_amount)}. Review in CRM Dispo.`,
+          priority: "high",
+          assigned_to: member,
+          href: "/crm?view=dispo",
+          source_table: "meridian_buyer_offers",
+          source_id: offer.id,
+          notification_type: "buyer-offer-decision",
+          dedupe: true,
+        }, user),
+        createActionItem({
+          title: `Review buyer offer: ${selectedDeal.title}`,
+          description,
+          assigned_to: member,
+          due_date: due,
+          task_type: "deal-follow-up",
+          priority: "high",
+          source_table: "meridian_buyer_offers",
+          source_id: offer.id,
+        }, user),
+      ]));
+      const firstError = workResults.find(result => result.error)?.error;
+      setMessage(firstError ? `Buyer offer recorded, but member tasks had an issue: ${firstError}` : "Buyer offer recorded and member decision tasks created.");
+    } else {
+      setMessage("Buyer offer recorded.");
+    }
     await reload();
   };
 

@@ -119,6 +119,7 @@ function formatDue(iso: string | null): string | null {
 function taskHref(item: ActionItem): string {
   if (item.source_table === "meridian_deals" && item.source_id) return `/opportunity?deal=${item.source_id}`;
   if (item.source_table === "meridian_imported_land_leads" && item.source_id) return `/opportunity?lead=${item.source_id}`;
+  if (item.source_table === "meridian_buyer_offers" && item.source_id) return "/crm?view=dispo";
   if (item.source_table === "meridian_projects" && item.source_id) return `/projects`;
   if (item.source_table === "meeting_notes" && item.source_id) return `/meetings`;
   if (item.source_table === "document_library" && item.source_id) return "/documents";
@@ -129,6 +130,7 @@ function taskHref(item: ActionItem): string {
 function sourceLabel(item: ActionItem): string {
   if (item.source_table === "meridian_deals") return "Deal";
   if (item.source_table === "meridian_imported_land_leads") return "Lead";
+  if (item.source_table === "meridian_buyer_offers") return "Buyer Offer";
   if (item.source_table === "meridian_projects") return "Project";
   if (item.source_table === "meeting_notes") return "Meeting";
   if (item.source_table === "document_library") return "Document";
