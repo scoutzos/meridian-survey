@@ -1479,13 +1479,17 @@ Completed in this pass:
 - Continued with operational escalation:
   - Added an Operations Escalations tab for blocked VA work.
   - Blocked VA tasks now have a focused member review surface with blocker reason, requester, due date, task link, record link, and the expected next member action.
+- Continued with permissions hardening:
+  - Added migration `037_work_routing_rls_readiness.sql` with Supabase Auth-ready helper functions and authenticated policies for `action_items` and `meridian_notifications`.
+  - Documented the cutover requirement: Supabase Auth must provide a `member_name` claim or `user_metadata.member_name` before prototype anon policies are removed.
+  - Staged policy rules so members can create/own/review member work, the VA can update assigned VA work, and admins can delete action items after Auth cutover.
 
 Remaining:
 
 - Add linked-record selectors for documents once document ownership/indexing is cleaned up.
 - Add a persistent task event/audit table if we need every status change, reassignment, comment, and notification preserved beyond the current task fields.
 - Add notification deduplication/read-state cleanup if blocked-task alerts become too noisy.
-- Confirm RLS for members assigning VA tasks and VA updating only assigned tasks.
+- Cut over from client-side prototype login to Supabase Auth, then remove prototype anon policies and verify the staged RLS policies with real member and VA users.
 - Confirm whether blocked VA tasks should support a one-click member response/comment from Operations or stay routed through Actions.
 
 Risk: High if skipped. Members will keep assigning VA work through texts or side conversations, which defeats the purpose of the portal.
