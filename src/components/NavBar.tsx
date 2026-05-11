@@ -7,6 +7,7 @@ import Logo from "./Logo";
 
 const crmRoutes = ["/crm", "/va", "/deals", "/opportunity", "/actions", "/operations", "/meetings"];
 const crmLinks = [
+  { href: "/dashboard", label: "Member Portal" },
   { href: "/crm", label: "Command Center" },
   { href: "/va", label: "Lead Inbox" },
   { href: "/deals", label: "Deal Pipeline" },
@@ -24,6 +25,18 @@ const crmCreateButton: CSSProperties = {
   color: "var(--obsidian)",
   borderRadius: 7,
   padding: "8px 13px",
+  fontSize: 11,
+  fontWeight: 800,
+  letterSpacing: "0.08em",
+  textTransform: "uppercase",
+};
+
+const crmPortalButton: CSSProperties = {
+  border: "1px solid var(--fog)",
+  background: "var(--surface)",
+  color: "var(--obsidian)",
+  borderRadius: 7,
+  padding: "8px 12px",
   fontSize: 11,
   fontWeight: 800,
   letterSpacing: "0.08em",
@@ -58,6 +71,7 @@ export default function NavBar() {
     { href: "/surveys",    label: "Surveys" },
     { href: "/actions",    label: "Tasks" },
     { href: "/meetings",   label: "Meetings" },
+    { href: "/dashboard",  label: "My Portal" },
     { href: "/members/candidates", label: "Applications" },
     { href: "/documents",  label: "Docs" },
     { href: "/decisions",  label: "Decisions" },
@@ -88,7 +102,7 @@ export default function NavBar() {
             </div>
           </div>
           <div style={{ display: "grid", gap: 4 }}>
-            {crmLinks.filter(link => !isVaUser(user) || ["/crm", "/va", "/actions", "/meetings"].some(href => link.href.startsWith(href))).map(link => {
+            {crmLinks.filter(link => !isVaUser(user) || ["/dashboard", "/crm", "/va", "/actions", "/meetings"].some(href => link.href.startsWith(href))).map(link => {
               const baseHref = link.href.split("?")[0];
               const active = pathname === baseHref || pathname.startsWith(baseHref + "/");
               return (
@@ -114,6 +128,7 @@ export default function NavBar() {
           </div>
         </aside>
         <nav className="crm-top-bar">
+          <button onClick={() => router.push("/dashboard")} style={crmPortalButton}>Member Portal</button>
           <button onClick={() => router.push("/va")} style={crmCreateButton}>+ Create</button>
           <span style={{ color: "var(--fog)", fontSize: 12 }}>●</span>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
