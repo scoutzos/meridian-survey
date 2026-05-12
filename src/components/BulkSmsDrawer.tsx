@@ -6,8 +6,12 @@ import {
   estimateSegments,
   exclusionReasonLabel,
   renderMessageForRecipient,
+  EXCLUSION_REASONS_BY_SEVERITY,
+  EXCLUSION_SEVERITY_HINT,
+  EXCLUSION_SEVERITY_LABEL,
+  EXCLUSION_SEVERITY_ORDER,
   type BulkSmsCategorization,
-  type BulkSmsExclusionReason,
+  type BulkSmsExclusionSeverity,
 } from "@/lib/bulk-sms";
 import type { ImportedLandLead } from "@/lib/land-leads";
 
@@ -46,13 +50,26 @@ const TEMPLATES = [
   },
 ];
 
-const EXCLUSION_ORDER: BulkSmsExclusionReason[] = [
-  "opted-out",
-  "no-phone",
-  "passed-or-converted",
-  "recently-texted",
-  "duplicate",
-];
+const SEVERITY_TONE: Record<BulkSmsExclusionSeverity, { border: string; background: string; dot: string; label: string }> = {
+  "compliance": {
+    border: "1px solid var(--obsidian)",
+    background: "rgba(20,17,13,0.06)",
+    dot: "var(--obsidian)",
+    label: "var(--obsidian)",
+  },
+  "data-quality": {
+    border: "1px solid var(--brass)",
+    background: "rgba(176,137,84,0.10)",
+    dot: "var(--brass)",
+    label: "var(--obsidian)",
+  },
+  "recency-dedupe": {
+    border: "1px solid var(--fog)",
+    background: "var(--surface)",
+    dot: "var(--fog)",
+    label: "var(--muted)",
+  },
+};
 
 function pickRandom<T>(items: T[], count: number, seed: number): T[] {
   if (items.length <= count) return items;
@@ -115,7 +132,7 @@ export default function BulkSmsDrawer({
     try {
       const recipients = categorization.eligible.map(lead => ({
         leadId: lead.id,
-        toNumber: (lead.phone || lead.phone_2) ?? "",
+        toNumber: categorization.eligiblePhones[lead.id] ?? (lead.phone || lead.phone_2) ?? "",
         label: lead.owner_name,
         rendered: renderMessageForRecipient(trimmed, lead, 1),
       }));
@@ -167,15 +184,32 @@ export default function BulkSmsDrawer({
             </div>
           </div>
           {excludedCount > 0 && (
-            <ul style={exclusionList}>
-              {EXCLUSION_ORDER.filter(reason => categorization.excludedByReason[reason] > 0).map(reason => (
-                <li key={reason} style={exclusionRow}>
-                  <span style={exclusionDot} />
-                  <span style={exclusionCount}>{categorization.excludedByReason[reason]}</span>
-                  <span style={exclusionLabel}>{exclusionReasonLabel(reason)}</span>
-                </li>
-              ))}
-            </ul>
+            <div style={exclusionGroupWrap}>
+              {EXCLUSION_SEVERITY_ORDER.map(severity => {
+                const reasons = EXCLUSION_REASONS_BY_SEVERITY[severity].filter(r => categorization.excludedByReason[r] > 0);
+                if (reasons.length === 0) return null;
+                const groupTotal = reasons.reduce((sum, r) => sum + categorization.excludedByReason[r], 0);
+                const tone = SEVERITY_TONE[severity];
+                return (
+                  <section key={severity} style={{ ...exclusionGroupCard, border: tone.border, background: tone.background }}>
+                    <header style={exclusionGroupHeader}>
+                      <strong style={{ ...exclusionGroupTitle, color: tone.label }}>{EXCLUSION_SEVERITY_LABEL[severity]}</strong>
+                      <span style={exclusionGroupTotal}>{groupTotal}</span>
+                    </header>
+                    <p style={exclusionGroupHint}>{EXCLUSION_SEVERITY_HINT[severity]}</p>
+                    <ul style={exclusionList}>
+                      {reasons.map(reason => (
+                        <li key={reason} style={exclusionRow}>
+                          <span style={{ ...exclusionDot, background: tone.dot }} />
+                          <span style={exclusionCount}>{categorization.excludedByReason[reason]}</span>
+                          <span style={exclusionLabel}>{exclusionReasonLabel(reason)}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </section>
+                );
+              })}
+            </div>
           )}
         </section>
 
@@ -233,7 +267,7 @@ export default function BulkSmsDrawer({
               <article key={lead.id} style={previewCard}>
                 <header style={previewCardHeader}>
                   <strong style={previewName}>{lead.owner_name || "Owner unknown"}</strong>
-                  <span style={previewMeta}>{lead.county || "County pending"} · {lead.phone || lead.phone_2 || "—"}</span>
+                  <span style={previewMeta}>{lead.county || "County pending"} · {categorization.eligiblePhones[lead.id] || lead.phone || lead.phone_2 || "—"}</span>
                 </header>
                 <p style={previewBody}>{renderMessageForRecipient(message, lead, 1) || "Compose a message to see preview"}</p>
               </article>
@@ -392,6 +426,44 @@ const statValueBig: React.CSSProperties = {
 const statDetail: React.CSSProperties = {
   fontSize: 12,
   color: "var(--muted)",
+};
+
+const exclusionGroupWrap: React.CSSProperties = {
+  display: "grid",
+  gap: 8,
+};
+
+const exclusionGroupCard: React.CSSProperties = {
+  borderRadius: 8,
+  padding: 10,
+};
+
+const exclusionGroupHeader: React.CSSProperties = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "baseline",
+  gap: 8,
+};
+
+const exclusionGroupTitle: React.CSSProperties = {
+  fontSize: 11,
+  fontWeight: 800,
+  letterSpacing: "0.12em",
+  textTransform: "uppercase",
+};
+
+const exclusionGroupTotal: React.CSSProperties = {
+  fontSize: 13,
+  fontWeight: 700,
+  color: "var(--obsidian)",
+};
+
+const exclusionGroupHint: React.CSSProperties = {
+  fontSize: 11,
+  color: "var(--muted)",
+  margin: "4px 0 8px",
+  lineHeight: 1.4,
+  fontStyle: "italic",
 };
 
 const exclusionList: React.CSSProperties = {
