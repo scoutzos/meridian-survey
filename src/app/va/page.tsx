@@ -78,6 +78,7 @@ import { labelForStatus } from "@/lib/status-map";
 import { getLeadNextAction, type WorkflowTone } from "@/lib/workflow-actions";
 import OperatingHeader from "@/components/OperatingHeader";
 import BulkSmsDrawer from "@/components/BulkSmsDrawer";
+import TwilioPhoneDock from "@/components/TwilioPhoneDock";
 import TwilioCallButton from "@/components/TwilioCallButton";
 import { categorizeForBulkSms, checkLeadSmsCompliance } from "@/lib/bulk-sms";
 import { fetchActiveMemberNames } from "@/lib/members";
@@ -1711,6 +1712,8 @@ export default function VaPage() {
         stats={headerStats}
       />
 
+      <TwilioPhoneDock actor={user} />
+
       <input
         ref={leadCsvInputRef}
         type="file"
@@ -2825,17 +2828,26 @@ export default function VaPage() {
                       <strong style={{ display: "block", color: "var(--obsidian)", fontSize: 13 }}>{batch.campaign_source || batch.original_filename || batch.source_system}</strong>
                     </button>
                     <p style={{ color: "var(--muted)", fontSize: 12, margin: "4px 0 8px" }}>{batch.row_count} rows · {statusLabel(batch.status || "not-started")}</p>
-                    <select
-                      value={batch.status || "not-started"}
-                      onChange={async e => {
-                        await updateLandLeadBatch(batch.id, { status: e.target.value as LandLeadBatch["status"], assigned_to: user });
-                        setLeadBatches(await fetchLandLeadBatches());
-                      }}
-                    >
-                      <option value="not-started">Not Started</option>
-                      <option value="in-progress">In Progress</option>
-                      <option value="completed">Completed</option>
-                    </select>
+                    <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+                      <select
+                        value={batch.status || "not-started"}
+                        onChange={async e => {
+                          await updateLandLeadBatch(batch.id, { status: e.target.value as LandLeadBatch["status"], assigned_to: user });
+                          setLeadBatches(await fetchLandLeadBatches());
+                        }}
+                        style={{ flex: 1, minWidth: 0 }}
+                      >
+                        <option value="not-started">Not Started</option>
+                        <option value="in-progress">In Progress</option>
+                        <option value="completed">Completed</option>
+                      </select>
+                      <button
+                        onClick={() => router.push(`/lists/${batch.id}`)}
+                        style={{ ...secondaryButton, padding: "8px 10px", fontSize: 10, minHeight: 32 }}
+                      >
+                        Open →
+                      </button>
+                    </div>
                   </div>
                 ))}
                 {leadBatches.length === 0 && <p style={{ fontSize: 13, color: "var(--muted)" }}>No import batches yet.</p>}
