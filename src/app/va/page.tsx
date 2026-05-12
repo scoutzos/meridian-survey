@@ -29,9 +29,7 @@ import {
   createActionItem,
   fetchActionItems,
   isVaTask,
-  updateActionItemStatus,
   type ActionItem,
-  type ActionItemStatus,
 } from "@/lib/action-items";
 import { createNotification } from "@/lib/operations";
 import {
@@ -1440,57 +1438,6 @@ export default function VaPage() {
     }));
   };
 
-  const changeAssignedTaskStatus = async (task: ActionItem, status: ActionItemStatus) => {
-    if (!user) return;
-    const note = status === "blocked" ? window.prompt("What is blocking this task?") ?? "" : "";
-    const { error } = await updateActionItemStatus(task.id, status, user, note);
-    if (error) { setMessage(error); return; }
-    const now = new Date().toISOString();
-    const nextTask = {
-      ...task,
-      status,
-      updated_at: now,
-      updated_by: user,
-      completed_at: status === "done" ? now : null,
-      completed_by: status === "done" ? user : null,
-      blocker_reason: status === "blocked" ? note.trim() || null : null,
-    };
-    setAssignedTasks(prev => prev.map(row => row.id === task.id ? nextTask : row));
-    if (status === "done") {
-      setBriefDraft(prev => ({
-        ...prev,
-        va_tasks_completed: (prev.va_tasks_completed ?? completedAssignedTasksToday.length) + 1,
-        activities_completed: appendBriefText(prev.activities_completed, `Completed member-assigned task: ${task.title}`),
-      }));
-      const doneRecipients = task.created_by ? [task.created_by] : [null];
-      await Promise.all(doneRecipients.map(recipient => createNotification({
-        title: `VA task completed: ${task.title}`,
-        body: `${user} marked this task done. ${taskRecordLabel(task)}.`,
-        priority: "normal",
-        assigned_to: recipient,
-        href: "/actions",
-        source_table: "action_items",
-        source_id: task.id,
-        notification_type: "va-task-completed",
-      }, user)));
-    }
-    if (status === "blocked") {
-      const blockedRecipients = Array.from(new Set([task.created_by, ...activeMemberNames].filter(Boolean))) as string[];
-      await Promise.all(blockedRecipients.map(recipient => createNotification({
-        title: `VA task blocked: ${task.title}`,
-        body: `${note.trim() || `${user} marked this task blocked.`} ${taskRecordLabel(task)}.`,
-        priority: "high",
-        assigned_to: recipient,
-        href: "/actions",
-        source_table: "action_items",
-        source_id: task.id,
-        notification_type: "va-task-blocked",
-        dedupe: true,
-      }, user)));
-    }
-    setMessage(status === "done" ? "Task completed and added to the daily brief." : `Task marked ${statusLabel(status)}.`);
-  };
-
   const pullSakariBrief = async () => {
     const date = briefDraft.work_date;
     const sameDay = (iso?: string | null) => !!iso && iso.slice(0, 10) === date;
@@ -1727,15 +1674,17 @@ export default function VaPage() {
         ))}
       </div>
 
-      <OperatingHeader
-        eyebrow={headerCopy[activeTab].eyebrow}
-        title={headerCopy[activeTab].title}
-        subtitle={headerCopy[activeTab].subtitle}
-        user={user}
-        mode="va"
-        actions={headerActions[activeTab]}
-        stats={headerStats}
-      />
+      {activeTab !== "today" && (
+        <OperatingHeader
+          eyebrow={headerCopy[activeTab].eyebrow}
+          title={headerCopy[activeTab].title}
+          subtitle={headerCopy[activeTab].subtitle}
+          user={user}
+          mode="va"
+          actions={headerActions[activeTab]}
+          stats={headerStats}
+        />
+      )}
 
       <TwilioPhoneDock actor={user} />
 
@@ -1754,7 +1703,7 @@ export default function VaPage() {
         </div>
       )}
 
-      {!openShift && (
+      {!openShift && activeTab !== "today" && (
         <section style={clockInBanner} className="va-clock-banner">
           <div>
             <p style={{ ...eyebrowSmall, color: "var(--bone)", opacity: 0.85 }}>Shift status</p>
@@ -1837,346 +1786,176 @@ export default function VaPage() {
 
         <main style={{ display: "flex", flexDirection: "column", gap: 14 }}>
           {activeTab === "today" && (
-          <section style={panel}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12, flexWrap: "wrap", marginBottom: 14 }}>
-              <div>
-                <p style={eyebrowSmall}>Briefing</p>
-                <h2 style={sectionTitle}>{`Good ${greetingForHour(new Date().getHours())}${user ? `, ${user.split(" ")[0]}` : ""}`}</h2>
-                <p style={{ color: "var(--muted)", fontSize: 13, marginTop: 4 }}>
-                  {openShift ? `On shift for ${formatDuration(liveShiftMinutes)}.` : "Start with clock-in above."} {portalStats.briefSubmitted ? "Daily brief is submitted." : "Daily brief still open."}
-                </p>
-              </div>
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                <button onClick={() => goToTab("outreach")} style={secondaryButton}>Open Contact Queue</button>
-                <button onClick={() => draftLeads[0] ? openDealBrief(draftLeads[0]) : goToTab("packet")} style={secondaryButton}>Build packet</button>
-                <button onClick={() => goToTab("brief")} style={primaryButton}>End shift</button>
-              </div>
-            </div>
-
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 12, marginBottom: 16 }} className="va-briefing-grid">
-              <BriefingCard
-                eyebrow="Member notes"
-                title={openAssignedTasks.length ? `${openAssignedTasks.length} task${openAssignedTasks.length === 1 ? "" : "s"} from members` : "No new member notes"}
-                detail={openAssignedTasks[0]
-                  ? `${openAssignedTasks[0].title}${openAssignedTasks[0].created_by ? ` — from ${openAssignedTasks[0].created_by}` : ""}`
-                  : "Members will route tasks here when they need something done."}
-                tone={openAssignedTasks.length ? "hot" : "calm"}
-                actionLabel={openAssignedTasks[0] ? "Open Record" : undefined}
-                onAction={openAssignedTasks[0] ? () => router.push(taskRecordHref(openAssignedTasks[0])) : undefined}
-              />
-              <BriefingCard
-                eyebrow="Overnight replies"
-                title={recentInboundSms.length ? `${recentInboundSms.length} new seller reply${recentInboundSms.length === 1 ? "" : "ies"}` : "No new replies"}
-                detail={recentInboundSms[0]
-                  ? `${recentInboundSms[0].contact_name || recentInboundSms[0].contact_number || recentInboundSms[0].from_number || "Seller"}: ${(recentInboundSms[0].body || "").slice(0, 80)}${(recentInboundSms[0].body || "").length > 80 ? "…" : ""}`
-                  : "Sakari inbox is clear since last shift."}
-                tone={recentInboundSms.length ? "hot" : "calm"}
-                actionLabel={recentInboundSms.length ? "Read Replies" : undefined}
-                onAction={recentInboundSms.length ? () => goToTab("outreach") : undefined}
-              />
-              <BriefingCard
-                eyebrow="Hot deals"
-                title={deals.filter(deal => deal.urgency === "hot").length
-                  ? `${deals.filter(deal => deal.urgency === "hot").length} flagged hot`
-                  : interestedLeads.length
-                    ? `${interestedLeads.length} interested seller${interestedLeads.length === 1 ? "" : "s"}`
-                    : "No hot items"}
-                detail={(() => {
-                  const hot = deals.find(deal => deal.urgency === "hot");
-                  if (hot) return `${hot.title} — ${statusLabel(hot.status)}`;
-                  if (interestedLeads[0]) return `${interestedLeads[0].owner_name || "Interested seller"} replied. Build a packet.`;
-                  return "No urgent deals or interested sellers right now.";
-                })()}
-                tone={(deals.some(deal => deal.urgency === "hot") || interestedLeads.length) ? "hot" : "calm"}
-                actionLabel={deals.some(deal => deal.urgency === "hot") ? "Open Deal" : interestedLeads.length ? "Build Packet" : undefined}
-                onAction={(() => {
-                  const hot = deals.find(deal => deal.urgency === "hot");
-                  if (hot) return () => openDealBrief(hot);
-                  if (interestedLeads[0]) return () => loadImportedLead(interestedLeads[0], false);
-                  return undefined;
-                })()}
-              />
-              <BriefingCard
-                eyebrow="Blockers"
-                title={(() => {
-                  const blockedTasks = assignedTasks.filter(task => task.status === "blocked");
-                  if (blockedTasks.length) return `${blockedTasks.length} task${blockedTasks.length === 1 ? "" : "s"} blocked`;
-                  const lastBlock = briefs.find(brief => brief.blockers && brief.blockers.trim());
-                  if (lastBlock) return "Open blocker from last brief";
-                  return "No blockers";
-                })()}
-                detail={(() => {
-                  const blockedTasks = assignedTasks.filter(task => task.status === "blocked");
-                  if (blockedTasks[0]) return `${blockedTasks[0].title}: ${blockedTasks[0].blocker_reason || "Needs member input"}`;
-                  const lastBlock = briefs.find(brief => brief.blockers && brief.blockers.trim());
-                  if (lastBlock) return (lastBlock.blockers || "").slice(0, 100);
-                  return "Nothing waiting on a member decision.";
-                })()}
-                tone={assignedTasks.some(task => task.status === "blocked") ? "warn" : "calm"}
-                actionLabel={assignedTasks.some(task => task.status === "blocked") ? "Open Record" : undefined}
-                onAction={(() => {
-                  const blockedTask = assignedTasks.find(task => task.status === "blocked");
-                  if (blockedTask) return () => router.push(taskRecordHref(blockedTask));
-                  return undefined;
-                })()}
-              />
-            </div>
-
-            <div style={{ display: "grid", gridTemplateColumns: "minmax(260px, 0.8fr) minmax(0, 1.2fr) minmax(320px, 0.9fr)", gap: 14 }} className="va-home-grid">
-              <section style={{ ...subPanel, background: "var(--obsidian)", color: "var(--bone)", borderColor: "rgba(20,17,13,0.88)" }}>
-                <p style={{ ...eyebrowSmall, color: "var(--brass)" }}>Shift</p>
-                <h3 style={{ fontFamily: DISPLAY_FONT, fontSize: 32, fontWeight: 500, color: "var(--bone)", lineHeight: 1.05, marginTop: 6 }}>
-                  {openShift ? formatDuration(liveShiftMinutes) : "Ready"}
-                </h3>
-                <p style={{ color: "rgba(247,242,232,0.72)", fontSize: 13, lineHeight: 1.5, marginTop: 8 }}>
-                  {openShift ? "You are clocked in. Work the next queue, then submit the daily brief before leaving." : "Clock in first, then work seller replies, assigned tasks, and packets."}
-                </p>
-                <button onClick={openShift ? handleClockOut : handleClockIn} disabled={clockBusy} style={{ ...primaryButton, width: "100%", marginTop: 14, background: "var(--bone)", color: "var(--obsidian)", borderColor: "var(--bone)", opacity: clockBusy ? 0.65 : 1 }}>
-                  {clockBusy ? "Saving..." : openShift ? "Clock Out" : "Clock In"}
-                </button>
-              </section>
-
-              <section style={subPanel}>
-                <p style={eyebrowSmall}>Next best action</p>
-                <h3 style={{ ...sectionTitle, fontSize: 28, marginTop: 5 }}>
-                  {recentInboundSms.length ? "Review seller replies" : openAssignedTasks.length ? "Handle member-assigned tasks" : interestedLeads.length ? "Build interested seller packets" : importStats.newRows ? "Start with new list leads" : "Review the daily brief"}
-                </h3>
-                <p style={{ color: "var(--muted)", fontSize: 13, lineHeight: 1.5, marginTop: 6 }}>
-                  {recentInboundSms.length ? `${recentInboundSms.length} seller repl${recentInboundSms.length === 1 ? "y is" : "ies are"} visible in Contact Queue, including matched and unmatched replies.`
-                    : openAssignedTasks.length ? `${openAssignedTasks.length} task${openAssignedTasks.length === 1 ? "" : "s"} from members need a status update.`
-                      : interestedLeads.length ? `${interestedLeads.length} interested seller${interestedLeads.length === 1 ? "" : "s"} can be moved toward a deal packet.`
-                        : importStats.newRows ? `${importStats.newRows} new imported lead${importStats.newRows === 1 ? "" : "s"} are ready for outreach.`
-                          : "No urgent seller queue is waiting. Keep the brief current or prep the next list."}
-                </p>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8, marginTop: 14 }} className="two-col">
-                  <button onClick={() => goToTab("outreach")} style={secondaryButton}>Open Contact Queue</button>
-                  <button onClick={() => goToTab("brief")} style={primaryButton}>Daily Brief</button>
+          <section className="va-cockpit">
+            <section style={{ ...panel, padding: 0, overflow: "hidden" }}>
+              <div style={{
+                background: "linear-gradient(135deg, rgba(20,17,13,0.98), rgba(48,38,27,0.94))",
+                color: "var(--bone)",
+                display: "grid",
+                gridTemplateColumns: "minmax(220px, 0.9fr) minmax(0, 1.3fr) auto",
+                gap: 18,
+                alignItems: "center",
+                padding: "16px 18px",
+              }} className="va-command-strip">
+                <div>
+                  <p style={{ ...eyebrowSmall, color: "var(--brass)" }}>Today&apos;s desk</p>
+                  <h2 style={{ fontFamily: DISPLAY_FONT, fontSize: 28, fontWeight: 500, color: "var(--bone)", lineHeight: 1.05, marginTop: 4 }}>
+                    {`Good ${greetingForHour(new Date().getHours())}${user ? `, ${user.split(" ")[0]}` : ""}`}
+                  </h2>
+                  <p style={{ color: "rgba(247,242,232,0.72)", fontSize: 12, marginTop: 5 }}>
+                    {openShift ? `On shift ${formatDuration(liveShiftMinutes)}` : "Clock in to start tracking"} · {portalStats.briefSubmitted ? "Brief submitted" : "Brief open"}
+                  </p>
                 </div>
-              </section>
-
-              <section style={subPanel}>
-                <p style={eyebrowSmall}>Member-assigned tasks</p>
-                <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "baseline", marginTop: 4, marginBottom: 10 }}>
-                  <h3 style={{ ...sectionTitle, fontSize: 24 }}>{openAssignedTasks.length} open</h3>
-                  <button onClick={() => router.push("/actions")} style={inlineTextButton}>All tasks →</button>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 8 }} className="compact-shift-grid">
+                  <MiniStat label="Replies" value={String(recentInboundSms.length)} />
+                  <MiniStat label="Follow-ups" value={String(followUpsDue.length)} />
+                  <MiniStat label="Tasks" value={String(openAssignedTasks.length)} />
+                  <MiniStat label="Packets" value={String(draftLeads.length)} />
                 </div>
-                <div style={{ display: "grid", gap: 8 }}>
-                  {openAssignedTasks.slice(0, 3).map(task => (
-                    <button key={task.id} onClick={() => router.push(taskRecordHref(task))} style={{ ...subPanel, textAlign: "left", cursor: "pointer", padding: 10 }}>
-                      <strong style={{ color: "var(--obsidian)", fontSize: 13 }}>{task.title}</strong>
-                      <p style={{ color: "var(--muted)", fontSize: 12, marginTop: 4 }}>{task.due_date ? `Due ${task.due_date}` : "No due date"} · {statusLabel(task.priority || "normal")}</p>
-                    </button>
-                  ))}
-                  {openAssignedTasks.length === 0 && <p style={{ color: "var(--muted)", fontSize: 13, lineHeight: 1.45 }}>No member-assigned VA tasks are open.</p>}
-                </div>
-              </section>
-            </div>
-
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 10, marginTop: 14 }} className="number-grid">
-              <button onClick={() => goToTab("outreach")} style={homeMetricButton}>
-                <span>Incoming Texts</span>
-                <strong>{recentInboundSms.length}</strong>
-                <small>Matched + unmatched</small>
-              </button>
-              <button onClick={() => goToTab("outreach")} style={homeMetricButton}>
-                <span>Follow-ups</span>
-                <strong>{followUpsDue.length}</strong>
-                <small>Due now</small>
-              </button>
-              <button onClick={() => { setLeadFilter("new"); goToTab("lists"); }} style={homeMetricButton}>
-                <span>New Leads</span>
-                <strong>{importStats.newRows}</strong>
-                <small>From lists</small>
-              </button>
-              <button onClick={() => draftLeads[0] ? openDealBrief(draftLeads[0]) : goToTab("packet")} style={homeMetricButton}>
-                <span>Draft Packets</span>
-                <strong>{draftLeads.length}</strong>
-                <small>Ready to build</small>
-              </button>
-            </div>
-
-            <div style={{ display: "none" }} className="workdesk-grid">
-              <aside style={{ display: "grid", gap: 12, alignContent: "start" }}>
-                <section style={subPanel}>
-                  <p style={eyebrowSmall}>Today&apos;s queues</p>
-                  <div style={{ display: "grid", gap: 8, marginTop: 10 }}>
-                    <QueueButton label="New imported leads" detail="Fresh from land lists" count={importStats.newRows} onClick={() => { setActiveTab("lists"); setLeadFilter("new"); }} />
-                    <QueueButton label="Seller replies" detail="Matched and unmatched conversations" count={recentInboundSms.length} hot={!!recentInboundSms.length} onClick={() => setActiveTab("outreach")} />
-                    <QueueButton label="Interested sellers" detail="Replied and expressed interest" count={interestedLeads.length} hot={!!interestedLeads.length} onClick={() => { setLeadFilter("interested"); setActiveTab("lists"); }} />
-                    <QueueButton label="Follow-up due" detail="No reply in 24-72 hrs" count={followUpsDue.length} hot={!!followUpsDue.length} onClick={() => setActiveTab("outreach")} />
-                    <QueueButton label="Member-assigned tasks" detail="From member portal" count={openAssignedTasks.length} hot={!!openAssignedTasks.length} onClick={() => setActiveTab("today")} />
-                    <QueueButton label="Bad numbers / DNC" detail="Invalid or do not contact" count={importedLeads.filter(lead => lead.status === "passed" || lead.sms_opt_status === "opted-out").length} onClick={() => { setLeadFilter("passed"); setActiveTab("lists"); }} />
-                    <QueueButton label="Deal brief drafts" detail="In progress" count={draftLeads.length} onClick={() => draftLeads[0] ? openDealBrief(draftLeads[0]) : setActiveTab("packet")} />
-                  </div>
-                </section>
-                <section style={subPanel}>
-                  <p style={eyebrowSmall}>My stats today</p>
-                  <div style={{ display: "grid", gap: 8, marginTop: 10 }}>
-                    <MiniStat label="Texts sent" value={String(briefDraft.outreach_sent ?? 0)} />
-                    <MiniStat label="Replies received" value={String(briefDraft.seller_replies ?? unmatchedSms.length)} />
-                    <MiniStat label="Leads updated" value={String(briefDraft.leads_updated ?? portalStats.updatedToday)} />
-                    <MiniStat label="Tasks done" value={String(briefDraft.va_tasks_completed ?? completedAssignedTasksToday.length)} />
-                    <MiniStat label="On shift" value={openShift ? formatDuration(liveShiftMinutes) : "Ready"} />
-                  </div>
-                  <button onClick={openShift ? handleClockOut : handleClockIn} disabled={clockBusy} style={{ ...primaryButton, width: "100%", marginTop: 10, opacity: clockBusy ? 0.65 : 1 }}>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                  <button onClick={openShift ? handleClockOut : handleClockIn} disabled={clockBusy} style={{ ...primaryButton, background: "var(--brass)", borderColor: "var(--brass)", color: "var(--obsidian)", opacity: clockBusy ? 0.65 : 1 }}>
                     {clockBusy ? "Saving..." : openShift ? "Clock Out" : "Clock In"}
                   </button>
-                </section>
-              </aside>
-
-              <section style={subPanel}>
-                <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", marginBottom: 12 }}>
-                  <div>
-                    <p style={eyebrowSmall}>Work queue</p>
-                    <h2 style={{ ...sectionTitle, fontSize: 22 }}>Seller replies and lead actions</h2>
-                  </div>
-                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                    <button style={secondaryButton}>Priority</button>
-                    <button onClick={() => void reload(user)} style={secondaryButton}>Refresh</button>
-                  </div>
-                </div>
-                <div style={{ overflowX: "auto", border: "1px solid var(--fog)", borderRadius: 8 }}>
-                  <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 760 }}>
-                    <thead>
-                      <tr>
-                        {["Priority", "Owner / phone", "County", "Acres", "Parcel ID", "Source list", "Status", "Last touch", "Next action", "Actions"].map(head => (
-                          <th key={head} style={tableHead}>{head}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {workdeskLeadRows.map(lead => {
-                        const active = selectedImportedLeadId === lead.id;
-                        const phone = lead.phone || lead.phone_2 || "No phone";
-                        return (
-                          <tr key={lead.id} onClick={() => selectImportedLead(lead)} style={{ background: active ? "rgba(176,137,84,0.14)" : "var(--surface)", cursor: "pointer" }}>
-                            <td style={tableCell}>{(lead.lead_score ?? 0) >= 70 || lead.status === "interested" ? "★" : "☆"}</td>
-                            <td style={tableCell}><strong>{lead.owner_name || "Owner unknown"}</strong><br /><span>{phone}</span></td>
-                            <td style={tableCell}>{lead.county || "—"}</td>
-                            <td style={tableCell}>{lead.acreage ?? "—"}</td>
-                            <td style={tableCell}>{lead.parcel_id || "—"}</td>
-                            <td style={tableCell}>{lead.campaign_source || lead.source_system || "List"}</td>
-                            <td style={tableCell}><span style={lead.status === "interested" ? hotPill : pill}>{statusLabel(lead.status)}</span></td>
-                            <td style={tableCell}>{lead.last_sms_at ? formatDate(lead.last_sms_at) : lead.last_activity_at ? formatDate(lead.last_activity_at) : "—"}</td>
-                            <td style={tableCell}>{sellerActionState(lead).primary}</td>
-                            <td style={tableCell}>
-                              <div style={{ display: "flex", gap: 5 }}>
-                                <button onClick={event => { event.stopPropagation(); setActivityDraft({ activityType: "called", summary: "", nextFollowUpDate: "" }); selectImportedLead(lead); }} style={iconButton}>Call</button>
-                                <button onClick={event => { event.stopPropagation(); selectImportedLead(lead); window.setTimeout(() => document.getElementById("va-workdesk-sms")?.focus(), 80); }} style={iconButton}>Text</button>
-                                <button onClick={event => { event.stopPropagation(); router.push(`/lead/${lead.id}`); }} style={iconButton}>Record</button>
-                              </div>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                  {workdeskLeadRows.length === 0 && <p style={{ color: "var(--muted)", fontSize: 13, padding: 14 }}>No seller work items yet. Import a list or wait for inbound replies.</p>}
-                </div>
-              </section>
-
-              <section style={subPanel}>
-                <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", marginBottom: 10 }}>
-                  <div>
-                    <p style={eyebrowSmall}>Member-assigned tasks</p>
-                    <h2 style={{ ...sectionTitle, fontSize: 22 }}>VA work routing</h2>
-                  </div>
-                  <span style={pill}>{openAssignedTasks.length} open</span>
-                </div>
-                <div style={{ display: "grid", gap: 8 }}>
-                  {openAssignedTasks.slice(0, 6).map(task => (
-                    <div key={task.id} style={{ ...subPanel, background: task.status === "blocked" ? "rgba(176,137,84,0.08)" : "var(--bone)" }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "start" }}>
-                        <div>
-                          <strong style={{ color: "var(--obsidian)", fontSize: 14 }}>{task.title}</strong>
-                          <p style={{ color: "var(--muted)", fontSize: 12, lineHeight: 1.45, marginTop: 4 }}>{task.description || "No task details added."}</p>
-                          <p style={{ color: "var(--muted)", fontSize: 11, marginTop: 5 }}>
-                            {task.created_by ? `Assigned by ${task.created_by}` : "Assigned"}{task.due_date ? ` · Due ${task.due_date}` : ""} · {taskRecordLabel(task)} · {statusLabel(task.status)}
-                          </p>
-                          {task.blocker_reason && <p style={{ color: "var(--brass)", fontSize: 12, marginTop: 5 }}>Blocked: {task.blocker_reason}</p>}
-                        </div>
-                        <span style={task.priority === "urgent" || task.priority === "high" ? hotPill : pill}>{statusLabel(task.priority || "normal")}</span>
-                      </div>
-                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 10 }}>
-                        {task.status !== "in-progress" && <button onClick={() => changeAssignedTaskStatus(task, "in-progress")} style={secondaryButton}>Start</button>}
-                        <button onClick={() => router.push(taskRecordHref(task))} style={secondaryButton}>Open Record</button>
-                        <button onClick={() => changeAssignedTaskStatus(task, "done")} style={primaryButton}>Done</button>
-                        <button onClick={() => changeAssignedTaskStatus(task, "blocked")} style={secondaryButton}>Blocked</button>
-                      </div>
-                    </div>
-                  ))}
-                  {openAssignedTasks.length === 0 && <p style={{ color: "var(--muted)", fontSize: 13 }}>No member-assigned VA tasks are open.</p>}
-                </div>
-              </section>
-
-              <aside style={{ display: "grid", gap: 12, alignContent: "start" }}>
-                {selectedImportedLead ? (
-                  <SellerCommandCenter
-                    lead={selectedImportedLead}
-                    communications={communicationEvents}
-                    activities={leadActivities}
-                    smsDraft={smsDraft}
-                    setSmsDraft={setSmsDraft}
-                    smsSending={smsSending}
-                    onSendSms={sendSmsToLead}
-                    dispositionDraft={dispositionDraft}
-                    setDispositionDraft={setDispositionDraft}
-                    onSaveDisposition={applyLeadDisposition}
-                    onQuickDisposition={quickLeadDisposition}
-                    activityDraft={activityDraft}
-                    setActivityDraft={setActivityDraft}
-                    onLogActivity={logLeadActivity}
-                    onOpenFile={() => router.push(`/lead/${selectedImportedLead.id}`)}
-                    onBuildPacket={() => loadImportedLead(selectedImportedLead, true)}
-                    onPass={async () => { await updateImportedLandLeadStatus(selectedImportedLead.id, "passed", selectedImportedLead.deal_id); setImportedLeads(await fetchImportedLandLeads(500)); }}
-                    compact
-                  />
-                ) : (
-                  <section style={subPanel}>
-                    <p style={eyebrowSmall}>Lead panel</p>
-                    <h3 style={{ ...sectionTitle, fontSize: 22 }}>Pick a seller</h3>
-                    <p style={{ color: "var(--muted)", fontSize: 13, lineHeight: 1.5, marginTop: 8 }}>Select a row to see property data, communication history, text composer, dispositions, calculator quick estimates, and packet actions.</p>
-                  </section>
-                )}
-              </aside>
-            </div>
-
-            <section style={{ display: "none" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "baseline", marginBottom: 10 }}>
-                <div>
-                  <p style={eyebrowSmall}>Daily shift brief</p>
-                  <h3 style={{ ...sectionTitle, fontSize: 22 }}>Member review summary</h3>
-                </div>
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                  <button onClick={autofillBriefStats} style={secondaryButton}>Auto-fill</button>
-                  <button onClick={pullSakariBrief} style={secondaryButton}>Pull Comms</button>
-                  <button onClick={() => setActiveTab("brief")} style={secondaryButton}>Edit Brief</button>
-                </div>
-              </div>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 10, marginBottom: 10 }} className="number-grid">
-                <ShiftCard label="Calls made" value={String(briefDraft.calls_completed ?? 0)} />
-                <ShiftCard label="Texts sent" value={String(briefDraft.outreach_sent ?? 0)} />
-                <ShiftCard label="Replies received" value={String(briefDraft.seller_replies ?? unmatchedSms.length)} tone={unmatchedSms.length ? "hot" : "calm"} />
-                <ShiftCard label="Deals submitted" value={String(briefDraft.deals_submitted ?? portalStats.submittedToday)} />
-                <ShiftCard label="Tasks completed" value={String(briefDraft.va_tasks_completed ?? completedAssignedTasksToday.length)} />
-              </div>
-              <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr) 260px", gap: 12 }} className="workdesk-brief-grid">
-                <div>
-                  <label style={label}>Top activities</label>
-                  <textarea rows={4} value={briefDraft.activities_completed} onChange={e => setBriefDraft({ ...briefDraft, activities_completed: e.target.value })} placeholder="Calls, texts, records updated, leads converted, research completed." />
-                </div>
-                <div>
-                  <label style={label}>Blockers / notes to members</label>
-                  <textarea rows={4} value={briefDraft.follow_ups_needed ?? ""} onChange={e => setBriefDraft({ ...briefDraft, follow_ups_needed: e.target.value })} placeholder="Who needs follow-up and what members need to know." />
-                </div>
-                <div style={{ display: "grid", gap: 8, alignContent: "end" }}>
-                  <MiniStat label="Clock" value={openShift ? formatDuration(liveShiftMinutes) : "Not clocked in"} />
-                  <button onClick={submitDailyBrief} disabled={briefSaving} style={{ ...primaryButton, width: "100%", opacity: briefSaving ? 0.6 : 1 }}>
-                    {briefSaving ? "Submitting..." : "Submit Brief"}
-                  </button>
+                  <button onClick={() => goToTab("brief")} style={{ ...secondaryButton, color: "var(--bone)", borderColor: "rgba(237,230,214,0.45)" }}>Daily Brief</button>
                 </div>
               </div>
             </section>
+
+            <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1.55fr) minmax(330px, 0.85fr)", gap: 14 }} className="va-cockpit-grid">
+              <section style={panel}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-end", flexWrap: "wrap", marginBottom: 12 }}>
+                  <div>
+                    <p style={eyebrowSmall}>Next best work</p>
+                    <h2 style={{ ...sectionTitle, fontSize: 26 }}>Work this queue first</h2>
+                  </div>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    <button onClick={() => goToTab("outreach")} style={secondaryButton}>Contact Queue</button>
+                    <button onClick={() => { setLeadFilter("new"); goToTab("lists"); }} style={secondaryButton}>Lists</button>
+                    <button onClick={() => void reload(user)} style={secondaryButton}>Refresh</button>
+                  </div>
+                </div>
+
+                <div style={{ display: "grid", gap: 10 }}>
+                  {recentInboundSms.slice(0, 3).map(event => (
+                    <button key={`reply-${event.id}`} onClick={() => openIncomingSms(event)} style={{ ...workItemCard, borderColor: event.matched_lead_id || event.matched_deal_id ? "var(--fog)" : "var(--brass)" }}>
+                      <div style={workItemIcon}>SMS</div>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={workItemHeader}>
+                          <strong>{event.contact_name || event.contact_number || event.from_number || "Seller reply"}</strong>
+                          <span style={hotPill}>{event.matched_lead_id || event.matched_deal_id ? "Reply" : "Match needed"}</span>
+                        </div>
+                        <p style={workItemBody}>{(event.body || "Incoming message").slice(0, 120)}{(event.body || "").length > 120 ? "..." : ""}</p>
+                        <small style={workItemMeta}>{formatDate(event.provider_created_at || event.created_at)} · Open conversation</small>
+                      </div>
+                    </button>
+                  ))}
+
+                  {openAssignedTasks.slice(0, Math.max(0, 4 - recentInboundSms.slice(0, 3).length)).map(task => (
+                    <button key={`task-${task.id}`} onClick={() => router.push(taskRecordHref(task))} style={workItemCard}>
+                      <div style={workItemIcon}>VA</div>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={workItemHeader}>
+                          <strong>{task.title}</strong>
+                          <span style={task.status === "blocked" || task.priority === "urgent" || task.priority === "high" ? hotPill : pill}>{statusLabel(task.priority || task.status)}</span>
+                        </div>
+                        <p style={workItemBody}>{task.description || "Member-assigned task needs a status update."}</p>
+                        <small style={workItemMeta}>{task.created_by ? `Assigned by ${task.created_by}` : "Assigned"}{task.due_date ? ` · Due ${task.due_date}` : ""} · {taskRecordLabel(task)}</small>
+                      </div>
+                    </button>
+                  ))}
+
+                  {interestedLeads.slice(0, Math.max(0, 5 - recentInboundSms.length - openAssignedTasks.length)).map(lead => (
+                    <button key={`interested-${lead.id}`} onClick={() => loadImportedLead(lead, true)} style={workItemCard}>
+                      <div style={workItemIcon}>PKT</div>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={workItemHeader}>
+                          <strong>{lead.owner_name || lead.property_address || "Interested seller"}</strong>
+                          <span style={hotPill}>Interested</span>
+                        </div>
+                        <p style={workItemBody}>{lead.property_address || lead.parcel_id || "Property record needs review."}</p>
+                        <small style={workItemMeta}>{lead.phone || lead.phone_2 || "No phone"} · Build packet</small>
+                      </div>
+                    </button>
+                  ))}
+
+                  {workdeskLeadRows.slice(0, Math.max(0, 6 - recentInboundSms.length - openAssignedTasks.length - interestedLeads.length)).map(lead => (
+                    <button key={`lead-${lead.id}`} onClick={() => selectImportedLead(lead)} style={workItemCard}>
+                      <div style={workItemIcon}>{(lead.lead_score ?? 0) >= 70 ? "HOT" : "NEW"}</div>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={workItemHeader}>
+                          <strong>{lead.owner_name || "Owner unknown"}</strong>
+                          <span style={lead.status === "interested" ? hotPill : pill}>{statusLabel(lead.status)}</span>
+                        </div>
+                        <p style={workItemBody}>{lead.property_address || `${lead.county || "County pending"}${lead.acreage ? ` · ${lead.acreage} ac` : ""}`}</p>
+                        <small style={workItemMeta}>{lead.phone || lead.phone_2 || "No phone"} · {sellerActionState(lead).primary}</small>
+                      </div>
+                    </button>
+                  ))}
+
+                  {recentInboundSms.length === 0 && openAssignedTasks.length === 0 && interestedLeads.length === 0 && workdeskLeadRows.length === 0 && (
+                    <div style={{ ...subPanel, background: "var(--bone)" }}>
+                      <p style={eyebrowSmall}>Clear</p>
+                      <h3 style={{ ...sectionTitle, fontSize: 22, marginTop: 4 }}>No urgent queue waiting</h3>
+                      <p style={{ color: "var(--muted)", fontSize: 13, lineHeight: 1.5, marginTop: 6 }}>Import a list, review records, or use the daily brief to prep the next shift.</p>
+                    </div>
+                  )}
+                </div>
+              </section>
+
+              <aside style={{ display: "grid", gap: 14, alignContent: "start" }}>
+                <section style={panel}>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "baseline", marginBottom: 12 }}>
+                    <div>
+                      <p style={eyebrowSmall}>Live comms</p>
+                      <h3 style={{ ...sectionTitle, fontSize: 22 }}>Recent replies</h3>
+                    </div>
+                    <button onClick={() => goToTab("outreach")} style={inlineTextButton}>Open →</button>
+                  </div>
+                  <div style={{ display: "grid", gap: 8 }}>
+                    {recentInboundSms.slice(0, 4).map(event => (
+                      <button key={event.id} onClick={() => openIncomingSms(event)} style={miniInboxButton}>
+                        <strong>{event.contact_name || event.contact_number || event.from_number || "Seller"}</strong>
+                        <span>{(event.body || "Incoming message").slice(0, 82)}{(event.body || "").length > 82 ? "..." : ""}</span>
+                        <small>{formatDate(event.provider_created_at || event.created_at)}</small>
+                      </button>
+                    ))}
+                    {recentInboundSms.length === 0 && <p style={{ color: "var(--muted)", fontSize: 13, lineHeight: 1.45 }}>No seller replies are waiting right now.</p>}
+                  </div>
+                </section>
+
+                <section style={panel}>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "baseline", marginBottom: 12 }}>
+                    <div>
+                      <p style={eyebrowSmall}>Follow-ups</p>
+                      <h3 style={{ ...sectionTitle, fontSize: 22 }}>Due now</h3>
+                    </div>
+                    <span style={followUpsDue.length ? hotPill : pill}>{followUpsDue.length}</span>
+                  </div>
+                  <div style={{ display: "grid", gap: 8 }}>
+                    {followUpsDue.slice(0, 4).map(deal => (
+                      <button key={deal.id} onClick={() => openDealBrief(deal)} style={miniInboxButton}>
+                        <strong>{deal.title}</strong>
+                        <span>{deal.seller_name || deal.seller_phone || "Seller follow-up"}</span>
+                        <small>Due {deal.next_follow_up_date}</small>
+                      </button>
+                    ))}
+                    {followUpsDue.length === 0 && <p style={{ color: "var(--muted)", fontSize: 13, lineHeight: 1.45 }}>No dated deal follow-ups are overdue.</p>}
+                  </div>
+                </section>
+
+                <section style={{ ...panel, background: "linear-gradient(135deg, rgba(176,137,84,0.16), rgba(255,255,255,0.82))" }}>
+                  <p style={eyebrowSmall}>Daily brief</p>
+                  <h3 style={{ ...sectionTitle, fontSize: 24, marginTop: 5 }}>{portalStats.briefSubmitted ? "Submitted" : "Open"}</h3>
+                  <p style={{ color: "var(--muted)", fontSize: 13, lineHeight: 1.5, marginTop: 6 }}>
+                    Calls {briefDraft.calls_completed ?? 0} · Texts {briefDraft.outreach_sent ?? 0} · Tasks {briefDraft.va_tasks_completed ?? completedAssignedTasksToday.length}
+                  </p>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 12 }}>
+                    <button onClick={autofillBriefStats} style={secondaryButton}>Auto-fill</button>
+                    <button onClick={() => goToTab("brief")} style={primaryButton}>Edit Brief</button>
+                  </div>
+                </section>
+              </aside>
+            </div>
           </section>
           )}
 
@@ -3381,7 +3160,7 @@ export default function VaPage() {
             top: 0;
             z-index: 20;
           }
-          .va-workspace, .va-form-grid, .workdesk-grid, .two-col, .three-col, .number-grid, .va-briefing-grid, .va-home-grid {
+          .va-workspace, .va-form-grid, .workdesk-grid, .two-col, .three-col, .number-grid, .va-briefing-grid, .va-home-grid, .va-cockpit-grid, .va-command-strip {
             grid-template-columns: 1fr !important;
           }
           .compact-shift-grid button {
@@ -3406,6 +3185,12 @@ export default function VaPage() {
           }
           .va-briefing-grid {
             grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+          }
+          .va-cockpit-grid {
+            grid-template-columns: 1fr !important;
+          }
+          .va-command-strip {
+            grid-template-columns: 1fr !important;
           }
         }
       `}</style>
@@ -3790,21 +3575,6 @@ function QueueButton({ label: text, detail, count, hot = false, onClick }: { lab
   );
 }
 
-function BriefingCard({ eyebrow, title, detail, tone = "calm", actionLabel, onAction }: { eyebrow: string; title: string; detail: string; tone?: "calm" | "hot" | "warn"; actionLabel?: string; onAction?: () => void }) {
-  const border = tone === "hot" ? "1px solid var(--brass)" : tone === "warn" ? "1px solid var(--obsidian)" : "1px solid var(--fog)";
-  const background = tone === "hot" ? "rgba(176,137,84,0.10)" : tone === "warn" ? "rgba(20,17,13,0.04)" : "var(--bone)";
-  return (
-    <div style={{ border, background, borderRadius: 10, padding: 14, display: "flex", flexDirection: "column", gap: 8, minHeight: 144 }}>
-      <p style={{ ...eyebrowSmall, color: tone === "hot" ? "var(--brass)" : "var(--muted)" }}>{eyebrow}</p>
-      <strong style={{ color: "var(--obsidian)", fontSize: 15, lineHeight: 1.3 }}>{title}</strong>
-      <p style={{ color: "var(--muted)", fontSize: 12, lineHeight: 1.45, flex: 1 }}>{detail}</p>
-      {actionLabel && onAction && (
-        <button onClick={onAction} style={{ ...secondaryButton, fontSize: 10, padding: "8px 10px", minHeight: 32 }}>{actionLabel}</button>
-      )}
-    </div>
-  );
-}
-
 function InfoStack({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div style={{ border: "1px solid var(--fog)", borderRadius: 8, padding: 10, background: "var(--surface)", color: "var(--muted)", fontSize: 12, lineHeight: 1.55 }}>
@@ -3878,18 +3648,56 @@ const inlineTextButton: React.CSSProperties = {
   padding: 0,
 };
 
-const homeMetricButton: React.CSSProperties = {
+const workItemCard: React.CSSProperties = {
+  alignItems: "flex-start",
+  background: "rgba(255,255,255,0.76)",
   border: "1px solid var(--fog)",
   borderRadius: 8,
-  background: "rgba(255,255,255,0.72)",
-  padding: 14,
-  minHeight: 110,
-  textAlign: "left",
+  boxShadow: "0 10px 24px rgba(20,17,13,0.04)",
+  color: "var(--ink)",
   cursor: "pointer",
   display: "grid",
-  gap: 6,
-  alignContent: "start",
-  boxShadow: "0 10px 26px rgba(20,17,13,0.04)",
+  gap: 12,
+  gridTemplateColumns: "48px minmax(0, 1fr)",
+  minHeight: 94,
+  padding: 12,
+  textAlign: "left",
+};
+
+const workItemIcon: React.CSSProperties = {
+  alignItems: "center",
+  background: "var(--obsidian)",
+  borderRadius: 8,
+  color: "var(--bone)",
+  display: "inline-flex",
+  fontSize: 10,
+  fontWeight: 900,
+  height: 42,
+  justifyContent: "center",
+  letterSpacing: "0.08em",
+  width: 42,
+};
+
+const workItemHeader: React.CSSProperties = {
+  alignItems: "center",
+  display: "flex",
+  gap: 8,
+  justifyContent: "space-between",
+  minWidth: 0,
+};
+
+const workItemBody: React.CSSProperties = {
+  color: "var(--muted)",
+  fontSize: 13,
+  lineHeight: 1.45,
+  marginTop: 5,
+};
+
+const workItemMeta: React.CSSProperties = {
+  color: "var(--muted)",
+  display: "block",
+  fontSize: 11,
+  marginTop: 7,
 };
 
 const miniInboxButton: React.CSSProperties = {
@@ -4053,41 +3861,6 @@ const td: React.CSSProperties = {
   padding: "9px 8px 9px 0",
   color: "var(--ink)",
   verticalAlign: "top",
-};
-
-const tableHead: React.CSSProperties = {
-  padding: "10px 8px",
-  borderBottom: "1px solid var(--fog)",
-  color: "var(--muted)",
-  fontSize: 10,
-  fontWeight: 800,
-  letterSpacing: "0.12em",
-  textTransform: "uppercase",
-  textAlign: "left",
-  background: "rgba(245,239,224,0.82)",
-  whiteSpace: "nowrap",
-};
-
-const tableCell: React.CSSProperties = {
-  padding: "11px 8px",
-  borderBottom: "1px solid var(--fog)",
-  color: "var(--ink)",
-  fontSize: 12,
-  lineHeight: 1.35,
-  verticalAlign: "middle",
-};
-
-const iconButton: React.CSSProperties = {
-  border: "1px solid var(--fog)",
-  background: "rgba(255,255,255,0.55)",
-  color: "var(--obsidian)",
-  borderRadius: 6,
-  minHeight: 30,
-  padding: "5px 7px",
-  fontSize: 10,
-  fontWeight: 800,
-  letterSpacing: "0.08em",
-  textTransform: "uppercase",
 };
 
 const flagChip: React.CSSProperties = {
