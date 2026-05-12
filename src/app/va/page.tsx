@@ -153,7 +153,7 @@ const DISPOSITION_STATUSES: Array<{ value: DispositionStatus; label: string }> =
 type VaTab = "today" | "outreach" | "lists" | "packet" | "brief";
 
 const TABS: Array<{ value: VaTab; label: string }> = [
-  { value: "today", label: "Desk Home" },
+  { value: "today", label: "Dashboard" },
   { value: "outreach", label: "Contact Queue" },
   { value: "lists", label: "Lists" },
   { value: "packet", label: "Packets" },
@@ -1552,8 +1552,8 @@ export default function VaPage() {
   ];
   const headerCopy: Record<VaTab, { eyebrow: string; title: string; subtitle: string }> = {
     today: {
-      eyebrow: "VA Desk",
-      title: "Sophie Workdesk",
+      eyebrow: "Dashboard",
+      title: "Sophie Dashboard",
       subtitle: "Start the shift, see the next priority, then jump into calls, lists, packets, tasks, records, or the daily brief.",
     },
     outreach: {

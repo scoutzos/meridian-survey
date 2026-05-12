@@ -9,7 +9,7 @@ const crmRoutes = ["/crm", "/va", "/lead", "/lists"];
 const crmLinks = [
   { href: "/dashboard", label: "Member Portal" },
   { href: "/crm", label: "Command Center" },
-  { href: "/va", label: "VA Home" },
+  { href: "/va", label: "Dashboard" },
   { href: "/va?tab=outreach", label: "Contact Queue" },
   { href: "/va?tab=lists", label: "Lists" },
   { href: "/crm?view=deals", label: "Deal Reviews" },
@@ -21,7 +21,7 @@ const crmLinks = [
 // (Home / Contact Queue / Lists / Packets / Daily Brief) live in the in-page
 // tab strip on /va — don't duplicate them in the sidebar.
 const vaLinks = [
-  { href: "/va", label: "VA Desk" },
+  { href: "/va", label: "Dashboard" },
   { href: "/actions?filter=va", label: "Tasks" },
   { href: "/crm?view=records", label: "Records" },
   { href: "/dashboard", label: "Member Portal" },
@@ -106,7 +106,7 @@ export default function NavBar() {
     { href: "/hub",        label: "Hub" },
   ];
   const mainVaLinks = [
-    { href: "/va", label: "VA Desk" },
+    { href: "/va", label: "Dashboard" },
     { href: "/actions?filter=va", label: "Tasks" },
     { href: "/crm?view=records", label: "Records" },
     { href: "/dashboard", label: "Member Portal" },
@@ -130,7 +130,7 @@ export default function NavBar() {
             <Logo width={38} onDark />
             <div>
               <strong style={{ display: "block", color: "var(--bone)", fontSize: 12, letterSpacing: "0.18em", textTransform: "uppercase" }}>Meridian</strong>
-              <span style={{ display: "block", color: "var(--brass)", fontSize: 9, letterSpacing: "0.2em", textTransform: "uppercase" }}>{isVaUser(user) ? "VA Desk" : "CRM"}</span>
+              <span style={{ display: "block", color: "var(--brass)", fontSize: 9, letterSpacing: "0.2em", textTransform: "uppercase" }}>{isVaUser(user) ? "Dashboard" : "CRM"}</span>
             </div>
           </div>
           <div style={{ display: "grid", gap: 4 }}>
