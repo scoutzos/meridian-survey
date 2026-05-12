@@ -688,6 +688,19 @@ export default function VaPage() {
   const followUpsDue = useMemo(() => deals.filter(deal => isDueTodayOrPast(deal.next_follow_up_date, today)), [deals, today]);
   const draftLeads = useMemo(() => deals.filter(deal => deal.status === "lead"), [deals]);
   const interestedLeads = useMemo(() => importedLeads.filter(lead => lead.status === "interested"), [importedLeads]);
+  const leadFollowUpsDue = useMemo(() => importedLeads.filter(lead =>
+    isDueTodayOrPast(lead.next_follow_up_date, today)
+    && lead.status !== "converted"
+    && lead.status !== "passed"
+  ), [importedLeads, today]);
+  const newLeadRows = useMemo(() => importedLeads
+    .filter(lead => lead.status === "new")
+    .sort((a, b) => (b.lead_score ?? 0) - (a.lead_score ?? 0)),
+    [importedLeads],
+  );
+  const blockedAssignedTasks = useMemo(() => openAssignedTasks.filter(task => task.status === "blocked"), [openAssignedTasks]);
+  const memberAssignedTasks = useMemo(() => openAssignedTasks.filter(task => task.status !== "blocked"), [openAssignedTasks]);
+  const dashboardWorkQueueCount = leadFollowUpsDue.length + newLeadRows.length + interestedLeads.length + draftLeads.length + memberAssignedTasks.length + blockedAssignedTasks.length;
   const selectedImportedLead = useMemo(() => importedLeads.find(lead => lead.id === selectedImportedLeadId) ?? null, [importedLeads, selectedImportedLeadId]);
   const selectedBatch = useMemo(() => leadBatches.find(batch => batch.id === selectedBatchId) ?? null, [leadBatches, selectedBatchId]);
   const filteredImportedLeads = useMemo(() => {
@@ -750,12 +763,12 @@ export default function VaPage() {
     briefSubmitted: briefs.some(brief => brief.work_date === today),
   }), [briefs, deals, today]);
   const tabCounts = useMemo<Record<VaTab, number>>(() => ({
-    today: recentInboundSms.length + followUpsDue.length + interestedLeads.length + openAssignedTasks.length,
+    today: dashboardWorkQueueCount,
     outreach: recentInboundSms.length + followUpsDue.length,
     lists: importedLeads.length,
     packet: deals.length,
     brief: portalStats.briefSubmitted ? 1 : 0,
-  }), [deals.length, followUpsDue.length, importedLeads.length, interestedLeads.length, openAssignedTasks.length, portalStats.briefSubmitted, recentInboundSms.length]);
+  }), [dashboardWorkQueueCount, deals.length, followUpsDue.length, importedLeads.length, portalStats.briefSubmitted, recentInboundSms.length]);
   useEffect(() => {
     window.dispatchEvent(new CustomEvent("meridian-va-tab-counts", { detail: tabCounts }));
   }, [tabCounts]);
@@ -1554,11 +1567,11 @@ export default function VaPage() {
     },
     {
       label: "Queue",
-      value: String(workdeskLeadRows.length),
-      detail: "Seller records in queue",
+      value: String(dashboardWorkQueueCount),
+      detail: "Follow-ups, leads, packets, tasks",
       action: "Work Queue",
       onAction: () => goToTab("outreach"),
-      hot: unmatchedSms.length > 0 || followUpsDue.length > 0,
+      hot: leadFollowUpsDue.length > 0 || followUpsDue.length > 0 || blockedAssignedTasks.length > 0,
     },
     {
       label: "Packets",
@@ -1586,7 +1599,7 @@ export default function VaPage() {
     outreach: {
       eyebrow: "Contact Queue",
       title: "Contact Queue",
-      subtitle: "Work seller replies, due follow-ups, calls, texts, and outcomes from one queue.",
+      subtitle: "Work due follow-ups, calls, texts, and outcomes from the selected seller record.",
     },
     lists: {
       eyebrow: "Lists",
@@ -1819,8 +1832,8 @@ export default function VaPage() {
                   </p>
                 </div>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 8 }} className="compact-shift-grid">
-                  <MiniStat label="Replies" value={String(recentInboundSms.length)} />
                   <MiniStat label="Follow-ups" value={String(followUpsDue.length)} />
+                  <MiniStat label="New leads" value={String(newLeadRows.length)} />
                   <MiniStat label="Tasks" value={String(openAssignedTasks.length)} />
                   <MiniStat label="Packets" value={String(draftLeads.length)} />
                 </div>
@@ -1848,41 +1861,55 @@ export default function VaPage() {
                 </div>
 
                 <div style={{ display: "grid", gap: 10 }}>
-                  {recentInboundSms.slice(0, 3).map(event => (
-                    <button key={`reply-${event.id}`} onClick={() => openIncomingSms(event)} style={{ ...workItemCard, borderColor: event.matched_lead_id || event.matched_deal_id ? "var(--fog)" : "var(--brass)" }}>
-                      <div style={workItemIcon}>SMS</div>
+                  {leadFollowUpsDue.slice(0, 2).map(lead => (
+                    <button key={`lead-follow-up-${lead.id}`} onClick={() => selectImportedLead(lead, "outreach")} style={{ ...workItemCard, borderColor: "var(--brass)" }}>
+                      <div style={workItemIcon}>DUE</div>
                       <div style={{ minWidth: 0 }}>
                         <div style={workItemHeader}>
-                          <strong>{event.contact_name || event.contact_number || event.from_number || "Seller reply"}</strong>
-                          <span style={hotPill}>{event.matched_lead_id || event.matched_deal_id ? "Reply" : "Match needed"}</span>
+                          <strong>{lead.owner_name || lead.property_address || "Due follow-up"}</strong>
+                          <span style={hotPill}>Due Follow-Up</span>
                         </div>
-                        <p style={workItemBody}>{(event.body || "Incoming message").slice(0, 120)}{(event.body || "").length > 120 ? "..." : ""}</p>
-                        <small style={workItemMeta}>{formatDate(event.provider_created_at || event.created_at)} · Open conversation</small>
+                        <p style={workItemBody}>{lead.property_address || lead.parcel_id || "Seller follow-up is due."}</p>
+                        <small style={workItemMeta}>Due {lead.next_follow_up_date} · Open seller card</small>
                       </div>
                     </button>
                   ))}
 
-                  {openAssignedTasks.slice(0, Math.max(0, 4 - recentInboundSms.slice(0, 3).length)).map(task => (
-                    <button key={`task-${task.id}`} onClick={() => router.push(taskRecordHref(task))} style={workItemCard}>
-                      <div style={workItemIcon}>VA</div>
+                  {followUpsDue.slice(0, Math.max(0, 3 - leadFollowUpsDue.slice(0, 2).length)).map(deal => (
+                    <button key={`deal-follow-up-${deal.id}`} onClick={() => openDealBrief(deal)} style={{ ...workItemCard, borderColor: "var(--brass)" }}>
+                      <div style={workItemIcon}>DUE</div>
                       <div style={{ minWidth: 0 }}>
                         <div style={workItemHeader}>
-                          <strong>{task.title}</strong>
-                          <span style={task.status === "blocked" || task.priority === "urgent" || task.priority === "high" ? hotPill : pill}>{statusLabel(task.priority || task.status)}</span>
+                          <strong>{deal.title || deal.address || "Deal follow-up"}</strong>
+                          <span style={hotPill}>Due Follow-Up</span>
                         </div>
-                        <p style={workItemBody}>{task.description || "Member-assigned task needs a status update."}</p>
-                        <small style={workItemMeta}>{task.created_by ? `Assigned by ${task.created_by}` : "Assigned"}{task.due_date ? ` · Due ${task.due_date}` : ""} · {taskRecordLabel(task)}</small>
+                        <p style={workItemBody}>{deal.seller_name || deal.seller_phone || "Deal follow-up is due."}</p>
+                        <small style={workItemMeta}>Due {deal.next_follow_up_date} · Open packet</small>
                       </div>
                     </button>
                   ))}
 
-                  {interestedLeads.slice(0, Math.max(0, 5 - recentInboundSms.length - openAssignedTasks.length)).map(lead => (
+                  {newLeadRows.slice(0, Math.max(0, 4 - leadFollowUpsDue.length - followUpsDue.length)).map(lead => (
+                    <button key={`new-lead-${lead.id}`} onClick={() => selectImportedLead(lead, "outreach")} style={workItemCard}>
+                      <div style={workItemIcon}>NEW</div>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={workItemHeader}>
+                          <strong>{lead.owner_name || "Owner unknown"}</strong>
+                          <span style={pill}>New Lead</span>
+                        </div>
+                        <p style={workItemBody}>{lead.property_address || `${lead.county || "County pending"}${lead.acreage ? ` · ${lead.acreage} ac` : ""}`}</p>
+                        <small style={workItemMeta}>{lead.phone || lead.phone_2 || "No phone"} · Start first touch</small>
+                      </div>
+                    </button>
+                  ))}
+
+                  {interestedLeads.slice(0, Math.max(0, 5 - leadFollowUpsDue.length - followUpsDue.length - newLeadRows.length)).map(lead => (
                     <button key={`interested-${lead.id}`} onClick={() => loadImportedLead(lead, true)} style={workItemCard}>
-                      <div style={workItemIcon}>PKT</div>
+                      <div style={workItemIcon}>INT</div>
                       <div style={{ minWidth: 0 }}>
                         <div style={workItemHeader}>
                           <strong>{lead.owner_name || lead.property_address || "Interested seller"}</strong>
-                          <span style={hotPill}>Interested</span>
+                          <span style={hotPill}>Interested Seller</span>
                         </div>
                         <p style={workItemBody}>{lead.property_address || lead.parcel_id || "Property record needs review."}</p>
                         <small style={workItemMeta}>{lead.phone || lead.phone_2 || "No phone"} · Build packet</small>
@@ -1890,21 +1917,49 @@ export default function VaPage() {
                     </button>
                   ))}
 
-                  {workdeskLeadRows.slice(0, Math.max(0, 6 - recentInboundSms.length - openAssignedTasks.length - interestedLeads.length)).map(lead => (
-                    <button key={`lead-${lead.id}`} onClick={() => selectImportedLead(lead)} style={workItemCard}>
-                      <div style={workItemIcon}>{(lead.lead_score ?? 0) >= 70 ? "HOT" : "NEW"}</div>
+                  {draftLeads.slice(0, Math.max(0, 6 - leadFollowUpsDue.length - followUpsDue.length - newLeadRows.length - interestedLeads.length)).map(deal => (
+                    <button key={`packet-ready-${deal.id}`} onClick={() => openDealBrief(deal)} style={workItemCard}>
+                      <div style={workItemIcon}>PKT</div>
                       <div style={{ minWidth: 0 }}>
                         <div style={workItemHeader}>
-                          <strong>{lead.owner_name || "Owner unknown"}</strong>
-                          <span style={lead.status === "interested" ? hotPill : pill}>{statusLabel(lead.status)}</span>
+                          <strong>{deal.title || deal.address || "Draft packet"}</strong>
+                          <span style={pill}>Packet Ready</span>
                         </div>
-                        <p style={workItemBody}>{lead.property_address || `${lead.county || "County pending"}${lead.acreage ? ` · ${lead.acreage} ac` : ""}`}</p>
-                        <small style={workItemMeta}>{lead.phone || lead.phone_2 || "No phone"} · {sellerActionState(lead).primary}</small>
+                        <p style={workItemBody}>{deal.address || deal.parcel_id || "Draft deal brief needs readiness checks."}</p>
+                        <small style={workItemMeta}>{deal.seller_name || deal.seller_phone || "Seller pending"} · Review packet</small>
                       </div>
                     </button>
                   ))}
 
-                  {recentInboundSms.length === 0 && openAssignedTasks.length === 0 && interestedLeads.length === 0 && workdeskLeadRows.length === 0 && (
+                  {blockedAssignedTasks.slice(0, Math.max(0, 7 - leadFollowUpsDue.length - followUpsDue.length - newLeadRows.length - interestedLeads.length - draftLeads.length)).map(task => (
+                    <button key={`task-${task.id}`} onClick={() => router.push(taskRecordHref(task))} style={workItemCard}>
+                      <div style={workItemIcon}>BLK</div>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={workItemHeader}>
+                          <strong>{task.title}</strong>
+                          <span style={hotPill}>Blocked Task</span>
+                        </div>
+                        <p style={workItemBody}>{task.description || "Member-assigned task needs a status update."}</p>
+                        <small style={workItemMeta}>{task.created_by ? `Assigned by ${task.created_by}` : "Assigned"}{task.due_date ? ` · Due ${task.due_date}` : ""} · {taskRecordLabel(task)}</small>
+                      </div>
+                    </button>
+                  ))}
+
+                  {memberAssignedTasks.slice(0, Math.max(0, 8 - leadFollowUpsDue.length - followUpsDue.length - newLeadRows.length - interestedLeads.length - draftLeads.length - blockedAssignedTasks.length)).map(task => (
+                    <button key={`member-task-${task.id}`} onClick={() => router.push(taskRecordHref(task))} style={workItemCard}>
+                      <div style={workItemIcon}>TSK</div>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={workItemHeader}>
+                          <strong>{task.title}</strong>
+                          <span style={task.priority === "urgent" || task.priority === "high" ? hotPill : pill}>Member Task</span>
+                        </div>
+                        <p style={workItemBody}>{task.description || "Member-assigned task needs a status update."}</p>
+                        <small style={workItemMeta}>{task.created_by ? `Assigned by ${task.created_by}` : "Assigned"}{task.due_date ? ` · Due ${task.due_date}` : ""} · {taskRecordLabel(task)}</small>
+                      </div>
+                    </button>
+                  ))}
+
+                  {dashboardWorkQueueCount === 0 && (
                     <div style={{ ...subPanel, background: "var(--bone)" }}>
                       <p style={eyebrowSmall}>Clear</p>
                       <h3 style={{ ...sectionTitle, fontSize: 22, marginTop: 4 }}>No urgent queue waiting</h3>
