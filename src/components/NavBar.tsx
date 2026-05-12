@@ -17,13 +17,11 @@ const crmLinks = [
   { href: "/crm?view=dispo", label: "Disposition" },
   { href: "/crm?view=records", label: "Records" },
 ];
+// VA sidebar shows only cross-workspace links. The 5 VA-workspace tabs
+// (Home / Inbox / Lists / Deal Packet / Daily Brief) live in the in-page
+// tab strip on /va — don't duplicate them in the sidebar.
 const vaLinks = [
   { href: "/dashboard", label: "Member Portal" },
-  { href: "/va", label: "VA Home" },
-  { href: "/va?tab=outreach", label: "Lead Inbox" },
-  { href: "/va?tab=lists", label: "Lists" },
-  { href: "/va?tab=packet", label: "Deal Packets" },
-  { href: "/va?tab=brief", label: "Daily Brief" },
   { href: "/crm", label: "CRM Command" },
   { href: "/crm?view=records", label: "CRM Records" },
 ];

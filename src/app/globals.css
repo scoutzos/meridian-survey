@@ -174,7 +174,9 @@ button {
   left: 156px;
   right: 0;
   height: 54px;
-  padding: 0 18px;
+  /* Reserve right space so the floating GlobalLeadSearch (right:292px, 38px wide)
+     never overlaps the right-aligned button cluster. */
+  padding: 0 350px 0 18px;
   display: flex;
   justify-content: flex-end;
   align-items: center;
@@ -356,6 +358,34 @@ button {
   letter-spacing: 0.12em;
   margin-top: 4px;
   text-transform: uppercase;
+}
+
+/* Explicit CTA pill at the bottom of clickable stat cards.
+   Replaces the ambiguous em-tag CTA label so it reads as an action. */
+.operating-stat-cta {
+  align-self: flex-start;
+  margin-top: 10px;
+  color: var(--brass);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border: 1px solid rgba(176, 137, 84, 0.4);
+  border-radius: 999px;
+  background: rgba(176, 137, 84, 0.08);
+}
+
+.operating-stat-clickable {
+  cursor: pointer;
+}
+
+.operating-stat-clickable:hover .operating-stat-cta {
+  background: rgba(176, 137, 84, 0.18);
+  border-color: var(--brass);
 }
 
 .operating-stat-hot strong,

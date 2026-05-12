@@ -25,7 +25,6 @@ export default function OperatingHeader({
   eyebrow,
   title,
   subtitle,
-  user,
   mode = "member",
   actions,
   stats = [],
@@ -38,45 +37,35 @@ export default function OperatingHeader({
           <h1>{title}</h1>
           <p className="operating-subtitle">{subtitle}</p>
         </div>
-        <div className="operating-header-right">
-          {user && (
-            <div className="operating-user-chip">
-              <span>{initials(user)}</span>
-              <strong>{user}</strong>
-            </div>
-          )}
-          {actions && <div className="operating-actions">{actions}</div>}
-        </div>
+        {/* User identity lives in the NavBar (top right) — do not duplicate here */}
+        {actions && <div className="operating-header-right"><div className="operating-actions">{actions}</div></div>}
       </div>
 
       {stats.length > 0 && (
         <div className="operating-stat-grid">
-          {stats.map(stat => (
-            <button
-              key={`${stat.label}-${stat.value}`}
-              type="button"
-              className={`operating-stat operating-stat-${stat.tone ?? "default"}`}
-              onClick={stat.onAction}
-              disabled={!stat.onAction}
-            >
-              <span>{stat.label}</span>
-              <strong>{stat.value}</strong>
-              {stat.detail && <small>{stat.detail}</small>}
-              {stat.action && <em>{stat.action}</em>}
-            </button>
-          ))}
+          {stats.map(stat => {
+            const clickable = !!stat.onAction;
+            return (
+              <button
+                key={`${stat.label}-${stat.value}`}
+                type="button"
+                className={`operating-stat operating-stat-${stat.tone ?? "default"}${clickable ? " operating-stat-clickable" : ""}`}
+                onClick={stat.onAction}
+                disabled={!clickable}
+                aria-label={clickable && stat.action ? `${stat.label}: ${stat.value}. ${stat.action}` : `${stat.label}: ${stat.value}`}
+              >
+                <span>{stat.label}</span>
+                <strong>{stat.value}</strong>
+                {stat.detail && <small>{stat.detail}</small>}
+                {clickable && stat.action && (
+                  <span className="operating-stat-cta">{stat.action} →</span>
+                )}
+              </button>
+            );
+          })}
         </div>
       )}
     </section>
   );
 }
 
-function initials(name: string): string {
-  return name
-    .split(/\s+/)
-    .filter(Boolean)
-    .map(part => part[0])
-    .join("")
-    .slice(0, 2)
-    .toUpperCase();
-}
