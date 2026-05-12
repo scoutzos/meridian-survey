@@ -232,9 +232,9 @@ export default function NavBar() {
             </div>
           )}
           {!isVaUser(user) && <button onClick={() => router.push("/dashboard")} style={crmPortalButton}>Member Portal</button>}
-          <button onClick={() => router.push(isVaUser(user) ? "/va?tab=packet" : "/va")} style={crmCreateButton}>{isVaUser(user) ? "+ Deal Brief" : "+ Create"}</button>
-          <span style={{ color: "var(--fog)", fontSize: 12 }}>●</span>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <button className={isVaUser(user) && pathname === "/va" ? "va-top-create" : undefined} onClick={() => router.push(isVaUser(user) ? "/va?tab=packet" : "/va")} style={crmCreateButton}>{isVaUser(user) ? "+ Deal Brief" : "+ Create"}</button>
+          <span className={isVaUser(user) && pathname === "/va" ? "va-top-dot" : undefined} style={{ color: "var(--fog)", fontSize: 12 }}>●</span>
+          <div className={isVaUser(user) && pathname === "/va" ? "va-top-user" : undefined} style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <span style={{ display: "grid", placeItems: "center", width: 28, height: 28, borderRadius: 999, background: "var(--obsidian)", color: "var(--bone)", fontSize: 11 }}>{user.split(/\s+/).map(part => part[0]).join("").slice(0, 2)}</span>
             <span style={{ color: "var(--ink)", fontSize: 12 }}>{user}</span>
           </div>

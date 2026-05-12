@@ -191,15 +191,16 @@ button {
   align-items: center;
   padding-top: 0;
   justify-content: flex-end;
-  gap: 12px;
+  gap: 10px;
 }
 
 .va-top-tabs {
   margin-right: auto;
   min-width: 0;
+  flex: 1 1 auto;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   overflow-x: auto;
   scrollbar-width: none;
 }
@@ -209,19 +210,19 @@ button {
 }
 
 .va-top-tab {
-  height: 36px;
+  height: 34px;
   flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  padding: 0 13px;
+  gap: 6px;
+  padding: 0 10px;
   border: 1px solid rgba(176,137,84,0.28);
   border-radius: 999px;
   background: rgba(255,252,245,0.72);
   color: var(--obsidian);
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 850;
-  letter-spacing: 0.13em;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
   cursor: pointer;
   white-space: nowrap;
@@ -240,21 +241,39 @@ button {
 }
 
 .va-top-tab strong {
-  min-width: 24px;
-  height: 24px;
-  padding: 0 7px;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
   display: inline-grid;
   place-items: center;
   border-radius: 999px;
   background: rgba(176,137,84,0.16);
   color: var(--muted);
-  font-size: 11px;
+  font-size: 10px;
   letter-spacing: 0;
 }
 
 .va-top-tab-active strong {
   background: rgba(237,230,214,0.14);
   color: var(--brass);
+}
+
+.crm-top-bar-va .va-top-create {
+  flex: 0 0 auto;
+  min-width: 118px;
+  padding-left: 10px !important;
+  padding-right: 10px !important;
+  line-height: 1.05;
+}
+
+.crm-top-bar-va .va-top-dot {
+  flex: 0 0 auto;
+}
+
+.crm-top-bar-va .va-top-user {
+  flex: 0 0 auto;
+  min-width: max-content;
+  white-space: nowrap;
 }
 
 .crm-side-link {
