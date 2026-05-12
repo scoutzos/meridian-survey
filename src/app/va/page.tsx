@@ -148,14 +148,14 @@ const DISPOSITION_STATUSES: Array<{ value: DispositionStatus; label: string }> =
   { value: "fell-through", label: "Fell Through" },
 ];
 
-type VaTab = "today" | "outreach" | "lists" | "packet" | "brief";
+type VaTab = "home" | "inbox" | "lists" | "deal" | "end-shift";
 
 const TABS: Array<{ value: VaTab; label: string }> = [
-  { value: "today", label: "Today" },
-  { value: "outreach", label: "Outreach" },
+  { value: "home", label: "Home" },
+  { value: "inbox", label: "Inbox" },
   { value: "lists", label: "Lists" },
-  { value: "packet", label: "Deal Packet" },
-  { value: "brief", label: "Brief" },
+  { value: "deal", label: "Deal" },
+  { value: "end-shift", label: "End Shift" },
 ];
 
 const IMPORT_STATUS_FILTERS = [
@@ -299,6 +299,12 @@ function addDays(days: number): string {
   return d.toISOString().slice(0, 10);
 }
 
+function greetingForHour(hour: number): string {
+  if (hour < 12) return "morning";
+  if (hour < 17) return "afternoon";
+  return "evening";
+}
+
 function appendBriefText(existing: string | null | undefined, addition: string): string {
   const current = (existing ?? "").trim();
   if (!addition.trim()) return current;
@@ -327,10 +333,6 @@ function formatDate(iso: string): string {
   } catch {
     return iso;
   }
-}
-
-function formatCurrency(value: number): string {
-  return value.toLocaleString(undefined, { style: "currency", currency: "USD", maximumFractionDigits: 2 });
 }
 
 type ConversationItem = {
@@ -584,7 +586,7 @@ export default function VaPage() {
   const [importing, setImporting] = useState(false);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
-  const [activeTab, setActiveTab] = useState<VaTab>("today");
+  const [activeTab, setActiveTab] = useState<VaTab>("home");
   const [notifyReviewUpdate, setNotifyReviewUpdate] = useState(false);
   const [activeMemberNames, setActiveMemberNames] = useState<string[]>([]);
 
@@ -725,11 +727,11 @@ export default function VaPage() {
     briefSubmitted: briefs.some(brief => brief.work_date === today),
   }), [briefs, deals, today]);
   const tabCounts: Record<VaTab, number> = {
-    today: unmatchedSms.length + followUpsDue.length + interestedLeads.length + openAssignedTasks.length,
-    outreach: unmatchedSms.length + followUpsDue.length,
+    home: interestedLeads.length,
+    inbox: unmatchedSms.length + followUpsDue.length + openAssignedTasks.length,
     lists: importedLeads.length,
-    packet: deals.length,
-    brief: portalStats.briefSubmitted ? 1 : 0,
+    deal: deals.length,
+    "end-shift": portalStats.briefSubmitted ? 1 : 0,
   };
   const readinessItems = useMemo(() => [
     { label: "Address or parcel", done: !!(liveInput.address || liveInput.parcel_id) },
@@ -774,6 +776,26 @@ export default function VaPage() {
       setCommunicationEvents(comms);
     });
   }, [selectedImportedLeadId]);
+
+  useEffect(() => {
+    if (activeTab !== "end-shift" || editingBriefId || loading) return;
+    const date = briefDraft.work_date;
+    const sameDay = (iso?: string | null) => !!iso && iso.slice(0, 10) === date;
+    const ownDeals = deals.filter(deal => deal.created_by === user || deal.submitted_by === user || deal.assigned_to === user);
+    const touchedImportedLeads = importedLeads.filter(lead => sameDay(lead.last_activity_at) || sameDay(lead.last_sms_at));
+    setBriefDraft(prev => ({
+      ...prev,
+      leads_added: prev.leads_added ?? ownDeals.filter(deal => sameDay(deal.created_at)).length,
+      leads_updated: prev.leads_updated ?? (ownDeals.filter(deal => sameDay(deal.updated_at)).length + touchedImportedLeads.length),
+      outreach_sent: prev.outreach_sent ?? touchedImportedLeads.filter(lead => ["called", "texted", "emailed", "left-voicemail"].includes(lead.last_activity_type || "") || lead.last_sms_direction === "outbound").length,
+      seller_replies: prev.seller_replies ?? touchedImportedLeads.filter(lead => lead.status === "interested" || lead.last_sms_direction === "inbound").length,
+      calls_completed: prev.calls_completed ?? touchedImportedLeads.filter(lead => lead.last_activity_type === "called" || lead.last_activity_type === "left-voicemail").length,
+      deals_submitted: prev.deals_submitted ?? ownDeals.filter(deal => deal.status === "under-review" && sameDay(deal.updated_at)).length,
+      va_tasks_completed: prev.va_tasks_completed ?? completedAssignedTasksToday.length,
+      hours_worked: prev.hours_worked ?? (todaysSubmittedMinutes > 0 ? Number((todaysSubmittedMinutes / 60).toFixed(2)) : prev.hours_worked),
+    }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, editingBriefId, loading]);
 
   if (!user) return null;
 
@@ -835,7 +857,7 @@ export default function VaPage() {
     setAttachmentDraft(EMPTY_ATTACHMENT());
     setDraftCommunicationEventId(null);
     setMessage("");
-    setActiveTab("packet");
+    setActiveTab("deal");
     setNotifyReviewUpdate(false);
   };
 
@@ -843,10 +865,10 @@ export default function VaPage() {
     setSelectedImportedLeadId(null);
     setSelectedId(deal.id);
     setMessage("");
-    setActiveTab("packet");
+    setActiveTab("deal");
   };
 
-  const selectImportedLead = (lead: ImportedLandLead, tab: VaTab = "today") => {
+  const selectImportedLead = (lead: ImportedLandLead, tab: VaTab = "home") => {
     setSelectedId(null);
     setSelectedImportedLeadId(lead.id);
     setActiveTab(tab);
@@ -861,7 +883,7 @@ export default function VaPage() {
     const shouldNotifyMembers = isReviewSubmit && (!selected?.last_review_notification_at || selected.status !== "under-review" || notifyReviewUpdate);
     if (isReviewSubmit) {
       if (!submissionReady) {
-        setActiveTab("packet");
+        setActiveTab("deal");
         setMessage([
           missingReadyItems.length ? `Complete before submitting: ${missingReadyItems.join(", ")}.` : "",
           !liveInput.submission_summary ? "Add a VA submission summary." : "",
@@ -1047,7 +1069,7 @@ export default function VaPage() {
       source: imported.source || lead.source_system,
       campaign_source: imported.campaign_source || lead.campaign_source || "",
     });
-    setActiveTab("packet");
+    setActiveTab("deal");
     setSelectedImportedLeadId(lead.id);
     setMessage("Imported lead loaded into the deal form.");
     if (markInterested && lead.status !== "interested") {
@@ -1190,7 +1212,7 @@ export default function VaPage() {
       campaign_source: "Inbound SMS",
       lead_temperature: event.direction === "inbound" ? "hot" : "warm",
     });
-    setActiveTab("packet");
+    setActiveTab("deal");
     setMessage("Unmatched SMS loaded as a new lead draft. Add property details before saving.");
   };
 
@@ -1318,7 +1340,7 @@ export default function VaPage() {
       blockers: brief.blockers ?? "",
       tomorrow_plan: brief.tomorrow_plan ?? "",
     });
-    setActiveTab("brief");
+    setActiveTab("end-shift");
     setMessage("Brief loaded for editing.");
   };
 
@@ -1490,7 +1512,7 @@ export default function VaPage() {
       value: String(workdeskLeadRows.length),
       detail: "Seller records in queue",
       action: "Work Queue",
-      onAction: () => setActiveTab("today"),
+      onAction: () => setActiveTab("home"),
       hot: unmatchedSms.length > 0 || followUpsDue.length > 0,
     },
     {
@@ -1498,7 +1520,7 @@ export default function VaPage() {
       value: String(draftLeads.length),
       detail: "Draft deal briefs",
       action: "Build Packet",
-      onAction: () => draftLeads[0] ? openDealBrief(draftLeads[0]) : setActiveTab("packet"),
+      onAction: () => draftLeads[0] ? openDealBrief(draftLeads[0]) : setActiveTab("deal"),
       hot: interestedLeads.length > 0,
     },
     {
@@ -1506,7 +1528,7 @@ export default function VaPage() {
       value: portalStats.briefSubmitted ? "Done" : "Open",
       detail: "Member daily summary",
       action: "End Shift",
-      onAction: () => setActiveTab("brief"),
+      onAction: () => setActiveTab("end-shift"),
       hot: !portalStats.briefSubmitted,
     },
   ];
@@ -1522,9 +1544,19 @@ export default function VaPage() {
         actions={
           <>
           <button onClick={() => setActiveTab("lists")} style={secondaryButton}>Import List</button>
-          <button onClick={() => selectedImportedLead ? document.getElementById("va-workdesk-note")?.focus() : setActiveTab("today")} style={secondaryButton}>Log Call</button>
+          <button
+            onClick={() => {
+              setActiveTab("lists");
+              if (selectedImportedLead) {
+                window.setTimeout(() => document.getElementById("va-workdesk-note")?.focus(), 80);
+              }
+            }}
+            style={secondaryButton}
+          >
+            Log Call
+          </button>
           <button onClick={startNew} style={primaryButton}>New Deal Brief</button>
-          <button onClick={() => setActiveTab("brief")} style={secondaryButton}>End Shift Brief</button>
+          <button onClick={() => setActiveTab("end-shift")} style={secondaryButton}>End Shift Brief</button>
           </>
         }
         stats={vaFlowCards.map(card => ({
@@ -1543,31 +1575,45 @@ export default function VaPage() {
         </div>
       )}
 
-      {activeTab !== "today" && <section style={{ ...compactShiftPanel, marginBottom: 16 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 14, flexWrap: "wrap", alignItems: "flex-start", marginBottom: 14 }}>
+      {!openShift && (
+        <section style={clockInBanner} className="va-clock-banner">
           <div>
-            <p style={{ ...eyebrowSmall, color: "var(--brass)" }}>Today&apos;s work</p>
-            <h2 style={{ ...sectionTitle, color: "var(--obsidian)" }}>Shift status</h2>
+            <p style={{ ...eyebrowSmall, color: "var(--bone)", opacity: 0.85 }}>Shift status</p>
+            <h2 style={{ ...sectionTitle, color: "var(--bone)", fontSize: 28, marginTop: 2 }}>You&apos;re not clocked in</h2>
+            <p style={{ color: "var(--bone)", opacity: 0.78, fontSize: 13, marginTop: 6 }}>
+              Clock in before logging activity. Your shift drives the daily brief, time approvals, and payroll.
+            </p>
           </div>
-          <span style={portalStats.briefSubmitted ? hotPill : pill}>
-            {portalStats.briefSubmitted ? "Brief submitted" : "Brief pending"}
-          </span>
-        </div>
-        <div style={{ display: "grid", gridTemplateColumns: "180px repeat(4, 1fr) 160px", gap: 10, alignItems: "stretch" }} className="number-grid compact-shift-grid">
-          <ShiftCard label="Clock" value={openShift ? formatDuration(liveShiftMinutes) : "Ready"} tone={openShift ? "hot" : "calm"} />
-          <ShiftCard label="Replies" value={String(unmatchedSms.length)} tone={unmatchedSms.length ? "hot" : "calm"} />
-          <ShiftCard label="Follow-ups" value={String(followUpsDue.length)} tone={followUpsDue.length ? "hot" : "calm"} />
-          <ShiftCard label="Draft packets" value={String(draftLeads.length)} />
-          <ShiftCard label="Interested" value={String(interestedLeads.length)} tone={interestedLeads.length ? "hot" : "calm"} />
           <button
-            onClick={openShift ? handleClockOut : handleClockIn}
+            onClick={handleClockIn}
             disabled={clockBusy}
-            style={{ ...primaryButton, minHeight: 72, opacity: clockBusy ? 0.65 : 1 }}
+            style={{ ...primaryButton, background: "var(--brass)", color: "var(--obsidian)", borderColor: "var(--brass)", minHeight: 64, padding: "14px 24px", fontSize: 13, opacity: clockBusy ? 0.65 : 1 }}
           >
-            {clockBusy ? "Saving..." : openShift ? "Clock Out" : "Clock In"}
+            {clockBusy ? "Saving..." : "Clock In"}
           </button>
-        </div>
-      </section>}
+        </section>
+      )}
+
+      {openShift && (
+        <section style={shiftActiveStrip} className="va-shift-strip">
+          <div style={{ display: "flex", gap: 18, alignItems: "center", flexWrap: "wrap" }}>
+            <span style={{ ...eyebrowSmall, color: "var(--brass)" }}>On shift</span>
+            <strong style={{ color: "var(--obsidian)", fontSize: 18 }}>{formatDuration(liveShiftMinutes)}</strong>
+            <span style={{ color: "var(--muted)", fontSize: 12 }}>Brief {portalStats.briefSubmitted ? "submitted" : "pending"}</span>
+          </div>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <input
+              value={shiftNotes}
+              onChange={e => setShiftNotes(e.target.value)}
+              placeholder="Optional shift note"
+              style={{ minWidth: 220, padding: "8px 10px" }}
+            />
+            <button onClick={handleClockOut} disabled={clockBusy} style={{ ...primaryButton, opacity: clockBusy ? 0.65 : 1 }}>
+              {clockBusy ? "Saving..." : "Clock Out"}
+            </button>
+          </div>
+        </section>
+      )}
 
       <div className="va-tabs" style={{ ...panel, padding: 8, marginBottom: 16, display: "flex", gap: 8, flexWrap: "wrap" }}>
         {TABS.map(tab => (
@@ -1584,8 +1630,8 @@ export default function VaPage() {
         ))}
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: activeTab === "packet" || activeTab === "outreach" ? "330px minmax(0, 1fr)" : "1fr", gap: 18 }} className="va-workspace">
-        {(activeTab === "packet" || activeTab === "outreach") && <aside style={panel}>
+      <div style={{ display: "grid", gridTemplateColumns: activeTab === "deal" ? "330px minmax(0, 1fr)" : "1fr", gap: 18 }} className="va-workspace">
+        {activeTab === "deal" && <aside style={panel}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 12 }}>
             <h2 style={sectionTitle}>Deal Packets</h2>
             <span style={{ fontSize: 11, color: "var(--muted)" }}>{deals.length} active</span>
@@ -1647,32 +1693,99 @@ export default function VaPage() {
         </aside>}
 
         <main style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-          {activeTab === "today" && (
+          {activeTab === "home" && (
           <section style={panel}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12, flexWrap: "wrap", marginBottom: 14 }}>
               <div>
-                <p style={eyebrowSmall}>Today</p>
-                <h2 style={sectionTitle}>What needs action next</h2>
+                <p style={eyebrowSmall}>Briefing</p>
+                <h2 style={sectionTitle}>{`Good ${greetingForHour(new Date().getHours())}${user ? `, ${user.split(" ")[0]}` : ""}`}</h2>
+                <p style={{ color: "var(--muted)", fontSize: 13, marginTop: 4 }}>
+                  {openShift ? `On shift for ${formatDuration(liveShiftMinutes)}.` : "Start with clock-in above."} {portalStats.briefSubmitted ? "Daily brief is submitted." : "Daily brief still open."}
+                </p>
               </div>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                <button onClick={() => setActiveTab("outreach")} style={secondaryButton}>Work outreach</button>
-                <button onClick={() => draftLeads[0] ? openDealBrief(draftLeads[0]) : setActiveTab("packet")} style={secondaryButton}>Build packet</button>
-                <button onClick={() => setActiveTab("brief")} style={primaryButton}>End shift</button>
+                <button onClick={() => setActiveTab("inbox")} style={secondaryButton}>Open Inbox</button>
+                <button onClick={() => setActiveTab("lists")} style={secondaryButton}>Work Lists</button>
+                <button onClick={() => setActiveTab("end-shift")} style={primaryButton}>End shift</button>
               </div>
             </div>
 
-            <div style={{ display: "grid", gridTemplateColumns: "250px minmax(0, 1fr) 420px", gap: 14 }} className="workdesk-grid">
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 12, marginBottom: 16 }} className="va-briefing-grid">
+              <BriefingCard
+                eyebrow="Member notes"
+                title={openAssignedTasks.length ? `${openAssignedTasks.length} task${openAssignedTasks.length === 1 ? "" : "s"} from members` : "No new member notes"}
+                detail={openAssignedTasks[0]
+                  ? `${openAssignedTasks[0].title}${openAssignedTasks[0].created_by ? ` — from ${openAssignedTasks[0].created_by}` : ""}`
+                  : "Members will route tasks here when they need something done."}
+                tone={openAssignedTasks.length ? "hot" : "calm"}
+                actionLabel={openAssignedTasks.length ? "Open Inbox" : undefined}
+                onAction={openAssignedTasks.length ? () => setActiveTab("inbox") : undefined}
+              />
+              <BriefingCard
+                eyebrow="Overnight replies"
+                title={unmatchedSms.length ? `${unmatchedSms.length} new seller reply${unmatchedSms.length === 1 ? "" : "ies"}` : "No new replies"}
+                detail={unmatchedSms[0]
+                  ? `${unmatchedSms[0].contact_name || unmatchedSms[0].contact_number || unmatchedSms[0].from_number || "Seller"}: ${(unmatchedSms[0].body || "").slice(0, 80)}${(unmatchedSms[0].body || "").length > 80 ? "…" : ""}`
+                  : "Sakari inbox is clear since last shift."}
+                tone={unmatchedSms.length ? "hot" : "calm"}
+                actionLabel={unmatchedSms.length ? "Read Replies" : undefined}
+                onAction={unmatchedSms.length ? () => setActiveTab("inbox") : undefined}
+              />
+              <BriefingCard
+                eyebrow="Hot deals"
+                title={deals.filter(deal => deal.urgency === "hot").length
+                  ? `${deals.filter(deal => deal.urgency === "hot").length} flagged hot`
+                  : interestedLeads.length
+                    ? `${interestedLeads.length} interested seller${interestedLeads.length === 1 ? "" : "s"}`
+                    : "No hot items"}
+                detail={(() => {
+                  const hot = deals.find(deal => deal.urgency === "hot");
+                  if (hot) return `${hot.title} — ${statusLabel(hot.status)}`;
+                  if (interestedLeads[0]) return `${interestedLeads[0].owner_name || "Interested seller"} replied. Build a packet.`;
+                  return "No urgent deals or interested sellers right now.";
+                })()}
+                tone={(deals.some(deal => deal.urgency === "hot") || interestedLeads.length) ? "hot" : "calm"}
+                actionLabel={deals.some(deal => deal.urgency === "hot") ? "Open Deal" : interestedLeads.length ? "Build Packet" : undefined}
+                onAction={(() => {
+                  const hot = deals.find(deal => deal.urgency === "hot");
+                  if (hot) return () => openDealBrief(hot);
+                  if (interestedLeads[0]) return () => loadImportedLead(interestedLeads[0], false);
+                  return undefined;
+                })()}
+              />
+              <BriefingCard
+                eyebrow="Blockers"
+                title={(() => {
+                  const blockedTasks = assignedTasks.filter(task => task.status === "blocked");
+                  if (blockedTasks.length) return `${blockedTasks.length} task${blockedTasks.length === 1 ? "" : "s"} blocked`;
+                  const lastBlock = briefs.find(brief => brief.blockers && brief.blockers.trim());
+                  if (lastBlock) return "Open blocker from last brief";
+                  return "No blockers";
+                })()}
+                detail={(() => {
+                  const blockedTasks = assignedTasks.filter(task => task.status === "blocked");
+                  if (blockedTasks[0]) return `${blockedTasks[0].title}: ${blockedTasks[0].blocker_reason || "Needs member input"}`;
+                  const lastBlock = briefs.find(brief => brief.blockers && brief.blockers.trim());
+                  if (lastBlock) return (lastBlock.blockers || "").slice(0, 100);
+                  return "Nothing waiting on a member decision.";
+                })()}
+                tone={assignedTasks.some(task => task.status === "blocked") ? "warn" : "calm"}
+                actionLabel={assignedTasks.some(task => task.status === "blocked") ? "Open Inbox" : undefined}
+                onAction={assignedTasks.some(task => task.status === "blocked") ? () => setActiveTab("inbox") : undefined}
+              />
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "250px minmax(0, 1fr)", gap: 14 }} className="workdesk-grid">
               <aside style={{ display: "grid", gap: 12, alignContent: "start" }}>
                 <section style={subPanel}>
-                  <p style={eyebrowSmall}>Today&apos;s queues</p>
+                  <p style={eyebrowSmall}>Queues</p>
                   <div style={{ display: "grid", gap: 8, marginTop: 10 }}>
                     <QueueButton label="New imported leads" detail="Fresh from land lists" count={importStats.newRows} onClick={() => { setActiveTab("lists"); setLeadFilter("new"); }} />
-                    <QueueButton label="Seller replies" detail="Unmatched SMS" count={unmatchedSms.length} hot={!!unmatchedSms.length} onClick={() => setActiveTab("outreach")} />
+                    <QueueButton label="Seller replies" detail="Unmatched SMS" count={unmatchedSms.length} hot={!!unmatchedSms.length} onClick={() => setActiveTab("inbox")} />
                     <QueueButton label="Interested sellers" detail="Replied and expressed interest" count={interestedLeads.length} hot={!!interestedLeads.length} onClick={() => { setLeadFilter("interested"); setActiveTab("lists"); }} />
-                    <QueueButton label="Follow-up due" detail="No reply in 24-72 hrs" count={followUpsDue.length} hot={!!followUpsDue.length} onClick={() => setActiveTab("outreach")} />
-                    <QueueButton label="Member-assigned tasks" detail="From member portal" count={openAssignedTasks.length} hot={!!openAssignedTasks.length} onClick={() => setActiveTab("today")} />
-                    <QueueButton label="Bad numbers / DNC" detail="Invalid or do not contact" count={importedLeads.filter(lead => lead.status === "passed" || lead.sms_opt_status === "opted-out").length} onClick={() => { setLeadFilter("passed"); setActiveTab("lists"); }} />
-                    <QueueButton label="Deal brief drafts" detail="In progress" count={draftLeads.length} onClick={() => draftLeads[0] ? openDealBrief(draftLeads[0]) : setActiveTab("packet")} />
+                    <QueueButton label="Follow-up due" detail="No reply in 24-72 hrs" count={followUpsDue.length} hot={!!followUpsDue.length} onClick={() => setActiveTab("inbox")} />
+                    <QueueButton label="Member-assigned tasks" detail="From member portal" count={openAssignedTasks.length} hot={!!openAssignedTasks.length} onClick={() => setActiveTab("inbox")} />
+                    <QueueButton label="Deal brief drafts" detail="In progress" count={draftLeads.length} onClick={() => draftLeads[0] ? openDealBrief(draftLeads[0]) : setActiveTab("deal")} />
                   </div>
                 </section>
                 <section style={subPanel}>
@@ -1682,171 +1795,68 @@ export default function VaPage() {
                     <MiniStat label="Replies received" value={String(briefDraft.seller_replies ?? unmatchedSms.length)} />
                     <MiniStat label="Leads updated" value={String(briefDraft.leads_updated ?? portalStats.updatedToday)} />
                     <MiniStat label="Tasks done" value={String(briefDraft.va_tasks_completed ?? completedAssignedTasksToday.length)} />
-                    <MiniStat label="On shift" value={openShift ? formatDuration(liveShiftMinutes) : "Ready"} />
+                    <MiniStat label="On shift" value={openShift ? formatDuration(liveShiftMinutes) : "Off"} />
                   </div>
-                  <button onClick={openShift ? handleClockOut : handleClockIn} disabled={clockBusy} style={{ ...primaryButton, width: "100%", marginTop: 10, opacity: clockBusy ? 0.65 : 1 }}>
-                    {clockBusy ? "Saving..." : openShift ? "Clock Out" : "Clock In"}
-                  </button>
                 </section>
               </aside>
 
               <section style={subPanel}>
                 <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", marginBottom: 12 }}>
                   <div>
-                    <p style={eyebrowSmall}>Work queue</p>
-                    <h2 style={{ ...sectionTitle, fontSize: 22 }}>Seller replies and lead actions</h2>
+                    <p style={eyebrowSmall}>Inbox preview</p>
+                    <h2 style={{ ...sectionTitle, fontSize: 22 }}>Top items to action</h2>
                   </div>
-                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                    <button style={secondaryButton}>Priority</button>
-                    <button onClick={() => void reload(user)} style={secondaryButton}>Refresh</button>
-                  </div>
+                  <button onClick={() => setActiveTab("inbox")} style={secondaryButton}>Open Inbox</button>
                 </div>
-                <div style={{ overflowX: "auto", border: "1px solid var(--fog)", borderRadius: 8 }}>
-                  <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 760 }}>
-                    <thead>
-                      <tr>
-                        {["Priority", "Owner / phone", "County", "Acres", "Parcel ID", "Source list", "Status", "Last touch", "Next action", "Actions"].map(head => (
-                          <th key={head} style={tableHead}>{head}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {workdeskLeadRows.map(lead => {
-                        const active = selectedImportedLeadId === lead.id;
-                        const phone = lead.phone || lead.phone_2 || "No phone";
-                        return (
-                          <tr key={lead.id} onClick={() => selectImportedLead(lead)} style={{ background: active ? "rgba(176,137,84,0.14)" : "var(--surface)", cursor: "pointer" }}>
-                            <td style={tableCell}>{(lead.lead_score ?? 0) >= 70 || lead.status === "interested" ? "★" : "☆"}</td>
-                            <td style={tableCell}><strong>{lead.owner_name || "Owner unknown"}</strong><br /><span>{phone}</span></td>
-                            <td style={tableCell}>{lead.county || "—"}</td>
-                            <td style={tableCell}>{lead.acreage ?? "—"}</td>
-                            <td style={tableCell}>{lead.parcel_id || "—"}</td>
-                            <td style={tableCell}>{lead.campaign_source || lead.source_system || "List"}</td>
-                            <td style={tableCell}><span style={lead.status === "interested" ? hotPill : pill}>{statusLabel(lead.status)}</span></td>
-                            <td style={tableCell}>{lead.last_sms_at ? formatDate(lead.last_sms_at) : lead.last_activity_at ? formatDate(lead.last_activity_at) : "—"}</td>
-                            <td style={tableCell}>{sellerActionState(lead).primary}</td>
-                            <td style={tableCell}>
-                              <div style={{ display: "flex", gap: 5 }}>
-                                <button onClick={event => { event.stopPropagation(); setActivityDraft({ activityType: "called", summary: "", nextFollowUpDate: "" }); selectImportedLead(lead); }} style={iconButton}>Call</button>
-                                <button onClick={event => { event.stopPropagation(); selectImportedLead(lead); window.setTimeout(() => document.getElementById("va-workdesk-sms")?.focus(), 80); }} style={iconButton}>Text</button>
-                                <button onClick={event => { event.stopPropagation(); router.push(`/opportunity?lead=${lead.id}`); }} style={iconButton}>File</button>
-                              </div>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                  {workdeskLeadRows.length === 0 && <p style={{ color: "var(--muted)", fontSize: 13, padding: 14 }}>No seller work items yet. Import a list or wait for inbound replies.</p>}
-                </div>
-              </section>
-
-              <section style={subPanel}>
-                <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", marginBottom: 10 }}>
-                  <div>
-                    <p style={eyebrowSmall}>Member-assigned tasks</p>
-                    <h2 style={{ ...sectionTitle, fontSize: 22 }}>VA work routing</h2>
-                  </div>
-                  <span style={pill}>{openAssignedTasks.length} open</span>
-                </div>
-                <div style={{ display: "grid", gap: 8 }}>
-                  {openAssignedTasks.slice(0, 6).map(task => (
-                    <div key={task.id} style={{ ...subPanel, background: task.status === "blocked" ? "rgba(176,137,84,0.08)" : "var(--bone)" }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "start" }}>
-                        <div>
-                          <strong style={{ color: "var(--obsidian)", fontSize: 14 }}>{task.title}</strong>
-                          <p style={{ color: "var(--muted)", fontSize: 12, lineHeight: 1.45, marginTop: 4 }}>{task.description || "No task details added."}</p>
-                          <p style={{ color: "var(--muted)", fontSize: 11, marginTop: 5 }}>
-                            {task.created_by ? `Assigned by ${task.created_by}` : "Assigned"}{task.due_date ? ` · Due ${task.due_date}` : ""} · {taskRecordLabel(task)} · {statusLabel(task.status)}
-                          </p>
-                          {task.blocker_reason && <p style={{ color: "var(--brass)", fontSize: 12, marginTop: 5 }}>Blocked: {task.blocker_reason}</p>}
-                        </div>
-                        <span style={task.priority === "urgent" || task.priority === "high" ? hotPill : pill}>{statusLabel(task.priority || "normal")}</span>
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  {[
+                    ...unmatchedSms.slice(0, 2).map(event => ({
+                      key: `home-sms-${event.id}`,
+                      kind: "Seller reply",
+                      title: event.contact_name || event.contact_number || event.from_number || "Unknown number",
+                      body: (event.body || "").slice(0, 120),
+                      action: () => createLeadDraftFromSms(event),
+                      actionLabel: "Create Packet",
+                      hot: true,
+                    })),
+                    ...followUpsDue.slice(0, 2).map(deal => ({
+                      key: `home-followup-${deal.id}`,
+                      kind: "Follow-up due",
+                      title: deal.title,
+                      body: `${deal.seller_name || "Seller pending"} · Due ${deal.next_follow_up_date}`,
+                      action: () => openDealBrief(deal),
+                      actionLabel: "Open Packet",
+                      hot: deal.urgency === "hot",
+                    })),
+                    ...openAssignedTasks.slice(0, 2).map(task => ({
+                      key: `home-task-${task.id}`,
+                      kind: "Member task",
+                      title: task.title,
+                      body: task.description?.slice(0, 120) || (task.created_by ? `From ${task.created_by}` : "Assigned"),
+                      action: () => setActiveTab("inbox"),
+                      actionLabel: "Open",
+                      hot: task.priority === "urgent" || task.priority === "high",
+                    })),
+                  ].slice(0, 5).map(item => (
+                    <div key={item.key} style={{ ...subPanel, background: "var(--bone)", display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                      <div style={{ minWidth: 0, flex: 1 }}>
+                        <span style={item.hot ? hotPill : pill}>{item.kind}</span>
+                        <strong style={{ marginLeft: 8, color: "var(--obsidian)", fontSize: 13 }}>{item.title}</strong>
+                        <p style={{ fontSize: 12, color: "var(--muted)", marginTop: 4, lineHeight: 1.45 }}>{item.body}</p>
                       </div>
-                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 10 }}>
-                        {task.status !== "in-progress" && <button onClick={() => changeAssignedTaskStatus(task, "in-progress")} style={secondaryButton}>Start</button>}
-                        <button onClick={() => router.push(taskRecordHref(task))} style={secondaryButton}>Open Record</button>
-                        <button onClick={() => changeAssignedTaskStatus(task, "done")} style={primaryButton}>Done</button>
-                        <button onClick={() => changeAssignedTaskStatus(task, "blocked")} style={secondaryButton}>Blocked</button>
-                      </div>
+                      <button onClick={item.action} style={primaryButton}>{item.actionLabel}</button>
                     </div>
                   ))}
-                  {openAssignedTasks.length === 0 && <p style={{ color: "var(--muted)", fontSize: 13 }}>No member-assigned VA tasks are open.</p>}
+                  {unmatchedSms.length === 0 && followUpsDue.length === 0 && openAssignedTasks.length === 0 && (
+                    <p style={{ color: "var(--muted)", fontSize: 13, padding: 12, textAlign: "center" }}>Inbox is clear. Work a list or wait for replies.</p>
+                  )}
                 </div>
               </section>
-
-              <aside style={{ display: "grid", gap: 12, alignContent: "start" }}>
-                {selectedImportedLead ? (
-                  <SellerCommandCenter
-                    lead={selectedImportedLead}
-                    communications={communicationEvents}
-                    activities={leadActivities}
-                    smsDraft={smsDraft}
-                    setSmsDraft={setSmsDraft}
-                    smsSending={smsSending}
-                    onSendSms={sendSmsToLead}
-                    dispositionDraft={dispositionDraft}
-                    setDispositionDraft={setDispositionDraft}
-                    onSaveDisposition={applyLeadDisposition}
-                    onQuickDisposition={quickLeadDisposition}
-                    activityDraft={activityDraft}
-                    setActivityDraft={setActivityDraft}
-                    onLogActivity={logLeadActivity}
-                    onOpenFile={() => router.push(`/opportunity?lead=${selectedImportedLead.id}`)}
-                    onBuildPacket={() => loadImportedLead(selectedImportedLead, true)}
-                    onPass={async () => { await updateImportedLandLeadStatus(selectedImportedLead.id, "passed", selectedImportedLead.deal_id); setImportedLeads(await fetchImportedLandLeads(500)); }}
-                    compact
-                  />
-                ) : (
-                  <section style={subPanel}>
-                    <p style={eyebrowSmall}>Lead panel</p>
-                    <h3 style={{ ...sectionTitle, fontSize: 22 }}>Pick a seller</h3>
-                    <p style={{ color: "var(--muted)", fontSize: 13, lineHeight: 1.5, marginTop: 8 }}>Select a row to see property data, communication history, text composer, dispositions, calculator quick estimates, and packet actions.</p>
-                  </section>
-                )}
-              </aside>
             </div>
-
-            <section style={{ ...subPanel, marginTop: 14 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "baseline", marginBottom: 10 }}>
-                <div>
-                  <p style={eyebrowSmall}>Daily shift brief</p>
-                  <h3 style={{ ...sectionTitle, fontSize: 22 }}>Member review summary</h3>
-                </div>
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                  <button onClick={autofillBriefStats} style={secondaryButton}>Auto-fill</button>
-                  <button onClick={pullSakariBrief} style={secondaryButton}>Pull SMS</button>
-                  <button onClick={() => setActiveTab("brief")} style={secondaryButton}>Edit Brief</button>
-                </div>
-              </div>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 10, marginBottom: 10 }} className="number-grid">
-                <ShiftCard label="Calls made" value={String(briefDraft.calls_completed ?? 0)} />
-                <ShiftCard label="Texts sent" value={String(briefDraft.outreach_sent ?? 0)} />
-                <ShiftCard label="Replies received" value={String(briefDraft.seller_replies ?? unmatchedSms.length)} tone={unmatchedSms.length ? "hot" : "calm"} />
-                <ShiftCard label="Deals submitted" value={String(briefDraft.deals_submitted ?? portalStats.submittedToday)} />
-                <ShiftCard label="Tasks completed" value={String(briefDraft.va_tasks_completed ?? completedAssignedTasksToday.length)} />
-              </div>
-              <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr) 260px", gap: 12 }} className="workdesk-brief-grid">
-                <div>
-                  <label style={label}>Top activities</label>
-                  <textarea rows={4} value={briefDraft.activities_completed} onChange={e => setBriefDraft({ ...briefDraft, activities_completed: e.target.value })} placeholder="Calls, texts, records updated, leads converted, research completed." />
-                </div>
-                <div>
-                  <label style={label}>Blockers / notes to members</label>
-                  <textarea rows={4} value={briefDraft.follow_ups_needed ?? ""} onChange={e => setBriefDraft({ ...briefDraft, follow_ups_needed: e.target.value })} placeholder="Who needs follow-up and what members need to know." />
-                </div>
-                <div style={{ display: "grid", gap: 8, alignContent: "end" }}>
-                  <MiniStat label="Clock" value={openShift ? formatDuration(liveShiftMinutes) : "Not clocked in"} />
-                  <button onClick={submitDailyBrief} disabled={briefSaving} style={{ ...primaryButton, width: "100%", opacity: briefSaving ? 0.6 : 1 }}>
-                    {briefSaving ? "Submitting..." : "Submit Brief"}
-                  </button>
-                </div>
-              </div>
-            </section>
           </section>
           )}
 
-          {activeTab === "packet" && (
+          {activeTab === "deal" && (
           <section style={panel}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12, flexWrap: "wrap", marginBottom: 14 }}>
               <div>
@@ -1910,6 +1920,9 @@ export default function VaPage() {
                 </div>
                 <div style={subPanel}>
                   <p style={eyebrowSmall}>Member-facing ask</p>
+                  <p style={{ color: "var(--muted)", fontSize: 12, lineHeight: 1.5, marginBottom: 10 }}>
+                    Pick the review type that matches what you want members to do. Use <strong>Ready For Vote</strong> only when the packet is complete and you want a yes/no decision.
+                  </p>
                   <div style={twoCol} className="two-col">
                     <div>
                       <label style={label}>Review type</label>
@@ -1922,9 +1935,23 @@ export default function VaPage() {
                       <input type="text" value={draft.requested_next_step ?? ""} onChange={e => setDraft({ ...draft, requested_next_step: e.target.value })} placeholder="Vote, answer blocker, request more info, pass" />
                     </div>
                   </div>
-                  <p style={{ fontSize: 12, color: "var(--muted)", marginTop: 8 }}>
-                    {REVIEW_INTENTS.find(intent => intent.value === draft.review_intent)?.description}
-                  </p>
+                  <div style={{
+                    borderLeft: "3px solid var(--brass)",
+                    background: "rgba(176,137,84,0.08)",
+                    padding: "8px 12px",
+                    marginTop: 10,
+                    borderRadius: 4,
+                  }}>
+                    <p style={{ fontSize: 12, color: "var(--obsidian)", lineHeight: 1.5 }}>
+                      <strong>{REVIEW_INTENTS.find(intent => intent.value === draft.review_intent)?.label}:</strong>{" "}
+                      {REVIEW_INTENTS.find(intent => intent.value === draft.review_intent)?.description}
+                    </p>
+                    {draft.review_intent === "ready-for-vote" && !submissionReady && (
+                      <p style={{ fontSize: 12, color: "var(--obsidian)", marginTop: 6, lineHeight: 1.5 }}>
+                        Still missing: {missingReadyItems.slice(0, 3).join(", ")}{missingReadyItems.length > 3 ? "…" : ""}
+                      </p>
+                    )}
+                  </div>
                   <div style={{ marginTop: 10 }}>
                     <label style={label}>VA summary for members</label>
                     <textarea rows={3} value={draft.submission_summary ?? ""} onChange={e => setDraft({ ...draft, submission_summary: e.target.value })} placeholder="Why this deal is worth member attention and what you found." />
@@ -2029,7 +2056,7 @@ export default function VaPage() {
                 </div>
               </div>
 
-              <aside style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              <aside style={{ display: "flex", flexDirection: "column", gap: 12, position: "sticky", top: 16, alignSelf: "start", maxHeight: "calc(100vh - 32px)", overflowY: "auto" }} className="va-deal-aside">
                 <div style={subPanel}>
                   <p style={eyebrowSmall}>Live analysis</p>
                   <h2 style={{ fontFamily: DISPLAY_FONT, color: "var(--obsidian)", fontSize: 26, fontWeight: 500, marginBottom: 8 }}>
@@ -2536,78 +2563,87 @@ export default function VaPage() {
           </section>
           )}
 
-          {activeTab === "outreach" && (
+          {activeTab === "inbox" && (
           <section style={panel}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12, flexWrap: "wrap", marginBottom: 12 }}>
               <div>
-                <p style={eyebrowSmall}>Outreach</p>
-                <h2 style={sectionTitle}>Seller replies and follow-ups</h2>
+                <p style={eyebrowSmall}>Inbox</p>
+                <h2 style={sectionTitle}>Everything that needs your action</h2>
+                <p style={{ color: "var(--muted)", fontSize: 12, marginTop: 4 }}>Seller replies, follow-ups due, and tasks assigned by members — one list, one action each.</p>
               </div>
-              <span style={(followUpsDue.length || unmatchedSms.length || interestedLeads.length) ? hotPill : pill}>
-                {followUpsDue.length + unmatchedSms.length + interestedLeads.length} needs action
+              <span style={(followUpsDue.length || unmatchedSms.length || openAssignedTasks.length) ? hotPill : pill}>
+                {followUpsDue.length + unmatchedSms.length + openAssignedTasks.length} open
               </span>
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10, marginBottom: 14 }} className="number-grid">
               <ShiftCard label="Seller replies" value={String(unmatchedSms.length)} tone={unmatchedSms.length ? "hot" : "calm"} />
-              <ShiftCard label="Due follow-ups" value={String(followUpsDue.length)} tone={followUpsDue.length ? "hot" : "calm"} />
-              <ShiftCard label="Interested sellers" value={String(interestedLeads.length)} tone={interestedLeads.length ? "hot" : "calm"} />
+              <ShiftCard label="Follow-ups due" value={String(followUpsDue.length)} tone={followUpsDue.length ? "hot" : "calm"} />
+              <ShiftCard label="Member tasks" value={String(openAssignedTasks.length)} tone={openAssignedTasks.length ? "hot" : "calm"} />
             </div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 12 }} className="two-col">
-              {unmatchedSms.slice(0, 8).map(event => (
-                <button
-                  key={`outreach-sms-${event.id}`}
-                  onClick={() => createLeadDraftFromSms(event)}
-                  style={{ ...subPanel, textAlign: "left", cursor: "pointer", background: "rgba(176,137,84,0.12)", borderColor: "var(--brass)" }}
-                >
-                  <div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginBottom: 8 }}>
-                    <strong style={{ color: "var(--obsidian)", fontSize: 14 }}>{event.contact_number || event.from_number || "Unknown number"}</strong>
-                    <span style={hotPill}>Seller reply</span>
-                  </div>
-                  <p style={{ fontSize: 13, color: "var(--ink)", whiteSpace: "pre-wrap", marginBottom: 8 }}>{event.body || event.status || "Inbound message"}</p>
-                  <span style={miniLabel}>Create packet or match to an existing lead</span>
-                </button>
-              ))}
-              {interestedLeads.slice(0, 8).map(lead => (
-                <button
-                  key={`outreach-interest-${lead.id}`}
-                  onClick={() => selectImportedLead(lead, "lists")}
-                  style={{ ...subPanel, textAlign: "left", cursor: "pointer", background: "rgba(176,137,84,0.12)", borderColor: "var(--brass)" }}
-                >
-                  <div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginBottom: 8 }}>
-                    <strong style={{ color: "var(--obsidian)", fontSize: 14 }}>{lead.owner_name || "Owner unknown"}</strong>
-                    <span style={hotPill}>Interested</span>
-                  </div>
-                  <p style={{ fontSize: 12, color: "var(--muted)", marginBottom: 8 }}>{lead.phone || lead.phone_2 || "Phone pending"} · {lead.property_address || lead.parcel_id || "No property detail"}</p>
-                  <p style={{ fontSize: 13, color: "var(--ink)" }}>Score {lead.lead_score ?? 0}. Work the seller response, log outcome, or build a packet.</p>
-                </button>
-              ))}
-              {(followUpsDue.length ? followUpsDue : deals.filter(deal => deal.next_follow_up_date).slice(0, 8)).map(deal => (
-                <button
-                  key={deal.id}
-                  onClick={() => openDealBrief(deal)}
-                  style={{
-                    ...subPanel,
-                    textAlign: "left",
-                    cursor: "pointer",
-                    background: selected?.id === deal.id ? "rgba(176,137,84,0.14)" : "var(--bone)",
-                  }}
-                >
-                  <div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginBottom: 8 }}>
-                    <strong style={{ color: "var(--obsidian)", fontSize: 14 }}>{deal.title}</strong>
-                    <span style={deal.urgency === "hot" ? hotPill : pill}>{deal.next_follow_up_date || "No date"}</span>
-                  </div>
-                  <p style={{ fontSize: 12, color: "var(--muted)", marginBottom: 8 }}>{deal.seller_name || "Seller pending"} · {deal.seller_phone || "Phone pending"}</p>
-                  <p style={{ fontSize: 13, color: "var(--ink)", whiteSpace: "pre-wrap" }}>{deal.notes || "No follow-up notes yet."}</p>
-                </button>
-              ))}
-              {!unmatchedSms.length && !interestedLeads.length && deals.filter(deal => deal.next_follow_up_date).length === 0 && (
-                <p style={{ fontSize: 13, color: "var(--muted)" }}>No seller replies or dated follow-ups yet.</p>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {unmatchedSms.length === 0 && followUpsDue.length === 0 && openAssignedTasks.length === 0 && (
+                <p style={{ fontSize: 13, color: "var(--muted)", padding: 16, textAlign: "center" }}>Inbox is clear. New seller replies, follow-ups, and member tasks land here.</p>
               )}
+              {unmatchedSms.map(event => (
+                <div key={`inbox-sms-${event.id}`} style={{ ...subPanel, borderColor: "var(--brass)", background: "rgba(176,137,84,0.10)" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", alignItems: "baseline", marginBottom: 6 }}>
+                    <div>
+                      <span style={hotPill}>Seller reply</span>
+                      <strong style={{ marginLeft: 8, color: "var(--obsidian)", fontSize: 14 }}>{event.contact_name || event.contact_number || event.from_number || "Unknown number"}</strong>
+                    </div>
+                    <span style={pill}>{formatDate(event.provider_created_at || event.created_at)}</span>
+                  </div>
+                  <p style={{ fontSize: 13, color: "var(--ink)", whiteSpace: "pre-wrap", lineHeight: 1.45, marginBottom: 10 }}>{event.body || event.status || "Inbound message"}</p>
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                    <button onClick={() => createLeadDraftFromSms(event)} style={primaryButton}>Create Packet</button>
+                    {selectedImportedLead && <button onClick={() => attachUnmatchedSmsToLead(event)} style={secondaryButton}>Attach To Selected Lead</button>}
+                  </div>
+                </div>
+              ))}
+              {followUpsDue.map(deal => (
+                <div key={`inbox-followup-${deal.id}`} style={{ ...subPanel, background: "var(--bone)" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", alignItems: "baseline", marginBottom: 6 }}>
+                    <div>
+                      <span style={deal.urgency === "hot" ? hotPill : pill}>Follow-up due</span>
+                      <strong style={{ marginLeft: 8, color: "var(--obsidian)", fontSize: 14 }}>{deal.title}</strong>
+                    </div>
+                    <span style={pill}>Due {deal.next_follow_up_date}</span>
+                  </div>
+                  <p style={{ fontSize: 12, color: "var(--muted)", marginBottom: 4 }}>{deal.seller_name || "Seller pending"} · {deal.seller_phone || "Phone pending"}</p>
+                  <p style={{ fontSize: 13, color: "var(--ink)", whiteSpace: "pre-wrap", marginBottom: 10 }}>{deal.notes || "No follow-up notes yet."}</p>
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                    <button onClick={() => openDealBrief(deal)} style={primaryButton}>Open Packet</button>
+                    <button onClick={() => router.push(`/opportunity?deal=${deal.id}`)} style={secondaryButton}>Open File</button>
+                  </div>
+                </div>
+              ))}
+              {openAssignedTasks.map(task => (
+                <div key={`inbox-task-${task.id}`} style={{ ...subPanel, background: task.status === "blocked" ? "rgba(176,137,84,0.08)" : "var(--bone)" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", alignItems: "baseline", marginBottom: 6 }}>
+                    <div>
+                      <span style={task.priority === "urgent" || task.priority === "high" ? hotPill : pill}>Member task</span>
+                      <strong style={{ marginLeft: 8, color: "var(--obsidian)", fontSize: 14 }}>{task.title}</strong>
+                    </div>
+                    <span style={pill}>{task.due_date ? `Due ${task.due_date}` : statusLabel(task.status)}</span>
+                  </div>
+                  <p style={{ fontSize: 12, color: "var(--muted)", lineHeight: 1.45, marginBottom: 4 }}>{task.description || "No task details added."}</p>
+                  <p style={{ fontSize: 11, color: "var(--muted)", marginBottom: 10 }}>
+                    {task.created_by ? `From ${task.created_by}` : "Assigned"} · {taskRecordLabel(task)}
+                    {task.blocker_reason ? ` · Blocked: ${task.blocker_reason}` : ""}
+                  </p>
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                    <button onClick={() => changeAssignedTaskStatus(task, "done")} style={primaryButton}>Done</button>
+                    {task.status !== "in-progress" && <button onClick={() => changeAssignedTaskStatus(task, "in-progress")} style={secondaryButton}>Start</button>}
+                    <button onClick={() => router.push(taskRecordHref(task))} style={secondaryButton}>Open Record</button>
+                    <button onClick={() => changeAssignedTaskStatus(task, "blocked")} style={secondaryButton}>Blocked</button>
+                  </div>
+                </div>
+              ))}
             </div>
           </section>
           )}
 
-          {activeTab === "packet" && (
+          {activeTab === "deal" && (
           <section style={panel}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12, flexWrap: "wrap", marginBottom: 12 }}>
               <div>
@@ -2678,16 +2714,19 @@ export default function VaPage() {
           </section>
           )}
 
-          {activeTab === "brief" && (
+          {activeTab === "end-shift" && (
           <section style={panel}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12, flexWrap: "wrap", marginBottom: 12 }}>
               <div>
                 <p style={eyebrowSmall}>End of shift</p>
                 <h2 style={sectionTitle}>Daily Brief</h2>
+                <p style={{ color: "var(--muted)", fontSize: 13, marginTop: 4 }}>
+                  Numbers below were filled from your shift activity. Write the narrative — members read the activity, blockers, and tomorrow plan.
+                </p>
               </div>
-              <span style={pill}>Members can review in Operations</span>
+              <span style={pill}>Members review in Operations</span>
             </div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10 }} className="number-grid">
+            <div style={{ ...subPanel, marginBottom: 12, display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10 }} className="number-grid">
               <div>
                 <label style={label}>Work date</label>
                 <input type="date" value={briefDraft.work_date} onChange={e => setBriefDraft({ ...briefDraft, work_date: e.target.value })} />
@@ -2704,7 +2743,7 @@ export default function VaPage() {
             </div>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
               <button onClick={autofillBriefStats} style={secondaryButton}>
-                Auto-fill Portal Stats
+                Re-Sync From Portal
               </button>
               <button onClick={pullSakariBrief} style={secondaryButton}>
                 Pull Sakari Activity
@@ -2722,7 +2761,7 @@ export default function VaPage() {
                 {timeEntries.filter(entry => vaDateKey(entry.clock_in_at) === briefDraft.work_date).slice(0, 4).map(entry => (
                   <div key={entry.id} style={{ display: "flex", justifyContent: "space-between", gap: 10, fontSize: 12, color: "var(--ink)", alignItems: "center", flexWrap: "wrap" }}>
                     <span>{formatVaDateTime(entry.clock_in_at)}{entry.clock_out_at ? ` - ${formatVaDateTime(entry.clock_out_at)}` : " - active"}</span>
-                    <span>{formatDuration(entry.duration_minutes ?? currentShiftMinutes(entry))} · {formatCurrency(Number(entry.cost_amount ?? 0))}</span>
+                    <span>{formatDuration(entry.duration_minutes ?? currentShiftMinutes(entry))}</span>
                     <span style={{ display: "flex", gap: 6 }}>
                       <button onClick={() => startTimeChangeRequest(entry, "edit-shift")} style={secondaryButton}>Edit Time</button>
                       <button onClick={() => startTimeChangeRequest(entry, "void-shift")} style={secondaryButton}>Void</button>
@@ -2900,11 +2939,17 @@ export default function VaPage() {
             top: 0;
             z-index: 20;
           }
-          .va-workspace, .va-form-grid, .workdesk-grid, .two-col, .three-col, .number-grid {
+          .va-workspace, .va-form-grid, .workdesk-grid, .two-col, .three-col, .number-grid, .va-briefing-grid {
             grid-template-columns: 1fr !important;
           }
-          .compact-shift-grid button {
-            min-height: 52px !important;
+          .va-clock-banner, .va-shift-strip {
+            flex-direction: column;
+            align-items: stretch !important;
+          }
+          .va-deal-aside {
+            position: static !important;
+            max-height: none !important;
+            overflow: visible !important;
           }
           .va-flow-strip {
             grid-template-columns: 1fr !important;
@@ -2913,6 +2958,9 @@ export default function VaPage() {
         @media (min-width: 881px) and (max-width: 1180px) {
           .va-flow-strip {
             grid-template-columns: repeat(3, minmax(0, 1fr));
+          }
+          .va-briefing-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
           }
         }
       `}</style>
@@ -3264,6 +3312,21 @@ function QueueButton({ label: text, detail, count, hot = false, onClick }: { lab
   );
 }
 
+function BriefingCard({ eyebrow, title, detail, tone = "calm", actionLabel, onAction }: { eyebrow: string; title: string; detail: string; tone?: "calm" | "hot" | "warn"; actionLabel?: string; onAction?: () => void }) {
+  const border = tone === "hot" ? "1px solid var(--brass)" : tone === "warn" ? "1px solid var(--obsidian)" : "1px solid var(--fog)";
+  const background = tone === "hot" ? "rgba(176,137,84,0.10)" : tone === "warn" ? "rgba(20,17,13,0.04)" : "var(--bone)";
+  return (
+    <div style={{ border, background, borderRadius: 10, padding: 14, display: "flex", flexDirection: "column", gap: 8, minHeight: 144 }}>
+      <p style={{ ...eyebrowSmall, color: tone === "hot" ? "var(--brass)" : "var(--muted)" }}>{eyebrow}</p>
+      <strong style={{ color: "var(--obsidian)", fontSize: 15, lineHeight: 1.3 }}>{title}</strong>
+      <p style={{ color: "var(--muted)", fontSize: 12, lineHeight: 1.45, flex: 1 }}>{detail}</p>
+      {actionLabel && onAction && (
+        <button onClick={onAction} style={{ ...secondaryButton, fontSize: 10, padding: "8px 10px", minHeight: 32 }}>{actionLabel}</button>
+      )}
+    </div>
+  );
+}
+
 function InfoStack({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div style={{ border: "1px solid var(--fog)", borderRadius: 8, padding: 10, background: "var(--surface)", color: "var(--muted)", fontSize: 12, lineHeight: 1.55 }}>
@@ -3281,12 +3344,32 @@ const panel: React.CSSProperties = {
   boxShadow: "0 16px 44px rgba(20,17,13,0.06)",
 };
 
-const compactShiftPanel: React.CSSProperties = {
-  background: "rgba(255,255,255,0.78)",
-  border: "1px solid var(--fog)",
-  borderRadius: 8,
-  padding: 12,
-  boxShadow: "0 10px 30px rgba(20,17,13,0.05)",
+const clockInBanner: React.CSSProperties = {
+  background: "var(--obsidian)",
+  color: "var(--bone)",
+  border: "1px solid var(--obsidian)",
+  borderRadius: 10,
+  padding: "20px 24px",
+  marginBottom: 16,
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  gap: 16,
+  flexWrap: "wrap",
+  boxShadow: "0 18px 48px rgba(20,17,13,0.18)",
+};
+
+const shiftActiveStrip: React.CSSProperties = {
+  background: "rgba(255,255,255,0.84)",
+  border: "1px solid var(--brass)",
+  borderRadius: 10,
+  padding: "12px 16px",
+  marginBottom: 16,
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  gap: 12,
+  flexWrap: "wrap",
 };
 
 const subPanel: React.CSSProperties = {
@@ -3467,40 +3550,6 @@ const td: React.CSSProperties = {
   verticalAlign: "top",
 };
 
-const tableHead: React.CSSProperties = {
-  padding: "10px 8px",
-  borderBottom: "1px solid var(--fog)",
-  color: "var(--muted)",
-  fontSize: 10,
-  fontWeight: 800,
-  letterSpacing: "0.12em",
-  textTransform: "uppercase",
-  textAlign: "left",
-  background: "rgba(245,239,224,0.82)",
-  whiteSpace: "nowrap",
-};
-
-const tableCell: React.CSSProperties = {
-  padding: "11px 8px",
-  borderBottom: "1px solid var(--fog)",
-  color: "var(--ink)",
-  fontSize: 12,
-  lineHeight: 1.35,
-  verticalAlign: "middle",
-};
-
-const iconButton: React.CSSProperties = {
-  border: "1px solid var(--fog)",
-  background: "rgba(255,255,255,0.55)",
-  color: "var(--obsidian)",
-  borderRadius: 6,
-  minHeight: 30,
-  padding: "5px 7px",
-  fontSize: 10,
-  fontWeight: 800,
-  letterSpacing: "0.08em",
-  textTransform: "uppercase",
-};
 
 const flagChip: React.CSSProperties = {
   ...pill,
