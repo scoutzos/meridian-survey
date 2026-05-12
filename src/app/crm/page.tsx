@@ -493,7 +493,7 @@ function CrmContent() {
     { id: "deals", label: "Opportunities", detail: "Shared files, packets, votes, calculators", count: data.deals.length },
     { id: "buyers", label: "Buyers", detail: "Buyer demand and buy boxes", count: data.buyers.length },
     { id: "dispo", label: "Disposition", detail: "Campaigns, offers, exit tracking", count: data.campaigns.length + data.offers.length },
-    { id: "records", label: "Contacts & Records", detail: "People, property, cleanup", count: data.contacts.length + data.properties.length },
+    { id: "records", label: "Records", detail: "Sellers, properties, buyers, cleanup", count: data.contacts.length + data.properties.length },
   ];
 
   const workSummary = [
@@ -737,7 +737,7 @@ function CrmContent() {
 
     if (view === "records") {
       return (
-        <WorkspacePanel title="Contacts & Property Records" eyebrow="Relationship database">
+        <WorkspacePanel title="Records Database" eyebrow="Sellers, properties, buyers">
           <div style={{ ...panel, marginBottom: 12 }}>
             <p style={eyebrowSmall}>Cleanup prompts</p>
             <div style={{ display: "grid", gap: 8, marginTop: 8 }}>

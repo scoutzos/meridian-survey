@@ -276,7 +276,7 @@ function OpportunityContent() {
       disabled: !selectedDeal,
     },
     {
-      label: "CRM Records",
+      label: "Records",
       detail: "Check linked seller, property, buyer, and cleanup records.",
       onClick: () => router.push(opportunityCrmUrl),
       disabled: false,

@@ -10,7 +10,7 @@ const crmLinks = [
   { href: "/dashboard", label: "Member Portal" },
   { href: "/crm", label: "Command Center" },
   { href: "/va", label: "VA Home" },
-  { href: "/va?tab=outreach", label: "Lead Inbox" },
+  { href: "/va?tab=outreach", label: "Contact Queue" },
   { href: "/va?tab=lists", label: "Lists" },
   { href: "/crm?view=deals", label: "Deal Reviews" },
   { href: "/crm?view=buyers", label: "Buyers" },
@@ -18,12 +18,13 @@ const crmLinks = [
   { href: "/crm?view=records", label: "Records" },
 ];
 // VA sidebar shows only cross-workspace links. The 5 VA-workspace tabs
-// (Home / Inbox / Lists / Deal Packet / Daily Brief) live in the in-page
+// (Home / Contact Queue / Lists / Packets / Daily Brief) live in the in-page
 // tab strip on /va — don't duplicate them in the sidebar.
 const vaLinks = [
+  { href: "/va", label: "VA Desk" },
+  { href: "/actions?filter=va", label: "Tasks" },
+  { href: "/crm?view=records", label: "Records" },
   { href: "/dashboard", label: "Member Portal" },
-  { href: "/crm", label: "CRM Command" },
-  { href: "/crm?view=records", label: "CRM Records" },
 ];
 
 const crmCreateButton: CSSProperties = {
@@ -105,15 +106,18 @@ export default function NavBar() {
   ];
   const mainVaLinks = [
     { href: "/va", label: "VA Desk" },
-    { href: "/crm", label: "CRM" },
+    { href: "/actions?filter=va", label: "Tasks" },
+    { href: "/crm?view=records", label: "Records" },
+    { href: "/dashboard", label: "Member Portal" },
   ];
   const links = isVaUser(user) ? mainVaLinks : memberLinks;
 
   const isActive = (href: string) => {
-    if (pathname === href) return true;
-    if (pathname.startsWith(href + "/")) return true;
-    if (href === "/surveys" && (pathname.startsWith("/survey/") || pathname.startsWith("/results/"))) return true;
-    if (href === "/deals" && pathname.startsWith("/opportunity")) return true;
+    const baseHref = href.split("?")[0];
+    if (pathname === baseHref) return true;
+    if (pathname.startsWith(baseHref + "/")) return true;
+    if (baseHref === "/surveys" && (pathname.startsWith("/survey/") || pathname.startsWith("/results/"))) return true;
+    if (baseHref === "/deals" && pathname.startsWith("/opportunity")) return true;
     return false;
   };
 
@@ -125,7 +129,7 @@ export default function NavBar() {
             <Logo width={38} onDark />
             <div>
               <strong style={{ display: "block", color: "var(--bone)", fontSize: 12, letterSpacing: "0.18em", textTransform: "uppercase" }}>Meridian</strong>
-              <span style={{ display: "block", color: "var(--brass)", fontSize: 9, letterSpacing: "0.2em", textTransform: "uppercase" }}>CRM</span>
+              <span style={{ display: "block", color: "var(--brass)", fontSize: 9, letterSpacing: "0.2em", textTransform: "uppercase" }}>{isVaUser(user) ? "VA Desk" : "CRM"}</span>
             </div>
           </div>
           <div style={{ display: "grid", gap: 4 }}>
@@ -176,7 +180,7 @@ export default function NavBar() {
           </div>
         </aside>
         <nav className="crm-top-bar">
-          <button onClick={() => router.push("/dashboard")} style={crmPortalButton}>Member Portal</button>
+          {!isVaUser(user) && <button onClick={() => router.push("/dashboard")} style={crmPortalButton}>Member Portal</button>}
           <button onClick={() => router.push(isVaUser(user) ? "/va?tab=packet" : "/va")} style={crmCreateButton}>{isVaUser(user) ? "+ Deal Brief" : "+ Create"}</button>
           <span style={{ color: "var(--fog)", fontSize: 12 }}>●</span>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>

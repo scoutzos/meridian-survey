@@ -271,8 +271,8 @@ export default function LeadPage() {
         mode="va"
         actions={
           <>
-            <button onClick={() => router.push("/va?tab=outreach")} style={secondaryButton}>Back to Inbox</button>
-            <button onClick={() => router.push(`/opportunity?lead=${lead.id}`)} style={secondaryButton}>Open Legacy File</button>
+            <button onClick={() => router.push("/va?tab=outreach")} style={secondaryButton}>Back to Contact Queue</button>
+            <button onClick={() => router.push(`/va?tab=packet&lead=${lead.id}`)} style={secondaryButton}>Build Packet</button>
             {lead.status !== "interested" && (
               <button onClick={() => logDisposition("interested", "Marked interested from Lead Page", "interested")} style={primaryButton}>
                 Mark Interested
@@ -317,7 +317,7 @@ export default function LeadPage() {
             <h2 style={{ ...sectionTitle, fontSize: 24, marginTop: 4 }}>{nextActionText}</h2>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 14 }}>
               <button onClick={() => setTab("conversation")} disabled={!compliance?.allowed} style={{ ...primaryButton, opacity: compliance?.allowed ? 1 : 0.55 }}>
-                {compliance?.allowed ? "Reply via SMS →" : "SMS disabled"}
+                {compliance?.allowed ? "Message Seller →" : "SMS disabled"}
               </button>
               <button onClick={() => setTab("conversation")} style={secondaryButton}>Open Conversation</button>
               <button onClick={() => setTab("properties")} style={secondaryButton}>Open Properties</button>
@@ -371,8 +371,8 @@ export default function LeadPage() {
                           {prop.acreage ? `${prop.acreage} ac` : "Acres ?"} · {prop.county || "County ?"} · {labelForStatus(prop.status)}
                         </p>
                       </div>
-                      <button onClick={() => router.push(`/opportunity?lead=${prop.id}`)} style={{ ...secondaryButton, padding: "8px 10px", fontSize: 10, minHeight: 32 }}>
-                        Open Packet →
+                      <button onClick={() => router.push(`/lead/${prop.id}`)} style={{ ...secondaryButton, padding: "8px 10px", fontSize: 10, minHeight: 32 }}>
+                        Open Record →
                       </button>
                     </div>
                   ))}
@@ -443,7 +443,7 @@ export default function LeadPage() {
           <div style={panel}>
             <ConversationPanel
               eyebrow="Thread"
-              title={`SMS history with ${lead.owner_name || "this seller"}`}
+              title={`Conversation history with ${lead.owner_name || "this seller"}`}
               subject={compliance?.phone?.number || phones[0]?.number || "No phone"}
               communications={communications}
               activities={sortedConvActivities}
@@ -453,7 +453,7 @@ export default function LeadPage() {
           </div>
 
           <aside style={panel}>
-            <p style={eyebrowSmall}>Reply by SMS</p>
+            <p style={eyebrowSmall}>Message seller</p>
             <div style={{ marginTop: 8 }}>
               {compliance && !compliance.allowed && (
                 <div style={complianceBanner(compliance.severity)}>
@@ -562,7 +562,7 @@ export default function LeadPage() {
                       </div>
                     )}
                     <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                      <button onClick={() => router.push(`/opportunity?lead=${prop.id}`)} style={primaryButton}>Open Packet →</button>
+                      <button onClick={() => router.push(`/lead/${prop.id}`)} style={primaryButton}>Open Record →</button>
                       {prop.status !== "passed" && (
                         <button onClick={async () => {
                           await updateImportedLandLeadStatus(prop.id, "passed", prop.deal_id);

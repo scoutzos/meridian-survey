@@ -180,7 +180,7 @@ export default function DocumentsPage() {
           <strong>Records tied to renovation and execution</strong>
         </button>
         <button onClick={() => router.push("/crm?view=records")} className="bridge-card">
-          <span>CRM Records</span>
+          <span>Records</span>
           <strong>Deal packets, seller history, and buyer offers</strong>
         </button>
       </section>

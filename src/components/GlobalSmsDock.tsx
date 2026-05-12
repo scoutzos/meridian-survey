@@ -47,7 +47,7 @@ export default function GlobalSmsDock() {
       leads={leads}
       events={events}
       canSend={canSend}
-      onOpenLead={lead => router.push(`/opportunity?lead=${lead.id}`)}
+      onOpenLead={lead => router.push(`/lead/${lead.id}`)}
       onOpenDeal={dealId => router.push(`/opportunity?deal=${dealId}`)}
       onCreateDealBrief={lead => router.push(`/va?tab=packet&lead=${lead.id}`)}
       onMarkInterested={async lead => {

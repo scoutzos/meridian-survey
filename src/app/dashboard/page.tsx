@@ -433,7 +433,7 @@ export default function DashboardPage() {
       title: activityRow.summary || labelForStatus(activityRow.activity_type),
       detail: activityRow.next_follow_up_date ? `Follow-up set for ${activityRow.next_follow_up_date}` : activityRow.actor || "Lead activity",
       date: activityRow.created_at,
-      href: `/opportunity?lead=${activityRow.lead_id}`,
+      href: `/lead/${activityRow.lead_id}`,
     })),
     ...todayComms.map(event => ({
       id: `comm-${event.id}`,
@@ -441,7 +441,7 @@ export default function DashboardPage() {
       title: event.contact_name || event.contact_number || event.from_number || "Seller message",
       detail: event.body || event.status || labelForStatus(event.provider_event_type),
       date: event.created_at,
-      href: event.matched_deal_id ? `/opportunity?deal=${event.matched_deal_id}` : event.matched_lead_id ? `/opportunity?lead=${event.matched_lead_id}` : "/crm?view=inbox",
+      href: event.matched_deal_id ? `/opportunity?deal=${event.matched_deal_id}` : event.matched_lead_id ? `/lead/${event.matched_lead_id}` : "/crm?view=inbox",
     })),
     ...todayCompletedVaTasks.map(item => ({
       id: `task-${item.id}`,
@@ -541,9 +541,9 @@ export default function DashboardPage() {
       id: "seller-replies",
       label: "Seller Reply",
       title: "Unmatched seller replies",
-      detail: `${unmatchedSellerReplies.length} message${unmatchedSellerReplies.length === 1 ? "" : "s"} need CRM matching.`,
+      detail: `${unmatchedSellerReplies.length} message${unmatchedSellerReplies.length === 1 ? "" : "s"} need Records matching.`,
       href: "/crm?view=inbox",
-      action: "Open CRM",
+      action: "Open Records",
       urgent: true,
     }] : []),
     ...(incompleteSurveys.length > 0 ? [{
@@ -907,7 +907,7 @@ export default function DashboardPage() {
                 label={event.matched_deal_id ? "Matched deal" : event.matched_lead_id ? "Matched lead" : "Unmatched"}
                 title={event.contact_name || event.contact_number || event.from_number || "Unknown sender"}
                 detail={event.body || event.status || event.provider_event_type}
-                onClick={() => router.push(event.matched_deal_id ? `/opportunity?deal=${event.matched_deal_id}` : event.matched_lead_id ? `/opportunity?lead=${event.matched_lead_id}` : "/crm?view=inbox")}
+                onClick={() => router.push(event.matched_deal_id ? `/opportunity?deal=${event.matched_deal_id}` : event.matched_lead_id ? `/lead/${event.matched_lead_id}` : "/crm?view=inbox")}
               />
             ))}
           </Panel>

@@ -36,30 +36,34 @@ export default function BottomNav() {
   useEffect(() => { setMoreOpen(false); }, [pathname]);
 
   const isActive = (href: string) => {
-    if (pathname === href) return true;
-    if (pathname.startsWith(href + "/")) return true;
-    if (href === "/surveys" && (pathname.startsWith("/survey/") || pathname.startsWith("/results/"))) return true;
-    if (href === "/deals" && pathname.startsWith("/opportunity")) return true;
+    const baseHref = href.split("?")[0];
+    if (pathname === baseHref) return true;
+    if (pathname.startsWith(baseHref + "/")) return true;
+    if (baseHref === "/surveys" && (pathname.startsWith("/survey/") || pathname.startsWith("/results/"))) return true;
+    if (baseHref === "/deals" && pathname.startsWith("/opportunity")) return true;
     return false;
   };
 
   if (!user || pathname === "/" || pathname === "/apply") return null;
 
   if (isVaUser(user)) {
+    const vaPrimary = [
+      { href: "/va", label: "VA Desk" },
+      { href: "/actions?filter=va", label: "Tasks" },
+      { href: "/crm?view=records", label: "Records" },
+      { href: "/dashboard", label: "Portal" },
+    ];
     return (
       <nav className="bottom-nav">
-        <button
-          onClick={() => router.push("/va")}
-          className={`bottom-nav-tab${isActive("/va") ? " bottom-nav-active" : ""}`}
-        >
-          VA Desk
-        </button>
-        <button
-          onClick={() => router.push("/crm")}
-          className={`bottom-nav-tab${isActive("/crm") ? " bottom-nav-active" : ""}`}
-        >
-          CRM
-        </button>
+        {vaPrimary.map(item => (
+          <button
+            key={item.href}
+            onClick={() => router.push(item.href)}
+            className={`bottom-nav-tab${isActive(item.href) ? " bottom-nav-active" : ""}`}
+          >
+            {item.label}
+          </button>
+        ))}
       </nav>
     );
   }

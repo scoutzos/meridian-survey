@@ -112,7 +112,7 @@ function labelize(value: string): string {
 
 function actionHref(item: ActionItem): string {
   if (item.source_table === "meridian_deals" && item.source_id) return `/opportunity?deal=${item.source_id}`;
-  if (item.source_table === "meridian_imported_land_leads" && item.source_id) return `/opportunity?lead=${item.source_id}`;
+  if (item.source_table === "meridian_imported_land_leads" && item.source_id) return `/lead/${item.source_id}`;
   if (item.source_table === "meridian_buyer_offers" && item.source_id) return `/crm?view=dispo&offer=${item.source_id}`;
   if (item.source_table === "meridian_projects" && item.source_id) return `/projects?project=${item.source_id}`;
   if (item.source_table === "meeting_notes" && item.source_id) return `/meetings?note=${item.source_id}`;

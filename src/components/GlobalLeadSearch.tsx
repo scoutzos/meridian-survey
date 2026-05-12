@@ -7,7 +7,7 @@ import { fetchImportedLandLeads, type ImportedLandLead } from "@/lib/land-leads"
 
 type SearchResult =
   | { kind: "Imported Lead"; id: string; title: string; meta: string; href: string; score: number; haystack: string }
-  | { kind: "Deal Packet"; id: string; title: string; meta: string; href: string; score: number; haystack: string };
+  | { kind: "Packet"; id: string; title: string; meta: string; href: string; score: number; haystack: string };
 
 function collectSearchText(value: unknown): string {
   if (value === null || value === undefined) return "";
@@ -117,7 +117,7 @@ export default function GlobalLeadSearch() {
         id: lead.id,
         title: importedLeadTitle(lead),
         meta: importedLeadMeta(lead),
-        href: `/opportunity?lead=${lead.id}`,
+        href: `/lead/${lead.id}`,
         score: (lead.lead_score ?? 0) + (lead.status === "interested" ? 50 : 0),
         haystack,
       };
@@ -126,7 +126,7 @@ export default function GlobalLeadSearch() {
     const dealResults: SearchResult[] = deals.map(deal => {
       const haystack = collectSearchText(deal).toLowerCase();
       return {
-        kind: "Deal Packet" as const,
+        kind: "Packet" as const,
         id: deal.id,
         title: deal.title || deal.address || deal.parcel_id || "Deal packet",
         meta: dealMeta(deal),
