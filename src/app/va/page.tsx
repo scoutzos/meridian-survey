@@ -299,6 +299,12 @@ function addDays(days: number): string {
   return d.toISOString().slice(0, 10);
 }
 
+function greetingForHour(hour: number): string {
+  if (hour < 12) return "morning";
+  if (hour < 17) return "afternoon";
+  return "evening";
+}
+
 function appendBriefText(existing: string | null | undefined, addition: string): string {
   const current = (existing ?? "").trim();
   if (!addition.trim()) return current;
@@ -327,10 +333,6 @@ function formatDate(iso: string): string {
   } catch {
     return iso;
   }
-}
-
-function formatCurrency(value: number): string {
-  return value.toLocaleString(undefined, { style: "currency", currency: "USD", maximumFractionDigits: 2 });
 }
 
 type ConversationItem = {
@@ -805,6 +807,26 @@ export default function VaPage() {
       setCommunicationEvents(comms);
     });
   }, [selectedImportedLeadId]);
+
+  useEffect(() => {
+    if (activeTab !== "brief" || editingBriefId || loading) return;
+    const date = briefDraft.work_date;
+    const sameDay = (iso?: string | null) => !!iso && iso.slice(0, 10) === date;
+    const ownDeals = deals.filter(deal => deal.created_by === user || deal.submitted_by === user || deal.assigned_to === user);
+    const touchedImportedLeads = importedLeads.filter(lead => sameDay(lead.last_activity_at) || sameDay(lead.last_sms_at));
+    setBriefDraft(prev => ({
+      ...prev,
+      leads_added: prev.leads_added ?? ownDeals.filter(deal => sameDay(deal.created_at)).length,
+      leads_updated: prev.leads_updated ?? (ownDeals.filter(deal => sameDay(deal.updated_at)).length + touchedImportedLeads.length),
+      outreach_sent: prev.outreach_sent ?? touchedImportedLeads.filter(lead => ["called", "texted", "emailed", "left-voicemail"].includes(lead.last_activity_type || "") || lead.last_sms_direction === "outbound").length,
+      seller_replies: prev.seller_replies ?? touchedImportedLeads.filter(lead => lead.status === "interested" || lead.last_sms_direction === "inbound").length,
+      calls_completed: prev.calls_completed ?? touchedImportedLeads.filter(lead => lead.last_activity_type === "called" || lead.last_activity_type === "left-voicemail").length,
+      deals_submitted: prev.deals_submitted ?? ownDeals.filter(deal => deal.status === "under-review" && sameDay(deal.updated_at)).length,
+      va_tasks_completed: prev.va_tasks_completed ?? completedAssignedTasksToday.length,
+      hours_worked: prev.hours_worked ?? (todaysSubmittedMinutes > 0 ? Number((todaysSubmittedMinutes / 60).toFixed(2)) : prev.hours_worked),
+    }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, editingBriefId, loading]);
 
   if (!user) return null;
 
@@ -1710,6 +1732,25 @@ export default function VaPage() {
         </div>
       )}
 
+      {!openShift && (
+        <section style={clockInBanner} className="va-clock-banner">
+          <div>
+            <p style={{ ...eyebrowSmall, color: "var(--bone)", opacity: 0.85 }}>Shift status</p>
+            <h2 style={{ ...sectionTitle, color: "var(--bone)", fontSize: 28, marginTop: 2 }}>You&apos;re not clocked in</h2>
+            <p style={{ color: "var(--bone)", opacity: 0.78, fontSize: 13, marginTop: 6 }}>
+              Clock in before logging activity. Your shift drives the daily brief, time approvals, and payroll.
+            </p>
+          </div>
+          <button
+            onClick={handleClockIn}
+            disabled={clockBusy}
+            style={{ ...primaryButton, background: "var(--brass)", color: "var(--obsidian)", borderColor: "var(--brass)", minHeight: 64, padding: "14px 24px", fontSize: 13, opacity: clockBusy ? 0.65 : 1 }}
+          >
+            {clockBusy ? "Saving..." : "Clock In"}
+          </button>
+        </section>
+      )}
+
       <div className="va-tabs" style={{ ...panel, padding: 8, marginBottom: 16, display: "flex", gap: 8, flexWrap: "wrap" }}>
         {TABS.map(tab => (
           <button
@@ -1792,14 +1833,86 @@ export default function VaPage() {
           <section style={panel}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12, flexWrap: "wrap", marginBottom: 14 }}>
               <div>
-                <p style={eyebrowSmall}>Today</p>
-                <h2 style={sectionTitle}>What needs action next</h2>
+                <p style={eyebrowSmall}>Briefing</p>
+                <h2 style={sectionTitle}>{`Good ${greetingForHour(new Date().getHours())}${user ? `, ${user.split(" ")[0]}` : ""}`}</h2>
+                <p style={{ color: "var(--muted)", fontSize: 13, marginTop: 4 }}>
+                  {openShift ? `On shift for ${formatDuration(liveShiftMinutes)}.` : "Start with clock-in above."} {portalStats.briefSubmitted ? "Daily brief is submitted." : "Daily brief still open."}
+                </p>
               </div>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                 <button onClick={() => goToTab("outreach")} style={secondaryButton}>Open Lead Inbox</button>
                 <button onClick={() => draftLeads[0] ? openDealBrief(draftLeads[0]) : goToTab("packet")} style={secondaryButton}>Build packet</button>
                 <button onClick={() => goToTab("brief")} style={primaryButton}>End shift</button>
               </div>
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 12, marginBottom: 16 }} className="va-briefing-grid">
+              <BriefingCard
+                eyebrow="Member notes"
+                title={openAssignedTasks.length ? `${openAssignedTasks.length} task${openAssignedTasks.length === 1 ? "" : "s"} from members` : "No new member notes"}
+                detail={openAssignedTasks[0]
+                  ? `${openAssignedTasks[0].title}${openAssignedTasks[0].created_by ? ` — from ${openAssignedTasks[0].created_by}` : ""}`
+                  : "Members will route tasks here when they need something done."}
+                tone={openAssignedTasks.length ? "hot" : "calm"}
+                actionLabel={openAssignedTasks[0] ? "Open Record" : undefined}
+                onAction={openAssignedTasks[0] ? () => router.push(taskRecordHref(openAssignedTasks[0])) : undefined}
+              />
+              <BriefingCard
+                eyebrow="Overnight replies"
+                title={recentInboundSms.length ? `${recentInboundSms.length} new seller reply${recentInboundSms.length === 1 ? "" : "ies"}` : "No new replies"}
+                detail={recentInboundSms[0]
+                  ? `${recentInboundSms[0].contact_name || recentInboundSms[0].contact_number || recentInboundSms[0].from_number || "Seller"}: ${(recentInboundSms[0].body || "").slice(0, 80)}${(recentInboundSms[0].body || "").length > 80 ? "…" : ""}`
+                  : "Sakari inbox is clear since last shift."}
+                tone={recentInboundSms.length ? "hot" : "calm"}
+                actionLabel={recentInboundSms.length ? "Read Replies" : undefined}
+                onAction={recentInboundSms.length ? () => goToTab("outreach") : undefined}
+              />
+              <BriefingCard
+                eyebrow="Hot deals"
+                title={deals.filter(deal => deal.urgency === "hot").length
+                  ? `${deals.filter(deal => deal.urgency === "hot").length} flagged hot`
+                  : interestedLeads.length
+                    ? `${interestedLeads.length} interested seller${interestedLeads.length === 1 ? "" : "s"}`
+                    : "No hot items"}
+                detail={(() => {
+                  const hot = deals.find(deal => deal.urgency === "hot");
+                  if (hot) return `${hot.title} — ${statusLabel(hot.status)}`;
+                  if (interestedLeads[0]) return `${interestedLeads[0].owner_name || "Interested seller"} replied. Build a packet.`;
+                  return "No urgent deals or interested sellers right now.";
+                })()}
+                tone={(deals.some(deal => deal.urgency === "hot") || interestedLeads.length) ? "hot" : "calm"}
+                actionLabel={deals.some(deal => deal.urgency === "hot") ? "Open Deal" : interestedLeads.length ? "Build Packet" : undefined}
+                onAction={(() => {
+                  const hot = deals.find(deal => deal.urgency === "hot");
+                  if (hot) return () => openDealBrief(hot);
+                  if (interestedLeads[0]) return () => loadImportedLead(interestedLeads[0], false);
+                  return undefined;
+                })()}
+              />
+              <BriefingCard
+                eyebrow="Blockers"
+                title={(() => {
+                  const blockedTasks = assignedTasks.filter(task => task.status === "blocked");
+                  if (blockedTasks.length) return `${blockedTasks.length} task${blockedTasks.length === 1 ? "" : "s"} blocked`;
+                  const lastBlock = briefs.find(brief => brief.blockers && brief.blockers.trim());
+                  if (lastBlock) return "Open blocker from last brief";
+                  return "No blockers";
+                })()}
+                detail={(() => {
+                  const blockedTasks = assignedTasks.filter(task => task.status === "blocked");
+                  if (blockedTasks[0]) return `${blockedTasks[0].title}: ${blockedTasks[0].blocker_reason || "Needs member input"}`;
+                  const lastBlock = briefs.find(brief => brief.blockers && brief.blockers.trim());
+                  if (lastBlock) return (lastBlock.blockers || "").slice(0, 100);
+                  return "Nothing waiting on a member decision.";
+                })()}
+                tone={assignedTasks.some(task => task.status === "blocked") ? "warn" : "calm"}
+                actionLabel={assignedTasks.some(task => task.status === "blocked") ? "Open Record" : undefined}
+                onAction={(() => {
+                  const blockedTask = assignedTasks.find(task => task.status === "blocked");
+                  if (blockedTask) return () => router.push(taskRecordHref(blockedTask));
+                  return undefined;
+                })()}
+              />
             </div>
 
             <div style={{ display: "grid", gridTemplateColumns: "minmax(260px, 0.8fr) minmax(0, 1.2fr) minmax(320px, 0.9fr)", gap: 14 }} className="va-home-grid">
@@ -2124,6 +2237,9 @@ export default function VaPage() {
                 </div>
                 <div style={subPanel}>
                   <p style={eyebrowSmall}>Member-facing ask</p>
+                  <p style={{ color: "var(--muted)", fontSize: 12, lineHeight: 1.5, marginBottom: 10 }}>
+                    Pick the review type that matches what you want members to do. Use <strong>Ready For Vote</strong> only when the packet is complete and you want a yes/no decision.
+                  </p>
                   <div style={twoCol} className="two-col">
                     <div>
                       <label style={label}>Review type</label>
@@ -2136,9 +2252,23 @@ export default function VaPage() {
                       <input type="text" value={draft.requested_next_step ?? ""} onChange={e => setDraft({ ...draft, requested_next_step: e.target.value })} placeholder="Vote, answer blocker, request more info, pass" />
                     </div>
                   </div>
-                  <p style={{ fontSize: 12, color: "var(--muted)", marginTop: 8 }}>
-                    {REVIEW_INTENTS.find(intent => intent.value === draft.review_intent)?.description}
-                  </p>
+                  <div style={{
+                    borderLeft: "3px solid var(--brass)",
+                    background: "rgba(176,137,84,0.08)",
+                    padding: "8px 12px",
+                    marginTop: 10,
+                    borderRadius: 4,
+                  }}>
+                    <p style={{ fontSize: 12, color: "var(--obsidian)", lineHeight: 1.5 }}>
+                      <strong>{REVIEW_INTENTS.find(intent => intent.value === draft.review_intent)?.label}:</strong>{" "}
+                      {REVIEW_INTENTS.find(intent => intent.value === draft.review_intent)?.description}
+                    </p>
+                    {draft.review_intent === "ready-for-vote" && !submissionReady && (
+                      <p style={{ fontSize: 12, color: "var(--obsidian)", marginTop: 6, lineHeight: 1.5 }}>
+                        Still missing: {missingReadyItems.slice(0, 3).join(", ")}{missingReadyItems.length > 3 ? "…" : ""}
+                      </p>
+                    )}
+                  </div>
                   <div style={{ marginTop: 10 }}>
                     <label style={label}>VA summary for members</label>
                     <textarea rows={3} value={draft.submission_summary ?? ""} onChange={e => setDraft({ ...draft, submission_summary: e.target.value })} placeholder="Why this deal is worth member attention and what you found." />
@@ -2243,7 +2373,7 @@ export default function VaPage() {
                 </div>
               </div>
 
-              <aside style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              <aside style={{ display: "flex", flexDirection: "column", gap: 12, position: "sticky", top: 16, alignSelf: "start", maxHeight: "calc(100vh - 32px)", overflowY: "auto" }} className="va-deal-aside">
                 <div style={subPanel}>
                   <p style={eyebrowSmall}>Live analysis</p>
                   <h2 style={{ fontFamily: DISPLAY_FONT, color: "var(--obsidian)", fontSize: 26, fontWeight: 500, marginBottom: 8 }}>
@@ -2963,8 +3093,11 @@ export default function VaPage() {
               <div>
                 <p style={eyebrowSmall}>End of shift</p>
                 <h2 style={sectionTitle}>Daily Brief</h2>
+                <p style={{ color: "var(--muted)", fontSize: 13, marginTop: 4 }}>
+                  Numbers below were filled from your shift activity. Write the narrative — members read the activities, blockers, and tomorrow plan.
+                </p>
               </div>
-              <span style={pill}>Members can review in Operations</span>
+              <span style={pill}>Members review in Operations</span>
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10 }} className="number-grid">
               <div>
@@ -3006,7 +3139,7 @@ export default function VaPage() {
                           <strong style={{ color: "var(--obsidian)", fontSize: 13 }}>
                             {inlineTimeDraft.requestType === "void-shift" ? "Void this shift" : "Edit this shift"}
                           </strong>
-                          <span style={{ color: "var(--muted)", fontSize: 12 }}>{formatDuration(entry.duration_minutes ?? currentShiftMinutes(entry))} · {formatCurrency(Number(entry.cost_amount ?? 0))}</span>
+                          <span style={{ color: "var(--muted)", fontSize: 12 }}>{formatDuration(entry.duration_minutes ?? currentShiftMinutes(entry))}</span>
                         </div>
                         {inlineTimeDraft.requestType !== "void-shift" && (
                           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }} className="two-col">
@@ -3048,7 +3181,7 @@ export default function VaPage() {
                           <span><strong>Clock in:</strong> {formatVaDateTime(entry.clock_in_at)}</span>
                           <span><strong>Clock out:</strong> {entry.clock_out_at ? formatVaDateTime(entry.clock_out_at) : "Still clocked in"}</span>
                         </span>
-                        <span>{formatDuration(entry.duration_minutes ?? currentShiftMinutes(entry))} · {formatCurrency(Number(entry.cost_amount ?? 0))}</span>
+                        <span>{formatDuration(entry.duration_minutes ?? currentShiftMinutes(entry))}</span>
                         <span style={{ display: "flex", gap: 6 }}>
                           <button onClick={() => startInlineTimeEdit(entry, "edit-shift")} style={secondaryButton}>Edit Time</button>
                           <button onClick={() => startInlineTimeEdit(entry, "void-shift")} style={secondaryButton}>Void</button>
@@ -3228,7 +3361,7 @@ export default function VaPage() {
             top: 0;
             z-index: 20;
           }
-          .va-workspace, .va-form-grid, .workdesk-grid, .two-col, .three-col, .number-grid {
+          .va-workspace, .va-form-grid, .workdesk-grid, .two-col, .three-col, .number-grid, .va-briefing-grid, .va-home-grid {
             grid-template-columns: 1fr !important;
           }
           .compact-shift-grid button {
@@ -3237,10 +3370,22 @@ export default function VaPage() {
           .va-flow-strip {
             grid-template-columns: 1fr !important;
           }
+          .va-clock-banner {
+            flex-direction: column;
+            align-items: stretch !important;
+          }
+          .va-deal-aside {
+            position: static !important;
+            max-height: none !important;
+            overflow: visible !important;
+          }
         }
         @media (min-width: 881px) and (max-width: 1180px) {
           .va-flow-strip {
             grid-template-columns: repeat(3, minmax(0, 1fr));
+          }
+          .va-briefing-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
           }
         }
       `}</style>
@@ -3592,6 +3737,21 @@ function QueueButton({ label: text, detail, count, hot = false, onClick }: { lab
   );
 }
 
+function BriefingCard({ eyebrow, title, detail, tone = "calm", actionLabel, onAction }: { eyebrow: string; title: string; detail: string; tone?: "calm" | "hot" | "warn"; actionLabel?: string; onAction?: () => void }) {
+  const border = tone === "hot" ? "1px solid var(--brass)" : tone === "warn" ? "1px solid var(--obsidian)" : "1px solid var(--fog)";
+  const background = tone === "hot" ? "rgba(176,137,84,0.10)" : tone === "warn" ? "rgba(20,17,13,0.04)" : "var(--bone)";
+  return (
+    <div style={{ border, background, borderRadius: 10, padding: 14, display: "flex", flexDirection: "column", gap: 8, minHeight: 144 }}>
+      <p style={{ ...eyebrowSmall, color: tone === "hot" ? "var(--brass)" : "var(--muted)" }}>{eyebrow}</p>
+      <strong style={{ color: "var(--obsidian)", fontSize: 15, lineHeight: 1.3 }}>{title}</strong>
+      <p style={{ color: "var(--muted)", fontSize: 12, lineHeight: 1.45, flex: 1 }}>{detail}</p>
+      {actionLabel && onAction && (
+        <button onClick={onAction} style={{ ...secondaryButton, fontSize: 10, padding: "8px 10px", minHeight: 32 }}>{actionLabel}</button>
+      )}
+    </div>
+  );
+}
+
 function InfoStack({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div style={{ border: "1px solid var(--fog)", borderRadius: 8, padding: 10, background: "var(--surface)", color: "var(--muted)", fontSize: 12, lineHeight: 1.55 }}>
@@ -3600,6 +3760,21 @@ function InfoStack({ title, children }: { title: string; children: React.ReactNo
     </div>
   );
 }
+
+const clockInBanner: React.CSSProperties = {
+  background: "var(--obsidian)",
+  color: "var(--bone)",
+  border: "1px solid var(--obsidian)",
+  borderRadius: 10,
+  padding: "20px 24px",
+  marginBottom: 16,
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  gap: 16,
+  flexWrap: "wrap",
+  boxShadow: "0 18px 48px rgba(20,17,13,0.18)",
+};
 
 const panel: React.CSSProperties = {
   background: "rgba(255,255,255,0.78)",
