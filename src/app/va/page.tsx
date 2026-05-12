@@ -839,11 +839,35 @@ export default function VaPage() {
     setMessage("Choose a Land Portal or Land Insights CSV to preview.");
     if (!importing) leadCsvInputRef.current?.click();
   };
+  const openCommsThreadForEvent = (event: CommunicationEvent) => {
+    const contactPhone = event.contact_number || (event.direction === "inbound" ? event.from_number : event.to_number);
+    const phoneDigits = (contactPhone ?? "").replace(/\D/g, "");
+    const phone = phoneDigits.length > 10 ? phoneDigits.slice(-10) : phoneDigits;
+    const threadKey = event.matched_lead_id
+      ? `lead:${event.matched_lead_id}`
+      : event.matched_deal_id
+        ? `deal:${event.matched_deal_id}`
+        : phone
+          ? `phone:${phone}`
+          : `event:${event.id}`;
+
+    window.dispatchEvent(new CustomEvent("meridian-open-comms-thread", {
+      detail: {
+        threadKey,
+        phone,
+        leadId: event.matched_lead_id,
+        dealId: event.matched_deal_id,
+        eventId: event.id,
+      },
+    }));
+  };
   const openIncomingSms = (event: CommunicationEvent) => {
+    openCommsThreadForEvent(event);
     if (event.matched_lead_id) {
       const lead = importedLeads.find(item => item.id === event.matched_lead_id);
       if (lead) {
         selectImportedLead(lead, "outreach");
+        window.setTimeout(() => document.getElementById("va-tab-outreach")?.scrollIntoView({ behavior: "smooth", block: "start" }), 80);
         return;
       }
     }

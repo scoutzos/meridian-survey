@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import type { CommunicationEvent } from "@/lib/communications";
 import { fetchCommunicationEvents } from "@/lib/communications";
 import { createImportedLandLeadActivity, type ImportedLandLead } from "@/lib/land-leads";
@@ -31,6 +31,14 @@ type FloatingSmsWindowProps = {
   onCreateDealBrief?: (lead: ImportedLandLead) => void;
   onMarkInterested?: (lead: ImportedLandLead) => void;
   onSent?: (leadId?: string | null) => Promise<void> | void;
+};
+
+type OpenCommsThreadDetail = {
+  threadKey?: string | null;
+  phone?: string | null;
+  leadId?: string | null;
+  dealId?: string | null;
+  eventId?: string | null;
 };
 
 function digits(value: string | null | undefined): string {
@@ -241,19 +249,55 @@ export default function FloatingSmsWindow({
     if (selectedThread?.dealId) onOpenDeal?.(selectedThread.dealId);
     else if (selectedLead) onOpenLead?.(selectedLead);
   };
-  const markThreadRead = (thread: SmsThread) => {
+  const markThreadRead = useCallback((thread: SmsThread) => {
     if (!thread.unread) return;
     setReadState(prev => {
       const next = { ...prev, [thread.key]: thread.lastAt };
       localStorage.setItem(readStorageKey(user), JSON.stringify(next));
       return next;
     });
-  };
+  }, [user]);
+  const selectThread = useCallback((thread: SmsThread) => {
+    setSelectedKey(thread.key);
+    setShowNew(false);
+    markThreadRead(thread);
+  }, [markThreadRead]);
 
   useEffect(() => {
     if (!selectedKey && threads[0]) setSelectedKey(threads[0].key);
     if (selectedKey && !threads.some(thread => thread.key === selectedKey)) setSelectedKey(threads[0]?.key ?? null);
   }, [selectedKey, threads]);
+
+  useEffect(() => {
+    const handleOpenThread = (event: Event) => {
+      const detail = (event as CustomEvent<OpenCommsThreadDetail>).detail ?? {};
+      const targetPhone = last10(detail.phone);
+      const targetThread = threads.find(thread =>
+        thread.key === detail.threadKey
+        || (!!detail.leadId && thread.lead?.id === detail.leadId)
+        || (!!detail.dealId && thread.dealId === detail.dealId)
+        || (!!targetPhone && thread.phone === targetPhone)
+      );
+
+      setOpen(true);
+      setMinimized(false);
+      setShowNew(false);
+      try {
+        localStorage.setItem(windowStateStorageKey(user), JSON.stringify({ open: true, minimized: false }));
+      } catch {
+        // Keep the event-driven open behavior even when local storage is unavailable.
+      }
+
+      if (targetThread) {
+        selectThread(targetThread);
+      } else if (detail.threadKey) {
+        setSelectedKey(detail.threadKey);
+      }
+    };
+
+    window.addEventListener("meridian-open-comms-thread", handleOpenThread);
+    return () => window.removeEventListener("meridian-open-comms-thread", handleOpenThread);
+  }, [selectThread, threads, user]);
 
   useEffect(() => {
     if (!selectedThread) {
@@ -439,7 +483,7 @@ export default function FloatingSmsWindow({
               <button
                 type="button"
                 key={thread.key}
-                onClick={() => { setSelectedKey(thread.key); setShowNew(false); markThreadRead(thread); }}
+                onClick={() => selectThread(thread)}
                 style={{ ...threadButton, ...(selectedThread?.key === thread.key && !showNew ? activeThread : {}) }}
               >
                 <span style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
