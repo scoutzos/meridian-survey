@@ -1,12 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
+import { Call, Device } from "@twilio/voice-sdk";
 import type { CommunicationEvent } from "@/lib/communications";
 import { fetchCommunicationEvents } from "@/lib/communications";
 import { createImportedLandLeadActivity, type ImportedLandLead } from "@/lib/land-leads";
 import { createDealActivity } from "@/lib/deals";
 import { checkLeadCallCompliance, checkLeadSmsCompliance } from "@/lib/bulk-sms";
-import TwilioCallButton from "@/components/TwilioCallButton";
 
 type SmsThread = {
   key: string;
@@ -108,6 +108,7 @@ function recordingUrl(event: CommunicationEvent): string | null {
 }
 
 type ReadState = Record<string, string>;
+type PhoneState = "offline" | "connecting" | "online" | "ringing" | "in-call" | "error";
 
 function readStorageKey(user: string): string {
   return `meridian_sms_read_threads:${user}`;
@@ -115,6 +116,16 @@ function readStorageKey(user: string): string {
 
 function windowStateStorageKey(user: string): string {
   return `meridian_sms_window_state:${user || "default"}`;
+}
+
+function phonePreferenceKey(user: string): string {
+  return `meridian_twilio_phone_online:${user || "default"}`;
+}
+
+function formatCallDuration(seconds: number): string {
+  const mins = Math.floor(seconds / 60);
+  const secs = seconds % 60;
+  return `${mins}:${String(secs).padStart(2, "0")}`;
 }
 
 function buildThreads(events: CommunicationEvent[], leads: ImportedLandLead[], readState: ReadState): SmsThread[] {
@@ -185,7 +196,15 @@ export default function FloatingSmsWindow({
   const [readState, setReadState] = useState<ReadState>({});
   const [sending, setSending] = useState(false);
   const [status, setStatus] = useState("");
+  const [phoneState, setPhoneState] = useState<PhoneState>("offline");
+  const [phoneMessage, setPhoneMessage] = useState("Phone is offline.");
+  const [dialNumber, setDialNumber] = useState("");
+  const [activeCallStartedAt, setActiveCallStartedAt] = useState<number | null>(null);
+  const [callTick, setCallTick] = useState(0);
   const dragRef = useRef({ pointerId: 0, startX: 0, startY: 0, originX: 0, originY: 0 });
+  const deviceRef = useRef<Device | null>(null);
+  const callRef = useRef<Call | null>(null);
+  const connectingRef = useRef(false);
 
   useEffect(() => {
     try {
@@ -236,6 +255,9 @@ export default function FloatingSmsWindow({
   const selectedPhone = selectedThread?.phone ?? last10(newPhone);
   const selectedCompliance = selectedLead ? checkLeadSmsCompliance(selectedLead) : null;
   const selectedCallCompliance = selectedLead ? checkLeadCallCompliance(selectedLead) : null;
+  const dialLead = useMemo(() => leads.find(lead => last10(lead.phone) === last10(dialNumber) || last10(lead.phone_2) === last10(dialNumber)) ?? null, [dialNumber, leads]);
+  const dialCompliance = dialLead ? checkLeadCallCompliance(dialLead) : null;
+  const callDuration = activeCallStartedAt ? Math.max(0, Math.floor((Date.now() - activeCallStartedAt) / 1000) + callTick * 0) : 0;
   const replyBlocked = !!selectedCompliance && !selectedCompliance.allowed;
   const contextTitleText = selectedLead?.property_address || (selectedThread?.dealId ? "Connected deal packet" : "No linked property yet");
   const contextMetaText = [
@@ -262,6 +284,140 @@ export default function FloatingSmsWindow({
     setShowNew(false);
     markThreadRead(thread);
   }, [markThreadRead]);
+
+  const bindVoiceCall = useCallback((call: Call) => {
+    call.on("accept", () => {
+      setPhoneState("in-call");
+      setActiveCallStartedAt(Date.now());
+      setPhoneMessage("Call connected. Recording is handled by Twilio call settings.");
+    });
+    call.on("disconnect", () => {
+      callRef.current = null;
+      setActiveCallStartedAt(null);
+      setPhoneState(deviceRef.current ? "online" : "offline");
+      setPhoneMessage(deviceRef.current ? "Online for calls." : "Phone is offline.");
+    });
+    call.on("cancel", () => {
+      callRef.current = null;
+      setActiveCallStartedAt(null);
+      setPhoneState(deviceRef.current ? "online" : "offline");
+      setPhoneMessage("Incoming call ended.");
+    });
+    call.on("reject", () => {
+      callRef.current = null;
+      setActiveCallStartedAt(null);
+      setPhoneState(deviceRef.current ? "online" : "offline");
+      setPhoneMessage("Incoming call rejected.");
+    });
+  }, []);
+
+  const goOnline = useCallback(async () => {
+    if (deviceRef.current || connectingRef.current) return;
+    connectingRef.current = true;
+    try {
+      localStorage.setItem(phonePreferenceKey(user), "online");
+      setPhoneState("connecting");
+      setPhoneMessage("Connecting phone...");
+      const response = await fetch("/api/twilio/token", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ actor: user }),
+      });
+      const data = await response.json().catch(() => ({})) as { token?: string; error?: string };
+      if (!response.ok || !data.token) throw new Error(data.error || "Could not connect phone.");
+
+      const device = new Device(data.token, { logLevel: 1 });
+      device.on("registered", () => {
+        setPhoneState("online");
+        setPhoneMessage("Online for inbound and outbound calls.");
+      });
+      device.on("unregistered", () => {
+        setPhoneState("offline");
+        setPhoneMessage("Phone is offline.");
+      });
+      device.on("error", error => {
+        setPhoneState("error");
+        setPhoneMessage(error.message || "Twilio phone error.");
+      });
+      device.on("incoming", call => {
+        callRef.current = call;
+        setPhoneState("ringing");
+        setPhoneMessage(`Incoming call${call.parameters.From ? ` from ${call.parameters.From}` : ""}.`);
+        bindVoiceCall(call);
+      });
+      await device.register();
+      deviceRef.current = device;
+    } catch (error) {
+      setPhoneState("error");
+      setPhoneMessage(error instanceof Error ? error.message : "Could not connect phone.");
+    } finally {
+      connectingRef.current = false;
+    }
+  }, [bindVoiceCall, user]);
+
+  const goOffline = useCallback(() => {
+    localStorage.setItem(phonePreferenceKey(user), "offline");
+    callRef.current?.disconnect();
+    deviceRef.current?.unregister();
+    deviceRef.current?.destroy();
+    callRef.current = null;
+    deviceRef.current = null;
+    connectingRef.current = false;
+    setActiveCallStartedAt(null);
+    setPhoneState("offline");
+    setPhoneMessage("Phone is offline.");
+  }, [user]);
+
+  const startCall = useCallback(async (toNumber: string, leadId?: string | null, dealId?: string | null) => {
+    const normalized = last10(toNumber);
+    if (!normalized) {
+      setPhoneMessage("Add a phone number before dialing.");
+      return;
+    }
+    const leadForCompliance = leadId ? leads.find(lead => lead.id === leadId) : leads.find(lead => last10(lead.phone) === normalized || last10(lead.phone_2) === normalized);
+    const compliance = leadForCompliance ? checkLeadCallCompliance(leadForCompliance) : null;
+    if (compliance && !compliance.allowed) {
+      setPhoneMessage(`Call blocked: ${compliance.blockLabel}.`);
+      setPhoneState("error");
+      return;
+    }
+    try {
+      await goOnline();
+      const device = deviceRef.current;
+      if (!device) throw new Error("Phone is still connecting. Try again in a moment.");
+      setPhoneState("connecting");
+      setPhoneMessage(`Dialing ${displayPhone(toNumber)}...`);
+      const call = await device.connect({
+        params: {
+          To: compliance?.phone?.number || toNumber,
+          ...(leadForCompliance?.id ? { leadId: leadForCompliance.id } : leadId ? { leadId } : {}),
+          ...(dealId ? { dealId } : {}),
+        },
+      });
+      callRef.current = call;
+      bindVoiceCall(call);
+    } catch (error) {
+      setPhoneState("error");
+      setPhoneMessage(error instanceof Error ? error.message : "Could not start call.");
+    }
+  }, [bindVoiceCall, goOnline, leads]);
+
+  useEffect(() => {
+    return () => {
+      callRef.current?.disconnect();
+      deviceRef.current?.destroy();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (localStorage.getItem(phonePreferenceKey(user)) === "online") void goOnline();
+  }, [goOnline, user]);
+
+  useEffect(() => {
+    if (phoneState !== "in-call") return;
+    const timer = window.setInterval(() => setCallTick(tick => tick + 1), 1000);
+    return () => window.clearInterval(timer);
+  }, [phoneState]);
 
   useEffect(() => {
     if (!selectedKey && threads[0]) setSelectedKey(threads[0].key);
@@ -460,6 +616,52 @@ export default function FloatingSmsWindow({
       {!minimized && (
         <div style={body}>
           <aside style={threadList}>
+            <section style={phoneDesk}>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
+                <div>
+                  <p style={eyebrowLight}>Phone</p>
+                  <strong style={phoneStateText}>
+                    {phoneState === "offline" ? "Offline" : phoneState === "connecting" ? "Connecting" : phoneState === "ringing" ? "Incoming call" : phoneState === "in-call" ? `On call ${formatCallDuration(callDuration)}` : phoneState === "error" ? "Needs attention" : "Online"}
+                  </strong>
+                </div>
+                <span style={{ ...phoneDot, background: phoneState === "ringing" || phoneState === "error" ? "var(--brass)" : phoneState === "online" || phoneState === "in-call" ? "#2f8f5b" : "var(--fog)" }} />
+              </div>
+              <p style={phoneMessageText}>{phoneMessage}</p>
+              <div style={phoneActions}>
+                {phoneState === "offline" || phoneState === "error" ? (
+                  <button type="button" onClick={() => void goOnline()} style={phonePrimary}>Go Online</button>
+                ) : phoneState === "ringing" ? (
+                  <>
+                    <button type="button" onClick={() => callRef.current?.accept()} style={phonePrimary}>Accept</button>
+                    <button type="button" onClick={() => callRef.current?.reject()} style={phoneSecondary}>Decline</button>
+                  </>
+                ) : phoneState === "in-call" ? (
+                  <button type="button" onClick={() => callRef.current?.disconnect()} style={phonePrimary}>Hang Up</button>
+                ) : (
+                  <button type="button" onClick={goOffline} style={phoneSecondary}>Go Offline</button>
+                )}
+              </div>
+              <div style={dialRow}>
+                <input
+                  value={dialNumber}
+                  onChange={event => setDialNumber(event.target.value)}
+                  placeholder="Dial number..."
+                  inputMode="tel"
+                  style={dialInput}
+                />
+                <button
+                  type="button"
+                  onClick={() => void startCall(dialNumber, dialLead?.id ?? null, dialLead?.deal_id ?? null)}
+                  disabled={!last10(dialNumber) || phoneState === "connecting" || phoneState === "ringing" || phoneState === "in-call" || dialCompliance?.allowed === false}
+                  style={{ ...dialButton, opacity: !last10(dialNumber) || phoneState === "connecting" || phoneState === "ringing" || phoneState === "in-call" || dialCompliance?.allowed === false ? 0.55 : 1 }}
+                  title={dialCompliance?.allowed === false ? `Call blocked: ${dialCompliance.blockLabel}.` : "Dial number"}
+                >
+                  Dial
+                </button>
+              </div>
+              {dialLead && <p style={dialHint}>Matched: {leadName(dialLead)}</p>}
+              {dialCompliance?.allowed === false && <p style={dialBlock}>Call blocked: {dialCompliance.blockLabel}.</p>}
+            </section>
             <div style={searchWrap}>
               <span style={{ color: "var(--muted)", fontSize: 13 }}>⌕</span>
               <input value={newSearch} onChange={event => setNewSearch(event.target.value)} placeholder="Search threads by name or phone..." style={threadSearch} />
@@ -535,15 +737,15 @@ export default function FloatingSmsWindow({
                     <p style={personMeta}>{displayPhone(selectedPhone)}</p>
                   </div>
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
-                    <TwilioCallButton
-                      toNumber={selectedCallCompliance?.phone?.number || selectedPhone}
-                      leadId={selectedLead?.id ?? null}
-                      dealId={selectedThread.dealId}
-                      actor={user}
-                      disabled={!selectedPhone || selectedCallCompliance?.allowed === false}
-                      disabledReason={selectedCallCompliance?.allowed === false ? `Call blocked: ${selectedCallCompliance.blockLabel}.` : null}
-                      compact
-                    />
+                    <button
+                      type="button"
+                      onClick={() => void startCall(selectedCallCompliance?.phone?.number || selectedPhone, selectedLead?.id ?? null, selectedThread.dealId)}
+                      disabled={!selectedPhone || selectedCallCompliance?.allowed === false || phoneState === "connecting" || phoneState === "ringing" || phoneState === "in-call"}
+                      style={{ ...roundAction, opacity: !selectedPhone || selectedCallCompliance?.allowed === false || phoneState === "connecting" || phoneState === "ringing" || phoneState === "in-call" ? 0.55 : 1 }}
+                      title={selectedCallCompliance?.allowed === false ? `Call blocked: ${selectedCallCompliance.blockLabel}.` : "Call this contact"}
+                    >
+                      ☎
+                    </button>
                     <button type="button" onClick={() => selectedLead ? onCreateDealBrief?.(selectedLead) : selectedThread.dealId ? onOpenDeal?.(selectedThread.dealId) : undefined} style={roundAction}>◇</button>
                     <button type="button" onClick={openSelectedRecord} style={roundAction}>…</button>
                   </div>
@@ -702,6 +904,98 @@ const conversation: CSSProperties = {
   flexDirection: "column",
   minWidth: 0,
   padding: 12,
+};
+
+const phoneDesk: CSSProperties = {
+  background: "var(--surface)",
+  border: "1px solid rgba(176,137,84,0.32)",
+  borderRadius: 8,
+  display: "grid",
+  gap: 8,
+  padding: 10,
+};
+
+const phoneStateText: CSSProperties = {
+  color: "var(--obsidian)",
+  display: "block",
+  fontSize: 13,
+  marginTop: 2,
+};
+
+const phoneDot: CSSProperties = {
+  border: "3px solid var(--surface)",
+  borderRadius: 999,
+  boxShadow: "0 0 0 1px rgba(20,17,13,0.08)",
+  height: 14,
+  width: 14,
+};
+
+const phoneMessageText: CSSProperties = {
+  color: "var(--muted)",
+  fontSize: 11,
+  lineHeight: 1.35,
+};
+
+const phoneActions: CSSProperties = {
+  display: "flex",
+  gap: 8,
+  flexWrap: "wrap",
+};
+
+const phonePrimary: CSSProperties = {
+  background: "var(--obsidian)",
+  border: "1px solid var(--obsidian)",
+  borderRadius: 7,
+  color: "var(--bone)",
+  cursor: "pointer",
+  fontSize: 11,
+  fontWeight: 800,
+  padding: "8px 10px",
+};
+
+const phoneSecondary: CSSProperties = {
+  background: "var(--surface)",
+  border: "1px solid var(--fog)",
+  borderRadius: 7,
+  color: "var(--obsidian)",
+  cursor: "pointer",
+  fontSize: 11,
+  fontWeight: 800,
+  padding: "8px 10px",
+};
+
+const dialRow: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "minmax(0, 1fr) auto",
+  gap: 6,
+};
+
+const dialInput: CSSProperties = {
+  border: "1px solid var(--fog)",
+  borderRadius: 7,
+  background: "var(--bone)",
+  color: "var(--ink)",
+  minWidth: 0,
+  padding: "8px 9px",
+  fontSize: 12,
+};
+
+const dialButton: CSSProperties = {
+  ...phonePrimary,
+  minWidth: 54,
+};
+
+const dialHint: CSSProperties = {
+  color: "var(--muted)",
+  fontSize: 11,
+  lineHeight: 1.35,
+};
+
+const dialBlock: CSSProperties = {
+  color: "var(--brass)",
+  fontSize: 11,
+  fontWeight: 700,
+  lineHeight: 1.35,
 };
 
 const newButton: CSSProperties = {

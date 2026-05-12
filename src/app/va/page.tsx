@@ -76,7 +76,6 @@ import { labelForStatus } from "@/lib/status-map";
 import { getLeadNextAction, type WorkflowTone } from "@/lib/workflow-actions";
 import OperatingHeader from "@/components/OperatingHeader";
 import BulkSmsDrawer from "@/components/BulkSmsDrawer";
-import TwilioPhoneDock from "@/components/TwilioPhoneDock";
 import TwilioCallButton from "@/components/TwilioCallButton";
 import { categorizeForBulkSms, checkLeadCallCompliance, checkLeadSmsCompliance } from "@/lib/bulk-sms";
 import { fetchActiveMemberNames } from "@/lib/members";
@@ -1710,8 +1709,6 @@ export default function VaPage() {
           stats={headerStats}
         />
       )}
-
-      <TwilioPhoneDock actor={user} />
 
       <input
         ref={leadCsvInputRef}
