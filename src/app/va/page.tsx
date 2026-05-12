@@ -155,10 +155,10 @@ const DISPOSITION_STATUSES: Array<{ value: DispositionStatus; label: string }> =
 type VaTab = "today" | "outreach" | "lists" | "packet" | "brief";
 
 const TABS: Array<{ value: VaTab; label: string }> = [
-  { value: "today", label: "VA Home" },
-  { value: "outreach", label: "Lead Inbox" },
+  { value: "today", label: "Home" },
+  { value: "outreach", label: "Contact Queue" },
   { value: "lists", label: "Lists" },
-  { value: "packet", label: "Deal Packet" },
+  { value: "packet", label: "Packets" },
   { value: "brief", label: "Daily Brief" },
 ];
 
@@ -317,7 +317,7 @@ function appendBriefText(existing: string | null | undefined, addition: string):
 
 function taskRecordHref(task: ActionItem): string {
   if (task.source_table === "meridian_deals" && task.source_id) return `/opportunity?deal=${task.source_id}`;
-  if (task.source_table === "meridian_imported_land_leads" && task.source_id) return `/opportunity?lead=${task.source_id}`;
+  if (task.source_table === "meridian_imported_land_leads" && task.source_id) return `/lead/${task.source_id}`;
   if (task.source_table === "meridian_projects" && task.source_id) return "/projects";
   if (task.source_table === "meeting_notes" && task.source_id) return "/meetings";
   return "/actions";
@@ -1610,7 +1610,7 @@ export default function VaPage() {
       subtitle: "Start the shift, pick the next priority, handle assigned work, and keep the member-facing brief moving.",
     },
     outreach: {
-      eyebrow: "Lead Inbox",
+      eyebrow: "Contact Queue",
       title: "Seller Outreach Queue",
       subtitle: "Work seller replies, follow-ups, interested owners, calls, texts, and dispositions without time-clock clutter.",
     },
@@ -1620,7 +1620,7 @@ export default function VaPage() {
       subtitle: "Upload Land Portal or Land Insights CSVs, validate records, filter leads, and prepare compliant outreach.",
     },
     packet: {
-      eyebrow: "Deal Packet Desk",
+      eyebrow: "Packet Desk",
       title: "Build Member Review Packets",
       subtitle: "Turn interested sellers into shared deal files with calculator support, diligence, notes, and a clear member ask.",
     },
@@ -1649,7 +1649,7 @@ export default function VaPage() {
       <>
       <button onClick={startNewImport} style={secondaryButton}>New Import</button>
       <button onClick={() => setBulkSmsDrawerOpen(true)} disabled={bulkEligibleLeads.length === 0} style={{ ...secondaryButton, opacity: bulkEligibleLeads.length === 0 ? 0.55 : 1 }}>Bulk Text</button>
-      <button onClick={() => goToTab("outreach")} style={primaryButton}>Work Lead Inbox</button>
+      <button onClick={() => goToTab("outreach")} style={primaryButton}>Work Contact Queue</button>
       </>
     ),
     packet: (
@@ -1662,7 +1662,7 @@ export default function VaPage() {
     brief: (
       <>
       <button onClick={autofillBriefStats} style={secondaryButton}>Auto-fill</button>
-      <button onClick={pullSakariBrief} style={secondaryButton}>Pull SMS</button>
+      <button onClick={pullSakariBrief} style={secondaryButton}>Pull Comms</button>
       <button onClick={openShift ? handleClockOut : handleClockIn} disabled={clockBusy} style={{ ...primaryButton, opacity: clockBusy ? 0.65 : 1 }}>
         {clockBusy ? "Saving..." : openShift ? "Clock Out" : "Clock In"}
       </button>
@@ -1677,19 +1677,19 @@ export default function VaPage() {
     onAction: card.disabled ? undefined : card.onAction,
     tone: card.hot ? "hot" as const : card.label === "Brief" && portalStats.briefSubmitted ? "good" as const : "default" as const,
   })) : activeTab === "outreach" ? [
-    { label: "Incoming Texts", value: String(recentInboundSms.length), detail: "Recent seller replies", action: "Open", onAction: () => goToTab("outreach"), tone: recentInboundSms.length ? "hot" as const : "default" as const },
+    { label: "Seller Replies", value: String(recentInboundSms.length), detail: "Recent seller replies", action: "Open", onAction: () => goToTab("outreach"), tone: recentInboundSms.length ? "hot" as const : "default" as const },
     { label: "Follow-ups", value: String(followUpsDue.length), detail: "Dated follow-ups due", action: "Review", onAction: () => goToTab("outreach"), tone: followUpsDue.length ? "hot" as const : "default" as const },
     { label: "Interested", value: String(interestedLeads.length), detail: "Sellers showing interest", action: "Open Leads", onAction: () => { setLeadFilter("interested"); goToTab("lists"); }, tone: interestedLeads.length ? "hot" as const : "default" as const },
     { label: "Draft Packets", value: String(draftLeads.length), detail: "Leads ready to package", action: "Build", onAction: () => draftLeads[0] ? openDealBrief(draftLeads[0]) : goToTab("packet"), tone: draftLeads.length ? "hot" as const : "default" as const },
   ] : activeTab === "lists" ? [
     { label: "Imported", value: String(importedLeads.length), detail: "Total list records", action: "Upload", onAction: startNewImport, tone: "default" as const },
     { label: "New", value: String(importStats.newRows), detail: "Fresh from lists", action: "Filter", onAction: () => setLeadFilter("new"), tone: importStats.newRows ? "hot" as const : "default" as const },
-    { label: "SMS Eligible", value: String(bulkEligibleLeads.length), detail: "Current view recipients", action: "Bulk Text", onAction: () => setBulkSmsDrawerOpen(true), tone: bulkEligibleLeads.length ? "hot" as const : "default" as const },
+    { label: "Eligible", value: String(bulkEligibleLeads.length), detail: "Current view recipients", action: "Bulk Text", onAction: () => setBulkSmsDrawerOpen(true), tone: bulkEligibleLeads.length ? "hot" as const : "default" as const },
     { label: "Converted", value: String(importStats.converted), detail: "Moved into deal flow", action: "Packets", onAction: () => goToTab("packet"), tone: "default" as const },
   ] : activeTab === "packet" ? [
     { label: "Active Packets", value: String(deals.length), detail: "Drafts and reviews", action: "New", onAction: startNew, tone: "default" as const },
     { label: "Ready Checks", value: `${readyCount}/${readinessItems.length}`, detail: "Quality checks complete", action: "Review", onAction: () => goToTab("packet"), tone: submissionReady ? "hot" as const : "default" as const },
-    { label: "Submitted Today", value: String(portalStats.submittedToday), detail: "Member review packets", action: "Open CRM", onAction: () => router.push("/crm?view=deals"), tone: "default" as const },
+    { label: "Submitted Today", value: String(portalStats.submittedToday), detail: "Member review packets", action: "Open Records", onAction: () => router.push("/crm?view=deals"), tone: "default" as const },
     { label: "Missing Items", value: String(missingReadyItems.length), detail: "Before packet is clean", action: "Fix", onAction: () => goToTab("packet"), tone: missingReadyItems.length ? "hot" as const : "default" as const },
   ] : [
     { label: "Clock", value: openShift ? formatDuration(liveShiftMinutes) : "Ready", detail: openShift ? "Shift is running" : "Not clocked in", action: openShift ? "Clock Out" : "Clock In", onAction: openShift ? handleClockOut : handleClockIn, tone: openShift ? "hot" as const : "default" as const },
@@ -1764,7 +1764,7 @@ export default function VaPage() {
       <div style={{ display: "grid", gridTemplateColumns: activeTab === "packet" ? "330px minmax(0, 1fr)" : "1fr", gap: 18 }} className="va-workspace">
         {activeTab === "packet" && <aside style={panel}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 12 }}>
-            <h2 style={sectionTitle}>Deal Packets</h2>
+            <h2 style={sectionTitle}>Packets</h2>
             <span style={{ fontSize: 11, color: "var(--muted)" }}>{deals.length} active</span>
           </div>
           {loading && <p style={{ color: "var(--muted)", fontSize: 13 }}>Loading...</p>}
@@ -1835,7 +1835,7 @@ export default function VaPage() {
                 </p>
               </div>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                <button onClick={() => goToTab("outreach")} style={secondaryButton}>Open Lead Inbox</button>
+                <button onClick={() => goToTab("outreach")} style={secondaryButton}>Open Contact Queue</button>
                 <button onClick={() => draftLeads[0] ? openDealBrief(draftLeads[0]) : goToTab("packet")} style={secondaryButton}>Build packet</button>
                 <button onClick={() => goToTab("brief")} style={primaryButton}>End shift</button>
               </div>
@@ -1927,17 +1927,17 @@ export default function VaPage() {
               <section style={subPanel}>
                 <p style={eyebrowSmall}>Next best action</p>
                 <h3 style={{ ...sectionTitle, fontSize: 28, marginTop: 5 }}>
-                  {recentInboundSms.length ? "Review incoming texts" : openAssignedTasks.length ? "Handle member-assigned tasks" : interestedLeads.length ? "Build interested seller packets" : importStats.newRows ? "Start with new list leads" : "Review the daily brief"}
+                  {recentInboundSms.length ? "Review seller replies" : openAssignedTasks.length ? "Handle member-assigned tasks" : interestedLeads.length ? "Build interested seller packets" : importStats.newRows ? "Start with new list leads" : "Review the daily brief"}
                 </h3>
                 <p style={{ color: "var(--muted)", fontSize: 13, lineHeight: 1.5, marginTop: 6 }}>
-                  {recentInboundSms.length ? `${recentInboundSms.length} incoming seller text${recentInboundSms.length === 1 ? "" : "s"} are visible in Lead Inbox, including matched and unmatched replies.`
+                  {recentInboundSms.length ? `${recentInboundSms.length} seller repl${recentInboundSms.length === 1 ? "y is" : "ies are"} visible in Contact Queue, including matched and unmatched replies.`
                     : openAssignedTasks.length ? `${openAssignedTasks.length} task${openAssignedTasks.length === 1 ? "" : "s"} from members need a status update.`
                       : interestedLeads.length ? `${interestedLeads.length} interested seller${interestedLeads.length === 1 ? "" : "s"} can be moved toward a deal packet.`
                         : importStats.newRows ? `${importStats.newRows} new imported lead${importStats.newRows === 1 ? "" : "s"} are ready for outreach.`
                           : "No urgent seller queue is waiting. Keep the brief current or prep the next list."}
                 </p>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8, marginTop: 14 }} className="two-col">
-                  <button onClick={() => goToTab("outreach")} style={secondaryButton}>Open Lead Inbox</button>
+                  <button onClick={() => goToTab("outreach")} style={secondaryButton}>Open Contact Queue</button>
                   <button onClick={() => goToTab("brief")} style={primaryButton}>Daily Brief</button>
                 </div>
               </section>
@@ -1989,7 +1989,7 @@ export default function VaPage() {
                   <p style={eyebrowSmall}>Today&apos;s queues</p>
                   <div style={{ display: "grid", gap: 8, marginTop: 10 }}>
                     <QueueButton label="New imported leads" detail="Fresh from land lists" count={importStats.newRows} onClick={() => { setActiveTab("lists"); setLeadFilter("new"); }} />
-                    <QueueButton label="Incoming texts" detail="Matched and unmatched SMS" count={recentInboundSms.length} hot={!!recentInboundSms.length} onClick={() => setActiveTab("outreach")} />
+                    <QueueButton label="Seller replies" detail="Matched and unmatched conversations" count={recentInboundSms.length} hot={!!recentInboundSms.length} onClick={() => setActiveTab("outreach")} />
                     <QueueButton label="Interested sellers" detail="Replied and expressed interest" count={interestedLeads.length} hot={!!interestedLeads.length} onClick={() => { setLeadFilter("interested"); setActiveTab("lists"); }} />
                     <QueueButton label="Follow-up due" detail="No reply in 24-72 hrs" count={followUpsDue.length} hot={!!followUpsDue.length} onClick={() => setActiveTab("outreach")} />
                     <QueueButton label="Member-assigned tasks" detail="From member portal" count={openAssignedTasks.length} hot={!!openAssignedTasks.length} onClick={() => setActiveTab("today")} />
@@ -2051,7 +2051,7 @@ export default function VaPage() {
                               <div style={{ display: "flex", gap: 5 }}>
                                 <button onClick={event => { event.stopPropagation(); setActivityDraft({ activityType: "called", summary: "", nextFollowUpDate: "" }); selectImportedLead(lead); }} style={iconButton}>Call</button>
                                 <button onClick={event => { event.stopPropagation(); selectImportedLead(lead); window.setTimeout(() => document.getElementById("va-workdesk-sms")?.focus(), 80); }} style={iconButton}>Text</button>
-                                <button onClick={event => { event.stopPropagation(); router.push(`/opportunity?lead=${lead.id}`); }} style={iconButton}>File</button>
+                                <button onClick={event => { event.stopPropagation(); router.push(`/lead/${lead.id}`); }} style={iconButton}>Record</button>
                               </div>
                             </td>
                           </tr>
@@ -2114,7 +2114,7 @@ export default function VaPage() {
                     activityDraft={activityDraft}
                     setActivityDraft={setActivityDraft}
                     onLogActivity={logLeadActivity}
-                    onOpenFile={() => router.push(`/opportunity?lead=${selectedImportedLead.id}`)}
+                    onOpenFile={() => router.push(`/lead/${selectedImportedLead.id}`)}
                     onBuildPacket={() => loadImportedLead(selectedImportedLead, true)}
                     onPass={async () => { await updateImportedLandLeadStatus(selectedImportedLead.id, "passed", selectedImportedLead.deal_id); setImportedLeads(await fetchImportedLandLeads(500)); }}
                     compact
@@ -2137,7 +2137,7 @@ export default function VaPage() {
                 </div>
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                   <button onClick={autofillBriefStats} style={secondaryButton}>Auto-fill</button>
-                  <button onClick={pullSakariBrief} style={secondaryButton}>Pull SMS</button>
+                  <button onClick={pullSakariBrief} style={secondaryButton}>Pull Comms</button>
                   <button onClick={() => setActiveTab("brief")} style={secondaryButton}>Edit Brief</button>
                 </div>
               </div>
@@ -2545,7 +2545,7 @@ export default function VaPage() {
                   </div>
                   <div style={subPanel}>
                     <p style={miniLabel}>3. Text the audience</p>
-                    <p style={{ color: "var(--muted)", fontSize: 12, lineHeight: 1.45 }}>Use the saved list as the audience source, bulk text eligible owners, and work replies from the Lead Inbox.</p>
+                    <p style={{ color: "var(--muted)", fontSize: 12, lineHeight: 1.45 }}>Use the saved list as the audience source, bulk text eligible owners, and work replies from the Contact Queue.</p>
                   </div>
                 </div>
               </div>
@@ -2632,7 +2632,7 @@ export default function VaPage() {
                       activityDraft={activityDraft}
                       setActivityDraft={setActivityDraft}
                       onLogActivity={logLeadActivity}
-                      onOpenFile={() => router.push(`/opportunity?lead=${selectedImportedLead.id}`)}
+                      onOpenFile={() => router.push(`/lead/${selectedImportedLead.id}`)}
                       onBuildPacket={() => loadImportedLead(selectedImportedLead, true)}
                       onPass={async () => { await updateImportedLandLeadStatus(selectedImportedLead.id, "passed", selectedImportedLead.deal_id); setImportedLeads(await fetchImportedLandLeads(500)); }}
                       compact
@@ -2875,7 +2875,7 @@ export default function VaPage() {
           <section style={panel}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12, flexWrap: "wrap", marginBottom: 12 }}>
               <div>
-                <p style={eyebrowSmall}>Lead Inbox</p>
+                <p style={eyebrowSmall}>Contact Queue</p>
                 <h2 style={sectionTitle}>Seller conversations and follow-ups</h2>
               </div>
               <span style={(followUpsDue.length || recentInboundSms.length || interestedLeads.length) ? hotPill : pill}>
@@ -2883,7 +2883,7 @@ export default function VaPage() {
               </span>
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, marginBottom: 14 }} className="number-grid">
-              <ShiftCard label="Incoming texts" value={String(recentInboundSms.length)} tone={recentInboundSms.length ? "hot" : "calm"} />
+              <ShiftCard label="Seller replies" value={String(recentInboundSms.length)} tone={recentInboundSms.length ? "hot" : "calm"} />
               <ShiftCard label="Due follow-ups" value={String(followUpsDue.length)} tone={followUpsDue.length ? "hot" : "calm"} />
               <ShiftCard label="Interested sellers" value={String(interestedLeads.length)} tone={interestedLeads.length ? "hot" : "calm"} />
               <ShiftCard label="Textable leads" value={String(workdeskLeadRows.filter(lead => lead.phone || lead.phone_2).length)} />
@@ -2892,7 +2892,7 @@ export default function VaPage() {
             <div style={{ display: "grid", gridTemplateColumns: "260px minmax(0, 1fr) 420px", gap: 14 }} className="lead-inbox-grid">
               <aside style={{ display: "grid", gap: 12, alignContent: "start" }}>
                 <section style={{ ...subPanel, borderColor: recentInboundSms.length ? "var(--brass)" : "var(--fog)", background: recentInboundSms.length ? "rgba(176,137,84,0.08)" : "var(--bone)" }}>
-                  <p style={eyebrowSmall}>Recent incoming texts</p>
+                  <p style={eyebrowSmall}>Recent seller replies</p>
                   <div style={{ display: "grid", gap: 8, marginTop: 10 }}>
                     {recentInboundSms.slice(0, 8).map(event => (
                       <button key={event.id} onClick={() => openIncomingSms(event)} style={{ ...miniInboxButton, borderColor: event.matched_lead_id || event.matched_deal_id ? "var(--fog)" : "var(--brass)" }}>
@@ -2901,7 +2901,7 @@ export default function VaPage() {
                         <em>{event.matched_deal_id ? "Matched deal" : event.matched_lead_id ? "Matched lead" : "Unmatched"}</em>
                       </button>
                     ))}
-                    {recentInboundSms.length === 0 && <p style={{ color: "var(--muted)", fontSize: 12, lineHeight: 1.45 }}>No incoming seller texts have been received yet.</p>}
+                    {recentInboundSms.length === 0 && <p style={{ color: "var(--muted)", fontSize: 12, lineHeight: 1.45 }}>No seller replies have been received yet.</p>}
                   </div>
                 </section>
 
@@ -2992,14 +2992,14 @@ export default function VaPage() {
                     activityDraft={activityDraft}
                     setActivityDraft={setActivityDraft}
                     onLogActivity={logLeadActivity}
-                    onOpenFile={() => router.push(`/opportunity?lead=${selectedImportedLead.id}`)}
+                    onOpenFile={() => router.push(`/lead/${selectedImportedLead.id}`)}
                     onBuildPacket={() => loadImportedLead(selectedImportedLead, true)}
                     onPass={async () => { await updateImportedLandLeadStatus(selectedImportedLead.id, "passed", selectedImportedLead.deal_id); setImportedLeads(await fetchImportedLandLeads(500)); }}
                     compact
                   />
                 ) : (
                   <section style={subPanel}>
-                    <p style={eyebrowSmall}>SMS workspace</p>
+                    <p style={eyebrowSmall}>Seller workspace</p>
                     <h3 style={{ ...sectionTitle, fontSize: 22 }}>Pick a seller</h3>
                     <p style={{ color: "var(--muted)", fontSize: 13, lineHeight: 1.5, marginTop: 8 }}>
                       Select a seller from the queue to see conversation history, send a Sakari text, log a call, set disposition, or build a packet.
@@ -3554,7 +3554,7 @@ function SellerCommandCenter({
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
             {lead.property_url && <a href={lead.property_url} target="_blank" rel="noreferrer" style={secondaryButton}>Open Parcel</a>}
             {typeof lead.raw_data?.["Google Map"] === "string" && <a href={lead.raw_data["Google Map"]} target="_blank" rel="noreferrer" style={secondaryButton}>Map</a>}
-            <button onClick={onOpenFile} style={secondaryButton}>Open File</button>
+            <button onClick={onOpenFile} style={secondaryButton}>Open Record</button>
             <button onClick={onBuildPacket} style={primaryButton}>Build Packet</button>
             <button onClick={onPass} style={secondaryButton}>Pass</button>
           </div>
@@ -3597,7 +3597,7 @@ function SellerCommandCenter({
 
           <div style={{ border: "1px solid var(--fog)", borderRadius: 8, padding: 10, background: "var(--surface)", marginBottom: 12 }}>
             <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 8 }}>
-              <strong style={{ color: "var(--obsidian)", fontSize: 13 }}>Reply by SMS</strong>
+              <strong style={{ color: "var(--obsidian)", fontSize: 13 }}>Message seller</strong>
               <span style={pill}>{smsCompliance.phone?.number || lead.phone || lead.phone_2 || "No phone"}</span>
             </div>
             {smsBlocked && (

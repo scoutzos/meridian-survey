@@ -119,7 +119,7 @@ function formatDue(iso: string | null): string | null {
 
 function taskHref(item: ActionItem): string {
   if (item.source_table === "meridian_deals" && item.source_id) return `/opportunity?deal=${item.source_id}`;
-  if (item.source_table === "meridian_imported_land_leads" && item.source_id) return `/opportunity?lead=${item.source_id}`;
+  if (item.source_table === "meridian_imported_land_leads" && item.source_id) return `/lead/${item.source_id}`;
   if (item.source_table === "meridian_buyer_offers" && item.source_id) return `/crm?view=dispo&offer=${item.source_id}`;
   if (item.source_table === "meridian_projects" && item.source_id) return `/projects?project=${item.source_id}`;
   if (item.source_table === "meeting_notes" && item.source_id) return `/meetings?note=${item.source_id}`;
@@ -279,7 +279,7 @@ export default function ActionsPage() {
       id: lead.id,
       label: lead.owner_name || lead.property_address || lead.parcel_id || lead.phone || "Imported lead",
       detail: `${lead.county || "County pending"} · ${labelForStatus(lead.status)}`,
-      href: `/opportunity?lead=${lead.id}`,
+      href: `/lead/${lead.id}`,
     })),
     ...deals.slice(0, 80).map(deal => ({
       type: "deal" as const,

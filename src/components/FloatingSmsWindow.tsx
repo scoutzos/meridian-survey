@@ -56,7 +56,7 @@ function formatTime(iso: string | null | undefined): string {
 }
 
 function leadName(lead: ImportedLandLead | null): string {
-  if (!lead) return "Unmatched seller";
+  if (!lead) return "Unmatched contact";
   return lead.owner_name || lead.property_address || lead.parcel_id || lead.phone || lead.phone_2 || "Imported lead";
 }
 
@@ -267,7 +267,7 @@ export default function FloatingSmsWindow({
   };
 
   const sendText = async (toNumber: string, message: string, leadId?: string | null) => {
-    if (!canSend) { setStatus("You can review SMS history, but sending is limited to VA/admin users."); return; }
+    if (!canSend) { setStatus("You can review conversation history, but sending is limited to VA/admin users."); return; }
     const body = message.trim();
     if (!last10(toNumber)) { setStatus("Add a phone number first."); return; }
     if (!body) { setStatus("Write a message before sending."); return; }
@@ -364,8 +364,8 @@ export default function FloatingSmsWindow({
         onPointerCancel={endDrag}
       >
         <div>
-          <p style={eyebrow}>Live SMS</p>
-          <strong style={{ color: "var(--bone)", fontSize: 13 }}>Seller comms command</strong>
+          <p style={eyebrow}>Comms</p>
+          <strong style={{ color: "var(--bone)", fontSize: 13 }}>Relationship comms</strong>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
           <span style={badge}>{threads.length}</span>
@@ -421,7 +421,7 @@ export default function FloatingSmsWindow({
             {showNew ? (
               <div style={newPanel}>
                 <p style={eyebrowLight}>New outbound text</p>
-                <input value={newSearch} onChange={event => setNewSearch(event.target.value)} placeholder="Search lead, seller, parcel, county..." style={input} />
+                <input value={newSearch} onChange={event => setNewSearch(event.target.value)} placeholder="Search lead, contact, parcel, county..." style={input} />
                 <div style={{ display: "grid", gap: 6, maxHeight: 120, overflowY: "auto" }}>
                   {leadSuggestions.map(lead => (
                     <button
@@ -529,7 +529,7 @@ export default function FloatingSmsWindow({
                     </div>
                     {composerMode === "text" ? (
                       <>
-                        <textarea value={reply} onChange={event => setReply(event.target.value)} rows={3} placeholder={replyBlocked ? "SMS disabled for this lead." : "Reply to this seller..."} disabled={replyBlocked} style={textarea} />
+                        <textarea value={reply} onChange={event => setReply(event.target.value)} rows={3} placeholder={replyBlocked ? "SMS disabled for this record." : "Reply to this contact..."} disabled={replyBlocked} style={textarea} />
                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
                           <span style={counter}>{reply.trim().length}/1200</span>
                           <button type="button" onClick={() => sendText(selectedPhone, reply, selectedLead?.id ?? null)} disabled={sending || !reply.trim() || replyBlocked} style={{ ...sendButton, opacity: sending || !reply.trim() || replyBlocked ? 0.55 : 1 }}>
