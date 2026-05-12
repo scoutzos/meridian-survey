@@ -5,7 +5,8 @@ import type { CommunicationEvent } from "@/lib/communications";
 import { fetchCommunicationEvents } from "@/lib/communications";
 import { createImportedLandLeadActivity, type ImportedLandLead } from "@/lib/land-leads";
 import { createDealActivity } from "@/lib/deals";
-import { checkLeadSmsCompliance } from "@/lib/bulk-sms";
+import { checkLeadCallCompliance, checkLeadSmsCompliance } from "@/lib/bulk-sms";
+import TwilioCallButton from "@/components/TwilioCallButton";
 
 type SmsThread = {
   key: string;
@@ -74,6 +75,30 @@ function sentByLabel(event: CommunicationEvent): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
+function eventLabel(event: CommunicationEvent): string {
+  if (event.channel === "voice") {
+    if (event.provider_event_type === "call-recording") return "Recording";
+    if (event.direction === "inbound") return "Inbound call";
+    if (event.direction === "outbound") return "Outbound call";
+    return "Call update";
+  }
+  return event.direction === "inbound" ? "Seller" : "Meridian";
+}
+
+function eventBody(event: CommunicationEvent): string {
+  if (event.channel === "voice") return event.body || event.status || "Call update";
+  return event.body || event.status || "SMS update";
+}
+
+function recordingUrl(event: CommunicationEvent): string | null {
+  const recording = event.media.find(item =>
+    item && typeof item === "object" && (item as Record<string, unknown>).type === "recording"
+  ) as Record<string, unknown> | undefined;
+  const mp3Url = typeof recording?.mp3Url === "string" ? recording.mp3Url : null;
+  const url = typeof recording?.url === "string" ? recording.url : null;
+  return mp3Url || url;
+}
+
 type ReadState = Record<string, string>;
 
 function readStorageKey(user: string): string {
@@ -92,7 +117,7 @@ function buildThreads(events: CommunicationEvent[], leads: ImportedLandLead[], r
 
   const groups = new Map<string, CommunicationEvent[]>();
   events
-    .filter(event => event.channel === "sms" || event.provider === "sakari")
+    .filter(event => event.channel === "sms" || event.channel === "voice" || event.provider === "sakari" || event.provider === "twilio")
     .forEach(event => {
       const phone = contactPhoneFor(event);
       const key = event.matched_lead_id ? `lead:${event.matched_lead_id}` : event.matched_deal_id ? `deal:${event.matched_deal_id}` : phone ? `phone:${phone}` : `event:${event.id}`;
@@ -163,6 +188,7 @@ export default function FloatingSmsWindow({
   const selectedLead = selectedThread?.lead ?? null;
   const selectedPhone = selectedThread?.phone ?? last10(newPhone);
   const selectedCompliance = selectedLead ? checkLeadSmsCompliance(selectedLead) : null;
+  const selectedCallCompliance = selectedLead ? checkLeadCallCompliance(selectedLead) : null;
   const replyBlocked = !!selectedCompliance && !selectedCompliance.allowed;
   const contextTitleText = selectedLead?.property_address || (selectedThread?.dealId ? "Connected deal packet" : "No linked property yet");
   const contextMetaText = [
@@ -322,7 +348,7 @@ export default function FloatingSmsWindow({
   if (!open) {
     return (
       <button type="button" onClick={() => { setOpen(true); setMinimized(false); }} style={launcher}>
-        SMS
+        Comms
         {threads.length > 0 && <span style={launcherBadge}>{threads.length}</span>}
       </button>
     );
@@ -339,7 +365,7 @@ export default function FloatingSmsWindow({
       >
         <div>
           <p style={eyebrow}>Live SMS</p>
-          <strong style={{ color: "var(--bone)", fontSize: 13 }}>Seller text command</strong>
+          <strong style={{ color: "var(--bone)", fontSize: 13 }}>Seller comms command</strong>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
           <span style={badge}>{threads.length}</span>
@@ -426,7 +452,15 @@ export default function FloatingSmsWindow({
                     <p style={personMeta}>{displayPhone(selectedPhone)}</p>
                   </div>
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
-                    <button type="button" onClick={() => { if (selectedPhone) window.location.href = `tel:${selectedPhone}`; }} style={roundAction} title="Call seller">☎</button>
+                    <TwilioCallButton
+                      toNumber={selectedCallCompliance?.phone?.number || selectedPhone}
+                      leadId={selectedLead?.id ?? null}
+                      dealId={selectedThread.dealId}
+                      actor={user}
+                      disabled={!selectedPhone || selectedCallCompliance?.allowed === false}
+                      disabledReason={selectedCallCompliance?.allowed === false ? `Call blocked: ${selectedCallCompliance.blockLabel}.` : null}
+                      compact
+                    />
                     <button type="button" onClick={() => selectedLead ? onCreateDealBrief?.(selectedLead) : selectedThread.dealId ? onOpenDeal?.(selectedThread.dealId) : undefined} style={roundAction}>◇</button>
                     <button type="button" onClick={openSelectedRecord} style={roundAction}>…</button>
                   </div>
@@ -452,17 +486,21 @@ export default function FloatingSmsWindow({
 
                 <div style={messages}>
                   {threadEvents
-                    .filter(event => event.direction === "inbound" || event.direction === "outbound")
+                    .filter(event => event.direction === "inbound" || event.direction === "outbound" || event.channel === "voice")
                     .sort((a, b) => eventTime(a).localeCompare(eventTime(b)))
-                    .map(event => (
-                      <div key={event.id} style={{ ...bubble, ...(event.direction === "outbound" ? outgoing : incoming) }}>
-                        <p style={{ margin: 0 }}>{event.body || event.status || "SMS update"}</p>
+                    .map(event => {
+                      const audioUrl = recordingUrl(event);
+                      return (
+                      <div key={event.id} style={{ ...bubble, ...(event.direction === "outbound" ? outgoing : event.channel === "voice" ? callBubble : incoming) }}>
+                        <strong style={messageLabel}>{eventLabel(event)}</strong>
+                        <p style={{ margin: "4px 0 0" }}>{eventBody(event)}</p>
+                        {audioUrl && <a href={audioUrl} target="_blank" rel="noreferrer" style={recordingLink}>Open recording</a>}
                         <span style={bubbleTime}>
                           {formatTime(eventTime(event))}
                           {sentByLabel(event) ? ` · Sent by ${sentByLabel(event)}` : event.direction === "outbound" ? " · Sent from Meridian" : ""}
                         </span>
                       </div>
-                    ))}
+                    );})}
                   {threadEvents.length === 0 && <p style={emptyText}>No messages in this thread yet.</p>}
                 </div>
 
@@ -796,6 +834,31 @@ const incoming: CSSProperties = {
 const outgoing: CSSProperties = {
   alignSelf: "flex-end",
   background: "rgba(176,137,84,0.14)",
+};
+
+const callBubble: CSSProperties = {
+  alignSelf: "center",
+  background: "rgba(255,255,255,0.72)",
+  border: "1px dashed var(--brass)",
+  maxWidth: "92%",
+};
+
+const messageLabel: CSSProperties = {
+  color: "var(--brass)",
+  display: "block",
+  fontSize: 10,
+  fontWeight: 900,
+  letterSpacing: "0.1em",
+  textTransform: "uppercase",
+};
+
+const recordingLink: CSSProperties = {
+  color: "var(--obsidian)",
+  display: "inline-block",
+  fontSize: 12,
+  fontWeight: 800,
+  marginTop: 7,
+  textDecoration: "underline",
 };
 
 const bubbleTime: CSSProperties = {

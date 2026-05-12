@@ -80,7 +80,7 @@ import OperatingHeader from "@/components/OperatingHeader";
 import BulkSmsDrawer from "@/components/BulkSmsDrawer";
 import TwilioPhoneDock from "@/components/TwilioPhoneDock";
 import TwilioCallButton from "@/components/TwilioCallButton";
-import { categorizeForBulkSms, checkLeadSmsCompliance } from "@/lib/bulk-sms";
+import { categorizeForBulkSms, checkLeadCallCompliance, checkLeadSmsCompliance } from "@/lib/bulk-sms";
 import { fetchActiveMemberNames } from "@/lib/members";
 
 const DISPLAY_FONT = "var(--font-display)";
@@ -3466,6 +3466,7 @@ function SellerCommandCenter({
     meta: activity.next_follow_up_date ? `Follow up ${activity.next_follow_up_date}` : undefined,
   }));
   const smsCompliance = checkLeadSmsCompliance(lead);
+  const callCompliance = checkLeadCallCompliance(lead);
   const smsBlocked = !smsCompliance.allowed;
   const smsDisabled = smsSending || smsBlocked;
   const smsBlockSeverity = smsCompliance.severity;
@@ -3587,7 +3588,12 @@ function SellerCommandCenter({
                 <strong style={{ color: "var(--obsidian)", fontSize: 13 }}>Call seller</strong>
                 <p style={{ color: "var(--muted)", fontSize: 11, marginTop: 2 }}>{lead.phone || lead.phone_2 || "No phone"}</p>
               </div>
-              <TwilioCallButton toNumber={lead.phone || lead.phone_2} leadId={lead.id} disabled={!lead.phone && !lead.phone_2} />
+              <TwilioCallButton
+                toNumber={callCompliance.phone?.number || lead.phone || lead.phone_2}
+                leadId={lead.id}
+                disabled={!callCompliance.allowed}
+                disabledReason={!callCompliance.allowed ? `Call blocked: ${callCompliance.blockLabel}.` : null}
+              />
             </div>
           </div>
 

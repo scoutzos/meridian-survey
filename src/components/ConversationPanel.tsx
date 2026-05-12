@@ -31,10 +31,25 @@ function formatDate(iso: string | null | undefined): string {
 }
 
 function labelForEvent(event: CommunicationEvent): string {
+  if (event.channel === "voice") {
+    if (event.direction === "inbound") return "Inbound call";
+    if (event.direction === "outbound") return "Outbound call";
+    if (event.direction === "status") return "Call status";
+    return "Call update";
+  }
   if (event.direction === "inbound") return "Seller SMS";
   if (event.direction === "outbound") return "Meridian SMS";
   if (event.direction === "status") return "SMS status";
   return "SMS update";
+}
+
+function recordingUrl(event: CommunicationEvent): string | null {
+  const recording = event.media.find(item =>
+    item && typeof item === "object" && (item as Record<string, unknown>).type === "recording"
+  ) as Record<string, unknown> | undefined;
+  const mp3Url = typeof recording?.mp3Url === "string" ? recording.mp3Url : null;
+  const url = typeof recording?.url === "string" ? recording.url : null;
+  return mp3Url || url;
 }
 
 export default function ConversationPanel({
@@ -56,6 +71,7 @@ export default function ConversationPanel({
       date: event.provider_created_at || event.created_at,
       body: event.body || event.status || event.provider_event_type,
       meta: event.status || event.provider_event_type,
+      recording: recordingUrl(event),
     })),
     ...activities.map(activity => ({
       id: `activity-${activity.id}`,
@@ -64,6 +80,7 @@ export default function ConversationPanel({
       date: activity.date,
       body: activity.body,
       meta: activity.meta || undefined,
+      recording: null,
     })),
   ].sort((a, b) => b.date.localeCompare(a.date));
 
@@ -94,6 +111,11 @@ export default function ConversationPanel({
               <span style={miniLabel}>{formatDate(item.date)}</span>
             </div>
             <p style={bubbleBody}>{item.body}</p>
+            {item.recording && (
+              <a href={item.recording} target="_blank" rel="noreferrer" style={recordingLink}>
+                Open recording
+              </a>
+            )}
             {item.meta && <p style={bubbleMeta}>{item.meta}</p>}
           </div>
         ))}
@@ -212,6 +234,15 @@ const bubbleMeta: CSSProperties = {
   color: "var(--muted)",
   fontSize: 11,
   marginTop: 6,
+};
+
+const recordingLink: CSSProperties = {
+  color: "var(--obsidian)",
+  display: "inline-block",
+  fontSize: 12,
+  fontWeight: 800,
+  marginTop: 8,
+  textDecoration: "underline",
 };
 
 const emptyStyle: CSSProperties = {
