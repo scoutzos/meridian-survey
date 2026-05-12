@@ -41,6 +41,7 @@ import {
 } from "@/lib/action-items";
 import { createNotification } from "@/lib/operations";
 import { labelForStatus } from "@/lib/status-map";
+import { isVaUser } from "@/lib/identity";
 
 const DISPLAY_FONT = "var(--font-display)";
 
@@ -253,6 +254,8 @@ export default function ActionsPage() {
     const requestedFilter = params.get("filter");
     if (requestedFilter && TASK_FILTERS.includes(requestedFilter as TaskFilter)) {
       setFilter(requestedFilter as TaskFilter);
+    } else if (isVaUser(u) && params.get("new") !== "va" && !params.get("task")) {
+      setFilter("va");
     }
     const requestedTask = params.get("task");
     if (requestedTask) {
@@ -318,6 +321,7 @@ export default function ActionsPage() {
 
   if (!user) return null;
   const admin = isAdmin(profiles, user);
+  const vaMode = isVaUser(user);
   const activeMemberNames = activeMemberNamesFromProfiles(profiles);
   const surveys = getAllSurveys();
   const openCapitalCalls = capitalCalls.filter(c => !c.deleted_at && c.status === "open");
@@ -412,7 +416,8 @@ export default function ActionsPage() {
     sourceItem: item,
   }));
   const visibleTasks = (filter === "completed" ? completedTasks : taskCards).filter(task => {
-    if (filter === "needs-me" || filter === "completed") return true;
+    if (filter === "needs-me") return true;
+    if (filter === "completed") return vaMode ? task.kind === "VA Task" : true;
     if (filter === "votes") return task.kind === "Vote";
     if (filter === "money") return task.kind === "Money";
     if (filter === "surveys") return task.kind === "Survey";
@@ -431,6 +436,12 @@ export default function ActionsPage() {
     completed: completedTasks.length,
   };
   const openAssignedActions = taskCards.filter(task => task.kind === "Action").length;
+  const vaOpenTasks = taskCards.filter(task => task.kind === "VA Task");
+  const vaDoneTasks = completedTasks.filter(task => task.kind === "VA Task");
+  const vaBlockedTasks = items.filter(item => isVaTask(item) && isOwnedBy(item, user) && item.status === "blocked").length;
+  const visibleFilterButtons: Array<[TaskFilter, string]> = vaMode
+    ? [["va", "VA Tasks"], ["actions", "All Assigned"], ["completed", "Done"]]
+    : [["needs-me", "All Open"], ["votes", "Votes"], ["money", "Money"], ["surveys", "Surveys"], ["actions", "Actions"], ["va", "VA Tasks"], ["assigned-by-me", "Assigned By Me"], ["completed", "Done"]];
   const selectedTask = selectedTaskId ? items.find(item => item.id === selectedTaskId) ?? null : null;
 
   const handleStatusChange = async (item: ActionItem, status: ActionItemStatus, note = "") => {
@@ -584,13 +595,15 @@ export default function ActionsPage() {
       <header style={{ marginBottom: 24, display: "flex", justifyContent: "space-between", alignItems: "flex-end", gap: 16, flexWrap: "wrap" }}>
         <div>
           <p style={{ fontSize: 11, letterSpacing: 2, textTransform: "uppercase", color: "var(--brass)", fontWeight: 600, marginBottom: 8 }}>
-            Member Portal
+            {vaMode ? "VA Tasks" : "Member Portal"}
           </p>
           <h1 style={{ fontFamily: DISPLAY_FONT, fontSize: "clamp(34px, 5vw, 48px)", fontWeight: 500, color: "var(--obsidian)", letterSpacing: "-0.5px", marginBottom: 6 }}>
-            My Tasks
+            {vaMode ? "Assigned VA Work" : "My Tasks"}
           </h1>
           <p style={{ color: "var(--ink)", opacity: 0.65, fontSize: 14 }}>
-            One review queue for votes, money items, surveys, and assigned work.
+            {vaMode
+              ? "Member-assigned tasks for Sophie. Open the linked record, update status, and flag blockers."
+              : "One review queue for votes, money items, surveys, and assigned work."}
           </p>
         </div>
         <button
@@ -752,12 +765,23 @@ export default function ActionsPage() {
       {!loading && (
         <>
           <section className="task-summary-grid" style={{ marginBottom: 18 }}>
-            <TaskSummaryCard label="Open queue" value={filterCounts["needs-me"]} detail="Everything waiting on you" active={filter === "needs-me"} onClick={() => setFilter("needs-me")} />
-            <TaskSummaryCard label="Votes" value={filterCounts.votes} detail="Deals, applications, proposals" active={filter === "votes"} onClick={() => setFilter("votes")} />
-            <TaskSummaryCard label="Money" value={filterCounts.money} detail="Capital calls and approvals" active={filter === "money"} onClick={() => setFilter("money")} />
-            <TaskSummaryCard label="Surveys" value={filterCounts.surveys} detail="Unfinished member input" active={filter === "surveys"} onClick={() => setFilter("surveys")} />
-            <TaskSummaryCard label="VA tasks" value={filterCounts.va} detail="Assigned to Sophie / VA" active={filter === "va"} onClick={() => setFilter("va")} />
-            <TaskSummaryCard label="Assigned work" value={openAssignedActions} detail="Manual action items" active={filter === "actions"} onClick={() => setFilter("actions")} />
+            {vaMode ? (
+              <>
+                <TaskSummaryCard label="Open VA" value={vaOpenTasks.length} detail="Assigned to Sophie / VA" active={filter === "va"} onClick={() => setFilter("va")} />
+                <TaskSummaryCard label="Blocked" value={vaBlockedTasks} detail="Needs member input" active={false} onClick={() => setFilter("va")} />
+                <TaskSummaryCard label="Done" value={vaDoneTasks.length} detail="Completed assigned work" active={filter === "completed"} onClick={() => setFilter("completed")} />
+                <TaskSummaryCard label="All Assigned" value={filterCounts.actions} detail="VA plus general actions" active={filter === "actions"} onClick={() => setFilter("actions")} />
+              </>
+            ) : (
+              <>
+                <TaskSummaryCard label="Open queue" value={filterCounts["needs-me"]} detail="Everything waiting on you" active={filter === "needs-me"} onClick={() => setFilter("needs-me")} />
+                <TaskSummaryCard label="Votes" value={filterCounts.votes} detail="Deals, applications, proposals" active={filter === "votes"} onClick={() => setFilter("votes")} />
+                <TaskSummaryCard label="Money" value={filterCounts.money} detail="Capital calls and approvals" active={filter === "money"} onClick={() => setFilter("money")} />
+                <TaskSummaryCard label="Surveys" value={filterCounts.surveys} detail="Unfinished member input" active={filter === "surveys"} onClick={() => setFilter("surveys")} />
+                <TaskSummaryCard label="VA tasks" value={filterCounts.va} detail="Assigned to Sophie / VA" active={filter === "va"} onClick={() => setFilter("va")} />
+                <TaskSummaryCard label="Assigned work" value={openAssignedActions} detail="Manual action items" active={filter === "actions"} onClick={() => setFilter("actions")} />
+              </>
+            )}
           </section>
 
           <section style={{
@@ -770,23 +794,16 @@ export default function ActionsPage() {
             <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-end", flexWrap: "wrap", marginBottom: 14 }}>
               <div>
                 <p style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.16em", textTransform: "uppercase", color: "var(--brass)", marginBottom: 6 }}>
-                  Review Queue
+                  {vaMode ? "VA Task Queue" : "Review Queue"}
                 </p>
                 <h2 style={{ fontFamily: DISPLAY_FONT, fontSize: 26, fontWeight: 500, color: "var(--obsidian)" }}>
-                  {filterCounts["needs-me"]} open task{filterCounts["needs-me"] === 1 ? "" : "s"}
+                  {vaMode
+                    ? `${vaOpenTasks.length} open VA task${vaOpenTasks.length === 1 ? "" : "s"}`
+                    : `${filterCounts["needs-me"]} open task${filterCounts["needs-me"] === 1 ? "" : "s"}`}
                 </h2>
               </div>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                {([
-                  ["needs-me", "All Open"],
-                  ["votes", "Votes"],
-                  ["money", "Money"],
-                  ["surveys", "Surveys"],
-                  ["actions", "Actions"],
-                  ["va", "VA Tasks"],
-                  ["assigned-by-me", "Assigned By Me"],
-                  ["completed", "Done"],
-                ] as Array<[TaskFilter, string]>).map(([value, label]) => (
+                {visibleFilterButtons.map(([value, label]) => (
                   <button
                     key={value}
                     onClick={() => setFilter(value)}

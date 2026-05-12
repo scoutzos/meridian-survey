@@ -155,7 +155,7 @@ const DISPOSITION_STATUSES: Array<{ value: DispositionStatus; label: string }> =
 type VaTab = "today" | "outreach" | "lists" | "packet" | "brief";
 
 const TABS: Array<{ value: VaTab; label: string }> = [
-  { value: "today", label: "Home" },
+  { value: "today", label: "Desk Home" },
   { value: "outreach", label: "Contact Queue" },
   { value: "lists", label: "Lists" },
   { value: "packet", label: "Packets" },
@@ -1571,7 +1571,7 @@ export default function VaPage() {
       disabled: clockBusy,
     },
     {
-      label: "List",
+      label: "Lists",
       value: String(importedLeads.length),
       detail: "Imported leads available",
       action: "Open Lists",
@@ -1579,7 +1579,7 @@ export default function VaPage() {
       hot: importStats.newRows > 0,
     },
     {
-      label: "Contact",
+      label: "Queue",
       value: String(workdeskLeadRows.length),
       detail: "Seller records in queue",
       action: "Work Queue",
@@ -1587,7 +1587,7 @@ export default function VaPage() {
       hot: unmatchedSms.length > 0 || followUpsDue.length > 0,
     },
     {
-      label: "Packet",
+      label: "Packets",
       value: String(draftLeads.length),
       detail: "Draft deal briefs",
       action: "Build Packet",
@@ -1605,29 +1605,29 @@ export default function VaPage() {
   ];
   const headerCopy: Record<VaTab, { eyebrow: string; title: string; subtitle: string }> = {
     today: {
-      eyebrow: "VA Home",
-      title: "VA Command Center",
-      subtitle: "Start the shift, pick the next priority, handle assigned work, and keep the member-facing brief moving.",
+      eyebrow: "VA Desk",
+      title: "Sophie Workdesk",
+      subtitle: "Start the shift, see the next priority, then jump into calls, lists, packets, tasks, records, or the daily brief.",
     },
     outreach: {
       eyebrow: "Contact Queue",
-      title: "Seller Outreach Queue",
-      subtitle: "Work seller replies, follow-ups, interested owners, calls, texts, and dispositions without time-clock clutter.",
+      title: "Contact Queue",
+      subtitle: "Work seller replies, due follow-ups, calls, texts, and outcomes from one queue.",
     },
     lists: {
-      eyebrow: "List Operations",
-      title: "Import and Work Lists",
-      subtitle: "Upload Land Portal or Land Insights CSVs, validate records, filter leads, and prepare compliant outreach.",
+      eyebrow: "Lists",
+      title: "List Workspace",
+      subtitle: "Import audiences, check eligibility, clean records, bulk text compliant rows, and move replies into the contact queue.",
     },
     packet: {
-      eyebrow: "Packet Desk",
-      title: "Build Member Review Packets",
-      subtitle: "Turn interested sellers into shared deal files with calculator support, diligence, notes, and a clear member ask.",
+      eyebrow: "Packets",
+      title: "Packet Builder",
+      subtitle: "Turn qualified seller interest into a member-ready review packet with diligence, calculator notes, and a clear ask.",
     },
     brief: {
-      eyebrow: "End of Shift",
-      title: "Daily Brief and Time",
-      subtitle: "Review clocked time, auto-fill activity counts, document completed work, and submit the summary to members.",
+      eyebrow: "Daily Brief",
+      title: "End Shift Brief",
+      subtitle: "Review time, summarize completed work, log blockers, and set the next-shift plan for members.",
     },
   };
   const headerActions: Record<VaTab, React.ReactNode> = {
@@ -1700,6 +1700,21 @@ export default function VaPage() {
 
   return (
     <div className="va-root" style={{ maxWidth: 1680, margin: "0 auto", padding: "82px 20px 100px" }}>
+      <div className="va-tabs" style={{ ...panel, padding: 8, marginBottom: 16, display: "flex", gap: 8, flexWrap: "wrap" }}>
+        {TABS.map(tab => (
+          <button
+            key={tab.value}
+            onClick={() => goToTab(tab.value)}
+            style={activeTab === tab.value ? tabActive : tabButton}
+          >
+            {tab.label}
+            <span style={activeTab === tab.value ? tabCountActive : tabCount}>
+              {tabCounts[tab.value]}
+            </span>
+          </button>
+        ))}
+      </div>
+
       <OperatingHeader
         eyebrow={headerCopy[activeTab].eyebrow}
         title={headerCopy[activeTab].title}
@@ -1745,21 +1760,6 @@ export default function VaPage() {
           </button>
         </section>
       )}
-
-      <div className="va-tabs" style={{ ...panel, padding: 8, marginBottom: 16, display: "flex", gap: 8, flexWrap: "wrap" }}>
-        {TABS.map(tab => (
-          <button
-            key={tab.value}
-            onClick={() => goToTab(tab.value)}
-            style={activeTab === tab.value ? tabActive : tabButton}
-          >
-            {tab.label}
-            <span style={activeTab === tab.value ? tabCountActive : tabCount}>
-              {tabCounts[tab.value]}
-            </span>
-          </button>
-        ))}
-      </div>
 
       <div style={{ display: "grid", gridTemplateColumns: activeTab === "packet" ? "330px minmax(0, 1fr)" : "1fr", gap: 18 }} className="va-workspace">
         {activeTab === "packet" && <aside style={panel}>

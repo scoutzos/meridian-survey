@@ -35,6 +35,7 @@ import { createProjectFromDeal } from "@/lib/projects";
 import { labelForStatus } from "@/lib/status-map";
 import { getDealNextAction } from "@/lib/workflow-actions";
 import { fetchActiveMemberNames } from "@/lib/members";
+import { isVaUser } from "@/lib/identity";
 
 const DISPLAY_FONT = "var(--font-display)";
 type CrmView = "inbox" | "deals" | "buyers" | "dispo" | "records";
@@ -502,6 +503,16 @@ function CrmContent() {
     { label: "Buyers", value: String(data.buyers.length), sub: "active records" },
     { label: "Offers", value: String(data.offers.length), sub: `${offersNeedingDecision.length} decisions`, tone: offersNeedingDecision.length ? "hot" as const : "calm" as const },
   ];
+  const cleanupCount = recordsNeedingCleanup + duplicateContacts.length + duplicateProperties.length + duplicateBuyers.length;
+  const recordsSummary = [
+    { label: "Contacts", value: String(data.contacts.length), sub: "sellers, buyers, vendors" },
+    { label: "Properties", value: String(data.properties.length), sub: "parcel records" },
+    { label: "Buyers", value: String(data.buyers.length), sub: "buy box records" },
+    { label: "Cleanup", value: String(cleanupCount), sub: "needs attention", tone: cleanupCount ? "hot" as const : "calm" as const },
+  ];
+  const recordsMode = view === "records";
+  const vaMode = isVaUser(user);
+  const headerSummary = recordsMode ? recordsSummary : workSummary;
 
   const workflowCards = [
     {
@@ -985,19 +996,21 @@ function CrmContent() {
     <div className="crm-page" style={{ minHeight: "100vh", background: "linear-gradient(180deg, #f8f2e7 0%, #efe6d6 100%)", padding: "72px 20px 80px", color: "var(--ink)" }}>
       <div style={{ maxWidth: 1360, margin: "0 auto" }}>
         <OperatingHeader
-          eyebrow="Meridian Relationship Layer"
-          title="Relationship Command Center"
-          subtitle="Seller replies, buyers, offers, tasks, and disposition work tied back to the same Meridian opportunity file."
+          eyebrow={recordsMode ? "Records" : "Meridian Relationship Layer"}
+          title={recordsMode ? "Records Database" : "Relationship Command Center"}
+          subtitle={recordsMode
+            ? "Look up sellers, properties, buyers, deals, disposition, and activity. This is the database, not the work queue."
+            : "Seller replies, buyers, offers, tasks, and disposition work tied back to the same Meridian opportunity file."}
           user={user}
           mode="crm"
           actions={
             <>
-            <button onClick={() => router.push("/dashboard")} style={secondaryButton}>Member Portal</button>
+            {!vaMode && <button onClick={() => router.push("/dashboard")} style={secondaryButton}>Member Portal</button>}
             <button onClick={() => router.push("/va")} style={secondaryButton}>VA Desk</button>
-            <button onClick={() => router.push("/deals")} style={primaryButton}>Deal Reviews</button>
+            <button onClick={() => router.push(recordsMode ? "/crm?view=inbox" : "/deals")} style={primaryButton}>{recordsMode ? "Seller Inbox" : "Deal Reviews"}</button>
             </>
           }
-          stats={workSummary.map(item => ({
+          stats={headerSummary.map(item => ({
             label: item.label,
             value: item.value,
             detail: item.sub,
@@ -1007,25 +1020,29 @@ function CrmContent() {
 
         {message && <div style={{ ...panel, marginBottom: 12, borderColor: "var(--brass)" }}>{message}</div>}
 
-        <section className="crm-file-path">
-          <ConnectedStep label="Seller Reply" active={view === "inbox"} ready={unmatchedMessages.length > 0 || data.communications.length > 0} />
-          <ConnectedStep label="Opportunity File" active={view === "deals"} ready={data.deals.length > 0} />
-          <ConnectedStep label="Buyer Demand" active={view === "buyers"} ready={data.buyers.length > 0} />
-          <ConnectedStep label="Disposition" active={view === "dispo"} ready={data.campaigns.length > 0} />
-          <ConnectedStep label="Offer / Project" active={view === "dispo" && !!selectedOffer} ready={data.offers.length > 0} />
-        </section>
+        {!recordsMode && (
+          <>
+            <section className="crm-file-path">
+              <ConnectedStep label="Seller Reply" active={view === "inbox"} ready={unmatchedMessages.length > 0 || data.communications.length > 0} />
+              <ConnectedStep label="Opportunity File" active={view === "deals"} ready={data.deals.length > 0} />
+              <ConnectedStep label="Buyer Demand" active={view === "buyers"} ready={data.buyers.length > 0} />
+              <ConnectedStep label="Disposition" active={view === "dispo"} ready={data.campaigns.length > 0} />
+              <ConnectedStep label="Offer / Project" active={view === "dispo" && !!selectedOffer} ready={data.offers.length > 0} />
+            </section>
 
-        <section className="crm-workflow-strip">
-          {workflowCards.map(card => (
-            <WorkflowCard key={card.label} {...card} />
-          ))}
-        </section>
+            <section className="crm-workflow-strip">
+              {workflowCards.map(card => (
+                <WorkflowCard key={card.label} {...card} />
+              ))}
+            </section>
+          </>
+        )}
 
         <section style={{ display: "grid", gridTemplateColumns: "270px minmax(0, 1fr) 320px", gap: 14 }} className="crm-grid">
           <aside style={navPanel}>
             <div style={{ marginBottom: 12 }}>
-              <p style={eyebrowSmall}>Workspace</p>
-              <h2 style={smallHeading}>What are we working?</h2>
+              <p style={eyebrowSmall}>{recordsMode ? "Database" : "Workspace"}</p>
+              <h2 style={smallHeading}>{recordsMode ? "Record Sections" : "What are we working?"}</h2>
             </div>
             <div style={{ display: "grid", gap: 8 }}>
               {views.map(item => (

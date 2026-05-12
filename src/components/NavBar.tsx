@@ -5,7 +5,7 @@ import type { CSSProperties } from "react";
 import { getCurrentMeridianUser, isVaUser, signOutMeridianUser } from "@/lib/identity";
 import Logo from "./Logo";
 
-const crmRoutes = ["/crm", "/va"];
+const crmRoutes = ["/crm", "/va", "/lead", "/lists"];
 const crmLinks = [
   { href: "/dashboard", label: "Member Portal" },
   { href: "/crm", label: "Command Center" },
@@ -73,7 +73,8 @@ export default function NavBar() {
     }
   }, [pathname]);
 
-  const crmShell = !!user && crmRoutes.some(route => pathname === route || pathname.startsWith(route + "/"));
+  const shellRoutes = user && isVaUser(user) ? [...crmRoutes, "/actions"] : crmRoutes;
+  const crmShell = !!user && shellRoutes.some(route => pathname === route || pathname.startsWith(route + "/"));
   const handleSignOut = async () => {
     await signOutMeridianUser();
     router.push("/");
