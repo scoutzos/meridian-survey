@@ -1,15 +1,20 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Call, Device } from "@twilio/voice-sdk";
 
 type PhoneState = "offline" | "connecting" | "online" | "ringing" | "in-call" | "error";
+
+function phonePreferenceKey(actor: string): string {
+  return `meridian_twilio_phone_online:${actor || "default"}`;
+}
 
 export default function TwilioPhoneDock({ actor = "Meridian" }: { actor?: string }) {
   const [state, setState] = useState<PhoneState>("offline");
   const [message, setMessage] = useState("Browser phone is offline.");
   const deviceRef = useRef<Device | null>(null);
   const callRef = useRef<Call | null>(null);
+  const connectingRef = useRef(false);
 
   useEffect(() => {
     return () => {
@@ -18,9 +23,33 @@ export default function TwilioPhoneDock({ actor = "Meridian" }: { actor?: string
     };
   }, []);
 
-  async function goOnline() {
-    if (deviceRef.current) return;
+  const bindCall = useCallback((call: Call) => {
+    call.on("accept", () => {
+      setState("in-call");
+      setMessage("Call connected.");
+    });
+    call.on("disconnect", () => {
+      callRef.current = null;
+      setState(deviceRef.current ? "online" : "offline");
+      setMessage(deviceRef.current ? "Online for inbound calls." : "Browser phone is offline.");
+    });
+    call.on("cancel", () => {
+      callRef.current = null;
+      setState(deviceRef.current ? "online" : "offline");
+      setMessage("Incoming call ended.");
+    });
+    call.on("reject", () => {
+      callRef.current = null;
+      setState(deviceRef.current ? "online" : "offline");
+      setMessage("Incoming call rejected.");
+    });
+  }, []);
+
+  const goOnline = useCallback(async () => {
+    if (deviceRef.current || connectingRef.current) return;
+    connectingRef.current = true;
     try {
+      localStorage.setItem(phonePreferenceKey(actor), "online");
       setState("connecting");
       setMessage("Connecting browser phone...");
       const response = await fetch("/api/twilio/token", {
@@ -55,37 +84,23 @@ export default function TwilioPhoneDock({ actor = "Meridian" }: { actor?: string
     } catch (error) {
       setState("error");
       setMessage(error instanceof Error ? error.message : "Could not connect browser phone.");
+    } finally {
+      connectingRef.current = false;
     }
-  }
+  }, [actor, bindCall]);
 
-  function bindCall(call: Call) {
-    call.on("accept", () => {
-      setState("in-call");
-      setMessage("Call connected.");
-    });
-    call.on("disconnect", () => {
-      callRef.current = null;
-      setState(deviceRef.current ? "online" : "offline");
-      setMessage(deviceRef.current ? "Online for inbound calls." : "Browser phone is offline.");
-    });
-    call.on("cancel", () => {
-      callRef.current = null;
-      setState(deviceRef.current ? "online" : "offline");
-      setMessage("Incoming call ended.");
-    });
-    call.on("reject", () => {
-      callRef.current = null;
-      setState(deviceRef.current ? "online" : "offline");
-      setMessage("Incoming call rejected.");
-    });
-  }
+  useEffect(() => {
+    if (localStorage.getItem(phonePreferenceKey(actor)) === "online") void goOnline();
+  }, [actor, goOnline]);
 
   function goOffline() {
+    localStorage.setItem(phonePreferenceKey(actor), "offline");
     callRef.current?.disconnect();
     deviceRef.current?.unregister();
     deviceRef.current?.destroy();
     callRef.current = null;
     deviceRef.current = null;
+    connectingRef.current = false;
     setState("offline");
     setMessage("Browser phone is offline.");
   }
