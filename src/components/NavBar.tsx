@@ -180,7 +180,7 @@ export default function NavBar() {
             </button>
           </div>
         </aside>
-        <nav className="crm-top-bar">
+        <nav className={`crm-top-bar ${isVaUser(user) && pathname === "/va" ? "crm-top-bar-va" : ""}`}>
           {!isVaUser(user) && <button onClick={() => router.push("/dashboard")} style={crmPortalButton}>Member Portal</button>}
           <button onClick={() => router.push(isVaUser(user) ? "/va?tab=packet" : "/va")} style={crmCreateButton}>{isVaUser(user) ? "+ Deal Brief" : "+ Create"}</button>
           <span style={{ color: "var(--fog)", fontSize: 12 }}>●</span>

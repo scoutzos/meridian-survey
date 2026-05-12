@@ -186,6 +186,12 @@ button {
   backdrop-filter: blur(12px);
 }
 
+.crm-top-bar-va {
+  height: 118px;
+  align-items: flex-start;
+  padding-top: 12px;
+}
+
 .crm-side-link {
   width: 100%;
   min-height: 38px;

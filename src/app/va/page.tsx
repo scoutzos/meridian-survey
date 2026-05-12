@@ -1658,7 +1658,7 @@ export default function VaPage() {
   ];
 
   return (
-    <div className="va-root" style={{ maxWidth: 1680, margin: "0 auto", padding: "82px 20px 100px" }}>
+    <div className="va-root" style={{ maxWidth: 1680, margin: "0 auto", padding: "132px 20px 100px" }}>
       <div className="va-tabs" style={{ ...panel, padding: 8, marginBottom: 16, display: "flex", gap: 8, flexWrap: "wrap" }}>
         {TABS.map(tab => (
           <button
@@ -3152,6 +3152,17 @@ export default function VaPage() {
           grid-template-columns: repeat(5, minmax(0, 1fr));
           gap: 10px;
           margin-bottom: 16px;
+        }
+        @media (min-width: 881px) {
+          .va-tabs {
+            position: fixed;
+            top: 66px;
+            left: 176px;
+            right: 20px;
+            z-index: 206;
+            margin-bottom: 0 !important;
+            box-shadow: none !important;
+          }
         }
         @media (max-width: 880px) {
           .va-root { padding-top: 28px !important; }
