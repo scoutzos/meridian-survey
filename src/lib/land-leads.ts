@@ -25,20 +25,117 @@ export interface ImportedLandLead {
   owner_name: string | null;
   phone: string | null;
   phone_2: string | null;
+  phone_3?: string | null;
+  phone_4?: string | null;
+  phone_5?: string | null;
+  phone_6?: string | null;
+  phone_1_type?: string | null;
+  phone_2_type?: string | null;
+  phone_3_type?: string | null;
+  phone_4_type?: string | null;
+  phone_5_type?: string | null;
+  phone_6_type?: string | null;
   email: string | null;
   property_address: string | null;
   parcel_id: string | null;
+  calculated_acreage?: number | null;
+  parcel_sq_ft?: number | null;
+  fips?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  legal_description?: string | null;
+  parcel_alt_apn?: string | null;
   county: string | null;
   city: string | null;
   state: string | null;
   zip: string | null;
   mailing_address: string | null;
+  mail_address?: string | null;
+  mail_city?: string | null;
+  mail_state?: string | null;
+  mail_zip?: string | null;
+  mail_county?: string | null;
   acreage: number | null;
   asking_price: number | null;
   assessed_value: number | null;
   market_value: number | null;
+  structure_sq_ft?: number | null;
+  structure_count?: number | null;
+  structure_year_built?: number | null;
+  structure_stories?: number | null;
+  structure_units?: number | null;
+  structure_rooms?: number | null;
+  owner_first_names?: string | null;
+  owner_1_full_name?: string | null;
+  owner_1_first_name?: string | null;
+  owner_1_middle_name?: string | null;
+  owner_1_last_name?: string | null;
+  owner_1_suffix?: string | null;
+  owner_2_full_name?: string | null;
+  owner_2_first_name?: string | null;
+  owner_2_middle_name?: string | null;
+  owner_2_last_name?: string | null;
+  owner_2_suffix?: string | null;
+  improvement_value?: number | null;
+  improvement_percentage?: number | null;
+  land_value?: number | null;
+  total_parcel_value?: number | null;
+  market_land_value?: number | null;
+  market_improvement_value?: number | null;
+  tax_year?: number | null;
+  tax_delinquent_starting_year?: number | null;
+  last_sale_date?: string | null;
+  last_sale_price?: number | null;
+  previous_owners?: string | null;
+  previous_owner_1?: string | null;
+  previous_owner_2?: string | null;
+  deed_book?: string | null;
+  deed_page?: string | null;
+  deed_type?: string | null;
   zoning: string | null;
+  subdivision?: string | null;
+  lot?: string | null;
+  block?: string | null;
   land_use: string | null;
+  owner_type?: string | null;
+  owner_occupied?: boolean | null;
+  do_not_mail?: boolean | null;
+  in_hoa?: boolean | null;
+  family_transfer?: boolean | null;
+  google_map_url?: string | null;
+  google_earth_url?: string | null;
+  property_tax?: number | null;
+  taxed_delinquent_since?: string | null;
+  owner_out_of_state?: boolean | null;
+  owner_out_of_county?: boolean | null;
+  owner_out_of_zip?: boolean | null;
+  mortgage_amount?: number | null;
+  mortgage_length?: number | null;
+  mortgage_lender?: string | null;
+  mortgage_type?: string | null;
+  mortgage_loan_type?: string | null;
+  mortgage_interest?: number | null;
+  school_district?: string | null;
+  parcel_link?: string | null;
+  comping_link?: string | null;
+  min_elevation?: number | null;
+  max_elevation?: number | null;
+  avg_elevation?: number | null;
+  min_slope?: number | null;
+  max_slope?: number | null;
+  avg_slope?: number | null;
+  slope_0_0_5_pct?: number | null;
+  slope_0_5_2_5_pct?: number | null;
+  slope_2_5_5_pct?: number | null;
+  slope_5_7_5_pct?: number | null;
+  slope_7_5_10_pct?: number | null;
+  slope_10_15_pct?: number | null;
+  slope_15_20_pct?: number | null;
+  slope_20_25_pct?: number | null;
+  slope_25_30_pct?: number | null;
+  slope_30_40_pct?: number | null;
+  slope_40_50_pct?: number | null;
+  slope_over_50_pct?: number | null;
   property_url: string | null;
   road_frontage_ft?: number | null;
   is_land_locked?: boolean | null;
@@ -52,6 +149,27 @@ export interface ImportedLandLead {
   mineral_rights_status?: string | null;
   hoa_status?: string | null;
   min_lot_size_acres?: number | null;
+  market_value_estimate_ppa?: number | null;
+  market_value_estimate_comp_count?: number | null;
+  market_value_estimate_confidence?: string | null;
+  market_value_estimate_gini_index?: number | null;
+  tag_odd_shape?: boolean | null;
+  tag_structure?: boolean | null;
+  tag_farmland?: boolean | null;
+  tag_subdivide?: boolean | null;
+  tag_entitlement?: boolean | null;
+  seller_iq?: string | null;
+  dnc?: boolean | null;
+  state_dnc?: boolean | null;
+  litigator?: boolean | null;
+  age?: number | null;
+  gender?: string | null;
+  ethnic_group?: string | null;
+  religion?: string | null;
+  education_level?: string | null;
+  occupation?: string | null;
+  language?: string | null;
+  marital_status?: string | null;
   status: "new" | "contacted" | "interested" | "converted" | "passed";
   deal_id: string | null;
   duplicate_status?: "new" | "possible-duplicate" | "already-converted";
@@ -269,10 +387,22 @@ function summarizeLeadGroups(leads: Array<Omit<ImportedLandLead, "id" | "created
 const DETECTED_FIELD_ALIASES: Array<{ label: string; aliases: string[] }> = [
   { label: "Owner", aliases: ["owner", "owner name", "owner names", "owner name(s)", "seller", "seller name", "name", "full name"] },
   { label: "Primary phone", aliases: ["phone", "phone 1", "primary phone", "seller phone", "mobile", "cell"] },
+  { label: "Additional phones", aliases: ["phone 2", "phone 3", "phone 4", "phone 5", "phone 6"] },
+  { label: "Phone types", aliases: ["phone 1 type", "phone 2 type", "phone 3 type", "phone 4 type", "phone 5 type", "phone 6 type"] },
   { label: "Property address", aliases: ["property address", "parcel address", "site address", "situs address", "address", "location", "property"] },
   { label: "APN / parcel", aliases: ["parcel id", "parcel", "apn", "tax id", "tax parcel", "pin"] },
+  { label: "Owner details", aliases: ["owner first name(s)", "owner 1 full name", "owner 2 full name"] },
+  { label: "Mailing address parts", aliases: ["mail address", "mail city", "mail state", "mail zip", "mail county"] },
+  { label: "Location coordinates", aliases: ["latitude", "longitude"] },
   { label: "County", aliases: ["county", "property county"] },
   { label: "Acreage", aliases: ["acreage", "calculated acreage", "calculated a", "acres", "lot size acres", "land acres"] },
+  { label: "Legal / deed", aliases: ["legal description", "deed book", "deed page", "deed type"] },
+  { label: "Sale history", aliases: ["last sale date", "last sale price", "previous owner(s)"] },
+  { label: "Tax details", aliases: ["tax year", "property tax", "taxed delinquent since", "tax delinquent starting year"] },
+  { label: "Owner flags", aliases: ["owner occupied", "owner out of state", "owner out of county", "owner out of zip", "do not mail"] },
+  { label: "Mortgage", aliases: ["mortgage amount", "mortgage lender", "mortgage type", "mortgage interest"] },
+  { label: "Structure", aliases: ["structure sq ft", "structure count", "structure year built"] },
+  { label: "Elevation / slope", aliases: ["min elevation", "max elevation", "avg elevation", "min slope", "max slope", "avg slope"] },
   { label: "Road frontage", aliases: ["road frontage ft", "road frontage"] },
   { label: "Land locked", aliases: ["land locked", "tag land locked"] },
   { label: "Flood zone", aliases: ["flood zone percent", "flood zone type", "flood zone", "flood"] },
@@ -282,6 +412,11 @@ const DETECTED_FIELD_ALIASES: Array<{ label: string; aliases: string[] }> = [
   { label: "HOA", aliases: ["hoa", "hoa flag", "poa"] },
   { label: "Mineral rights", aliases: ["mineral rights", "minerals"] },
   { label: "Min lot size", aliases: ["min lot size", "minimum lot size"] },
+  { label: "Links", aliases: ["google map", "google earth", "parcel link", "comping link"] },
+  { label: "Value estimate details", aliases: ["market value estimate ppa", "market value estimate comp count", "market value estimate confidence", "market value estimate gini index"] },
+  { label: "Land Insights tags", aliases: ["tag:odd shape", "tag:structure", "tag:farmland", "tag:subdivide", "tag:entitlement"] },
+  { label: "SMS suppression", aliases: ["dnc", "state dnc", "litigator"] },
+  { label: "Source demographics", aliases: ["age", "gender", "ethnic group", "religion", "education level", "occupation", "language", "marital status"] },
 ];
 
 function detectMappedFields(row: Record<string, string> | undefined): LandLeadDetectedField[] {
@@ -448,6 +583,9 @@ function normalizeLead(row: Record<string, string>, sourceSystem: string, campai
   const phone = pick(row, ["phone", "phone 1", "primary phone", "seller phone", "mobile", "cell"]);
   const phone2 = pick(row, ["phone 2", "secondary phone", "alternate phone", "alt phone"]);
   const value = parseNumber(pick(row, ["market value estimate", "market total parcel value", "market value", "estimated value", "value", "total parcel value", "land value", "land price", "price", "total value"]));
+  const parcelLink = pick(row, ["parcel link"]);
+  const googleMap = pick(row, ["google map", "google maps", "map"]);
+  const googleEarth = pick(row, ["google earth", "earth"]);
   const base = {
     batch_id: batchId,
     source_system: sourceSystem,
@@ -455,21 +593,118 @@ function normalizeLead(row: Record<string, string>, sourceSystem: string, campai
     owner_name: owner,
     phone,
     phone_2: phone2,
+    phone_3: pick(row, ["phone 3"]),
+    phone_4: pick(row, ["phone 4"]),
+    phone_5: pick(row, ["phone 5"]),
+    phone_6: pick(row, ["phone 6"]),
+    phone_1_type: pick(row, ["phone 1 type"]),
+    phone_2_type: pick(row, ["phone 2 type"]),
+    phone_3_type: pick(row, ["phone 3 type"]),
+    phone_4_type: pick(row, ["phone 4 type"]),
+    phone_5_type: pick(row, ["phone 5 type"]),
+    phone_6_type: pick(row, ["phone 6 type"]),
     email: pick(row, ["email", "seller email", "owner email"]),
     property_address: propertyAddress,
     parcel_id: parcel,
+    calculated_acreage: parseNumber(pick(row, ["calculated acreage", "calculated a"])),
+    parcel_sq_ft: parseNumber(pick(row, ["parcel sq ft", "parcel square feet"])),
+    fips: pick(row, ["fips"]),
+    latitude: parseNumber(pick(row, ["latitude", "lat"])),
+    longitude: parseNumber(pick(row, ["longitude", "lng", "lon"])),
+    legal_description: pick(row, ["legal description"]),
+    parcel_alt_apn: pick(row, ["parcel alt apn", "alternate apn", "alt apn"]),
     county,
     city,
     state,
     zip,
     mailing_address: pick(row, ["mail full address", "mailing address", "owner mailing address", "mail address", "mail", "mailing"]),
+    mail_address: pick(row, ["mail address"]),
+    mail_city: pick(row, ["mail city"]),
+    mail_state: pick(row, ["mail state"]),
+    mail_zip: pick(row, ["mail zip", "mail zipcode"]),
+    mail_county: pick(row, ["mail county"]),
     acreage: parseNumber(pick(row, ["acreage", "calculated acreage", "calculated a", "acres", "lot size acres", "land acres"])),
     asking_price: parseNumber(pick(row, ["asking price", "ask", "list price", "seller price"])),
     assessed_value: parseNumber(pick(row, ["assessed value", "tax assessed value", "assessment", "improvement value"])),
     market_value: value,
+    structure_sq_ft: parseNumber(pick(row, ["structure sq ft"])),
+    structure_count: parseNumber(pick(row, ["structure count"])),
+    structure_year_built: parseNumber(pick(row, ["structure year built"])),
+    structure_stories: parseNumber(pick(row, ["structure number of stories"])),
+    structure_units: parseNumber(pick(row, ["structure number of units"])),
+    structure_rooms: parseNumber(pick(row, ["structure number of rooms"])),
+    owner_first_names: pick(row, ["owner first name(s)", "owner first names"]),
+    owner_1_full_name: pick(row, ["owner 1 full name"]),
+    owner_1_first_name: pick(row, ["owner 1 first name"]),
+    owner_1_middle_name: pick(row, ["owner 1 middle name"]),
+    owner_1_last_name: pick(row, ["owner 1 last name"]),
+    owner_1_suffix: pick(row, ["owner 1 suffix"]),
+    owner_2_full_name: pick(row, ["owner 2 full name"]),
+    owner_2_first_name: pick(row, ["owner 2 first name"]),
+    owner_2_middle_name: pick(row, ["owner 2 middle name"]),
+    owner_2_last_name: pick(row, ["owner 2 last name"]),
+    owner_2_suffix: pick(row, ["owner 2 suffix"]),
+    improvement_value: parseNumber(pick(row, ["improvement value"])),
+    improvement_percentage: parseNumber(pick(row, ["improvement percentage"])),
+    land_value: parseNumber(pick(row, ["land value"])),
+    total_parcel_value: parseNumber(pick(row, ["total parcel value"])),
+    market_land_value: parseNumber(pick(row, ["market land value"])),
+    market_improvement_value: parseNumber(pick(row, ["market improvement value"])),
+    tax_year: parseNumber(pick(row, ["tax year"])),
+    tax_delinquent_starting_year: parseNumber(pick(row, ["tax delinquent starting year"])),
+    last_sale_date: pick(row, ["last sale date"]),
+    last_sale_price: parseNumber(pick(row, ["last sale price"])),
+    previous_owners: pick(row, ["previous owner(s)", "previous owners"]),
+    previous_owner_1: pick(row, ["previous owner 1"]),
+    previous_owner_2: pick(row, ["previous owner 2"]),
+    deed_book: pick(row, ["deed book"]),
+    deed_page: pick(row, ["deed page"]),
+    deed_type: pick(row, ["deed type"]),
     zoning: pick(row, ["zoning", "zone", "zoning code"]),
+    subdivision: pick(row, ["subdivision"]),
+    lot: pick(row, ["lot"]),
+    block: pick(row, ["block"]),
     land_use: pick(row, ["land use description", "land use", "property use", "use code", "property type"]),
-    property_url: pick(row, ["url", "link", "property url", "listing url", "land insights url", "data link", "parcel link", "map link", "google maps", "earth"]),
+    owner_type: pick(row, ["owner type"]),
+    owner_occupied: boolish(pick(row, ["owner occupied"])),
+    do_not_mail: boolish(pick(row, ["do not mail"])),
+    in_hoa: boolish(pick(row, ["in hoa", "hoa", "hoa flag"])),
+    family_transfer: boolish(pick(row, ["family transfer"])),
+    google_map_url: googleMap,
+    google_earth_url: googleEarth,
+    property_tax: parseNumber(pick(row, ["property tax", "tax amount", "annual tax"])),
+    taxed_delinquent_since: pick(row, ["taxed delinquent since"]),
+    owner_out_of_state: boolish(pick(row, ["owner out of state"])),
+    owner_out_of_county: boolish(pick(row, ["owner out of county"])),
+    owner_out_of_zip: boolish(pick(row, ["owner out of zip"])),
+    mortgage_amount: parseNumber(pick(row, ["mortgage amount"])),
+    mortgage_length: parseNumber(pick(row, ["mortgage length"])),
+    mortgage_lender: pick(row, ["mortgage lender"]),
+    mortgage_type: pick(row, ["mortgage type"]),
+    mortgage_loan_type: pick(row, ["mortgage loan type"]),
+    mortgage_interest: parseNumber(pick(row, ["mortgage interest"])),
+    school_district: pick(row, ["school district", "district"]),
+    parcel_link: parcelLink,
+    comping_link: pick(row, ["comping link"]),
+    min_elevation: parseNumber(pick(row, ["min elevation"])),
+    max_elevation: parseNumber(pick(row, ["max elevation"])),
+    avg_elevation: parseNumber(pick(row, ["avg elevation"])),
+    min_slope: parseNumber(pick(row, ["min slope"])),
+    max_slope: parseNumber(pick(row, ["max slope"])),
+    avg_slope: parseNumber(pick(row, ["avg slope"])),
+    slope_0_0_5_pct: parseNumber(pick(row, ["slope 0-0.5%"])),
+    slope_0_5_2_5_pct: parseNumber(pick(row, ["slope 0.5-2.5%"])),
+    slope_2_5_5_pct: parseNumber(pick(row, ["slope 2.5-5%"])),
+    slope_5_7_5_pct: parseNumber(pick(row, ["slope 5-7.5%"])),
+    slope_7_5_10_pct: parseNumber(pick(row, ["slope 7.5-10%"])),
+    slope_10_15_pct: parseNumber(pick(row, ["slope 10-15%"])),
+    slope_15_20_pct: parseNumber(pick(row, ["slope 15-20%"])),
+    slope_20_25_pct: parseNumber(pick(row, ["slope 20-25%"])),
+    slope_25_30_pct: parseNumber(pick(row, ["slope 25-30%"])),
+    slope_30_40_pct: parseNumber(pick(row, ["slope 30-40%"])),
+    slope_40_50_pct: parseNumber(pick(row, ["slope 40-50%"])),
+    slope_over_50_pct: parseNumber(pick(row, ["slope >50%"])),
+    property_url: pick(row, ["url", "link", "property url", "listing url", "land insights url", "data link", "parcel link", "map link", "google maps", "earth"]) || parcelLink || googleMap || googleEarth,
     road_frontage_ft: parseNumber(pick(row, ["road frontage ft", "road frontage"])),
     is_land_locked: boolish(pick(row, ["land locked", "tag land locked"])),
     flood_zone_percent: parseNumber(pick(row, ["flood zone percent", "flood zone", "flood"])),
@@ -480,8 +715,29 @@ function normalizeLead(row: Record<string, string>, sourceSystem: string, campai
     tax_delinquent: boolish(pick(row, ["tax delinquent", "delinquent taxes"])),
     tax_delinquent_years: parseNumber(pick(row, ["years delinquent", "tax delinquent years"])),
     mineral_rights_status: pick(row, ["mineral rights", "minerals"]),
-    hoa_status: pick(row, ["hoa", "hoa flag", "poa"]),
+    hoa_status: pick(row, ["in hoa", "hoa", "hoa flag", "poa"]),
     min_lot_size_acres: parseNumber(pick(row, ["min lot size", "minimum lot size"])),
+    market_value_estimate_ppa: parseNumber(pick(row, ["market value estimate ppa"])),
+    market_value_estimate_comp_count: parseNumber(pick(row, ["market value estimate comp count"])),
+    market_value_estimate_confidence: pick(row, ["market value estimate confidence"]),
+    market_value_estimate_gini_index: parseNumber(pick(row, ["market value estimate gini index"])),
+    tag_odd_shape: boolish(pick(row, ["tag:odd shape", "tag odd shape"])),
+    tag_structure: boolish(pick(row, ["tag:structure", "tag structure"])),
+    tag_farmland: boolish(pick(row, ["tag:farmland", "tag farmland"])),
+    tag_subdivide: boolish(pick(row, ["tag:subdivide", "tag subdivide"])),
+    tag_entitlement: boolish(pick(row, ["tag:entitlement", "tag entitlement"])),
+    seller_iq: pick(row, ["selleriq", "seller iq"]),
+    dnc: boolish(pick(row, ["dnc"])),
+    state_dnc: boolish(pick(row, ["state dnc"])),
+    litigator: boolish(pick(row, ["litigator"])),
+    age: parseNumber(pick(row, ["age"])),
+    gender: pick(row, ["gender"]),
+    ethnic_group: pick(row, ["ethnic group"]),
+    religion: pick(row, ["religion"]),
+    education_level: pick(row, ["education level"]),
+    occupation: pick(row, ["occupation"]),
+    language: pick(row, ["language"]),
+    marital_status: pick(row, ["marital status"]),
     status: "new" as const,
     deal_id: null,
     duplicate_status: "new" as const,
