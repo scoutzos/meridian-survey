@@ -1066,7 +1066,7 @@ export default function VaPage() {
     if (preview.error) { setMessage(preview.error); return; }
     setImportPreview(preview);
     setImportStep("preview");
-    setMessage(`Preview ready. Meridian found ${preview.safeToImport} new lead${preview.safeToImport === 1 ? "" : "s"} to import and ${preview.skippedDuplicates} overlap${preview.skippedDuplicates === 1 ? "" : "s"} to skip.`);
+    setMessage(`Preview ready. Meridian found ${preview.safeToImport} new propert${preview.safeToImport === 1 ? "y" : "ies"} across ${preview.uniqueLeadCount} lead${preview.uniqueLeadCount === 1 ? "" : "s"} and ${preview.skippedDuplicates} overlap${preview.skippedDuplicates === 1 ? "" : "s"} to skip.`);
     setActiveTab("lists");
   };
 
@@ -1075,7 +1075,7 @@ export default function VaPage() {
     setImporting(true);
     setImportStage("creating-batch");
     setImportStep("importing");
-    setMessage(`Importing ${importPreview.usableLeads} leads now. Large lists can take a minute; keep this tab open.`);
+    setMessage(`Importing ${importPreview.safeToImport} property row${importPreview.safeToImport === 1 ? "" : "s"} now. Large lists can take a minute; keep this tab open.`);
     try {
       setImportStage("saving-leads");
       const response = await fetch("/api/import-land-leads", {
@@ -1101,7 +1101,7 @@ export default function VaPage() {
       setImportStep("work");
       setImportStage("done");
       setMessage([
-        `Imported ${result.importedCount ?? importPreview.safeToImport} new lead${(result.importedCount ?? importPreview.safeToImport) === 1 ? "" : "s"} from ${importPreview.filename}.`,
+        `Imported ${result.importedCount ?? importPreview.safeToImport} new propert${(result.importedCount ?? importPreview.safeToImport) === 1 ? "y" : "ies"} from ${importPreview.filename}.`,
         importPreview.skippedDuplicates ? `Skipped ${importPreview.skippedDuplicates} overlapping record${importPreview.skippedDuplicates === 1 ? "" : "s"} already in Meridian.` : "",
         result.warning || "",
       ].filter(Boolean).join(" "));
@@ -2475,7 +2475,7 @@ export default function VaPage() {
                   padding: 10,
                 }}>
                   <p style={miniLabel}>Step {index + 1}</p>
-                  <strong style={{ color: "var(--obsidian)", fontSize: 13 }}>{step === "upload" ? "Upload" : step === "preview" ? "Preview & Validate" : step === "importing" ? "Import Progress" : "Work The List"}</strong>
+                  <strong style={{ color: "var(--obsidian)", fontSize: 13 }}>{step === "upload" ? "Upload" : step === "preview" ? "Map & Preview" : step === "importing" ? "Import Progress" : "Work The List"}</strong>
                 </div>
               ))}
             </div>
@@ -2523,12 +2523,12 @@ export default function VaPage() {
                         </select>
                       </div>
                       <div>
-                        <label style={label}>Campaign / list name</label>
+                        <label style={label}>List name</label>
                         <input value={uploadCampaign} onChange={e => setUploadCampaign(e.target.value)} placeholder="Gwinnett County GA Odessa" />
                       </div>
                     </div>
                     <p style={{ fontSize: 12, color: "var(--muted)", marginTop: 12, lineHeight: 1.55 }}>
-                      The file will preview first so you can confirm mapped fields, duplicates, skipped records, and safe-to-import count.
+                      The file will preview first so you can confirm mapped fields, property rows, grouped lead count, duplicate signals, and safe-to-text count.
                     </p>
                   </div>
                 </div>
@@ -2542,15 +2542,15 @@ export default function VaPage() {
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, marginTop: 12 }} className="number-grid">
                   <div style={subPanel}>
                     <p style={miniLabel}>1. Choose CSV</p>
-                    <p style={{ color: "var(--muted)", fontSize: 12, lineHeight: 1.45 }}>Use the export from the list source. Owner, phone, parcel, county, acreage, and address will be mapped when available.</p>
+                    <p style={{ color: "var(--muted)", fontSize: 12, lineHeight: 1.45 }}>Use the export from the list source. Each row is treated as a property, then grouped under the right owner when possible.</p>
                   </div>
                   <div style={subPanel}>
-                    <p style={miniLabel}>2. Confirm import</p>
-                    <p style={{ color: "var(--muted)", fontSize: 12, lineHeight: 1.45 }}>Review the preview, skipped rows, duplicate signals, and safe-to-import count before saving the list.</p>
+                    <p style={miniLabel}>2. Confirm mapping</p>
+                    <p style={{ color: "var(--muted)", fontSize: 12, lineHeight: 1.45 }}>Review detected Land Insights columns, skipped rows, duplicate signals, and the unique-lead funnel before saving the list.</p>
                   </div>
                   <div style={subPanel}>
-                    <p style={miniLabel}>3. Work sellers</p>
-                    <p style={{ color: "var(--muted)", fontSize: 12, lineHeight: 1.45 }}>Search, text eligible owners, log outcomes, and convert interested sellers into deal briefs.</p>
+                    <p style={miniLabel}>3. Text the audience</p>
+                    <p style={{ color: "var(--muted)", fontSize: 12, lineHeight: 1.45 }}>Use the saved list as the audience source, bulk text eligible owners, and work replies from the Lead Inbox.</p>
                   </div>
                 </div>
               </div>
@@ -2729,30 +2729,59 @@ export default function VaPage() {
               <div style={{ ...subPanel, marginBottom: 12, borderColor: "var(--brass)" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "baseline", marginBottom: 10 }}>
                   <div>
-                    <p style={eyebrowSmall}>Preview & Validate</p>
+                    <p style={eyebrowSmall}>Map & Preview</p>
                     <h3 style={{ ...sectionTitle, fontSize: 20 }}>{importPreview.filename}</h3>
-                    <p style={{ color: "var(--muted)", fontSize: 12, marginTop: 4 }}>Land list format recognized · {importPreview.rowsFound} rows found</p>
+                    <p style={{ color: "var(--muted)", fontSize: 12, marginTop: 4 }}>Land list format recognized · rows become properties, then properties group under leads</p>
                   </div>
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                     <button onClick={() => { setImportPreview(null); setImportStep("upload"); }} style={secondaryButton}>Cancel</button>
                     <button onClick={confirmLeadImport} disabled={importing || importPreview.safeToImport === 0} style={{ ...primaryButton, opacity: importing || importPreview.safeToImport === 0 ? 0.6 : 1 }}>
-                      {importing ? "Importing..." : `Import ${importPreview.safeToImport} New Leads`}
+                      {importing ? "Importing..." : `Import ${importPreview.safeToImport} New Properties`}
                     </button>
                   </div>
                 </div>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 8 }} className="number-grid">
-                  <MiniStat label="Rows" value={String(importPreview.rowsFound)} />
-                  <MiniStat label="Usable" value={String(importPreview.usableLeads)} />
-                  <MiniStat label="New to save" value={String(importPreview.safeToImport)} />
-                  <MiniStat label="Exact match" value={String(importPreview.exactDuplicates)} />
-                  <MiniStat label="Possible match" value={String(importPreview.possibleDuplicates - importPreview.exactDuplicates)} />
-                  <MiniStat label="Converted" value={String(importPreview.alreadyConverted)} />
+                  <MiniStat label="CSV rows" value={String(importPreview.rowsFound)} />
+                  <MiniStat label="Properties" value={String(importPreview.propertyRows)} />
+                  <MiniStat label="Unique leads" value={String(importPreview.uniqueLeadCount)} />
+                  <MiniStat label="Textable leads" value={String(importPreview.textableLeadCount)} />
+                  <MiniStat label="Multi-property" value={String(importPreview.multiPropertyLeadCount)} />
+                  <MiniStat label="New properties" value={String(importPreview.safeToImport)} />
                 </div>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8, marginTop: 8 }} className="number-grid">
+                  <MiniStat label="Exact match" value={String(importPreview.exactDuplicates)} />
+                  <MiniStat label="Possible match" value={String(Math.max(0, importPreview.possibleDuplicates - importPreview.exactDuplicates))} />
                   <MiniStat label="No phone" value={String(importPreview.missingPhone)} />
-                  <MiniStat label="No owner" value={String(importPreview.missingOwner)} />
-                  <MiniStat label="Skipped" value={String(importPreview.skippedDuplicates)} />
                   <MiniStat label="Avg score" value={String(importPreview.averageScore)} />
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 0.9fr) minmax(0, 1.1fr)", gap: 12, marginTop: 12 }} className="two-col">
+                  <div style={subPanel}>
+                    <p style={eyebrowSmall}>Detected Land Insights fields</p>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 6, marginTop: 8 }} className="two-col">
+                      {importPreview.detectedFields.map(field => (
+                        <div key={field.label} style={{ border: "1px solid var(--fog)", borderRadius: 8, padding: 8, background: field.status === "mapped" ? "rgba(34,119,84,0.08)" : "var(--surface)" }}>
+                          <strong style={{ display: "block", color: "var(--obsidian)", fontSize: 12 }}>{field.label}</strong>
+                          <span style={{ color: field.status === "mapped" ? "var(--pine)" : "var(--muted)", fontSize: 11 }}>{field.mappedFrom || "Not found"}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  <div style={subPanel}>
+                    <p style={eyebrowSmall}>Grouped lead preview</p>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 8, maxHeight: 270, overflow: "auto" }}>
+                      {importPreview.groupedLeadSamples.map(group => (
+                        <div key={`${group.leadLabel}-${group.phone}-${group.sampleProperties.join("|")}`} style={{ border: "1px solid var(--fog)", borderRadius: 8, padding: 9, background: "var(--surface)" }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
+                            <strong style={{ color: "var(--obsidian)", fontSize: 13 }}>{group.leadLabel}</strong>
+                            <span style={group.propertyCount > 1 ? hotPill : pill}>{group.propertyCount} propert{group.propertyCount === 1 ? "y" : "ies"}</span>
+                          </div>
+                          <p style={{ color: "var(--muted)", fontSize: 12, marginTop: 4 }}>{group.phone || "No phone"}{group.counties.length ? ` · ${group.counties.join(", ")}` : ""}</p>
+                          <p style={{ color: "var(--muted)", fontSize: 12, lineHeight: 1.45, marginTop: 4 }}>{group.sampleProperties.join(" · ")}</p>
+                        </div>
+                      ))}
+                      {importPreview.groupedLeadSamples.length === 0 && <p style={{ color: "var(--muted)", fontSize: 12 }}>No grouped leads found in this file.</p>}
+                    </div>
+                  </div>
                 </div>
                 {importPreview.skippedDuplicates > 0 && (
                   <div style={{ ...subPanel, marginTop: 12, background: "rgba(176,137,84,0.10)", borderColor: "var(--brass)" }}>

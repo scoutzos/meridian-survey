@@ -40,6 +40,18 @@ export interface ImportedLandLead {
   zoning: string | null;
   land_use: string | null;
   property_url: string | null;
+  road_frontage_ft?: number | null;
+  is_land_locked?: boolean | null;
+  flood_zone_percent?: number | null;
+  flood_zone_type?: string | null;
+  wetlands_percent?: number | null;
+  topography?: string | null;
+  bad_topography?: boolean | null;
+  tax_delinquent?: boolean | null;
+  tax_delinquent_years?: number | null;
+  mineral_rights_status?: string | null;
+  hoa_status?: string | null;
+  min_lot_size_acres?: number | null;
   status: "new" | "contacted" | "interested" | "converted" | "passed";
   deal_id: string | null;
   duplicate_status?: "new" | "possible-duplicate" | "already-converted";
@@ -82,12 +94,32 @@ export interface LandLeadImportPreview {
   possibleDuplicates: number;
   alreadyConverted: number;
   skippedDuplicates: number;
+  propertyRows: number;
+  uniqueLeadCount: number;
+  textableLeadCount: number;
+  multiPropertyLeadCount: number;
   averageScore: number;
+  detectedFields: LandLeadDetectedField[];
+  groupedLeadSamples: LandLeadGroupPreview[];
   sampleLeads: Array<Omit<ImportedLandLead, "id" | "created_at" | "updated_at">>;
   duplicateKeys: string[];
   duplicateMatches: LeadDuplicateMatch[];
   csvText: string;
   error: string | null;
+}
+
+export interface LandLeadDetectedField {
+  label: string;
+  mappedFrom: string | null;
+  status: "mapped" | "missing";
+}
+
+export interface LandLeadGroupPreview {
+  leadLabel: string;
+  phone: string | null;
+  propertyCount: number;
+  counties: string[];
+  sampleProperties: string[];
 }
 
 export interface LeadDuplicateMatch {
@@ -162,6 +194,18 @@ function pick(row: Record<string, string>, aliases: string[]): string | null {
   return null;
 }
 
+function pickKey(row: Record<string, string>, aliases: string[]): string | null {
+  const normalized = Object.keys(row).reduce<Record<string, string>>((acc, key) => {
+    acc[normalizeHeader(key)] = key;
+    return acc;
+  }, {});
+  for (const alias of aliases) {
+    const key = normalized[normalizeHeader(alias)];
+    if (key && clean(row[key])) return key;
+  }
+  return null;
+}
+
 function noteLine(row: Record<string, string>, label: string, aliases: string[]): string {
   const value = pick(row, aliases);
   return value ? `${label}: ${value}` : "";
@@ -187,6 +231,65 @@ function normalizeParcel(value: string | null | undefined): string {
 function normalizePhone(value: string | null | undefined): string {
   const digits = (value ?? "").replace(/\D/g, "");
   return digits.length > 10 ? digits.slice(-10) : digits;
+}
+
+function leadIdentityKey(lead: Pick<ImportedLandLead, "phone" | "phone_2" | "owner_name" | "mailing_address" | "county">): string {
+  const phone = normalizePhone(lead.phone) || normalizePhone(lead.phone_2);
+  if (phone.length >= 7) return `phone:${phone}`;
+  const owner = normalizeText(lead.owner_name);
+  const mailing = normalizeText(lead.mailing_address);
+  if (owner && mailing) return `owner-mail:${owner}|${mailing}`;
+  const county = normalizeText(lead.county);
+  if (owner && county) return `owner-county:${owner}|${county}`;
+  return `row:${owner || mailing || Math.random().toString(36).slice(2)}`;
+}
+
+function summarizeLeadGroups(leads: Array<Omit<ImportedLandLead, "id" | "created_at" | "updated_at">>): LandLeadGroupPreview[] {
+  const groups = new Map<string, Array<Omit<ImportedLandLead, "id" | "created_at" | "updated_at">>>();
+  leads.forEach(lead => {
+    const key = leadIdentityKey(lead);
+    groups.set(key, [...(groups.get(key) ?? []), lead]);
+  });
+  return Array.from(groups.values())
+    .map(group => {
+      const first = group[0];
+      return {
+        leadLabel: first.owner_name || first.phone || first.phone_2 || "Owner unknown",
+        phone: first.phone || first.phone_2 || null,
+        propertyCount: group.length,
+        counties: Array.from(new Set(group.map(lead => lead.county).filter((value): value is string => !!value))).slice(0, 3),
+        sampleProperties: group
+          .map(lead => lead.property_address || lead.parcel_id || "Unlabeled property")
+          .slice(0, 3),
+      };
+    })
+    .sort((a, b) => b.propertyCount - a.propertyCount || a.leadLabel.localeCompare(b.leadLabel));
+}
+
+const DETECTED_FIELD_ALIASES: Array<{ label: string; aliases: string[] }> = [
+  { label: "Owner", aliases: ["owner", "owner name", "owner names", "owner name(s)", "seller", "seller name", "name", "full name"] },
+  { label: "Primary phone", aliases: ["phone", "phone 1", "primary phone", "seller phone", "mobile", "cell"] },
+  { label: "Property address", aliases: ["property address", "parcel address", "site address", "situs address", "address", "location", "property"] },
+  { label: "APN / parcel", aliases: ["parcel id", "parcel", "apn", "tax id", "tax parcel", "pin"] },
+  { label: "County", aliases: ["county", "property county"] },
+  { label: "Acreage", aliases: ["acreage", "calculated acreage", "calculated a", "acres", "lot size acres", "land acres"] },
+  { label: "Road frontage", aliases: ["road frontage ft", "road frontage"] },
+  { label: "Land locked", aliases: ["land locked", "tag land locked"] },
+  { label: "Flood zone", aliases: ["flood zone percent", "flood zone type", "flood zone", "flood"] },
+  { label: "Wetlands", aliases: ["wetlands percent", "wetlands", "tag wetlands"] },
+  { label: "Topography", aliases: ["topography", "slope", "tag bad topography", "bad topography"] },
+  { label: "Tax delinquent", aliases: ["tax delinquent", "delinquent taxes", "years delinquent", "tax delinquent years"] },
+  { label: "HOA", aliases: ["hoa", "hoa flag", "poa"] },
+  { label: "Mineral rights", aliases: ["mineral rights", "minerals"] },
+  { label: "Min lot size", aliases: ["min lot size", "minimum lot size"] },
+];
+
+function detectMappedFields(row: Record<string, string> | undefined): LandLeadDetectedField[] {
+  if (!row) return DETECTED_FIELD_ALIASES.map(field => ({ label: field.label, mappedFrom: null, status: "missing" as const }));
+  return DETECTED_FIELD_ALIASES.map(field => {
+    const mappedFrom = pickKey(row, field.aliases);
+    return { label: field.label, mappedFrom, status: mappedFrom ? "mapped" : "missing" };
+  });
 }
 
 function normalizeUrl(value: string | null | undefined): string {
@@ -367,6 +470,18 @@ function normalizeLead(row: Record<string, string>, sourceSystem: string, campai
     zoning: pick(row, ["zoning", "zone", "zoning code"]),
     land_use: pick(row, ["land use description", "land use", "property use", "use code", "property type"]),
     property_url: pick(row, ["url", "link", "property url", "listing url", "land insights url", "data link", "parcel link", "map link", "google maps", "earth"]),
+    road_frontage_ft: parseNumber(pick(row, ["road frontage ft", "road frontage"])),
+    is_land_locked: boolish(pick(row, ["land locked", "tag land locked"])),
+    flood_zone_percent: parseNumber(pick(row, ["flood zone percent", "flood zone", "flood"])),
+    flood_zone_type: pick(row, ["flood zone type", "flood zone"]),
+    wetlands_percent: parseNumber(pick(row, ["wetlands percent", "wetlands", "tag wetlands"])),
+    topography: pick(row, ["topography", "slope"]),
+    bad_topography: boolish(pick(row, ["tag bad topography", "bad topography"])),
+    tax_delinquent: boolish(pick(row, ["tax delinquent", "delinquent taxes"])),
+    tax_delinquent_years: parseNumber(pick(row, ["years delinquent", "tax delinquent years"])),
+    mineral_rights_status: pick(row, ["mineral rights", "minerals"]),
+    hoa_status: pick(row, ["hoa", "hoa flag", "poa"]),
+    min_lot_size_acres: parseNumber(pick(row, ["min lot size", "minimum lot size"])),
     status: "new" as const,
     deal_id: null,
     duplicate_status: "new" as const,
@@ -508,11 +623,12 @@ export async function previewLandLeadsCsv(args: {
 }): Promise<LandLeadImportPreview> {
   const rows = parseCsv(args.csvText);
   if (rows.length === 0) {
-    return { filename: args.filename, rowsFound: 0, usableLeads: 0, safeToImport: 0, missingPhone: 0, missingOwner: 0, exactDuplicates: 0, possibleDuplicates: 0, alreadyConverted: 0, skippedDuplicates: 0, averageScore: 0, sampleLeads: [], duplicateKeys: [], duplicateMatches: [], csvText: args.csvText, error: "No lead rows found. Upload a CSV with a header row." };
+    return { filename: args.filename, rowsFound: 0, usableLeads: 0, safeToImport: 0, missingPhone: 0, missingOwner: 0, exactDuplicates: 0, possibleDuplicates: 0, alreadyConverted: 0, skippedDuplicates: 0, propertyRows: 0, uniqueLeadCount: 0, textableLeadCount: 0, multiPropertyLeadCount: 0, averageScore: 0, detectedFields: detectMappedFields(undefined), groupedLeadSamples: [], sampleLeads: [], duplicateKeys: [], duplicateMatches: [], csvText: args.csvText, error: "No lead rows found. Upload a CSV with a header row." };
   }
   const existing = await fetchImportedLandLeads(5000);
   const normalized = applyDuplicateMetadata(rows.map(row => normalizeLead(row, args.sourceSystem, args.campaignSource?.trim() || null, args.actor, null)), existing);
   const usable = normalized.filter(lead => lead.owner_name || lead.phone || lead.phone_2 || lead.parcel_id || lead.property_address);
+  const groupedLeadSamples = summarizeLeadGroups(usable);
   const scores = usable.map(lead => lead.lead_score ?? 0);
   const duplicateMatches = buildDuplicateMatches(usable, existing);
   const exactDuplicates = duplicateMatches.filter(match => match.confidence === "exact").length;
@@ -530,7 +646,13 @@ export async function previewLandLeadsCsv(args: {
     possibleDuplicates,
     alreadyConverted,
     skippedDuplicates,
+    propertyRows: usable.length,
+    uniqueLeadCount: groupedLeadSamples.length,
+    textableLeadCount: groupedLeadSamples.filter(group => !!group.phone).length,
+    multiPropertyLeadCount: groupedLeadSamples.filter(group => group.propertyCount > 1).length,
     averageScore: scores.length ? Math.round(scores.reduce((sum, score) => sum + score, 0) / scores.length) : 0,
+    detectedFields: detectMappedFields(rows[0]),
+    groupedLeadSamples: groupedLeadSamples.slice(0, 8),
     sampleLeads: usable.slice(0, 5),
     duplicateKeys: usable.filter(lead => lead.duplicate_status !== "new").slice(0, 10).map(duplicateKey),
     duplicateMatches: duplicateMatches.slice(0, 12),
