@@ -317,9 +317,9 @@ export default function FloatingSmsWindow({
   }
 
   return (
-    <section style={{ ...shell, transform: `translate(${position.x}px, ${position.y}px)` }}>
+    <section style={{ ...shell, ...(minimized ? minimizedShell : {}), transform: `translate(${position.x}px, ${position.y}px)` }}>
       <div
-        style={{ ...titleBar, cursor: dragging ? "grabbing" : "grab" }}
+        style={{ ...titleBar, ...(minimized ? minimizedTitleBar : {}), cursor: dragging ? "grabbing" : "grab" }}
         onPointerDown={startDrag}
         onPointerMove={moveDrag}
         onPointerUp={endDrag}
@@ -512,6 +512,10 @@ const shell: CSSProperties = {
   overflow: "hidden",
 };
 
+const minimizedShell: CSSProperties = {
+  width: "min(420px, calc(100vw - 32px))",
+};
+
 const titleBar: CSSProperties = {
   alignItems: "center",
   background: "var(--obsidian)",
@@ -519,6 +523,10 @@ const titleBar: CSSProperties = {
   justifyContent: "space-between",
   padding: "10px 14px",
   userSelect: "none",
+};
+
+const minimizedTitleBar: CSSProperties = {
+  padding: "9px 12px",
 };
 
 const body: CSSProperties = {
