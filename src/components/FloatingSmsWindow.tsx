@@ -29,6 +29,7 @@ type FloatingSmsWindowProps = {
   onOpenLead?: (lead: ImportedLandLead) => void;
   onOpenDeal?: (dealId: string) => void;
   onCreateDealBrief?: (lead: ImportedLandLead) => void;
+  onCreateDealBriefFromContact?: (contact: { phone: string; name?: string | null }) => void;
   onMarkInterested?: (lead: ImportedLandLead) => void;
   onSent?: (leadId?: string | null) => Promise<void> | void;
 };
@@ -54,6 +55,13 @@ function displayPhone(value: string | null | undefined): string {
   const d = last10(value);
   if (d.length !== 10) return value || "No phone";
   return `(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}`;
+}
+
+function callablePhone(value: string | null | undefined): string {
+  const d = digits(value);
+  if (d.length === 10) return `+1${d}`;
+  if (d.length === 11 && d.startsWith("1")) return `+${d}`;
+  return value || "";
 }
 
 function formatTime(iso: string | null | undefined): string {
@@ -176,6 +184,7 @@ export default function FloatingSmsWindow({
   onOpenLead,
   onOpenDeal,
   onCreateDealBrief,
+  onCreateDealBriefFromContact,
   onMarkInterested,
   onSent,
 }: FloatingSmsWindowProps) {
@@ -270,6 +279,25 @@ export default function FloatingSmsWindow({
   const openSelectedRecord = () => {
     if (selectedThread?.dealId) onOpenDeal?.(selectedThread.dealId);
     else if (selectedLead) onOpenLead?.(selectedLead);
+    else setStatus("This contact is not linked to a lead or deal yet. Use Create Packet to start one from this phone number.");
+  };
+  const createPacketFromSelectedContact = () => {
+    if (selectedLead) {
+      onCreateDealBrief?.(selectedLead);
+      return;
+    }
+    if (selectedThread?.dealId) {
+      onOpenDeal?.(selectedThread.dealId);
+      return;
+    }
+    if (selectedPhone) {
+      onCreateDealBriefFromContact?.({
+        phone: selectedPhone,
+        name: selectedThread?.label && selectedThread.label !== "Unmatched contact" ? selectedThread.label : null,
+      });
+      return;
+    }
+    setStatus("Add or select a phone number before creating a packet.");
   };
   const markThreadRead = useCallback((thread: SmsThread) => {
     if (!thread.unread) return;
@@ -387,9 +415,10 @@ export default function FloatingSmsWindow({
       if (!device) throw new Error("Phone is still connecting. Try again in a moment.");
       setPhoneState("connecting");
       setPhoneMessage(`Dialing ${displayPhone(toNumber)}...`);
+      const toDial = compliance?.phone?.number || callablePhone(toNumber);
       const call = await device.connect({
         params: {
-          To: compliance?.phone?.number || toNumber,
+          To: toDial,
           ...(leadForCompliance?.id ? { leadId: leadForCompliance.id } : leadId ? { leadId } : {}),
           ...(dealId ? { dealId } : {}),
         },
@@ -746,7 +775,7 @@ export default function FloatingSmsWindow({
                     >
                       ☎
                     </button>
-                    <button type="button" onClick={() => selectedLead ? onCreateDealBrief?.(selectedLead) : selectedThread.dealId ? onOpenDeal?.(selectedThread.dealId) : undefined} style={roundAction}>◇</button>
+                    <button type="button" onClick={createPacketFromSelectedContact} style={roundAction} title={selectedLead ? "Create packet from lead" : selectedThread.dealId ? "Open linked deal" : "Create packet from this contact"}>◇</button>
                     <button type="button" onClick={openSelectedRecord} style={roundAction}>…</button>
                   </div>
                 </div>
@@ -758,14 +787,14 @@ export default function FloatingSmsWindow({
                     <p style={propertyMeta}>{contextMetaText || selectedThread.subtitle}</p>
                   </div>
                   <button type="button" onClick={openSelectedRecord} style={openLeadButton}>
-                    {selectedThread.dealId ? "Open Deal" : selectedLead ? "Open Lead" : "Unmatched"}
+                    {selectedThread.dealId ? "Open Deal" : selectedLead ? "Open Lead" : "No Record"}
                   </button>
                 </div>
 
                 <div style={actionRow}>
                   {selectedLead && <button type="button" onClick={() => onOpenLead?.(selectedLead)} style={smallAction}>Open Lead</button>}
                   {selectedThread.dealId && <button type="button" onClick={() => onOpenDeal?.(selectedThread.dealId!)} style={smallAction}>Open Deal</button>}
-                  {selectedLead && <button type="button" onClick={() => onCreateDealBrief?.(selectedLead)} style={smallAction}>Create Deal Brief</button>}
+                  <button type="button" onClick={createPacketFromSelectedContact} style={smallAction}>Create Packet</button>
                   {canSend && selectedLead && selectedLead.status !== "interested" && <button type="button" onClick={() => onMarkInterested?.(selectedLead)} style={smallAction}>Mark Interested</button>}
                 </div>
 

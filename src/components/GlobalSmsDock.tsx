@@ -50,6 +50,11 @@ export default function GlobalSmsDock() {
       onOpenLead={lead => router.push(`/lead/${lead.id}`)}
       onOpenDeal={dealId => router.push(`/opportunity?deal=${dealId}`)}
       onCreateDealBrief={lead => router.push(`/va?tab=packet&lead=${lead.id}`)}
+      onCreateDealBriefFromContact={({ phone, name }) => {
+        const params = new URLSearchParams({ tab: "packet", seller_phone: phone });
+        if (name) params.set("seller_name", name);
+        router.push(`/va?${params.toString()}`);
+      }}
       onMarkInterested={async lead => {
         await updateImportedLandLeadStatus(lead.id, "interested", lead.deal_id);
         await refresh();

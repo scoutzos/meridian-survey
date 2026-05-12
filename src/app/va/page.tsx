@@ -601,6 +601,7 @@ export default function VaPage() {
   const [notifyReviewUpdate, setNotifyReviewUpdate] = useState(false);
   const [activeMemberNames, setActiveMemberNames] = useState<string[]>([]);
   const leadCsvInputRef = useRef<HTMLInputElement | null>(null);
+  const urlPrefillRef = useRef("");
 
   const reload = useCallback(async (memberName = user) => {
     setLoading(true);
@@ -645,8 +646,27 @@ export default function VaPage() {
 
   useEffect(() => {
     const readUrlTab = () => {
-      const tab = new URLSearchParams(window.location.search).get("tab") || "today";
+      const params = new URLSearchParams(window.location.search);
+      const tab = params.get("tab") || "today";
       if (TABS.some(item => item.value === tab)) setActiveTab(tab as VaTab);
+      const sellerPhone = params.get("seller_phone") || "";
+      const sellerName = params.get("seller_name") || "";
+      const leadId = params.get("lead") || "";
+      const prefillKey = [tab, sellerPhone, sellerName, leadId].join("|");
+      if (tab === "packet" && sellerPhone && prefillKey !== urlPrefillRef.current) {
+        urlPrefillRef.current = prefillKey;
+        setSelectedId(null);
+        setSelectedImportedLeadId(null);
+        setDraft({
+          ...EMPTY_DRAFT,
+          title: sellerName || `Contact ${sellerPhone}`,
+          seller_name: sellerName,
+          seller_phone: sellerPhone,
+          source: "Comms",
+          notes: "Created from an unmatched global comms contact. Add the property address, parcel, and seller context before submitting.",
+        });
+        setMessage("Started a packet from the unmatched comms contact. Add property details before saving.");
+      }
     };
     const handleTabEvent = (event: Event) => {
       const tab = (event as CustomEvent<VaTab>).detail;
