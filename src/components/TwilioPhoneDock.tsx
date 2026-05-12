@@ -99,25 +99,42 @@ export default function TwilioPhoneDock({ actor = "Meridian" }: { actor?: string
     else callRef.current?.disconnect();
   }
 
+  const active = state === "online" || state === "ringing" || state === "in-call";
+  const urgent = state === "ringing" || state === "error";
+
   return (
-    <section style={{
+    <section aria-live="polite" style={{
       alignItems: "center",
-      background: "var(--surface)",
-      border: state === "online" || state === "ringing" || state === "in-call" ? "1px solid var(--brass)" : "1px solid var(--fog)",
+      background: active ? "rgba(176,137,84,0.09)" : "rgba(255,255,255,0.74)",
+      border: active ? "1px solid rgba(176,137,84,0.42)" : "1px solid var(--fog)",
       borderRadius: 8,
       display: "flex",
       flexWrap: "wrap",
-      gap: 10,
+      gap: 12,
       justifyContent: "space-between",
-      marginBottom: 16,
-      padding: 12,
+      marginBottom: 14,
+      padding: "10px 12px",
+      boxShadow: "0 10px 26px rgba(20,17,13,0.04)",
     }}>
-      <div>
-        <p style={{ color: "var(--brass)", fontSize: 10, fontWeight: 800, letterSpacing: "0.16em", textTransform: "uppercase" }}>Call desk</p>
-        <strong style={{ color: "var(--obsidian)", display: "block", fontSize: 14, marginTop: 4 }}>
-          {state === "offline" ? "Offline" : state === "connecting" ? "Connecting" : state === "ringing" ? "Incoming call" : state === "in-call" ? "On a call" : state === "error" ? "Needs attention" : "Online"}
-        </strong>
-        <p style={{ color: "var(--muted)", fontSize: 12, marginTop: 3 }}>{message}</p>
+      <div style={{ alignItems: "center", display: "flex", gap: 10, minWidth: 260 }}>
+        <span style={{
+          background: urgent ? "var(--brass)" : active ? "#2f8f5b" : "var(--fog)",
+          border: "3px solid var(--surface)",
+          borderRadius: 999,
+          boxShadow: "0 0 0 1px rgba(20,17,13,0.08)",
+          display: "inline-block",
+          height: 14,
+          width: 14,
+        }} />
+        <div>
+          <p style={{ color: "var(--brass)", fontSize: 10, fontWeight: 800, letterSpacing: "0.16em", textTransform: "uppercase" }}>Call desk</p>
+          <div style={{ alignItems: "baseline", display: "flex", gap: 8, flexWrap: "wrap", marginTop: 2 }}>
+            <strong style={{ color: "var(--obsidian)", display: "block", fontSize: 14 }}>
+              {state === "offline" ? "Offline" : state === "connecting" ? "Connecting" : state === "ringing" ? "Incoming call" : state === "in-call" ? "On a call" : state === "error" ? "Needs attention" : "Online"}
+            </strong>
+            <p style={{ color: "var(--muted)", fontSize: 12 }}>{message}</p>
+          </div>
+        </div>
       </div>
 
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>

@@ -398,6 +398,44 @@ button {
   opacity: 0.74;
 }
 
+.operating-header-va {
+  border-radius: 8px;
+  margin-bottom: 14px;
+  box-shadow: 0 18px 42px rgba(20,17,13,0.16);
+}
+
+.operating-header-va .operating-header-main {
+  align-items: center;
+  padding: 18px 20px;
+}
+
+.operating-header-va h1 {
+  font-size: clamp(34px, 4.2vw, 46px);
+  line-height: 1;
+}
+
+.operating-header-va .operating-subtitle {
+  font-size: 13px;
+  max-width: 660px;
+}
+
+.operating-header-va .operating-stat-grid {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.operating-header-va .operating-stat {
+  min-height: 96px;
+  padding: 13px 15px;
+}
+
+.operating-header-va .operating-stat strong {
+  font-size: 24px;
+}
+
+.operating-header-va .operating-stat-cta {
+  margin-top: 6px;
+}
+
 @media (max-width: 767px) {
   .bottom-nav { display: flex; }
   .main-content { padding-bottom: calc(70px + env(safe-area-inset-bottom)); }
@@ -435,6 +473,10 @@ button {
   }
 
   .operating-stat-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .operating-header-va .operating-stat-grid {
     grid-template-columns: 1fr;
   }
 

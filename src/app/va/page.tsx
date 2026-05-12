@@ -1630,40 +1630,52 @@ export default function VaPage() {
       subtitle: "Review time, summarize completed work, log blockers, and set the next-shift plan for members.",
     },
   };
+  const headerSecondaryAction = {
+    ...secondaryButton,
+    background: "rgba(237,230,214,0.04)",
+    borderColor: "rgba(237,230,214,0.55)",
+    color: "var(--bone)",
+  };
+  const headerPrimaryAction = {
+    ...primaryButton,
+    background: "var(--brass)",
+    borderColor: "var(--brass)",
+    color: "var(--obsidian)",
+  };
   const headerActions: Record<VaTab, React.ReactNode> = {
     today: (
       <>
-      <button onClick={() => goToTab("lists")} style={secondaryButton}>Import List</button>
-      <button onClick={() => selectedImportedLead ? document.getElementById("va-workdesk-note")?.focus() : goToTab("outreach")} style={secondaryButton}>Log Call</button>
-      <button onClick={startNew} style={primaryButton}>New Deal Brief</button>
-      <button onClick={() => goToTab("brief")} style={secondaryButton}>End Shift Brief</button>
+      <button onClick={() => goToTab("lists")} style={headerSecondaryAction}>Import List</button>
+      <button onClick={() => selectedImportedLead ? document.getElementById("va-workdesk-note")?.focus() : goToTab("outreach")} style={headerSecondaryAction}>Log Call</button>
+      <button onClick={startNew} style={headerPrimaryAction}>New Deal Brief</button>
+      <button onClick={() => goToTab("brief")} style={headerSecondaryAction}>End Shift Brief</button>
       </>
     ),
     outreach: (
       <>
-      <button onClick={() => setBulkSmsDrawerOpen(true)} disabled={bulkEligibleLeads.length === 0} style={{ ...secondaryButton, opacity: bulkEligibleLeads.length === 0 ? 0.55 : 1 }}>Bulk Text</button>
-      <button onClick={startNew} style={primaryButton}>New Deal Brief</button>
+      <button onClick={() => setBulkSmsDrawerOpen(true)} disabled={bulkEligibleLeads.length === 0} style={{ ...headerSecondaryAction, opacity: bulkEligibleLeads.length === 0 ? 0.55 : 1 }}>Bulk Text</button>
+      <button onClick={startNew} style={headerPrimaryAction}>New Deal Brief</button>
       </>
     ),
     lists: (
       <>
-      <button onClick={startNewImport} style={secondaryButton}>New Import</button>
-      <button onClick={() => setBulkSmsDrawerOpen(true)} disabled={bulkEligibleLeads.length === 0} style={{ ...secondaryButton, opacity: bulkEligibleLeads.length === 0 ? 0.55 : 1 }}>Bulk Text</button>
-      <button onClick={() => goToTab("outreach")} style={primaryButton}>Work Contact Queue</button>
+      <button onClick={startNewImport} style={headerSecondaryAction}>New Import</button>
+      <button onClick={() => setBulkSmsDrawerOpen(true)} disabled={bulkEligibleLeads.length === 0} style={{ ...headerSecondaryAction, opacity: bulkEligibleLeads.length === 0 ? 0.55 : 1 }}>Bulk Text</button>
+      <button onClick={() => goToTab("outreach")} style={headerPrimaryAction}>Work Contact Queue</button>
       </>
     ),
     packet: (
       <>
-      <button onClick={startNew} style={secondaryButton}>New Packet</button>
-      {selected && <button onClick={() => router.push(`/opportunity?deal=${selected.id}`)} style={secondaryButton}>Shared File</button>}
-      <button onClick={() => saveDeal("under-review")} disabled={saving} style={{ ...primaryButton, opacity: saving ? 0.6 : 1 }}>Submit Review</button>
+      <button onClick={startNew} style={headerSecondaryAction}>New Packet</button>
+      {selected && <button onClick={() => router.push(`/opportunity?deal=${selected.id}`)} style={headerSecondaryAction}>Shared File</button>}
+      <button onClick={() => saveDeal("under-review")} disabled={saving} style={{ ...headerPrimaryAction, opacity: saving ? 0.6 : 1 }}>Submit Review</button>
       </>
     ),
     brief: (
       <>
-      <button onClick={autofillBriefStats} style={secondaryButton}>Auto-fill</button>
-      <button onClick={pullSakariBrief} style={secondaryButton}>Pull Comms</button>
-      <button onClick={openShift ? handleClockOut : handleClockIn} disabled={clockBusy} style={{ ...primaryButton, opacity: clockBusy ? 0.65 : 1 }}>
+      <button onClick={autofillBriefStats} style={headerSecondaryAction}>Auto-fill</button>
+      <button onClick={pullSakariBrief} style={headerSecondaryAction}>Pull Comms</button>
+      <button onClick={openShift ? handleClockOut : handleClockIn} disabled={clockBusy} style={{ ...headerPrimaryAction, opacity: clockBusy ? 0.65 : 1 }}>
         {clockBusy ? "Saving..." : openShift ? "Clock Out" : "Clock In"}
       </button>
       </>
@@ -1746,7 +1758,7 @@ export default function VaPage() {
         <section style={clockInBanner} className="va-clock-banner">
           <div>
             <p style={{ ...eyebrowSmall, color: "var(--bone)", opacity: 0.85 }}>Shift status</p>
-            <h2 style={{ ...sectionTitle, color: "var(--bone)", fontSize: 28, marginTop: 2 }}>You&apos;re not clocked in</h2>
+            <h2 style={{ ...sectionTitle, color: "var(--bone)", fontSize: 24, marginTop: 2 }}>You&apos;re not clocked in</h2>
             <p style={{ color: "var(--bone)", opacity: 0.78, fontSize: 13, marginTop: 6 }}>
               Clock in before logging activity. Your shift drives the daily brief, time approvals, and payroll.
             </p>
@@ -1754,7 +1766,7 @@ export default function VaPage() {
           <button
             onClick={handleClockIn}
             disabled={clockBusy}
-            style={{ ...primaryButton, background: "var(--brass)", color: "var(--obsidian)", borderColor: "var(--brass)", minHeight: 64, padding: "14px 24px", fontSize: 13, opacity: clockBusy ? 0.65 : 1 }}
+            style={{ ...primaryButton, background: "var(--brass)", color: "var(--obsidian)", borderColor: "var(--brass)", minHeight: 52, padding: "12px 22px", fontSize: 12, opacity: clockBusy ? 0.65 : 1 }}
           >
             {clockBusy ? "Saving..." : "Clock In"}
           </button>
@@ -3803,11 +3815,11 @@ function InfoStack({ title, children }: { title: string; children: React.ReactNo
 }
 
 const clockInBanner: React.CSSProperties = {
-  background: "var(--obsidian)",
+  background: "linear-gradient(135deg, rgba(20,17,13,0.96), rgba(48,38,27,0.94))",
   color: "var(--bone)",
   border: "1px solid var(--obsidian)",
   borderRadius: 10,
-  padding: "20px 24px",
+  padding: "14px 20px",
   marginBottom: 16,
   display: "flex",
   justifyContent: "space-between",
