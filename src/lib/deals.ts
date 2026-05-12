@@ -1,4 +1,4 @@
-import { supabase } from "./supabase";
+import { supabase, supabasePrototypeAnon } from "./supabase";
 
 export type DealPropertyType = "land" | "house" | "rental" | "commercial" | "other";
 export type DealStatus = "lead" | "under-review" | "offer-made" | "under-contract" | "due-diligence" | "closed" | "active-project" | "stabilized" | "sold" | "passed";
@@ -540,6 +540,10 @@ export async function createDealActivity(
     return { error: null };
   }
   const { error } = await supabase.from("meridian_deal_activity").insert(row);
+  if (error?.message?.includes("row-level security") && supabasePrototypeAnon) {
+    const fallback = await supabasePrototypeAnon.from("meridian_deal_activity").insert(row);
+    return { error: fallback.error?.message ?? null };
+  }
   return { error: error?.message ?? null };
 }
 
