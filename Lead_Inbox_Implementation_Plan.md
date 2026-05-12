@@ -17,6 +17,18 @@ Replace the property-centric VA workspace with a **lead-first** model that mirro
 
 Every screen we build answers one of those four roles — and only one.
 
+### Tabs discipline (added 2026-05-12)
+
+> Tabs exist at **at most two levels** in the entire app — top-level VA workspace tabs and Lead Page tabs. **Never nested deeper.** Inside a tab, use accordions, expand-in-place rows, or single-column scrolling — never sub-tabs.
+
+Backed by NN/G ("tabs work when sections are parallel and distinct, not when content is hierarchical"), Baymard's accordion-form research, and the HubSpot 2026 record-page redesign which consolidated multi-tab record pages down to two tabs. See Section 13.2 for the applied wireframe.
+
+### Privacy guard for demographic data (added 2026-05-12)
+
+> Imported demographic fields (`age`, `gender`, `ethnic_group`, `religion`, `marital_status`, `education_level`, `occupation`) are **never rendered in any VA-facing UI**. `language` is allowed only for template selection (not display). The read path must strip these fields from API responses, not just hide them in the UI.
+
+Rationale: Fair Housing Act exposure, no workflow utility, and DevTools network-tab leakage if hidden by CSS alone.
+
 ### The data hierarchy
 
 ```
@@ -844,76 +856,254 @@ A Lead is rendered three different ways depending on where it's seen. They must 
 
 ### 13.2 Property Card — three rendering states
 
-**State A: Collapsed row** (1 line, inside Lead Card or Properties tab)
+Updated 2026-05-12 to the HubSpot 2026 three-column record pattern based on research from HubSpot, Salesforce Lightning, NN/G, and Baymard. Backing notes in the Sources section at end of plan.
+
+**Design principle reinforced in this section:**
+
+> Tabs are used at most at **two levels** in the entire app (top-level VA workspace tabs + Lead Page tabs). **Never nested deeper.** Everything below the Lead Page tab level uses accordions, expand-in-place rows, or single-column scrolling — never sub-tabs.
+
+---
+
+**State A: Collapsed row** (1 line, inside Lead Card right pane or Properties tab list)
 
 ```
-▶ 1842 Oakview Dr SW      5.2 ac · Greene · Researching · BB ✓ 92%
+▶ 1842 Oakview Dr SW        5.2 ac · Greene · Researching · [BB ✓ 92%]
 ```
 
-- Disclosure caret toggles expansion in place (no navigation)
+- Disclosure caret toggles expansion in place — no navigation away
 - Stage pill: New / Researching / Offer Made / Under Contract / Passed / Converted
 - Buy Box badge (see 13.3)
 
-**State B: Expanded row** (in Properties tab)
+---
+
+**State B: Expanded row** (in Properties tab on the Lead Page)
+
+Triage view. Decision is *"do I work this property or pass?"*
 
 ```
 ▼ 1842 Oakview Dr SW                          5.2 ac · Greene · Researching
-┌───────────────────────────────────────────────────────────────────────────┐
-│ FACTS    APN 14-A · 5.2 ac · Zoned A-1 · Market $48k                       │
-│ [photo] [parcel record] [google map] [comps]                               │
-│                                                                            │
-│ DILIGENCE                                              10 of 17 cleared    │
-│   ▼ 1. Ownership & Legal Standing                          3/5             │
-│      ✓ Vested Owner · ✓ Chain of Title · ◯ Liens · ✓ Taxes · ◯ Minerals    │
-│   ▶ 2. Access & Infrastructure                             2/4             │
-│   ▶ 3. Environmental & Topography                          3/4             │
-│   ▶ 4. Development Potential                               2/4             │
-│                                                                            │
-│ [Open Packet]  [Build Offer]  [Submit For Member Review]  [Pass]           │
-└───────────────────────────────────────────────────────────────────────────┘
-```
-
-- Expanding does *not* navigate away — stays on the Lead Page
-- Action row at the bottom is always visible
-- Each diligence section is independently collapsible
-
-**State C: Full Deal Packet** (`/lead/{id}/property/{property_id}` or modal route)
-
-```
 ┌─────────────────────────────────────────────────────────────────────────────────┐
-│ ← Back to Joe Stillwell                                                         │
-│ 1842 OAKVIEW DR SW                                                              │
-│ APN 14-A · Greene Co GA · 5.2 ac · Zoned A-1 · BB ✓ 92% · Diligence 10/17     │
-│                                                          Stage: Researching     │
-├─────────────────────────────────────────────────────────────────────────────────┤
-│ ┌───────────────────────────────────────────┐ ┌──────────────────────────────┐ │
-│ │ REQUIRED FIELDS (sticky top)              │ │ LIVE ANALYSIS  (sticky right)│ │
-│ │ ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ │ │ ━━━━━━━━━━━━━━━━━━━━━━━━━━━ │ │
-│ │ Title · Property type · Address           │ │ Recommendation: REVIEW       │ │
-│ │ Parcel · Seller name · Seller phone       │ │   Recommended offer: $58k    │ │
-│ │ Asking · Exit value · Strategy            │ │   Max offer:        $66k    │ │
-│ │ Review intent · Summary · Next step       │ │   Spread @ ask:     $14k    │ │
-│ │                                            │ │                              │ │
-│ │ READINESS                       10/17     │ │ DILIGENCE  10 of 17 cleared │ │
-│ │ Missing for vote: Liens, Mineral rights,  │ │   ▶ Section 1   3/5         │ │
-│ │   Electricity, Legal access, Scrub clear, │ │   ▶ Section 2   2/4         │ │
-│ │   Subdividable, Setbacks, HOA             │ │   ▶ Section 3   3/4         │ │
-│ │                                            │ │   ▶ Section 4   2/4         │ │
-│ │ ADVANCED (accordions, collapsed)          │ │                              │ │
-│ │   ▶ Acquisition math                      │ │ ACTIONS                      │ │
-│ │   ▶ Disposition + buyer demand            │ │   [Save Draft]               │ │
-│ │   ▶ Diligence (full 17-item editor)       │ │   [Save Updates]             │ │
-│ │   ▶ Land-specific                          │ │   [Submit For Member Review]│ │
-│ │   ▶ Links + attachments                    │ │                              │ │
-│ │   ▶ Seller / research notes               │ │                              │ │
-│ └───────────────────────────────────────────┘ └──────────────────────────────┘ │
+│                                                                                  │
+│  QUICK FACTS                                                          [BB ✓ 92%] │
+│  ─────────────────────────────────────────────────────────────────────────────  │
+│  APN 14-A · 5.2 ac (calc) · Zoned A-1 · $48k est · vacant · no mortgage         │
+│  [📍 map]  [🌍 earth]  [📋 parcel]  [💰 comps]                                 │
+│                                                                                  │
+│  MOTIVATION DRIVERS                                                              │
+│  ─────────────────────────────────────────────────────────────────────────────  │
+│   ⚠  Tax delinquent · 3 years · $1,847 owed                                     │
+│   ●  Owner lives out of state (Atlanta GA)                                      │
+│   ●  SellerIQ: HIGH                                                              │
+│   ●  Subdividable: 10.4 ac vs 5 ac min (2 potential lots)                       │
+│   ●  Bought 2008 for $42,500 · no mortgage                                      │
+│                                                                                  │
+│  DILIGENCE ROLLUP                            11 of 17 cleared · 1 blocked · 5 open│
+│  ─────────────────────────────────────────────────────────────────────────────  │
+│   ▶ 1. Ownership & Legal Standing                                  3 of 5       │
+│   ▶ 2. Access & Infrastructure                                     3 of 4       │
+│   ▶ 3. Environmental & Topography                                  4 of 4 ✓    │
+│   ▶ 4. Development Potential                                       3 of 4       │
+│                                                                                  │
+│                            [Open Packet →]   [Build Offer]   [Pass]              │
 └─────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-- Required fields fit on first screen — VA can save a draft without scrolling
-- Advanced sections are accordions, collapsed by default
-- Right rail is sticky; readiness checklist is always visible
-- "Submit For Member Review" disabled until readiness checks pass, with inline reason
+About 95% of triage decisions happen at this zoom. Click **Open Packet** to navigate to State C.
+
+- Expanding does *not* navigate away — stays on the Lead Page
+- Quick Facts ribbon + Motivation Drivers visible without further clicks
+- Each diligence section is independently collapsible (4 sections, click to expand inline)
+- Action row at the bottom is always visible
+
+---
+
+**State C: Full Property Deal Packet** (`/lead/{id}/property/{property_id}` or modal route)
+
+Deep-work view. **Three-column layout based on HubSpot's April 2026 record-layout update.** Sophie lands here only when she's actively building a deal on one property.
+
+```
+┌──────────────────────────────────────────────────────────────────────────────────────────────┐
+│ ← Back to Joe Stillwell                                                                      │
+│ 1842 OAKVIEW DR SW                                                                            │
+│ APN 14-A · 5.2 ac · Greene Co GA · Zoned A-1                                  [BB ✓ 92%]    │
+│ Stage: Researching   ·   [Text seller]  [Note]  [⋯ menu]                                     │
+├─────────────────────┬────────────────────────────────────────────┬──────────────────────────┤
+│  LEFT SIDEBAR       │  MIDDLE — WORK PANE                        │  RIGHT SIDEBAR (sticky)  │
+│  (info cards)       │                                            │                          │
+│                     │                                            │                          │
+│  ┌───────────────┐  │  MOTIVATION DRIVERS    (always visible)    │  ┌────────────────────┐ │
+│  │ HIGHLIGHTS    │  │  ─────────────────────────────────────────│  │ BUY BOX MATCH      │ │
+│  ├───────────────┤  │   ⚠  Tax delinquent · 3y · $1,847          │  │   ✓ ✓  92%        │ │
+│  │ APN  14-A     │  │   ●  Owner out of state (Atlanta GA)       │  │   Strong           │ │
+│  │ Acres  5.2    │  │   ●  SellerIQ: HIGH                        │  │                    │ │
+│  │ County Greene │  │   ●  Subdividable: 2 lots possible         │  │ • County match  ✓  │ │
+│  │ Zoned A-1     │  │   ●  Bought 2008 · $42,500 · no mortgage   │  │ • Acreage range ✓  │ │
+│  │ Est. $48k     │  │                                            │  │ • Asking ≤ ARV  ?  │ │
+│  │ Vacant land   │  │  ─────────────────────────────────────────│  │ • Diligence    11/17│ │
+│  └───────────────┘  │  DILIGENCE CHECKLIST  (open by default)    │  │ • Env. clear    ✓  │ │
+│                     │  ─────────────────────────────────────────│  └────────────────────┘ │
+│  ┌───────────────┐  │   ▼ 1. Ownership & Legal             3/5  │                          │
+│  │ CATCH-UP      │  │     ✓ Vested Owner        auto · deed     │  ┌────────────────────┐ │
+│  ├───────────────┤  │     ✓ Chain of Title      auto · 2 prior  │  │ LIVE ANALYSIS      │ │
+│  │ Missing for   │  │     ◯ Liens / judgments   Open            │  ├────────────────────┤ │
+│  │ member vote:  │  │     ✗ Back taxes          BLOCKED · 3y    │  │ Rec. offer  $58k   │ │
+│  │ • Liens check │  │     ◯ Mineral rights      Open            │  │ Max offer   $66k   │ │
+│  │ • Mineral rt. │  │   ▼ 2. Access & Infrastructure       3/4  │  │ Spread @ ask $14k  │ │
+│  │ • Phys access │  │     ✓ Legal access        auto · 240 ft   │  │ Confidence  Med    │ │
+│  │ • Setbacks    │  │     ◯ Physical access     Open            │  └────────────────────┘ │
+│  │               │  │     ✓ Electricity         auto · poles    │                          │
+│  │ Data quality: │  │     ✓ Septic              auto · perc     │  ┌────────────────────┐ │
+│  │ ✓ All key     │  │   ▶ 3. Environmental                 4/4✓ │  │ READINESS          │ │
+│  │   fields      │  │   ▶ 4. Development                   3/4  │  ├────────────────────┤ │
+│  │   populated   │  │                                            │  │  11/17 cleared     │ │
+│  └───────────────┘  │  ─────────────────────────────────────────│  │  1 blocked         │ │
+│                     │  DEEP DATA  (collapsed, freq-of-use order) │  │  5 open            │ │
+│  ┌───────────────┐  │  ─────────────────────────────────────────│  │                    │ │
+│  │ ASSOCIATIONS  │  │   ▶ Owner & Phones                  (3)   │  │  Missing for vote: │ │
+│  ├───────────────┤  │   ▶ Property Facts                        │  │  • Liens           │ │
+│  │ Owner:        │  │   ▶ Environmental & Topography            │  │  • Mineral rights  │ │
+│  │ Joe Stillwell │  │   ▶ Zoning & Development                  │  │  • Phys. access    │ │
+│  │   → open lead │  │   ▶ Valuation                              │  │  • Setbacks        │ │
+│  │               │  │   ▶ Tax & Mortgage                         │  └────────────────────┘ │
+│  │ Other props   │  │   ▶ Ownership History                      │                          │
+│  │ on this lead: │  │   ▶ Buildings (vacant)                     │  ┌────────────────────┐ │
+│  │ • 240 Brooks  │  │   ▶ External Links & Files                 │  │ ACTIONS  (sticky)  │ │
+│  │   Passed      │  │                                            │  ├────────────────────┤ │
+│  │ • Parcel 14-B │  │  ─────────────────────────────────────────│  │ [Save Updates]     │ │
+│  │   New         │  │  NOTES                                     │  │ [Save As Draft]    │ │
+│  └───────────────┘  │  ─────────────────────────────────────────│  │ [Submit For Vote]  │ │
+│                     │  Free-form notes textarea …                │  │   ↑ disabled until │ │
+│                     │                                            │  │   readiness done   │ │
+│                     │                                            │  └────────────────────┘ │
+└─────────────────────┴────────────────────────────────────────────┴──────────────────────────┘
+```
+
+**What each region does:**
+
+| Region | Purpose |
+|---|---|
+| **Header (sticky, full width)** | Identity, stage, Buy Box badge, top-level actions |
+| **Left — Highlights card** | The 6 must-see facts. Never collapses. |
+| **Left — Catch-up card** | "What's missing for member vote" + data quality issues. HubSpot's signature 2026 pattern — tells the VA what to research next without opening anything. |
+| **Left — Associations card** | Owner link + sibling properties owned by the same lead |
+| **Middle — Motivation Drivers** | Always visible. The "why this matters" cluster — drives outreach strategy. |
+| **Middle — Diligence Checklist** | Open by default. The 17-item editor in 4 Investment Criteria sections. |
+| **Middle — Deep Data** | 9 collapsed accordion sections, ordered by frequency-of-use. |
+| **Middle — Notes** | Free text at the bottom |
+| **Right — Buy Box Match** | Live score with the 5 component checks (see 13.3). |
+| **Right — Live Analysis** | Recommended offer, max offer, spread, confidence. |
+| **Right — Readiness** | Cleared/blocked/open counts + the missing-for-vote list. |
+| **Right — Actions (sticky)** | Single save button covers all sections. Submit-for-vote disabled until readiness clears. |
+
+---
+
+**Deep Data accordion sections (ordered by frequency-of-use):**
+
+Sophie touches Motivation + Diligence every day. The 9 collapsed sections she opens occasionally are ordered by likely usage:
+
+```
+▶ Owner & Phones                Names, mail addr, phones (up to 6, each with
+                                 Mobile / Landline / VOIP type), email, TCPA flags,
+                                 owner type, occupancy.
+                                 NEVER renders demographics (ethnicity, religion,
+                                 marital status, education, occupation, age, gender).
+
+▶ Property Facts                 APN, alt APN, calculated acreage, parcel sq ft,
+                                 GPS lat/lon, FIPS, block / lot, legal description,
+                                 school district, subdivision, land use code.
+
+▶ Environmental & Topography    FEMA flood zone (% + type), wetlands %, land-locked,
+                                 road frontage, topography description, slope
+                                 (min/avg/max), elevation (min/avg/max), bad-topo flag.
+
+▶ Zoning & Development           Zoning code, minimum lot size, subdividable +
+                                 entitlement + farmland + odd-shape tags, HOA flag
+                                 + HOA status.
+
+▶ Valuation                      Market value estimate (with PPA, confidence, comp
+                                 count, gini index), total parcel value, improvement
+                                 value, land value, improvement percentage.
+
+▶ Tax & Mortgage                 Property tax + year, tax delinquent flag + years
+                                 + start year + amount owed; mortgage amount, lender,
+                                 type, length, interest, loan type.
+
+▶ Ownership History              Deed book / page / type, last sale date + price,
+                                 previous owners, family transfer flag.
+
+▶ Buildings                      Structure count, year built, sq ft, stories, units,
+                                 rooms. Section is hidden entirely if structure_count
+                                 is 0 (most land parcels).
+
+▶ External Links & Files         Google Maps, Google Earth, parcel record, comp link,
+                                 photos, attached files, free-form attachments.
+```
+
+**Re-order rule:** after 2 weeks of real Sophie usage, re-rank these by actual click-through frequency. NN/G's progressive-disclosure guidance says ordering should follow usage stats, not category logic.
+
+---
+
+**Demographic data privacy guard:**
+
+The importer captures `age`, `gender`, `ethnic_group`, `religion`, `marital_status`, `education_level`, `occupation`, `language` from Land Insights exports. **These are NEVER rendered in any of the three property card states (A, B, or C).** Rationale:
+
+- **Fair Housing Act exposure** — making lead/contact decisions while seeing ethnicity, religion, or marital status creates legal risk even when those weren't the actual decision drivers
+- **No clear workflow utility** — none of these fields inform whether a property is a good wholesale deal
+- **`language` exception** — allowed for *template selection* (e.g., send Spanish text to a Spanish-speaking lead) but never displayed on screen
+
+Implementation: the read path (RLS policy or scoped endpoint) must strip these fields from the API response shape that reaches the VA's browser. UI alone is not sufficient — DevTools would still expose the JSON.
+
+---
+
+**Mobile behavior:**
+
+On mobile (< 880px), the three columns stack vertically and the action bar becomes a sticky bottom bar:
+
+```
+┌──────────────────────────┐
+│ HEADER (sticky)          │
+├──────────────────────────┤
+│ MOTIVATION DRIVERS       │  ← always visible
+├──────────────────────────┤
+│ CATCH-UP                 │  ← was left sidebar, now a card
+├──────────────────────────┤
+│ BUY BOX + LIVE ANALYSIS  │  ← was right sidebar, now a card
+├──────────────────────────┤
+│ READINESS                │
+├──────────────────────────┤
+│ DILIGENCE CHECKLIST      │
+├──────────────────────────┤
+│ ▶ Owner & Phones         │
+│ ▶ Property Facts         │
+│ ▶ Environmental          │
+│ ▶ Zoning & Development   │
+│ ▶ Valuation              │
+│ ▶ Tax & Mortgage         │
+│ ▶ Ownership History      │
+│ ▶ Buildings              │
+│ ▶ Links & Files          │
+├──────────────────────────┤
+│ NOTES                    │
+├──────────────────────────┤
+│ [Save Updates] (sticky   │  ← floats at viewport bottom on mobile
+│  bottom bar)             │
+└──────────────────────────┘
+```
+
+The same accordion sections in the same order. No new layout to learn between desktop and mobile.
+
+---
+
+**Consistency across the three states:**
+
+| Element | State A (row) | State B (expanded) | State C (full packet) |
+|---|---|---|---|
+| Buy Box badge | Inline at right | Top-right corner | Top-right of header + dedicated right-rail card |
+| Stage pill | Inline | Top-right under acreage | In header subtitle |
+| Motivation Drivers | Not shown | Truncated to 5 chips | Full list, always visible |
+| Diligence rollup | Not shown | 4-section rollup with counts | Full editor open by default |
+| Actions | Not shown | Open Packet · Build Offer · Pass | Save · Save Draft · Submit For Vote (sticky right rail) |
+| Demographics | Never | Never | Never |
 
 ### 13.3 Buy Box Match badge — scoring & visual states
 
