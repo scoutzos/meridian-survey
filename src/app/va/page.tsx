@@ -1641,9 +1641,7 @@ export default function VaPage() {
     ),
     outreach: (
       <>
-      <button onClick={() => goToTab("lists")} style={secondaryButton}>Open Lists</button>
       <button onClick={() => setBulkSmsDrawerOpen(true)} disabled={bulkEligibleLeads.length === 0} style={{ ...secondaryButton, opacity: bulkEligibleLeads.length === 0 ? 0.55 : 1 }}>Bulk Text</button>
-      <button onClick={() => selectedImportedLead ? document.getElementById("va-workdesk-sms")?.focus() : undefined} style={secondaryButton}>Send Text</button>
       <button onClick={startNew} style={primaryButton}>New Deal Brief</button>
       </>
     ),
