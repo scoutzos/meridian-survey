@@ -187,9 +187,74 @@ button {
 }
 
 .crm-top-bar-va {
-  height: 118px;
-  align-items: flex-start;
-  padding-top: 12px;
+  height: 54px;
+  align-items: center;
+  padding-top: 0;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.va-top-tabs {
+  margin-right: auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.va-top-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.va-top-tab {
+  height: 36px;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 13px;
+  border: 1px solid rgba(176,137,84,0.28);
+  border-radius: 999px;
+  background: rgba(255,252,245,0.72);
+  color: var(--obsidian);
+  font-size: 11px;
+  font-weight: 850;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  cursor: pointer;
+  white-space: nowrap;
+  box-shadow: 0 8px 22px rgba(20,17,13,0.04);
+}
+
+.va-top-tab:hover {
+  border-color: rgba(176,137,84,0.55);
+  background: var(--bone);
+}
+
+.va-top-tab-active {
+  background: var(--obsidian);
+  border-color: var(--obsidian);
+  color: var(--bone);
+}
+
+.va-top-tab strong {
+  min-width: 24px;
+  height: 24px;
+  padding: 0 7px;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 999px;
+  background: rgba(176,137,84,0.16);
+  color: var(--muted);
+  font-size: 11px;
+  letter-spacing: 0;
+}
+
+.va-top-tab-active strong {
+  background: rgba(237,230,214,0.14);
+  color: var(--brass);
 }
 
 .crm-side-link {

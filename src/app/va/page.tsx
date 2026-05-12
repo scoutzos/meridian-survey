@@ -749,13 +749,16 @@ export default function VaPage() {
     submittedToday: deals.filter(deal => deal.status === "under-review" && isSameDay(deal.updated_at, today)).length,
     briefSubmitted: briefs.some(brief => brief.work_date === today),
   }), [briefs, deals, today]);
-  const tabCounts: Record<VaTab, number> = {
+  const tabCounts = useMemo<Record<VaTab, number>>(() => ({
     today: recentInboundSms.length + followUpsDue.length + interestedLeads.length + openAssignedTasks.length,
     outreach: recentInboundSms.length + followUpsDue.length,
     lists: importedLeads.length,
     packet: deals.length,
     brief: portalStats.briefSubmitted ? 1 : 0,
-  };
+  }), [deals.length, followUpsDue.length, importedLeads.length, interestedLeads.length, openAssignedTasks.length, portalStats.briefSubmitted, recentInboundSms.length]);
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent("meridian-va-tab-counts", { detail: tabCounts }));
+  }, [tabCounts]);
   const readinessItems = useMemo(() => [
     { label: "Address or parcel", done: !!(liveInput.address || liveInput.parcel_id) },
     { label: "Seller contact", done: !!(liveInput.seller_name || liveInput.seller_phone) },
@@ -1682,22 +1685,7 @@ export default function VaPage() {
   ];
 
   return (
-    <div className="va-root" style={{ maxWidth: 1680, margin: "0 auto", padding: "132px 20px 100px" }}>
-      <div className="va-tabs" style={{ ...panel, padding: 8, marginBottom: 16, display: "flex", gap: 8, flexWrap: "wrap" }}>
-        {TABS.map(tab => (
-          <button
-            key={tab.value}
-            onClick={() => goToTab(tab.value)}
-            style={activeTab === tab.value ? tabActive : tabButton}
-          >
-            {tab.label}
-            <span style={activeTab === tab.value ? tabCountActive : tabCount}>
-              {tabCounts[tab.value]}
-            </span>
-          </button>
-        ))}
-      </div>
-
+    <div className="va-root" style={{ maxWidth: 1680, margin: "0 auto", padding: "78px 20px 100px" }}>
       {activeTab !== "today" && (
         <OperatingHeader
           eyebrow={headerCopy[activeTab].eyebrow}
@@ -3177,24 +3165,8 @@ export default function VaPage() {
           gap: 10px;
           margin-bottom: 16px;
         }
-        @media (min-width: 881px) {
-          .va-tabs {
-            position: fixed;
-            top: 66px;
-            left: 176px;
-            right: 20px;
-            z-index: 206;
-            margin-bottom: 0 !important;
-            box-shadow: none !important;
-          }
-        }
         @media (max-width: 880px) {
           .va-root { padding-top: 28px !important; }
-          .va-tabs {
-            position: sticky;
-            top: 0;
-            z-index: 20;
-          }
           .va-workspace, .va-form-grid, .workdesk-grid, .two-col, .three-col, .number-grid, .va-briefing-grid, .va-home-grid, .va-cockpit-grid, .va-command-strip {
             grid-template-columns: 1fr !important;
           }
@@ -3747,50 +3719,6 @@ const miniInboxButton: React.CSSProperties = {
   color: "var(--ink)",
   fontSize: 12,
   lineHeight: 1.35,
-};
-
-const tabButton: React.CSSProperties = {
-  display: "inline-flex",
-  alignItems: "center",
-  gap: 8,
-  background: "rgba(255,255,255,0.58)",
-  color: "var(--ink)",
-  border: "1px solid var(--fog)",
-  borderRadius: 999,
-  padding: "10px 13px",
-  minHeight: 40,
-  fontSize: 11,
-  fontWeight: 800,
-  letterSpacing: "0.14em",
-  textTransform: "uppercase",
-  fontFamily: "var(--font-body)",
-  cursor: "pointer",
-};
-
-const tabActive: React.CSSProperties = {
-  ...tabButton,
-  background: "var(--obsidian)",
-  color: "var(--bone)",
-  borderColor: "var(--obsidian)",
-};
-
-const tabCount: React.CSSProperties = {
-  minWidth: 22,
-  height: 22,
-  display: "inline-flex",
-  alignItems: "center",
-  justifyContent: "center",
-  borderRadius: 999,
-  background: "var(--surface)",
-  color: "var(--muted)",
-  fontSize: 10,
-  letterSpacing: 0,
-};
-
-const tabCountActive: React.CSSProperties = {
-  ...tabCount,
-  background: "rgba(237,230,214,0.16)",
-  color: "var(--bone)",
 };
 
 const label: React.CSSProperties = {

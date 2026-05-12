@@ -27,6 +27,14 @@ const vaLinks = [
   { href: "/dashboard", label: "Member Portal" },
 ];
 
+const vaWorkspaceTabs = [
+  { href: "/va", tab: "today", label: "Dashboard" },
+  { href: "/va?tab=outreach", tab: "outreach", label: "Contact Queue" },
+  { href: "/va?tab=lists", tab: "lists", label: "Lists" },
+  { href: "/va?tab=packet", tab: "packet", label: "Packets" },
+  { href: "/va?tab=brief", tab: "brief", label: "Daily Brief" },
+];
+
 const crmCreateButton: CSSProperties = {
   border: "1px solid var(--brass)",
   background: "var(--brass)",
@@ -57,6 +65,7 @@ export default function NavBar() {
   const [user, setUser] = useState<string | null>(null);
   const [crmView, setCrmView] = useState<string | null>(null);
   const [vaTab, setVaTab] = useState<string | null>(null);
+  const [vaTabCounts, setVaTabCounts] = useState<Record<string, number>>({});
   const [moreOpen, setMoreOpen] = useState(false);
 
   useEffect(() => {
@@ -72,6 +81,24 @@ export default function NavBar() {
       setVaTab(null);
     }
   }, [pathname]);
+
+  useEffect(() => {
+    const handleCounts = (event: Event) => {
+      const detail = (event as CustomEvent<Record<string, number>>).detail;
+      if (detail && typeof detail === "object") setVaTabCounts(detail);
+    };
+    window.addEventListener("meridian-va-tab-counts", handleCounts);
+    return () => window.removeEventListener("meridian-va-tab-counts", handleCounts);
+  }, []);
+
+  useEffect(() => {
+    const handleVaTab = (event: Event) => {
+      const detail = (event as CustomEvent<string>).detail;
+      if (detail) setVaTab(detail);
+    };
+    window.addEventListener("meridian-va-tab", handleVaTab);
+    return () => window.removeEventListener("meridian-va-tab", handleVaTab);
+  }, []);
 
   const shellRoutes = user && isVaUser(user) ? [...crmRoutes, "/actions"] : crmRoutes;
   const crmShell = !!user && shellRoutes.some(route => pathname === route || pathname.startsWith(route + "/"));
@@ -181,6 +208,29 @@ export default function NavBar() {
           </div>
         </aside>
         <nav className={`crm-top-bar ${isVaUser(user) && pathname === "/va" ? "crm-top-bar-va" : ""}`}>
+          {isVaUser(user) && pathname === "/va" && (
+            <div className="va-top-tabs" aria-label="VA workspace navigation">
+              {vaWorkspaceTabs.map(tab => {
+                const active = vaTab === tab.tab || (!vaTab && tab.tab === "today");
+                return (
+                  <button
+                    key={tab.tab}
+                    type="button"
+                    onClick={() => {
+                      setVaTab(tab.tab);
+                      window.history.pushState(null, "", tab.href);
+                      window.dispatchEvent(new PopStateEvent("popstate"));
+                      window.dispatchEvent(new CustomEvent("meridian-va-tab", { detail: tab.tab }));
+                    }}
+                    className={active ? "va-top-tab va-top-tab-active" : "va-top-tab"}
+                  >
+                    <span>{tab.label}</span>
+                    <strong>{vaTabCounts[tab.tab] ?? 0}</strong>
+                  </button>
+                );
+              })}
+            </div>
+          )}
           {!isVaUser(user) && <button onClick={() => router.push("/dashboard")} style={crmPortalButton}>Member Portal</button>}
           <button onClick={() => router.push(isVaUser(user) ? "/va?tab=packet" : "/va")} style={crmCreateButton}>{isVaUser(user) ? "+ Deal Brief" : "+ Create"}</button>
           <span style={{ color: "var(--fog)", fontSize: 12 }}>●</span>
