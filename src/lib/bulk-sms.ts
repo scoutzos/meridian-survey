@@ -230,6 +230,26 @@ export function checkLeadSmsCompliance(lead: ImportedLandLead): SmsComplianceRes
   return { allowed: true, phone };
 }
 
+export function checkLeadCallCompliance(lead: ImportedLandLead): SmsComplianceResult {
+  const block = (reason: BulkSmsExclusionReason): SmsComplianceResult => ({
+    allowed: false,
+    severity: EXCLUSION_SEVERITY[reason],
+    blockReason: reason,
+    blockLabel: EXCLUSION_LABEL[reason],
+  });
+
+  if (lead.litigator === true) return block("tcpa-litigator");
+  if (lead.dnc === true) return block("federal-dnc");
+  if (lead.state_dnc === true) return block("state-dnc");
+  if (lead.sms_opt_status === "opted-out") return block("opted-out");
+
+  const primary = lead.phone?.trim();
+  const secondary = lead.phone_2?.trim();
+  const number = primary || secondary;
+  if (!number) return block("no-phone");
+  return { allowed: true, phone: { number, type: "unknown" } };
+}
+
 const COMPLIANCE_FOOTER = "Reply STOP to opt out.";
 
 export function appendComplianceFooter(message: string): string {
