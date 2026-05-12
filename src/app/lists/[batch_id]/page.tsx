@@ -348,7 +348,7 @@ export default function ListDetailPage() {
                 return (
                   <tr key={lead.id} style={{ background: selectedIds.has(lead.id) ? "rgba(176,137,84,0.12)" : "var(--surface)", cursor: "pointer" }} onClick={() => {
                     if (selectMode) { toggleSelected(lead.id); return; }
-                    router.push(`/opportunity?lead=${lead.id}`);
+                    router.push(`/lead/${lead.id}`);
                   }}>
                     {selectMode && (
                       <td style={tableCell} onClick={e => { e.stopPropagation(); toggleSelected(lead.id); }}>
