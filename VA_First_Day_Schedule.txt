@@ -5,23 +5,26 @@ Hi everyone, here is the proposed first-day schedule for the VA today.
 
 Google Meet: https://meet.google.com/vqb-jdbe-ssc
 
-12:00-12:15 PM | Agreement Signing + Welcome
-Begin with the agreement signing, then a quick welcome, introductions, and confirmation that she has the right access, tools, and context for the day.
+12:00-12:30 PM | Agreement Signing + Welcome
+Begin with the agreement signing, then a quick welcome, introductions, role basics, and the flow for the day.
 
-12:15-2:00 PM | Deal Acquisition + Disposition Download with Sophie
-Sophie will walk her through how the process usually works, including lead flow, acquisition steps, disposition, handoffs, key terminology, and where the VA fits into the process.
+12:30-1:15 PM | Access + Tool Setup
+Confirm Google Meet, WhatsApp/group chat, admin portal, CRM or deal tracker, shared docs, email, calendar, and any needed logins.
+
+1:15-2:00 PM | Admin Portal Orientation
+Give her a high-level tour of where daily work lives: tasks, leads, notes, statuses, follow-ups, and where to ask questions.
 
 2:00-3:00 PM | Break
 She can use this hour to take a break, review notes, and get settled before the afternoon session.
 
-3:00-3:45 PM | Initial Investment Strategy
-Walk through the initial investment strategy, target deals, deal criteria, red flags, priorities, and when items should be escalated.
+3:00-4:30 PM | Deal Acquisition + Disposition Workflow with Sophie
+Sophie will walk through lead intake, acquisition, disposition, handoffs, key terminology, and one sample deal from start to finish.
 
-3:45-4:30 PM | Admin Portal Walkthrough
-Introduce the admin portal built for her day-to-day workflow, including tasks, lead/deal tracking, status updates, notes, and daily expectations.
+4:30-5:15 PM | Initial Investment Strategy
+Walk through target deals, deal criteria, red flags, priority markets, and when something should be escalated.
 
-4:30-5:30 PM | Guided Practice Task
-Walk through a sample task or sample lead in the portal so she can practice the workflow before closing the day.
+5:15-5:45 PM | Guided Practice Task
+Have her enter or update a sample lead or deal in the portal based on Sophie's walkthrough.
 
-5:30-6:00 PM | Expectations + Q&A
-Close with role expectations, communication standards, success markers, questions, and clear priorities for day two.
+5:45-6:00 PM | Expectations + Q&A
+Close with communication expectations, SLA basics, day-two priorities, and any final questions.

@@ -1,13 +1,3 @@
--- =============================================================================
--- Land Insights property fields.
---
--- Promotes diligence and targeting fields that were previously left in raw_data
--- so uploads can power list rollups, SMS audiences, and property-card diligence.
---
--- This migration intentionally uses one ALTER TABLE statement per column so it
--- can be pasted safely into Supabase SQL editor and rerun idempotently.
--- =============================================================================
-
 alter table meridian_imported_land_leads
   add column if not exists phone_3 text;
 
