@@ -105,6 +105,10 @@ function readStorageKey(user: string): string {
   return `meridian_sms_read_threads:${user}`;
 }
 
+function windowStateStorageKey(user: string): string {
+  return `meridian_sms_window_state:${user || "default"}`;
+}
+
 function buildThreads(events: CommunicationEvent[], leads: ImportedLandLead[], readState: ReadState): SmsThread[] {
   const leadById = new Map(leads.map(lead => [lead.id, lead]));
   const leadByPhone = new Map<string, ImportedLandLead>();
@@ -156,7 +160,7 @@ export default function FloatingSmsWindow({
   onMarkInterested,
   onSent,
 }: FloatingSmsWindowProps) {
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(false);
   const [minimized, setMinimized] = useState(false);
   const [position, setPosition] = useState({ x: 0, y: 0 });
   const [dragging, setDragging] = useState(false);
@@ -181,7 +185,42 @@ export default function FloatingSmsWindow({
     } catch {
       setReadState({});
     }
+    try {
+      const saved = JSON.parse(localStorage.getItem(windowStateStorageKey(user)) || "{}") as { open?: boolean; minimized?: boolean };
+      setOpen(saved.open === true);
+      setMinimized(saved.minimized === true);
+    } catch {
+      setOpen(false);
+      setMinimized(false);
+    }
   }, [user]);
+
+  const persistWindowState = (next: { open?: boolean; minimized?: boolean }) => {
+    try {
+      localStorage.setItem(windowStateStorageKey(user), JSON.stringify({ open, minimized, ...next }));
+    } catch {
+      // Storage can be unavailable in private browsing; keep the dock usable for the current session.
+    }
+  };
+
+  const openWindow = () => {
+    setOpen(true);
+    setMinimized(false);
+    persistWindowState({ open: true, minimized: false });
+  };
+
+  const closeWindow = () => {
+    setOpen(false);
+    persistWindowState({ open: false });
+  };
+
+  const toggleMinimized = () => {
+    setMinimized(value => {
+      const next = !value;
+      persistWindowState({ open: true, minimized: next });
+      return next;
+    });
+  };
 
   const threads = useMemo(() => buildThreads(events, leads, readState), [events, leads, readState]);
   const selectedThread = threads.find(thread => thread.key === selectedKey) ?? threads[0] ?? null;
@@ -347,7 +386,7 @@ export default function FloatingSmsWindow({
 
   if (!open) {
     return (
-      <button type="button" onClick={() => { setOpen(true); setMinimized(false); }} style={launcher}>
+      <button type="button" onClick={openWindow} style={launcher}>
         Comms
         {threads.length > 0 && <span style={launcherBadge}>{threads.length}</span>}
       </button>
@@ -369,8 +408,8 @@ export default function FloatingSmsWindow({
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
           <span style={badge}>{threads.length}</span>
-          <button type="button" onPointerDown={event => event.stopPropagation()} onClick={() => setMinimized(value => !value)} style={iconButton}>{minimized ? "Open" : "Min"}</button>
-          <button type="button" onPointerDown={event => event.stopPropagation()} onClick={() => setOpen(false)} style={iconButton}>Close</button>
+          <button type="button" onPointerDown={event => event.stopPropagation()} onClick={toggleMinimized} style={iconButton}>{minimized ? "Open" : "Min"}</button>
+          <button type="button" onPointerDown={event => event.stopPropagation()} onClick={closeWindow} style={iconButton}>Close</button>
         </div>
       </div>
 
