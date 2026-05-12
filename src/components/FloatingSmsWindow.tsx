@@ -5,6 +5,7 @@ import type { CommunicationEvent } from "@/lib/communications";
 import { fetchCommunicationEvents } from "@/lib/communications";
 import { createImportedLandLeadActivity, type ImportedLandLead } from "@/lib/land-leads";
 import { createDealActivity } from "@/lib/deals";
+import { checkLeadSmsCompliance } from "@/lib/bulk-sms";
 
 type SmsThread = {
   key: string;
@@ -161,6 +162,8 @@ export default function FloatingSmsWindow({
   const selectedThread = threads.find(thread => thread.key === selectedKey) ?? threads[0] ?? null;
   const selectedLead = selectedThread?.lead ?? null;
   const selectedPhone = selectedThread?.phone ?? last10(newPhone);
+  const selectedCompliance = selectedLead ? checkLeadSmsCompliance(selectedLead) : null;
+  const replyBlocked = !!selectedCompliance && !selectedCompliance.allowed;
   const contextTitleText = selectedLead?.property_address || (selectedThread?.dealId ? "Connected deal packet" : "No linked property yet");
   const contextMetaText = [
     selectedLead?.county,
@@ -242,6 +245,15 @@ export default function FloatingSmsWindow({
     const body = message.trim();
     if (!last10(toNumber)) { setStatus("Add a phone number first."); return; }
     if (!body) { setStatus("Write a message before sending."); return; }
+    const leadForCompliance = leadId ? leads.find(l => l.id === leadId) : null;
+    if (leadForCompliance) {
+      const compliance = checkLeadSmsCompliance(leadForCompliance);
+      if (!compliance.allowed) {
+        const prefix = compliance.severity === "compliance" ? "Blocked for compliance" : "Cannot send";
+        setStatus(`${prefix}: ${compliance.blockLabel}.`);
+        return;
+      }
+    }
     setSending(true);
     setStatus("");
     try {
@@ -456,16 +468,33 @@ export default function FloatingSmsWindow({
 
                 {canSend ? (
                   <div style={composer}>
+                    {replyBlocked && selectedCompliance && (
+                      <div style={{
+                        background: selectedCompliance.severity === "compliance" ? "var(--obsidian)" : "rgba(176,137,84,0.16)",
+                        border: selectedCompliance.severity === "compliance" ? "1px solid var(--obsidian)" : "1px solid var(--brass)",
+                        color: selectedCompliance.severity === "compliance" ? "var(--bone)" : "var(--obsidian)",
+                        borderRadius: 6,
+                        padding: "8px 10px",
+                        marginBottom: 8,
+                        fontSize: 12,
+                        lineHeight: 1.4,
+                      }}>
+                        <strong style={{ display: "block", fontSize: 10, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 2, color: selectedCompliance.severity === "compliance" ? "var(--brass)" : "var(--obsidian)" }}>
+                          {selectedCompliance.severity === "compliance" ? "⛔ Compliance block" : "⚠ Cannot text"}
+                        </strong>
+                        {selectedCompliance.blockLabel} — sending disabled for this lead.
+                      </div>
+                    )}
                     <div style={composerTabs}>
                       <button type="button" onClick={() => setComposerMode("text")} style={composerMode === "text" ? activeComposerTab : composerTab}>Text</button>
                       <button type="button" onClick={() => setComposerMode("note")} style={composerMode === "note" ? activeComposerTab : composerTab}>Note</button>
                     </div>
                     {composerMode === "text" ? (
                       <>
-                        <textarea value={reply} onChange={event => setReply(event.target.value)} rows={3} placeholder="Reply to this seller..." style={textarea} />
+                        <textarea value={reply} onChange={event => setReply(event.target.value)} rows={3} placeholder={replyBlocked ? "SMS disabled for this lead." : "Reply to this seller..."} disabled={replyBlocked} style={textarea} />
                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
                           <span style={counter}>{reply.trim().length}/1200</span>
-                          <button type="button" onClick={() => sendText(selectedPhone, reply, selectedLead?.id ?? null)} disabled={sending || !reply.trim()} style={{ ...sendButton, opacity: sending || !reply.trim() ? 0.55 : 1 }}>
+                          <button type="button" onClick={() => sendText(selectedPhone, reply, selectedLead?.id ?? null)} disabled={sending || !reply.trim() || replyBlocked} style={{ ...sendButton, opacity: sending || !reply.trim() || replyBlocked ? 0.55 : 1 }}>
                             {sending ? "Sending..." : "Send Reply"}
                           </button>
                         </div>

@@ -195,6 +195,41 @@ export function exclusionSeverity(reason: BulkSmsExclusionReason): BulkSmsExclus
   return EXCLUSION_SEVERITY[reason];
 }
 
+/**
+ * Single-lead version of categorizeForBulkSms for one-on-one SMS flows
+ * (SellerCommandCenter composer, FloatingSmsWindow, sendSmsToLead).
+ *
+ * Returns the picked mobile-first phone if compliance allows, or a
+ * structured block reason + label suitable for showing as a banner.
+ */
+export interface SmsComplianceResult {
+  allowed: boolean;
+  severity?: BulkSmsExclusionSeverity;
+  blockReason?: BulkSmsExclusionReason;
+  blockLabel?: string;
+  phone?: { number: string; type: "mobile" | "landline" | "voip" | "unknown" };
+}
+
+export function checkLeadSmsCompliance(lead: ImportedLandLead): SmsComplianceResult {
+  const block = (reason: BulkSmsExclusionReason): SmsComplianceResult => ({
+    allowed: false,
+    severity: EXCLUSION_SEVERITY[reason],
+    blockReason: reason,
+    blockLabel: EXCLUSION_LABEL[reason],
+  });
+
+  if (lead.litigator === true) return block("tcpa-litigator");
+  if (lead.dnc === true) return block("federal-dnc");
+  if (lead.state_dnc === true) return block("state-dnc");
+  if (lead.sms_opt_status === "opted-out") return block("opted-out");
+
+  const phone = pickTextablePhone(lead);
+  if (!phone) return block("no-phone");
+  if (phone.type === "landline") return { ...block("landline"), phone };
+  if (phone.type === "voip") return { ...block("voip"), phone };
+  return { allowed: true, phone };
+}
+
 const COMPLIANCE_FOOTER = "Reply STOP to opt out.";
 
 export function appendComplianceFooter(message: string): string {

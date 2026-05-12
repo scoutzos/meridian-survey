@@ -78,7 +78,8 @@ import { labelForStatus } from "@/lib/status-map";
 import { getLeadNextAction, type WorkflowTone } from "@/lib/workflow-actions";
 import OperatingHeader from "@/components/OperatingHeader";
 import BulkSmsDrawer from "@/components/BulkSmsDrawer";
-import { categorizeForBulkSms } from "@/lib/bulk-sms";
+import TwilioCallButton from "@/components/TwilioCallButton";
+import { categorizeForBulkSms, checkLeadSmsCompliance } from "@/lib/bulk-sms";
 import { fetchActiveMemberNames } from "@/lib/members";
 
 const DISPLAY_FONT = "var(--font-display)";
@@ -355,7 +356,9 @@ function buildConversationItems(communications: CommunicationEvent[], activities
     ...communications.map(event => ({
       id: `comm-${event.id}`,
       kind: event.direction === "inbound" ? "sms-in" as const : "sms-out" as const,
-      title: event.direction === "inbound" ? "Seller SMS" : event.direction === "outbound" ? "Meridian SMS" : "SMS update",
+      title: event.channel === "voice"
+        ? event.direction === "inbound" ? "Inbound call" : event.direction === "outbound" ? "Outbound call" : "Call update"
+        : event.direction === "inbound" ? "Seller SMS" : event.direction === "outbound" ? "Meridian SMS" : "SMS update",
       date: event.provider_created_at || event.created_at,
       body: event.body || event.status || event.provider_event_type,
       meta: event.status || event.provider_event_type,
@@ -1150,9 +1153,17 @@ export default function VaPage() {
 
   const sendSmsToLead = async () => {
     if (!selectedImportedLead) { setMessage("Select an imported lead first."); return; }
-    const toNumber = selectedImportedLead.phone || selectedImportedLead.phone_2;
-    if (!toNumber) { setMessage("This lead does not have a phone number."); return; }
-    if (selectedImportedLead.sms_opt_status === "opted-out") { setMessage("This seller has opted out. Do not text this number."); return; }
+    const compliance = checkLeadSmsCompliance(selectedImportedLead);
+    if (!compliance.allowed) {
+      const prefix = compliance.severity === "compliance"
+        ? "Blocked for compliance"
+        : compliance.severity === "data-quality"
+          ? "Cannot send"
+          : "Excluded";
+      setMessage(`${prefix}: ${compliance.blockLabel}.`);
+      return;
+    }
+    const toNumber = compliance.phone!.number;
     const body = smsDraft.trim();
     if (!body) { setMessage("Write a text message before sending."); return; }
     setSmsSending(true);
@@ -3442,7 +3453,10 @@ function SellerCommandCenter({
     body: activity.summary,
     meta: activity.next_follow_up_date ? `Follow up ${activity.next_follow_up_date}` : undefined,
   }));
-  const smsDisabled = smsSending || (!lead.phone && !lead.phone_2) || lead.sms_opt_status === "opted-out";
+  const smsCompliance = checkLeadSmsCompliance(lead);
+  const smsBlocked = !smsCompliance.allowed;
+  const smsDisabled = smsSending || smsBlocked;
+  const smsBlockSeverity = smsCompliance.severity;
   const ownerFirst = (lead.owner_name || "").split(/\s+/).find(Boolean) || "";
   const propertyHint = lead.property_address ? ` at ${lead.property_address}` : lead.parcel_id ? ` parcel ${lead.parcel_id}` : "";
   const hasContact = conversation.length > 0 || !!lead.last_activity_type || !!lead.last_sms_at;
@@ -3556,13 +3570,37 @@ function SellerCommandCenter({
           </div>
 
           <div style={{ border: "1px solid var(--fog)", borderRadius: 8, padding: 10, background: "var(--surface)", marginBottom: 12 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", marginBottom: 10 }}>
+              <div>
+                <strong style={{ color: "var(--obsidian)", fontSize: 13 }}>Call seller</strong>
+                <p style={{ color: "var(--muted)", fontSize: 11, marginTop: 2 }}>{lead.phone || lead.phone_2 || "No phone"}</p>
+              </div>
+              <TwilioCallButton toNumber={lead.phone || lead.phone_2} leadId={lead.id} disabled={!lead.phone && !lead.phone_2} />
+            </div>
+          </div>
+
+          <div style={{ border: "1px solid var(--fog)", borderRadius: 8, padding: 10, background: "var(--surface)", marginBottom: 12 }}>
             <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 8 }}>
               <strong style={{ color: "var(--obsidian)", fontSize: 13 }}>Reply by SMS</strong>
-              <span style={pill}>{lead.phone || lead.phone_2 || "No phone"}</span>
+              <span style={pill}>{smsCompliance.phone?.number || lead.phone || lead.phone_2 || "No phone"}</span>
             </div>
-            {lead.sms_opt_status === "opted-out" && (
-              <p style={{ color: "var(--obsidian)", background: "rgba(176,137,84,0.14)", border: "1px solid var(--brass)", borderRadius: 8, padding: 8, fontSize: 12, lineHeight: 1.4, marginBottom: 8 }}>
-                Do not text this seller. Opt-out is recorded.
+            {smsBlocked && (
+              <p style={{
+                color: "var(--bone)",
+                background: smsBlockSeverity === "compliance" ? "var(--obsidian)" : "rgba(176,137,84,0.16)",
+                border: smsBlockSeverity === "compliance" ? "1px solid var(--obsidian)" : "1px solid var(--brass)",
+                borderRadius: 8,
+                padding: 10,
+                fontSize: 12,
+                lineHeight: 1.5,
+                marginBottom: 8,
+              }}>
+                <strong style={{ color: smsBlockSeverity === "compliance" ? "var(--brass)" : "var(--obsidian)", display: "block", marginBottom: 4, letterSpacing: "0.08em", textTransform: "uppercase", fontSize: 10 }}>
+                  {smsBlockSeverity === "compliance" ? "⛔ Compliance block" : "⚠ Cannot text"}
+                </strong>
+                <span style={{ color: smsBlockSeverity === "compliance" ? "var(--bone)" : "var(--obsidian)" }}>
+                  {smsCompliance.blockLabel} — SMS to this lead is disabled.
+                </span>
               </p>
             )}
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
@@ -3570,8 +3608,8 @@ function SellerCommandCenter({
                 <button
                   key={template.label}
                   onClick={() => setSmsDraft(template.body)}
-                  disabled={lead.sms_opt_status === "opted-out" || (!lead.phone && !lead.phone_2)}
-                  style={{ ...secondaryButton, padding: "7px 9px", fontSize: 10, opacity: lead.sms_opt_status === "opted-out" || (!lead.phone && !lead.phone_2) ? 0.55 : 1 }}
+                  disabled={smsBlocked}
+                  style={{ ...secondaryButton, padding: "7px 9px", fontSize: 10, opacity: smsBlocked ? 0.55 : 1 }}
                 >
                   {template.label}
                 </button>
@@ -3582,8 +3620,8 @@ function SellerCommandCenter({
               rows={4}
               value={smsDraft}
               onChange={e => setSmsDraft(e.target.value)}
-              placeholder="Type SMS to send through Sakari."
-              disabled={!lead.phone && !lead.phone_2}
+              placeholder={smsBlocked ? "SMS disabled for this lead." : "Type SMS to send through Sakari."}
+              disabled={smsBlocked}
             />
             <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", marginTop: 8 }}>
               <span style={{ fontSize: 12, color: "var(--muted)" }}>{smsDraft.trim().length} chars</span>
