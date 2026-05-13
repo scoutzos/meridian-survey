@@ -1418,7 +1418,7 @@ export default function VaPage() {
   };
 
   const setUnlinkedActionMessage = (action: string) => {
-    setMessage(`${action} needs a linked relationship first. Use Find Match or Create Packet to connect this contact.`);
+    setMessage(`${action} needs a linked relationship first. Use Find Match or the selected record card to connect this contact.`);
   };
 
   const addToDailyBrief = (line: string, patch: Partial<VaDailyBriefInput> = {}) => {
@@ -2330,7 +2330,6 @@ export default function VaPage() {
     outreach: (
       <>
       <button onClick={() => openBulkTextWorkflow()} style={headerSecondaryAction}>Bulk Text</button>
-      <button onClick={startNew} style={headerPrimaryAction}>New Deal Brief</button>
       </>
     ),
     lists: (
@@ -3530,7 +3529,6 @@ export default function VaPage() {
                         {contactActionMenuOpen && (
                           <div className="contact-action-menu" style={contactActionMenu}>
                             <button onClick={() => router.push(`/lead/${selectedImportedLead.id}`)}>Open record</button>
-                            <button onClick={() => loadImportedLead(selectedImportedLead, true)}>{selectedImportedLead.deal_id ? "Open packet" : "Create packet"}</button>
                             <button onClick={() => void reload(user)}>Refresh</button>
                           </div>
                         )}
@@ -3602,7 +3600,6 @@ export default function VaPage() {
                         {contactActionMenuOpen && (
                           <div className="contact-action-menu" style={contactActionMenu}>
                             <button onClick={() => openCommsThreadForEvent(activeCommunicationEvent)}>Open thread</button>
-                            <button onClick={() => createLeadDraftFromSms(activeCommunicationEvent)}>Create packet</button>
                             <button onClick={() => setContactQueueMode("relationships")}>Find match</button>
                           </div>
                         )}
@@ -3616,7 +3613,9 @@ export default function VaPage() {
                           {activeCommunicationEvent.matched_deal_id ? "This conversation is connected to a deal packet." : "Create a packet or select a matching relationship from the Relationships tab."}
                         </p>
                       </div>
-                      <span style={activeCommunicationEvent.matched_deal_id ? pill : hotPill}>{activeCommunicationEvent.matched_deal_id ? "Deal linked" : "Needs matching"}</span>
+                      <button onClick={() => createLeadDraftFromSms(activeCommunicationEvent)} style={compactButton}>
+                        {activeCommunicationEvent.matched_deal_id ? "Open Packet" : "Create Packet"}
+                      </button>
                     </div>
                     <ConversationPanel
                       eyebrow="Conversation"
@@ -3641,7 +3640,6 @@ export default function VaPage() {
                       />
                       <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", marginTop: 8 }}>
                         <span style={{ color: "var(--muted)", fontSize: 12 }}>{smsDraft.trim().length}/1200</span>
-                        <button onClick={() => createLeadDraftFromSms(activeCommunicationEvent)} style={primaryButton}>Create Packet</button>
                       </div>
                     </div>
                   </>
@@ -3698,7 +3696,6 @@ export default function VaPage() {
                         <button onClick={() => quickLeadDisposition("left-voicemail", "Left voicemail")} style={compactButton}>Voicemail</button>
                         <button onClick={() => setDispositionDraft({ ...dispositionDraft, disposition: "follow-up", nextFollowUpDate: addDays(2) })} style={compactButton}>Set Callback</button>
                         <button onClick={applyLeadDisposition} style={compactButton}>Log Outcome</button>
-                        <button onClick={() => loadImportedLead(selectedImportedLead, true)} style={compactButton}>Create Packet</button>
                       </div>
                       <div style={{ borderTop: "1px solid var(--fog)", marginTop: 12, paddingTop: 12, display: "grid", gap: 8 }}>
                         <select value={dispositionDraft.disposition} onChange={event => setDispositionDraft({ ...dispositionDraft, disposition: event.target.value as LeadDisposition })}>
@@ -3734,7 +3731,6 @@ export default function VaPage() {
                     <section style={contactQueueSidePanel}>
                       <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "baseline", marginBottom: 10 }}>
                         <p style={eyebrowSmall}>Relationship</p>
-                        <button onClick={() => createLeadDraftFromSms(activeCommunicationEvent)} style={{ background: "transparent", border: "none", color: "var(--brass)", fontWeight: 800, cursor: "pointer" }}>Create</button>
                       </div>
                       <InfoStack title={activeCommunicationEvent.matched_deal_id ? "Linked Contact" : "Unmatched Contact"}>
                         <p>{activeCommunicationEvent.contact_name || "Name unknown"}</p>
@@ -3751,7 +3747,7 @@ export default function VaPage() {
                       <div style={{ ...contactQueueCard, cursor: "default", background: "var(--surface)" }}>
                         <strong style={{ color: "var(--obsidian)", fontSize: 13 }}>{activeCommunicationEvent.matched_deal_id ? "Deal packet connected" : "No linked property yet"}</strong>
                         <span style={{ display: "block", color: "var(--muted)", fontSize: 12, marginTop: 4 }}>
-                          {activeCommunicationEvent.matched_deal_id ? "Use Open Thread to keep working this conversation here." : "Use Create Packet or match this phone to an existing relationship."}
+                          {activeCommunicationEvent.matched_deal_id ? "Use Open Thread to keep working this conversation here." : "Use the selected record card or match this phone to an existing relationship."}
                         </span>
                       </div>
                     </section>
@@ -3766,7 +3762,6 @@ export default function VaPage() {
                         <button onClick={() => setUnlinkedActionMessage("Voicemail drop")} style={compactButton}>Voicemail Drop</button>
                         <button onClick={() => setUnlinkedActionMessage("Callback")} style={compactButton}>Set Callback</button>
                         <button onClick={() => setUnlinkedActionMessage("Log outcome")} style={compactButton}>Log Outcome</button>
-                        <button onClick={() => createLeadDraftFromSms(activeCommunicationEvent)} style={compactButton}>Create Packet</button>
                       </div>
                     </section>
                     <section style={contactQueueSidePanel}>
