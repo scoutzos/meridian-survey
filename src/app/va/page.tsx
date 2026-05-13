@@ -635,6 +635,8 @@ export default function VaPage() {
   const [dispositionDraft, setDispositionDraft] = useState<{ disposition: LeadDisposition; note: string; nextFollowUpDate: string }>({ disposition: "no-answer", note: "", nextFollowUpDate: "" });
   const [smsDraft, setSmsDraft] = useState("");
   const [bulkSmsDrawerOpen, setBulkSmsDrawerOpen] = useState(false);
+  const [bulkTextModalOpen, setBulkTextModalOpen] = useState(false);
+  const [bulkTextStep, setBulkTextStep] = useState<"audience" | "compliance" | "message">("audience");
   const [bulkTextAudienceStatus, setBulkTextAudienceStatus] = useState<ImportStatusFilter>("all");
   const [bulkTextBatchId, setBulkTextBatchId] = useState("all");
   const [bulkTextCounty, setBulkTextCounty] = useState("");
@@ -1431,7 +1433,11 @@ export default function VaPage() {
         })),
       });
       setBulkTextResult(result.error ? { error: result.error } : { sent: result.sent ?? bulkTextCategorization.eligible.length });
-      if (!result.error) setBulkTextMessage("");
+      if (!result.error) {
+        setBulkTextMessage("");
+        setBulkTextModalOpen(false);
+        setBulkTextStep("audience");
+      }
     } catch (error) {
       setBulkTextResult({ error: error instanceof Error ? error.message : "Bulk text failed." });
     } finally {
@@ -2879,175 +2885,20 @@ export default function VaPage() {
                 <p style={eyebrowSmall}>Contact Queue</p>
                 <h2 style={sectionTitle}>Seller conversations and follow-ups</h2>
               </div>
-              <span style={(followUpsDue.length || recentInboundSms.length || interestedLeads.length) ? hotPill : pill}>
-                {followUpsDue.length + recentInboundSms.length + interestedLeads.length} needs review
-              </span>
+              <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                <span style={(followUpsDue.length || recentInboundSms.length || interestedLeads.length) ? hotPill : pill}>
+                  {followUpsDue.length + recentInboundSms.length + interestedLeads.length} needs review
+                </span>
+                <button onClick={() => { setBulkTextModalOpen(true); setBulkTextStep("audience"); }} style={primaryButton}>
+                  Bulk Text
+                </button>
+              </div>
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, marginBottom: 14 }} className="number-grid">
               <ShiftCard label="Seller replies" value={String(recentInboundSms.length)} tone={recentInboundSms.length ? "hot" : "calm"} />
               <ShiftCard label="Due follow-ups" value={String(followUpsDue.length)} tone={followUpsDue.length ? "hot" : "calm"} />
               <ShiftCard label="Interested sellers" value={String(interestedLeads.length)} tone={interestedLeads.length ? "hot" : "calm"} />
               <ShiftCard label="Textable audience" value={String(bulkTextCategorization.eligible.length)} />
-            </div>
-
-            <div style={{ ...subPanel, marginBottom: 14 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "baseline", flexWrap: "wrap", marginBottom: 12 }}>
-                <div>
-                  <p style={eyebrowSmall}>Bulk Text Console</p>
-                  <h3 style={{ ...sectionTitle, fontSize: 24 }}>Build, review, and send a compliant audience</h3>
-                </div>
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                  <span style={hotPill}>{bulkTextCategorization.eligible.length} eligible</span>
-                  <span style={bulkTextCategorization.excluded.length ? pill : hotPill}>{bulkTextCategorization.excluded.length} excluded</span>
-                </div>
-              </div>
-
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1.35fr", gap: 12 }} className="lead-inbox-grid">
-                <section style={{ ...subPanel, background: "var(--surface)" }}>
-                  <p style={eyebrowSmall}>1. Audience Builder</p>
-                  <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
-                    <label style={{ display: "grid", gap: 5, color: "var(--muted)", fontSize: 12, fontWeight: 800, textTransform: "uppercase", letterSpacing: 1.2 }}>
-                      List source
-                      <select value={bulkTextBatchId} onChange={event => setBulkTextBatchId(event.target.value)} style={{ minHeight: 42 }}>
-                        <option value="all">All imported lists</option>
-                        {leadBatches.map(batch => (
-                          <option key={batch.id} value={batch.id}>{batch.campaign_source || batch.original_filename || batch.source_system}</option>
-                        ))}
-                      </select>
-                    </label>
-                    <label style={{ display: "grid", gap: 5, color: "var(--muted)", fontSize: 12, fontWeight: 800, textTransform: "uppercase", letterSpacing: 1.2 }}>
-                      Lead segment
-                      <select value={bulkTextAudienceStatus} onChange={event => setBulkTextAudienceStatus(event.target.value as ImportStatusFilter)} style={{ minHeight: 42 }}>
-                        {IMPORT_STATUS_FILTERS.filter(filter => filter.value !== "no-phone").map(filter => (
-                          <option key={filter.value} value={filter.value}>{filter.label}</option>
-                        ))}
-                      </select>
-                    </label>
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 110px", gap: 8 }}>
-                      <label style={{ display: "grid", gap: 5, color: "var(--muted)", fontSize: 12, fontWeight: 800, textTransform: "uppercase", letterSpacing: 1.2 }}>
-                        County
-                        <input value={bulkTextCounty} onChange={event => setBulkTextCounty(event.target.value)} placeholder="Any county" style={{ minHeight: 42 }} />
-                      </label>
-                      <label style={{ display: "grid", gap: 5, color: "var(--muted)", fontSize: 12, fontWeight: 800, textTransform: "uppercase", letterSpacing: 1.2 }}>
-                        Score
-                        <input value={bulkTextMinScore} onChange={event => setBulkTextMinScore(event.target.value)} placeholder="Min" inputMode="numeric" style={{ minHeight: 42 }} />
-                      </label>
-                    </div>
-                    <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
-                      <MiniStat label="Considered" value={String(bulkTextCategorization.totalConsidered)} />
-                      <MiniStat label="Eligible" value={String(bulkTextCategorization.eligible.length)} />
-                      <MiniStat label="Cap" value="500" />
-                    </div>
-                  </div>
-                </section>
-
-                <section style={{ ...subPanel, background: "var(--surface)" }}>
-                  <p style={eyebrowSmall}>2. Compliance Review</p>
-                  <div style={{ display: "grid", gap: 8, marginTop: 12 }}>
-                    {EXCLUSION_SEVERITY_ORDER.map(severity => {
-                      const total = EXCLUSION_REASONS_BY_SEVERITY[severity].reduce((sum, reason) => sum + bulkTextCategorization.excludedByReason[reason], 0);
-                      return (
-                        <div key={severity} style={{ border: "1px solid var(--fog)", borderRadius: 8, padding: 10, background: total ? "rgba(176,137,84,0.08)" : "var(--bone)" }}>
-                          <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
-                            <strong style={{ color: "var(--obsidian)", fontSize: 13 }}>{EXCLUSION_SEVERITY_LABEL[severity]}</strong>
-                            <span style={total ? pill : hotPill}>{total}</span>
-                          </div>
-                          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
-                            {EXCLUSION_REASONS_BY_SEVERITY[severity].filter(reason => bulkTextCategorization.excludedByReason[reason] > 0).map(reason => (
-                              <span key={reason} style={{ ...pill, fontSize: 10 }}>
-                                {exclusionReasonLabel(reason)} · {bulkTextCategorization.excludedByReason[reason]}
-                              </span>
-                            ))}
-                            {total === 0 && <span style={{ color: "var(--muted)", fontSize: 12 }}>Clear</span>}
-                          </div>
-                        </div>
-                      );
-                    })}
-                    <p style={{ color: "var(--muted)", fontSize: 12, lineHeight: 1.45, margin: 0 }}>
-                      Hard blocks stay out of the send automatically: DNC, litigators, opt-outs, missing phones, landlines, VOIP, recent texts, duplicates, passed, and converted records.
-                    </p>
-                  </div>
-                </section>
-
-                <section style={{ ...subPanel, background: "var(--surface)" }}>
-                  <p style={eyebrowSmall}>3. Message Builder</p>
-                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}>
-                    {BULK_TEXT_TEMPLATES.map(template => (
-                      <button key={template.label} onClick={() => setBulkTextMessage(template.body)} style={{ ...secondaryButton, padding: "8px 10px", fontSize: 11 }}>
-                        {template.label}
-                      </button>
-                    ))}
-                  </div>
-                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8 }}>
-                    {BULK_SMS_MERGE_FIELDS.map(field => (
-                      <button key={field} onClick={() => setBulkTextMessage(current => `${current}${current.endsWith(" ") || !current ? "" : " "}{{${field}}}`)} style={{ ...pill, cursor: "pointer" }}>
-                        {`{{${field}}}`}
-                      </button>
-                    ))}
-                  </div>
-                  <textarea
-                    value={bulkTextMessage}
-                    onChange={event => setBulkTextMessage(event.target.value)}
-                    placeholder="Write the seller message..."
-                    rows={5}
-                    style={{ width: "100%", marginTop: 10, minHeight: 120, resize: "vertical" }}
-                  />
-                  <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", color: "var(--muted)", fontSize: 12, marginTop: 8 }}>
-                    <span>{bulkTextMessage.trim() ? bulkTextFinalMessage.length : 0}/1200 with opt-out footer</span>
-                    <span>{bulkTextSegments} segment{bulkTextSegments === 1 ? "" : "s"} estimated</span>
-                  </div>
-
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 10 }}>
-                    <label style={{ display: "grid", gap: 5, color: "var(--muted)", fontSize: 12, fontWeight: 800, textTransform: "uppercase", letterSpacing: 1.2 }}>
-                      Send window
-                      <select value={bulkTextSendWindow} onChange={event => setBulkTextSendWindow(event.target.value)} style={{ minHeight: 42 }}>
-                        <option>Business hours</option>
-                        <option>Tomorrow morning</option>
-                        <option>Manual review first</option>
-                      </select>
-                    </label>
-                    <label style={{ display: "grid", gap: 5, color: "var(--muted)", fontSize: 12, fontWeight: 800, textTransform: "uppercase", letterSpacing: 1.2 }}>
-                      Pacing
-                      <select value={bulkTextThrottle} onChange={event => setBulkTextThrottle(event.target.value)} style={{ minHeight: 42 }}>
-                        <option>25/hour</option>
-                        <option>50/hour</option>
-                        <option>100/hour</option>
-                      </select>
-                    </label>
-                  </div>
-
-                  <div style={{ borderTop: "1px solid var(--fog)", marginTop: 12, paddingTop: 12 }}>
-                    <p style={eyebrowSmall}>Preview</p>
-                    <div style={{ display: "grid", gap: 8, marginTop: 8, maxHeight: 176, overflow: "auto" }}>
-                      {bulkTextPreviewLeads.map(lead => (
-                        <div key={lead.id} style={{ border: "1px solid var(--fog)", borderRadius: 8, padding: 10, background: "var(--bone)" }}>
-                          <strong style={{ color: "var(--obsidian)", fontSize: 13 }}>{lead.owner_name || "Owner unknown"}</strong>
-                          <p style={{ color: "var(--muted)", fontSize: 12, lineHeight: 1.45, margin: "4px 0 0" }}>
-                            {renderMessageForRecipient(bulkTextMessage || BULK_TEXT_TEMPLATES[0].body, lead)}
-                          </p>
-                        </div>
-                      ))}
-                      {bulkTextPreviewLeads.length === 0 && <p style={{ color: "var(--muted)", fontSize: 12 }}>No eligible preview recipients yet.</p>}
-                    </div>
-                  </div>
-
-                  <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", alignItems: "center", marginTop: 12 }}>
-                    <p style={{ color: bulkTextResult?.error ? "#9f3412" : "var(--muted)", fontSize: 12, margin: 0 }}>
-                      {bulkTextResult?.error || (bulkTextResult?.sent ? `Sent to ${bulkTextResult.sent} sellers.` : `${bulkTextSendWindow} · ${bulkTextThrottle}`)}
-                    </p>
-                    <button
-                      onClick={() => void sendBulkTextFromQueue()}
-                      disabled={bulkTextSending || bulkTextCategorization.eligible.length === 0 || !bulkTextMessage.trim()}
-                      style={{
-                        ...primaryButton,
-                        opacity: bulkTextSending || bulkTextCategorization.eligible.length === 0 || !bulkTextMessage.trim() ? 0.55 : 1,
-                      }}
-                    >
-                      {bulkTextSending ? "Sending..." : `Send ${bulkTextCategorization.eligible.length}`}
-                    </button>
-                  </div>
-                </section>
-              </div>
             </div>
 
             <div style={{ display: "grid", gridTemplateColumns: "260px minmax(0, 1fr) 420px", gap: 14 }} className="lead-inbox-grid">
@@ -3491,6 +3342,247 @@ export default function VaPage() {
           )}
         </main>
       </div>
+
+      {bulkTextModalOpen && (
+        <div
+          onClick={() => { if (!bulkTextSending) setBulkTextModalOpen(false); }}
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 80,
+            background: "rgba(20,17,13,0.55)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 24,
+          }}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Bulk text workflow"
+            onClick={event => event.stopPropagation()}
+            style={{
+              width: "min(980px, 100%)",
+              maxHeight: "calc(100vh - 48px)",
+              overflow: "hidden",
+              border: "1px solid var(--brass)",
+              borderRadius: 10,
+              background: "var(--bone)",
+              boxShadow: "0 24px 80px rgba(20,17,13,0.42)",
+              display: "grid",
+              gridTemplateRows: "auto 1fr auto",
+            }}
+          >
+            <header style={{ background: "var(--obsidian)", color: "var(--bone)", padding: "20px 22px", display: "flex", justifyContent: "space-between", gap: 18, alignItems: "start" }}>
+              <div>
+                <p style={{ ...eyebrowSmall, color: "var(--brass)", marginBottom: 6 }}>Bulk Text</p>
+                <h2 style={{ ...sectionTitle, color: "var(--bone)", fontSize: 30 }}>Campaign send workflow</h2>
+                <p style={{ color: "rgba(250,246,237,0.72)", fontSize: 13, marginTop: 6 }}>
+                  Build an audience, verify exclusions, preview merge fields, then send.
+                </p>
+              </div>
+              <button onClick={() => setBulkTextModalOpen(false)} disabled={bulkTextSending} style={{ ...secondaryButton, color: "var(--bone)", borderColor: "rgba(250,246,237,0.35)", background: "transparent" }}>
+                Close
+              </button>
+            </header>
+
+            <div style={{ overflow: "auto", padding: 22 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10, marginBottom: 16 }} className="three-col">
+                {[
+                  { id: "audience" as const, label: "1. Audience", detail: `${bulkTextCategorization.totalConsidered} considered` },
+                  { id: "compliance" as const, label: "2. Compliance", detail: `${bulkTextCategorization.eligible.length} eligible` },
+                  { id: "message" as const, label: "3. Message", detail: `${bulkTextSegments} segment${bulkTextSegments === 1 ? "" : "s"}` },
+                ].map(step => (
+                  <button
+                    key={step.id}
+                    onClick={() => setBulkTextStep(step.id)}
+                    style={{
+                      border: bulkTextStep === step.id ? "1px solid var(--brass)" : "1px solid var(--fog)",
+                      borderRadius: 8,
+                      padding: 12,
+                      background: bulkTextStep === step.id ? "rgba(176,137,84,0.14)" : "var(--surface)",
+                      textAlign: "left",
+                      cursor: "pointer",
+                    }}
+                  >
+                    <strong style={{ display: "block", color: "var(--obsidian)", fontSize: 13 }}>{step.label}</strong>
+                    <span style={{ color: "var(--muted)", fontSize: 12 }}>{step.detail}</span>
+                  </button>
+                ))}
+              </div>
+
+              {bulkTextStep === "audience" && (
+                <section style={subPanel}>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "baseline", marginBottom: 14 }}>
+                    <div>
+                      <p style={eyebrowSmall}>Audience Builder</p>
+                      <h3 style={{ ...sectionTitle, fontSize: 24 }}>Choose who should enter this send</h3>
+                    </div>
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                      <span style={pill}>{bulkTextCategorization.totalConsidered} considered</span>
+                      <span style={hotPill}>{bulkTextCategorization.eligible.length} eligible</span>
+                    </div>
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }} className="two-col">
+                    <label style={{ display: "grid", gap: 6, color: "var(--muted)", fontSize: 12, fontWeight: 800, textTransform: "uppercase", letterSpacing: 1.2 }}>
+                      List source
+                      <select value={bulkTextBatchId} onChange={event => setBulkTextBatchId(event.target.value)} style={{ minHeight: 42 }}>
+                        <option value="all">All imported lists</option>
+                        {leadBatches.map(batch => (
+                          <option key={batch.id} value={batch.id}>{batch.campaign_source || batch.original_filename || batch.source_system}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <label style={{ display: "grid", gap: 6, color: "var(--muted)", fontSize: 12, fontWeight: 800, textTransform: "uppercase", letterSpacing: 1.2 }}>
+                      Lead segment
+                      <select value={bulkTextAudienceStatus} onChange={event => setBulkTextAudienceStatus(event.target.value as ImportStatusFilter)} style={{ minHeight: 42 }}>
+                        {IMPORT_STATUS_FILTERS.filter(filter => filter.value !== "no-phone").map(filter => (
+                          <option key={filter.value} value={filter.value}>{filter.label}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <label style={{ display: "grid", gap: 6, color: "var(--muted)", fontSize: 12, fontWeight: 800, textTransform: "uppercase", letterSpacing: 1.2 }}>
+                      County
+                      <input value={bulkTextCounty} onChange={event => setBulkTextCounty(event.target.value)} placeholder="Any county" style={{ minHeight: 42 }} />
+                    </label>
+                    <label style={{ display: "grid", gap: 6, color: "var(--muted)", fontSize: 12, fontWeight: 800, textTransform: "uppercase", letterSpacing: 1.2 }}>
+                      Minimum score
+                      <input value={bulkTextMinScore} onChange={event => setBulkTextMinScore(event.target.value)} placeholder="Any score" inputMode="numeric" style={{ minHeight: 42 }} />
+                    </label>
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10, marginTop: 14 }} className="number-grid">
+                    <MiniStat label="Considered" value={String(bulkTextCategorization.totalConsidered)} />
+                    <MiniStat label="Eligible" value={String(bulkTextCategorization.eligible.length)} />
+                    <MiniStat label="Send cap" value="500" />
+                  </div>
+                </section>
+              )}
+
+              {bulkTextStep === "compliance" && (
+                <section style={subPanel}>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "baseline", marginBottom: 14 }}>
+                    <div>
+                      <p style={eyebrowSmall}>Compliance Review</p>
+                      <h3 style={{ ...sectionTitle, fontSize: 24 }}>Blocked contacts stay out automatically</h3>
+                    </div>
+                    <span style={bulkTextCategorization.excluded.length ? pill : hotPill}>{bulkTextCategorization.excluded.length} excluded</span>
+                  </div>
+                  <div style={{ display: "grid", gap: 10 }}>
+                    {EXCLUSION_SEVERITY_ORDER.map(severity => {
+                      const total = EXCLUSION_REASONS_BY_SEVERITY[severity].reduce((sum, reason) => sum + bulkTextCategorization.excludedByReason[reason], 0);
+                      return (
+                        <div key={severity} style={{ border: "1px solid var(--fog)", borderRadius: 8, padding: 12, background: total ? "rgba(176,137,84,0.08)" : "var(--surface)" }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
+                            <strong style={{ color: "var(--obsidian)", fontSize: 14 }}>{EXCLUSION_SEVERITY_LABEL[severity]}</strong>
+                            <span style={total ? pill : hotPill}>{total}</span>
+                          </div>
+                          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 9 }}>
+                            {EXCLUSION_REASONS_BY_SEVERITY[severity].filter(reason => bulkTextCategorization.excludedByReason[reason] > 0).map(reason => (
+                              <span key={reason} style={{ ...pill, fontSize: 10 }}>
+                                {exclusionReasonLabel(reason)} · {bulkTextCategorization.excludedByReason[reason]}
+                              </span>
+                            ))}
+                            {total === 0 && <span style={{ color: "var(--muted)", fontSize: 12 }}>Clear</span>}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <p style={{ color: "var(--muted)", fontSize: 12, lineHeight: 1.5, marginTop: 12 }}>
+                    Exclusions include DNC, TCPA litigators, opt-outs, missing phones, landlines, VOIP, recent texts, duplicates, passed records, and converted records.
+                  </p>
+                </section>
+              )}
+
+              {bulkTextStep === "message" && (
+                <section style={subPanel}>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "baseline", marginBottom: 14 }}>
+                    <div>
+                      <p style={eyebrowSmall}>Message Builder</p>
+                      <h3 style={{ ...sectionTitle, fontSize: 24 }}>Write once, preview per seller</h3>
+                    </div>
+                    <span style={pill}>{bulkTextMessage.trim() ? bulkTextFinalMessage.length : 0}/1200</span>
+                  </div>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
+                    {BULK_TEXT_TEMPLATES.map(template => (
+                      <button key={template.label} onClick={() => setBulkTextMessage(template.body)} style={{ ...secondaryButton, padding: "8px 10px", fontSize: 11 }}>
+                        {template.label}
+                      </button>
+                    ))}
+                  </div>
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
+                    {BULK_SMS_MERGE_FIELDS.map(field => (
+                      <button key={field} onClick={() => setBulkTextMessage(current => `${current}${current.endsWith(" ") || !current ? "" : " "}{{${field}}}`)} style={{ ...pill, cursor: "pointer" }}>
+                        {`{{${field}}}`}
+                      </button>
+                    ))}
+                  </div>
+                  <textarea
+                    value={bulkTextMessage}
+                    onChange={event => setBulkTextMessage(event.target.value)}
+                    placeholder="Write the seller message..."
+                    rows={5}
+                    style={{ width: "100%", minHeight: 130, resize: "vertical" }}
+                  />
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 10 }} className="two-col">
+                    <label style={{ display: "grid", gap: 6, color: "var(--muted)", fontSize: 12, fontWeight: 800, textTransform: "uppercase", letterSpacing: 1.2 }}>
+                      Send window
+                      <select value={bulkTextSendWindow} onChange={event => setBulkTextSendWindow(event.target.value)} style={{ minHeight: 42 }}>
+                        <option>Business hours</option>
+                        <option>Tomorrow morning</option>
+                        <option>Manual review first</option>
+                      </select>
+                    </label>
+                    <label style={{ display: "grid", gap: 6, color: "var(--muted)", fontSize: 12, fontWeight: 800, textTransform: "uppercase", letterSpacing: 1.2 }}>
+                      Pacing
+                      <select value={bulkTextThrottle} onChange={event => setBulkTextThrottle(event.target.value)} style={{ minHeight: 42 }}>
+                        <option>25/hour</option>
+                        <option>50/hour</option>
+                        <option>100/hour</option>
+                      </select>
+                    </label>
+                  </div>
+                  <div style={{ borderTop: "1px solid var(--fog)", marginTop: 14, paddingTop: 12 }}>
+                    <p style={eyebrowSmall}>Preview</p>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, marginTop: 8 }} className="three-col">
+                      {bulkTextPreviewLeads.map(lead => (
+                        <div key={lead.id} style={{ border: "1px solid var(--fog)", borderRadius: 8, padding: 10, background: "var(--surface)" }}>
+                          <strong style={{ color: "var(--obsidian)", fontSize: 13 }}>{lead.owner_name || "Owner unknown"}</strong>
+                          <p style={{ color: "var(--muted)", fontSize: 12, lineHeight: 1.45, margin: "4px 0 0" }}>
+                            {renderMessageForRecipient(bulkTextMessage || BULK_TEXT_TEMPLATES[0].body, lead)}
+                          </p>
+                        </div>
+                      ))}
+                      {bulkTextPreviewLeads.length === 0 && <p style={{ color: "var(--muted)", fontSize: 12 }}>No eligible preview recipients yet.</p>}
+                    </div>
+                  </div>
+                </section>
+              )}
+            </div>
+
+            <footer style={{ borderTop: "1px solid var(--fog)", padding: "14px 22px", display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap", background: "var(--surface)" }}>
+              <p style={{ color: bulkTextResult?.error ? "#9f3412" : "var(--muted)", fontSize: 12, margin: 0 }}>
+                {bulkTextResult?.error || (bulkTextResult?.sent ? `Sent to ${bulkTextResult.sent} sellers.` : `${bulkTextCategorization.eligible.length} eligible · ${bulkTextSendWindow} · ${bulkTextThrottle}`)}
+              </p>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                {bulkTextStep !== "audience" && <button onClick={() => setBulkTextStep(bulkTextStep === "message" ? "compliance" : "audience")} style={secondaryButton}>Back</button>}
+                {bulkTextStep !== "message" ? (
+                  <button onClick={() => setBulkTextStep(bulkTextStep === "audience" ? "compliance" : "message")} style={primaryButton}>Continue</button>
+                ) : (
+                  <button
+                    onClick={() => void sendBulkTextFromQueue()}
+                    disabled={bulkTextSending || bulkTextCategorization.eligible.length === 0 || !bulkTextMessage.trim()}
+                    style={{ ...primaryButton, opacity: bulkTextSending || bulkTextCategorization.eligible.length === 0 || !bulkTextMessage.trim() ? 0.55 : 1 }}
+                  >
+                    {bulkTextSending ? "Sending..." : `Send ${bulkTextCategorization.eligible.length}`}
+                  </button>
+                )}
+              </div>
+            </footer>
+          </div>
+        </div>
+      )}
 
       <BulkSmsDrawer
         open={bulkSmsDrawerOpen}
