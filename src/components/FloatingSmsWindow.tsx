@@ -643,7 +643,7 @@ export default function FloatingSmsWindow({
     return (
       <button type="button" onClick={openWindow} style={launcher}>
         Comms
-        {threads.length > 0 && <span style={launcherBadge}>{threads.length}</span>}
+        {unreadTotal > 0 && <span style={launcherBadge}>{unreadTotal}</span>}
       </button>
     );
   }
@@ -679,7 +679,7 @@ export default function FloatingSmsWindow({
               {phoneState === "in-call" ? `On call ${formatCallDuration(callDuration)}` : phoneState === "online" ? "Phone online" : phoneState === "ringing" ? "Incoming" : "Phone offline"}
             </span>
           )}
-          <span style={badge}>{unreadTotal || threads.length}</span>
+          {unreadTotal > 0 && <span style={badge}>{unreadTotal} unread</span>}
           <button type="button" onPointerDown={event => event.stopPropagation()} onClick={toggleMinimized} style={iconButton}>{minimized ? "Open" : "Min"}</button>
           <button type="button" onPointerDown={event => event.stopPropagation()} onClick={closeWindow} style={iconButton}>Close</button>
         </div>
