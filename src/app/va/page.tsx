@@ -712,14 +712,9 @@ export default function VaPage() {
     && lead.status !== "converted"
     && lead.status !== "passed"
   ), [importedLeads, today]);
-  const newLeadRows = useMemo(() => importedLeads
-    .filter(lead => lead.status === "new")
-    .sort((a, b) => (b.lead_score ?? 0) - (a.lead_score ?? 0)),
-    [importedLeads],
-  );
   const blockedAssignedTasks = useMemo(() => openAssignedTasks.filter(task => task.status === "blocked"), [openAssignedTasks]);
   const memberAssignedTasks = useMemo(() => openAssignedTasks.filter(task => task.status !== "blocked"), [openAssignedTasks]);
-  const dashboardWorkQueueCount = leadFollowUpsDue.length + newLeadRows.length + interestedLeads.length + draftLeads.length + memberAssignedTasks.length + blockedAssignedTasks.length;
+  const dashboardWorkQueueCount = leadFollowUpsDue.length + followUpsDue.length + interestedLeads.length + draftLeads.length + memberAssignedTasks.length + blockedAssignedTasks.length;
   const selectedImportedLead = useMemo(() => importedLeads.find(lead => lead.id === selectedImportedLeadId) ?? null, [importedLeads, selectedImportedLeadId]);
   const selectedBatch = useMemo(() => leadBatches.find(batch => batch.id === selectedBatchId) ?? null, [leadBatches, selectedBatchId]);
   const filteredImportedLeads = useMemo(() => {
@@ -1850,7 +1845,7 @@ export default function VaPage() {
                 </div>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 8 }} className="compact-shift-grid">
                   <MiniStat label="Follow-ups" value={String(followUpsDue.length)} />
-                  <MiniStat label="New leads" value={String(newLeadRows.length)} />
+                  <MiniStat label="Interested" value={String(interestedLeads.length)} />
                   <MiniStat label="Tasks" value={String(openAssignedTasks.length)} />
                   <MiniStat label="Packets" value={String(draftLeads.length)} />
                 </div>
@@ -1906,21 +1901,7 @@ export default function VaPage() {
                     </button>
                   ))}
 
-                  {newLeadRows.slice(0, Math.max(0, 4 - leadFollowUpsDue.length - followUpsDue.length)).map(lead => (
-                    <button key={`new-lead-${lead.id}`} onClick={() => selectImportedLead(lead, "outreach")} style={workItemCard}>
-                      <div style={workItemIcon}>NEW</div>
-                      <div style={{ minWidth: 0 }}>
-                        <div style={workItemHeader}>
-                          <strong>{lead.owner_name || "Owner unknown"}</strong>
-                          <span style={pill}>New Lead</span>
-                        </div>
-                        <p style={workItemBody}>{lead.property_address || `${lead.county || "County pending"}${lead.acreage ? ` · ${lead.acreage} ac` : ""}`}</p>
-                        <small style={workItemMeta}>{lead.phone || lead.phone_2 || "No phone"} · Start first touch</small>
-                      </div>
-                    </button>
-                  ))}
-
-                  {interestedLeads.slice(0, Math.max(0, 5 - leadFollowUpsDue.length - followUpsDue.length - newLeadRows.length)).map(lead => (
+                  {interestedLeads.slice(0, Math.max(0, 5 - leadFollowUpsDue.length - followUpsDue.length)).map(lead => (
                     <button key={`interested-${lead.id}`} onClick={() => loadImportedLead(lead, true)} style={workItemCard}>
                       <div style={workItemIcon}>INT</div>
                       <div style={{ minWidth: 0 }}>
@@ -1934,7 +1915,7 @@ export default function VaPage() {
                     </button>
                   ))}
 
-                  {draftLeads.slice(0, Math.max(0, 6 - leadFollowUpsDue.length - followUpsDue.length - newLeadRows.length - interestedLeads.length)).map(deal => (
+                  {draftLeads.slice(0, Math.max(0, 6 - leadFollowUpsDue.length - followUpsDue.length - interestedLeads.length)).map(deal => (
                     <button key={`packet-ready-${deal.id}`} onClick={() => openDealBrief(deal)} style={workItemCard}>
                       <div style={workItemIcon}>PKT</div>
                       <div style={{ minWidth: 0 }}>
@@ -1948,7 +1929,7 @@ export default function VaPage() {
                     </button>
                   ))}
 
-                  {blockedAssignedTasks.slice(0, Math.max(0, 7 - leadFollowUpsDue.length - followUpsDue.length - newLeadRows.length - interestedLeads.length - draftLeads.length)).map(task => (
+                  {blockedAssignedTasks.slice(0, Math.max(0, 7 - leadFollowUpsDue.length - followUpsDue.length - interestedLeads.length - draftLeads.length)).map(task => (
                     <button key={`task-${task.id}`} onClick={() => router.push(taskRecordHref(task))} style={workItemCard}>
                       <div style={workItemIcon}>BLK</div>
                       <div style={{ minWidth: 0 }}>
@@ -1962,7 +1943,7 @@ export default function VaPage() {
                     </button>
                   ))}
 
-                  {memberAssignedTasks.slice(0, Math.max(0, 8 - leadFollowUpsDue.length - followUpsDue.length - newLeadRows.length - interestedLeads.length - draftLeads.length - blockedAssignedTasks.length)).map(task => (
+                  {memberAssignedTasks.slice(0, Math.max(0, 8 - leadFollowUpsDue.length - followUpsDue.length - interestedLeads.length - draftLeads.length - blockedAssignedTasks.length)).map(task => (
                     <button key={`member-task-${task.id}`} onClick={() => router.push(taskRecordHref(task))} style={workItemCard}>
                       <div style={workItemIcon}>TSK</div>
                       <div style={{ minWidth: 0 }}>
