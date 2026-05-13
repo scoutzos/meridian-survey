@@ -77,7 +77,19 @@ import { getLeadNextAction, type WorkflowTone } from "@/lib/workflow-actions";
 import OperatingHeader from "@/components/OperatingHeader";
 import BulkSmsDrawer from "@/components/BulkSmsDrawer";
 import TwilioCallButton from "@/components/TwilioCallButton";
-import { categorizeForBulkSms, checkLeadCallCompliance, checkLeadSmsCompliance } from "@/lib/bulk-sms";
+import {
+  BULK_SMS_MERGE_FIELDS,
+  EXCLUSION_REASONS_BY_SEVERITY,
+  EXCLUSION_SEVERITY_LABEL,
+  EXCLUSION_SEVERITY_ORDER,
+  appendComplianceFooter,
+  categorizeForBulkSms,
+  checkLeadCallCompliance,
+  checkLeadSmsCompliance,
+  estimateSegments,
+  exclusionReasonLabel,
+  renderMessageForRecipient,
+} from "@/lib/bulk-sms";
 import { fetchActiveMemberNames } from "@/lib/members";
 
 const DISPLAY_FONT = "var(--font-display)";
@@ -191,6 +203,21 @@ const LEAD_ACTIVITY_TYPES: Array<{ value: ImportedLandLeadActivity["activity_typ
 ];
 
 type LeadDisposition = "no-answer" | "left-voicemail" | "texted" | "interested" | "wants-offer" | "follow-up" | "wrong-number" | "dnc" | "not-interested";
+
+const BULK_TEXT_TEMPLATES = [
+  {
+    label: "First touch",
+    body: "Hi {{first_name}}, this is Meridian. Are you open to talking about {{property_list}}?",
+  },
+  {
+    label: "Offer check",
+    body: "Hi {{first_name}}, we are reviewing land in {{county}} and wanted to see if you would consider an offer on {{property_list}}.",
+  },
+  {
+    label: "Follow-up",
+    body: "Hi {{first_name}}, just following up on {{property_list}}. Would a quick call today or tomorrow work?",
+  },
+];
 
 const LEAD_DISPOSITIONS: Array<{
   value: LeadDisposition;
@@ -608,6 +635,15 @@ export default function VaPage() {
   const [dispositionDraft, setDispositionDraft] = useState<{ disposition: LeadDisposition; note: string; nextFollowUpDate: string }>({ disposition: "no-answer", note: "", nextFollowUpDate: "" });
   const [smsDraft, setSmsDraft] = useState("");
   const [bulkSmsDrawerOpen, setBulkSmsDrawerOpen] = useState(false);
+  const [bulkTextAudienceStatus, setBulkTextAudienceStatus] = useState<ImportStatusFilter>("all");
+  const [bulkTextBatchId, setBulkTextBatchId] = useState("all");
+  const [bulkTextCounty, setBulkTextCounty] = useState("");
+  const [bulkTextMinScore, setBulkTextMinScore] = useState("");
+  const [bulkTextMessage, setBulkTextMessage] = useState("");
+  const [bulkTextSendWindow, setBulkTextSendWindow] = useState("Business hours");
+  const [bulkTextThrottle, setBulkTextThrottle] = useState("50/hour");
+  const [bulkTextSending, setBulkTextSending] = useState(false);
+  const [bulkTextResult, setBulkTextResult] = useState<{ sent?: number; error?: string } | null>(null);
   const [draftCommunicationEventId, setDraftCommunicationEventId] = useState<string | null>(null);
   const [smsSending, setSmsSending] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -776,6 +812,31 @@ export default function VaPage() {
   }, [importedLeads, leadFilter, leadSearch, maxAcreage, minAcreage, selectedBatchId]);
   const bulkSmsCategorization = useMemo(() => categorizeForBulkSms(filteredImportedLeads), [filteredImportedLeads]);
   const bulkEligibleLeads = bulkSmsCategorization.eligible;
+  const bulkTextAudience = useMemo(() => {
+    const countyQuery = bulkTextCounty.trim().toLowerCase();
+    const minScore = toNumber(bulkTextMinScore);
+    return importedLeads
+      .filter(lead => {
+        if (bulkTextBatchId !== "all" && lead.batch_id !== bulkTextBatchId) return false;
+        if (bulkTextAudienceStatus === "duplicates" && lead.duplicate_status === "new") return false;
+        if (bulkTextAudienceStatus === "has-phone" && !lead.phone && !lead.phone_2) return false;
+        if (bulkTextAudienceStatus === "no-phone" && (lead.phone || lead.phone_2)) return false;
+        if (bulkTextAudienceStatus === "score-60" && (lead.lead_score ?? 0) < 60) return false;
+        if (bulkTextAudienceStatus === "landlocked" && !String(lead.raw_data?.["Land Locked"] ?? lead.raw_data?.["Tag:Land Locked"] ?? "").toLowerCase().startsWith("y")) return false;
+        if (bulkTextAudienceStatus === "flood" && !(toNumber(String(lead.raw_data?.["Flood Zone Percent"] ?? "")) ?? 0)) return false;
+        if (bulkTextAudienceStatus === "wetlands" && !(toNumber(String(lead.raw_data?.["Wetlands Percent"] ?? "")) ?? 0)) return false;
+        if (["new", "contacted", "interested", "passed"].includes(bulkTextAudienceStatus) && lead.status !== bulkTextAudienceStatus) return false;
+        if (countyQuery && !(lead.county || "").toLowerCase().includes(countyQuery)) return false;
+        if (minScore !== null && (lead.lead_score ?? 0) < minScore) return false;
+        return true;
+      })
+      .sort((a, b) => (b.lead_score ?? 0) - (a.lead_score ?? 0))
+      .slice(0, 500);
+  }, [bulkTextAudienceStatus, bulkTextBatchId, bulkTextCounty, bulkTextMinScore, importedLeads]);
+  const bulkTextCategorization = useMemo(() => categorizeForBulkSms(bulkTextAudience), [bulkTextAudience]);
+  const bulkTextSegments = useMemo(() => estimateSegments(bulkTextMessage), [bulkTextMessage]);
+  const bulkTextFinalMessage = useMemo(() => appendComplianceFooter(bulkTextMessage), [bulkTextMessage]);
+  const bulkTextPreviewLeads = bulkTextCategorization.eligible.slice(0, 3);
   const batchLeads = useMemo(() => selectedBatchId ? importedLeads.filter(lead => lead.batch_id === selectedBatchId) : importedLeads, [importedLeads, selectedBatchId]);
   const nextBestLead = useMemo(() => filteredImportedLeads.find(lead => lead.status === "new" || lead.status === "contacted") ?? filteredImportedLeads[0] ?? null, [filteredImportedLeads]);
   const priorityImportedLeads = useMemo(() => filteredImportedLeads
@@ -1343,6 +1404,39 @@ export default function VaPage() {
     }));
     setMessage(`Bulk SMS sent to ${sentCount} seller${sentCount === 1 ? "" : "s"}.`);
     return { sent: sentCount };
+  };
+
+  const sendBulkTextFromQueue = async () => {
+    if (!bulkTextMessage.trim()) {
+      setBulkTextResult({ error: "Write a message before sending." });
+      return;
+    }
+    if (bulkTextCategorization.eligible.length === 0) {
+      setBulkTextResult({ error: "No eligible recipients passed the current audience and compliance review." });
+      return;
+    }
+    const confirmed = window.confirm(`Send this bulk text to ${bulkTextCategorization.eligible.length} eligible seller${bulkTextCategorization.eligible.length === 1 ? "" : "s"}?`);
+    if (!confirmed) return;
+
+    setBulkTextSending(true);
+    setBulkTextResult(null);
+    try {
+      const result = await sendBulkSms({
+        message: bulkTextMessage.trim(),
+        recipients: bulkTextCategorization.eligible.map(lead => ({
+          leadId: lead.id,
+          toNumber: bulkTextCategorization.eligiblePhones[lead.id],
+          label: lead.owner_name,
+          rendered: renderMessageForRecipient(bulkTextMessage.trim(), lead),
+        })),
+      });
+      setBulkTextResult(result.error ? { error: result.error } : { sent: result.sent ?? bulkTextCategorization.eligible.length });
+      if (!result.error) setBulkTextMessage("");
+    } catch (error) {
+      setBulkTextResult({ error: error instanceof Error ? error.message : "Bulk text failed." });
+    } finally {
+      setBulkTextSending(false);
+    }
   };
 
   const attachUnmatchedSmsToLead = async (event: CommunicationEvent) => {
@@ -2793,7 +2887,167 @@ export default function VaPage() {
               <ShiftCard label="Seller replies" value={String(recentInboundSms.length)} tone={recentInboundSms.length ? "hot" : "calm"} />
               <ShiftCard label="Due follow-ups" value={String(followUpsDue.length)} tone={followUpsDue.length ? "hot" : "calm"} />
               <ShiftCard label="Interested sellers" value={String(interestedLeads.length)} tone={interestedLeads.length ? "hot" : "calm"} />
-              <ShiftCard label="Textable leads" value={String(workdeskLeadRows.filter(lead => lead.phone || lead.phone_2).length)} />
+              <ShiftCard label="Textable audience" value={String(bulkTextCategorization.eligible.length)} />
+            </div>
+
+            <div style={{ ...subPanel, marginBottom: 14 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "baseline", flexWrap: "wrap", marginBottom: 12 }}>
+                <div>
+                  <p style={eyebrowSmall}>Bulk Text Console</p>
+                  <h3 style={{ ...sectionTitle, fontSize: 24 }}>Build, review, and send a compliant audience</h3>
+                </div>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <span style={hotPill}>{bulkTextCategorization.eligible.length} eligible</span>
+                  <span style={bulkTextCategorization.excluded.length ? pill : hotPill}>{bulkTextCategorization.excluded.length} excluded</span>
+                </div>
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1.35fr", gap: 12 }} className="lead-inbox-grid">
+                <section style={{ ...subPanel, background: "var(--surface)" }}>
+                  <p style={eyebrowSmall}>1. Audience Builder</p>
+                  <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
+                    <label style={{ display: "grid", gap: 5, color: "var(--muted)", fontSize: 12, fontWeight: 800, textTransform: "uppercase", letterSpacing: 1.2 }}>
+                      List source
+                      <select value={bulkTextBatchId} onChange={event => setBulkTextBatchId(event.target.value)} style={{ minHeight: 42 }}>
+                        <option value="all">All imported lists</option>
+                        {leadBatches.map(batch => (
+                          <option key={batch.id} value={batch.id}>{batch.campaign_source || batch.original_filename || batch.source_system}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <label style={{ display: "grid", gap: 5, color: "var(--muted)", fontSize: 12, fontWeight: 800, textTransform: "uppercase", letterSpacing: 1.2 }}>
+                      Lead segment
+                      <select value={bulkTextAudienceStatus} onChange={event => setBulkTextAudienceStatus(event.target.value as ImportStatusFilter)} style={{ minHeight: 42 }}>
+                        {IMPORT_STATUS_FILTERS.filter(filter => filter.value !== "no-phone").map(filter => (
+                          <option key={filter.value} value={filter.value}>{filter.label}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 110px", gap: 8 }}>
+                      <label style={{ display: "grid", gap: 5, color: "var(--muted)", fontSize: 12, fontWeight: 800, textTransform: "uppercase", letterSpacing: 1.2 }}>
+                        County
+                        <input value={bulkTextCounty} onChange={event => setBulkTextCounty(event.target.value)} placeholder="Any county" style={{ minHeight: 42 }} />
+                      </label>
+                      <label style={{ display: "grid", gap: 5, color: "var(--muted)", fontSize: 12, fontWeight: 800, textTransform: "uppercase", letterSpacing: 1.2 }}>
+                        Score
+                        <input value={bulkTextMinScore} onChange={event => setBulkTextMinScore(event.target.value)} placeholder="Min" inputMode="numeric" style={{ minHeight: 42 }} />
+                      </label>
+                    </div>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
+                      <MiniStat label="Considered" value={String(bulkTextCategorization.totalConsidered)} />
+                      <MiniStat label="Eligible" value={String(bulkTextCategorization.eligible.length)} />
+                      <MiniStat label="Cap" value="500" />
+                    </div>
+                  </div>
+                </section>
+
+                <section style={{ ...subPanel, background: "var(--surface)" }}>
+                  <p style={eyebrowSmall}>2. Compliance Review</p>
+                  <div style={{ display: "grid", gap: 8, marginTop: 12 }}>
+                    {EXCLUSION_SEVERITY_ORDER.map(severity => {
+                      const total = EXCLUSION_REASONS_BY_SEVERITY[severity].reduce((sum, reason) => sum + bulkTextCategorization.excludedByReason[reason], 0);
+                      return (
+                        <div key={severity} style={{ border: "1px solid var(--fog)", borderRadius: 8, padding: 10, background: total ? "rgba(176,137,84,0.08)" : "var(--bone)" }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
+                            <strong style={{ color: "var(--obsidian)", fontSize: 13 }}>{EXCLUSION_SEVERITY_LABEL[severity]}</strong>
+                            <span style={total ? pill : hotPill}>{total}</span>
+                          </div>
+                          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
+                            {EXCLUSION_REASONS_BY_SEVERITY[severity].filter(reason => bulkTextCategorization.excludedByReason[reason] > 0).map(reason => (
+                              <span key={reason} style={{ ...pill, fontSize: 10 }}>
+                                {exclusionReasonLabel(reason)} · {bulkTextCategorization.excludedByReason[reason]}
+                              </span>
+                            ))}
+                            {total === 0 && <span style={{ color: "var(--muted)", fontSize: 12 }}>Clear</span>}
+                          </div>
+                        </div>
+                      );
+                    })}
+                    <p style={{ color: "var(--muted)", fontSize: 12, lineHeight: 1.45, margin: 0 }}>
+                      Hard blocks stay out of the send automatically: DNC, litigators, opt-outs, missing phones, landlines, VOIP, recent texts, duplicates, passed, and converted records.
+                    </p>
+                  </div>
+                </section>
+
+                <section style={{ ...subPanel, background: "var(--surface)" }}>
+                  <p style={eyebrowSmall}>3. Message Builder</p>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}>
+                    {BULK_TEXT_TEMPLATES.map(template => (
+                      <button key={template.label} onClick={() => setBulkTextMessage(template.body)} style={{ ...secondaryButton, padding: "8px 10px", fontSize: 11 }}>
+                        {template.label}
+                      </button>
+                    ))}
+                  </div>
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8 }}>
+                    {BULK_SMS_MERGE_FIELDS.map(field => (
+                      <button key={field} onClick={() => setBulkTextMessage(current => `${current}${current.endsWith(" ") || !current ? "" : " "}{{${field}}}`)} style={{ ...pill, cursor: "pointer" }}>
+                        {`{{${field}}}`}
+                      </button>
+                    ))}
+                  </div>
+                  <textarea
+                    value={bulkTextMessage}
+                    onChange={event => setBulkTextMessage(event.target.value)}
+                    placeholder="Write the seller message..."
+                    rows={5}
+                    style={{ width: "100%", marginTop: 10, minHeight: 120, resize: "vertical" }}
+                  />
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", color: "var(--muted)", fontSize: 12, marginTop: 8 }}>
+                    <span>{bulkTextMessage.trim() ? bulkTextFinalMessage.length : 0}/1200 with opt-out footer</span>
+                    <span>{bulkTextSegments} segment{bulkTextSegments === 1 ? "" : "s"} estimated</span>
+                  </div>
+
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 10 }}>
+                    <label style={{ display: "grid", gap: 5, color: "var(--muted)", fontSize: 12, fontWeight: 800, textTransform: "uppercase", letterSpacing: 1.2 }}>
+                      Send window
+                      <select value={bulkTextSendWindow} onChange={event => setBulkTextSendWindow(event.target.value)} style={{ minHeight: 42 }}>
+                        <option>Business hours</option>
+                        <option>Tomorrow morning</option>
+                        <option>Manual review first</option>
+                      </select>
+                    </label>
+                    <label style={{ display: "grid", gap: 5, color: "var(--muted)", fontSize: 12, fontWeight: 800, textTransform: "uppercase", letterSpacing: 1.2 }}>
+                      Pacing
+                      <select value={bulkTextThrottle} onChange={event => setBulkTextThrottle(event.target.value)} style={{ minHeight: 42 }}>
+                        <option>25/hour</option>
+                        <option>50/hour</option>
+                        <option>100/hour</option>
+                      </select>
+                    </label>
+                  </div>
+
+                  <div style={{ borderTop: "1px solid var(--fog)", marginTop: 12, paddingTop: 12 }}>
+                    <p style={eyebrowSmall}>Preview</p>
+                    <div style={{ display: "grid", gap: 8, marginTop: 8, maxHeight: 176, overflow: "auto" }}>
+                      {bulkTextPreviewLeads.map(lead => (
+                        <div key={lead.id} style={{ border: "1px solid var(--fog)", borderRadius: 8, padding: 10, background: "var(--bone)" }}>
+                          <strong style={{ color: "var(--obsidian)", fontSize: 13 }}>{lead.owner_name || "Owner unknown"}</strong>
+                          <p style={{ color: "var(--muted)", fontSize: 12, lineHeight: 1.45, margin: "4px 0 0" }}>
+                            {renderMessageForRecipient(bulkTextMessage || BULK_TEXT_TEMPLATES[0].body, lead)}
+                          </p>
+                        </div>
+                      ))}
+                      {bulkTextPreviewLeads.length === 0 && <p style={{ color: "var(--muted)", fontSize: 12 }}>No eligible preview recipients yet.</p>}
+                    </div>
+                  </div>
+
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", alignItems: "center", marginTop: 12 }}>
+                    <p style={{ color: bulkTextResult?.error ? "#9f3412" : "var(--muted)", fontSize: 12, margin: 0 }}>
+                      {bulkTextResult?.error || (bulkTextResult?.sent ? `Sent to ${bulkTextResult.sent} sellers.` : `${bulkTextSendWindow} · ${bulkTextThrottle}`)}
+                    </p>
+                    <button
+                      onClick={() => void sendBulkTextFromQueue()}
+                      disabled={bulkTextSending || bulkTextCategorization.eligible.length === 0 || !bulkTextMessage.trim()}
+                      style={{
+                        ...primaryButton,
+                        opacity: bulkTextSending || bulkTextCategorization.eligible.length === 0 || !bulkTextMessage.trim() ? 0.55 : 1,
+                      }}
+                    >
+                      {bulkTextSending ? "Sending..." : `Send ${bulkTextCategorization.eligible.length}`}
+                    </button>
+                  </div>
+                </section>
+              </div>
             </div>
 
             <div style={{ display: "grid", gridTemplateColumns: "260px minmax(0, 1fr) 420px", gap: 14 }} className="lead-inbox-grid">
