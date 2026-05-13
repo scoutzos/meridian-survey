@@ -172,12 +172,12 @@ const TABS: Array<{ value: VaTab; label: string }> = [
   { value: "brief", label: "Daily Brief" },
 ];
 
-const LISTS_VIEWS: Array<{ value: ListsView; label: string }> = [
-  { value: "batches", label: "Batches" },
-  { value: "properties", label: "Properties" },
-  { value: "contacts", label: "Contacts" },
-  { value: "segments", label: "Segments" },
-  { value: "campaigns", label: "Campaigns" },
+const LISTS_VIEWS: Array<{ value: ListsView; label: string; icon: IconName }> = [
+  { value: "batches", label: "Batches", icon: "folder" },
+  { value: "properties", label: "Properties", icon: "home" },
+  { value: "contacts", label: "Contacts", icon: "users" },
+  { value: "segments", label: "Segments", icon: "filter" },
+  { value: "campaigns", label: "Campaigns", icon: "megaphone" },
 ];
 
 const IMPORT_STATUS_FILTERS = [
@@ -3368,19 +3368,23 @@ export default function VaPage() {
                     type="button"
                     onClick={() => setListsView(view.value)}
                     style={{
+                      alignItems: "center",
                       background: active ? "var(--obsidian)" : "transparent",
                       border: "none",
                       borderRadius: "6px 6px 0 0",
                       color: active ? "var(--bone)" : "var(--muted)",
                       cursor: "pointer",
+                      display: "inline-flex",
                       fontFamily: "var(--font-body)",
                       fontSize: 12,
                       fontWeight: active ? 700 : 600,
+                      gap: 7,
                       letterSpacing: "0.04em",
                       minHeight: 32,
                       padding: "8px 16px",
                     }}
                   >
+                    <Icon name={view.icon} size={15} color={active ? "var(--bone)" : "var(--brass)"} />
                     {view.label}
                   </button>
                 );
@@ -3388,11 +3392,11 @@ export default function VaPage() {
             </div>
 
             <div style={{ display: "grid", gridTemplateColumns: "repeat(5, minmax(0, 1fr))", gap: 10, marginBottom: 14 }} className="number-grid">
-              <MiniStat label="List Batches" value={String(listKpis.batches)} sub="Uploaded" />
-              <MiniStat label="Property Records" value={listKpis.properties.toLocaleString()} sub="Total imported" />
-              <MiniStat label="Contacts" value={listKpis.contacts.toLocaleString()} sub="Unique owners" />
-              <MiniStat label="Textable" value={listKpis.textable.toLocaleString()} sub="With phone" />
-              <MiniStat label="Deal Packets" value={String(listKpis.packets)} sub="Created" />
+              <MiniStat label="List Batches" value={String(listKpis.batches)} sub="Uploaded" icon="folder" />
+              <MiniStat label="Property Records" value={listKpis.properties.toLocaleString()} sub="Total imported" icon="home" />
+              <MiniStat label="Contacts" value={listKpis.contacts.toLocaleString()} sub="Unique owners" icon="users" />
+              <MiniStat label="Textable" value={listKpis.textable.toLocaleString()} sub="With phone" icon="phone" />
+              <MiniStat label="Deal Packets" value={String(listKpis.packets)} sub="Created" icon="package" />
             </div>
 
             {((importStep === "upload" && !importPreview) || (!importPreview && importedLeads.length === 0)) && (
@@ -3488,9 +3492,12 @@ export default function VaPage() {
                         }}
                       >
                         <div style={{ alignItems: "start", display: "flex", gap: 8, justifyContent: "space-between" }}>
-                          <div style={{ minWidth: 0 }}>
-                            <strong style={{ color: "var(--obsidian)", display: "block", fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{batch.campaign_source || batch.original_filename || "Imported list"}</strong>
-                            <span style={{ color: "var(--muted)", display: "block", fontSize: 11, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{batch.original_filename || batch.source_system}</span>
+                          <div style={{ alignItems: "start", display: "flex", gap: 8, minWidth: 0 }}>
+                            <span style={{ color: "var(--brass)", flexShrink: 0, marginTop: 1 }}><Icon name="document" size={14} /></span>
+                            <div style={{ minWidth: 0 }}>
+                              <strong style={{ color: "var(--obsidian)", display: "block", fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{batch.campaign_source || batch.original_filename || "Imported list"}</strong>
+                              <span style={{ color: "var(--muted)", display: "block", fontSize: 11, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{batch.original_filename || batch.source_system}</span>
+                            </div>
                           </div>
                           <span style={batch.status === "completed" ? goodPill : batch.status === "in-progress" ? hotPill : mutedPill}>{statusLabel(batch.status || "not-started")}</span>
                         </div>
@@ -3750,10 +3757,18 @@ export default function VaPage() {
                       <div>
                         <p style={{ ...miniLabel, color: "var(--muted)", marginBottom: 6 }}>Quick Actions</p>
                         <div style={{ display: "grid", gap: 8, gridTemplateColumns: "1fr 1fr" }}>
-                          <button onClick={() => router.push(`/lead/${lead.id}`)} style={compactButton}>Open Property Record</button>
-                          <button onClick={() => setListsView("contacts")} style={compactButton}>View Contact</button>
-                          <button onClick={() => loadImportedLead(lead, true)} style={compactButton}>{lead.deal_id ? "Open Packet" : "Create Packet"}</button>
-                          <button onClick={() => openBulkTextWorkflow(true)} style={compactButton}>Add to Segment</button>
+                          <button onClick={() => router.push(`/lead/${lead.id}`)} style={{ ...compactButton, alignItems: "center", display: "inline-flex", gap: 7, justifyContent: "center" }}>
+                            <Icon name="document" size={13} /> Open Property Record
+                          </button>
+                          <button onClick={() => setListsView("contacts")} style={{ ...compactButton, alignItems: "center", display: "inline-flex", gap: 7, justifyContent: "center" }}>
+                            <Icon name="user" size={13} /> View Contact
+                          </button>
+                          <button onClick={() => loadImportedLead(lead, true)} style={{ ...compactButton, alignItems: "center", display: "inline-flex", gap: 7, justifyContent: "center" }}>
+                            <Icon name="package" size={13} /> {lead.deal_id ? "Open Packet" : "Create Packet"}
+                          </button>
+                          <button onClick={() => openBulkTextWorkflow(true)} style={{ ...compactButton, alignItems: "center", display: "inline-flex", gap: 7, justifyContent: "center" }}>
+                            <Icon name="plus" size={13} /> Add to Segment
+                          </button>
                         </div>
                       </div>
                     </div>
@@ -3775,7 +3790,7 @@ export default function VaPage() {
                     return (
                       <div key={segment.id} style={{ ...subPanel, padding: 12 }}>
                         <div style={{ alignItems: "center", display: "flex", justifyContent: "space-between", gap: 6 }}>
-                          <p style={{ ...miniLabel, color: "var(--brass)", margin: 0 }}>Segment</p>
+                          <span style={{ color: "var(--brass)" }}><Icon name="compass" size={16} /></span>
                           <button onClick={() => setMessage("Segment menu is coming next.")} style={{ background: "transparent", border: "none", color: "var(--muted)", cursor: "pointer", fontSize: 14, lineHeight: 1, padding: 2 }} aria-label="Segment menu">⋯</button>
                         </div>
                         <strong style={{ color: "var(--obsidian)", display: "block", fontSize: 13, marginTop: 4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{segment.name}</strong>
@@ -5573,8 +5588,50 @@ function LeadPathCard({ label: text, detail, done, active }: { label: string; de
   );
 }
 
-function MiniStat({ label: text, value, sub }: { label: string; value: string; sub?: string }) {
-  if (!sub) {
+type IconName = "folder" | "home" | "users" | "phone" | "package" | "filter" | "megaphone" | "document" | "user" | "plus" | "compass";
+
+function Icon({ name, size = 16, color = "currentColor", strokeWidth = 1.75 }: { name: IconName; size?: number; color?: string; strokeWidth?: number }) {
+  const common = {
+    width: size,
+    height: size,
+    viewBox: "0 0 24 24",
+    fill: "none",
+    stroke: color,
+    strokeWidth,
+    strokeLinecap: "round" as const,
+    strokeLinejoin: "round" as const,
+    "aria-hidden": true,
+  };
+  switch (name) {
+    case "folder":
+      return <svg {...common}><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z" /></svg>;
+    case "home":
+      return <svg {...common}><path d="M3 10 12 3l9 7v10a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1V10z" /></svg>;
+    case "users":
+      return <svg {...common}><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M22 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></svg>;
+    case "phone":
+      return <svg {...common}><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13 1 .35 1.94.69 2.83a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.89.34 1.83.56 2.83.69A2 2 0 0 1 22 16.92z" /></svg>;
+    case "package":
+      return <svg {...common}><path d="M16.5 9.4 7.5 4.21" /><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" /><path d="M3.3 7 12 12l8.7-5" /><path d="M12 22V12" /></svg>;
+    case "filter":
+      return <svg {...common}><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" /></svg>;
+    case "megaphone":
+      return <svg {...common}><path d="m3 11 18-5v12L3 14v-3z" /><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6" /></svg>;
+    case "document":
+      return <svg {...common}><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /></svg>;
+    case "user":
+      return <svg {...common}><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></svg>;
+    case "plus":
+      return <svg {...common}><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>;
+    case "compass":
+      return <svg {...common}><circle cx="12" cy="12" r="10" /><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76" /></svg>;
+    default:
+      return null;
+  }
+}
+
+function MiniStat({ label: text, value, sub, icon }: { label: string; value: string; sub?: string; icon?: IconName }) {
+  if (!sub && !icon) {
     return (
       <div style={miniStat}>
         <span>{text}</span>
@@ -5582,11 +5639,22 @@ function MiniStat({ label: text, value, sub }: { label: string; value: string; s
       </div>
     );
   }
-  return (
-    <div style={{ ...miniStat, display: "grid", gap: 3, padding: 12 }}>
+  const stack = (
+    <div style={{ display: "grid", gap: 3 }}>
       <strong style={{ color: "var(--obsidian)", fontFamily: DISPLAY_FONT, fontSize: 24, fontWeight: 500, lineHeight: 1 }}>{value}</strong>
       <span style={{ color: "var(--obsidian)", fontSize: 12, fontWeight: 700 }}>{text}</span>
-      <span style={{ color: "var(--muted)", fontSize: 11 }}>{sub}</span>
+      {sub && <span style={{ color: "var(--muted)", fontSize: 11 }}>{sub}</span>}
+    </div>
+  );
+  if (!icon) {
+    return <div style={{ ...miniStat, display: "grid", gap: 3, padding: 12 }}>{stack}</div>;
+  }
+  return (
+    <div style={{ ...miniStat, alignItems: "center", display: "flex", gap: 10, justifyContent: "space-between", padding: 12 }}>
+      {stack}
+      <span style={{ alignItems: "center", background: "rgba(176,137,84,0.10)", border: "1px solid rgba(176,137,84,0.25)", borderRadius: 8, color: "var(--brass)", display: "inline-flex", flexShrink: 0, height: 36, justifyContent: "center", width: 36 }}>
+        <Icon name={icon} size={18} />
+      </span>
     </div>
   );
 }
