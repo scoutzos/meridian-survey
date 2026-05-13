@@ -172,12 +172,12 @@ const TABS: Array<{ value: VaTab; label: string }> = [
   { value: "brief", label: "Daily Brief" },
 ];
 
-const LISTS_VIEWS: Array<{ value: ListsView; label: string }> = [
-  { value: "batches", label: "Batches" },
-  { value: "properties", label: "Properties" },
-  { value: "contacts", label: "Contacts" },
-  { value: "segments", label: "Segments" },
-  { value: "campaigns", label: "Campaigns" },
+const LISTS_VIEWS: Array<{ value: ListsView; label: string; icon: string }> = [
+  { value: "batches", label: "Batches", icon: "📁" },
+  { value: "properties", label: "Properties", icon: "🏠" },
+  { value: "contacts", label: "Contacts", icon: "👥" },
+  { value: "segments", label: "Segments", icon: "🧭" },
+  { value: "campaigns", label: "Campaigns", icon: "📣" },
 ];
 
 const IMPORT_STATUS_FILTERS = [
@@ -852,8 +852,13 @@ export default function VaPage() {
   const [leadSearch, setLeadSearch] = useState("");
   const [leadFilter, setLeadFilter] = useState<ImportStatusFilter>("all");
   const [listsView, setListsView] = useState<ListsView>("properties");
-  const [minAcreage, setMinAcreage] = useState("");
-  const [maxAcreage, setMaxAcreage] = useState("");
+  const [countyFilter, setCountyFilter] = useState("all");
+  const [stateFilter, setStateFilter] = useState("all");
+  const [acresBucket, setAcresBucket] = useState("any");
+  const [scoreBucket, setScoreBucket] = useState("any");
+  const [flagFilter, setFlagFilter] = useState("all");
+  const [propertiesPage, setPropertiesPage] = useState(1);
+  const [propertiesPerPage, setPropertiesPerPage] = useState(25);
   const [uploadSource, setUploadSource] = useState("Land Portal");
   const [uploadCampaign, setUploadCampaign] = useState("");
   const [activityDraft, setActivityDraft] = useState<{ activityType: ImportedLandLeadActivity["activity_type"]; summary: string; nextFollowUpDate: string }>({ activityType: "called", summary: "", nextFollowUpDate: "" });
@@ -1092,8 +1097,15 @@ export default function VaPage() {
   const selectedBatch = useMemo(() => leadBatches.find(batch => batch.id === selectedBatchId) ?? null, [leadBatches, selectedBatchId]);
   const filteredImportedLeads = useMemo(() => {
     const query = leadSearch.trim().toLowerCase();
-    const min = toNumber(minAcreage);
-    const max = toNumber(maxAcreage);
+    const acresBounds: Record<string, [number | null, number | null]> = {
+      any: [null, null],
+      "lt-1": [null, 1],
+      "1-5": [1, 5],
+      "5-25": [5, 25],
+      "25-plus": [25, null],
+    };
+    const [bucketMin, bucketMax] = acresBounds[acresBucket] ?? [null, null];
+    const scoreFloor = scoreBucket === "80" ? 80 : scoreBucket === "60" ? 60 : scoreBucket === "40" ? 40 : null;
     const rows = importedLeads.filter(lead => {
       if (selectedBatchId && lead.batch_id !== selectedBatchId) return false;
       if (lead.status === "converted") return false;
@@ -1105,12 +1117,25 @@ export default function VaPage() {
       if (leadFilter === "flood" && !(toNumber(String(lead.raw_data?.["Flood Zone Percent"] ?? "")) ?? 0)) return false;
       if (leadFilter === "wetlands" && !(toNumber(String(lead.raw_data?.["Wetlands Percent"] ?? "")) ?? 0)) return false;
       if (["new", "contacted", "interested", "passed"].includes(leadFilter) && lead.status !== leadFilter) return false;
-      if (min !== null && (lead.acreage ?? 0) < min) return false;
-      if (max !== null && (lead.acreage ?? 0) > max) return false;
+      if (countyFilter !== "all" && (lead.county || "") !== countyFilter) return false;
+      if (stateFilter !== "all" && (lead.state || "") !== stateFilter) return false;
+      if (bucketMin !== null && (lead.acreage ?? 0) < bucketMin) return false;
+      if (bucketMax !== null && (lead.acreage ?? 0) >= bucketMax) return false;
+      if (scoreFloor !== null && (lead.lead_score ?? 0) < scoreFloor) return false;
+      if (flagFilter !== "all" && !leadFlagLabels(lead).map(f => f.toLowerCase()).includes(flagFilter.toLowerCase())) return false;
       return importedLeadMatchesQuery(lead, query);
     });
-    return rows.sort((a, b) => (b.lead_score ?? 0) - (a.lead_score ?? 0)).slice(0, 120);
-  }, [importedLeads, leadFilter, leadSearch, maxAcreage, minAcreage, selectedBatchId]);
+    return rows.sort((a, b) => (b.lead_score ?? 0) - (a.lead_score ?? 0));
+  }, [acresBucket, countyFilter, flagFilter, importedLeads, leadFilter, leadSearch, scoreBucket, selectedBatchId, stateFilter]);
+
+  const countyOptions = useMemo(() => Array.from(new Set(importedLeads.map(l => l.county).filter((v): v is string => !!v))).sort(), [importedLeads]);
+  const stateOptions = useMemo(() => Array.from(new Set(importedLeads.map(l => l.state).filter((v): v is string => !!v))).sort(), [importedLeads]);
+  const flagOptions = useMemo(() => Array.from(new Set(importedLeads.flatMap(l => leadFlagLabels(l)))).sort(), [importedLeads]);
+  const propertiesTotal = filteredImportedLeads.length;
+  const propertiesPageCount = Math.max(1, Math.ceil(propertiesTotal / propertiesPerPage));
+  const propertiesPageSafe = Math.min(propertiesPage, propertiesPageCount);
+  const propertiesPageStart = (propertiesPageSafe - 1) * propertiesPerPage;
+  const propertiesPageRows = filteredImportedLeads.slice(propertiesPageStart, propertiesPageStart + propertiesPerPage);
   const bulkSmsCategorization = useMemo(() => categorizeForBulkSms(filteredImportedLeads), [filteredImportedLeads]);
   const bulkEligibleLeads = bulkSmsCategorization.eligible;
   const bulkTextAudience = useMemo(() => {
@@ -1228,9 +1253,10 @@ export default function VaPage() {
     const leads = importedLeads.filter(lead => lead.batch_id === batch.id);
     const textable = categorizeForBulkSms(leads).eligible.length;
     const duplicates = leads.filter(lead => lead.duplicate_status && lead.duplicate_status !== "new").length;
-    return { batch, leads, textable, duplicates };
+    const county = leads.find(lead => lead.county)?.county ?? null;
+    const state = leads.find(lead => lead.state)?.state ?? null;
+    return { batch, leads, textable, duplicates, county, state };
   }), [importedLeads, leadBatches]);
-  const selectedPropertyBatch = selectedImportedLead?.batch_id ? leadBatches.find(batch => batch.id === selectedImportedLead.batch_id) ?? null : null;
   const selectedContactProperties = selectedImportedLead ? contactRelationshipRows.find(row => row.leads.some(lead => lead.id === selectedImportedLead.id))?.leads ?? [selectedImportedLead] : [];
   const listKpis = {
     batches: leadBatches.length,
@@ -1465,8 +1491,16 @@ export default function VaPage() {
     if (useCurrentListFilters) {
       setBulkTextBatchId(selectedBatchId || "all");
       setBulkTextAudienceStatus(leadFilter === "no-phone" ? "all" : leadFilter);
-      setBulkTextMinAcreage(minAcreage);
-      setBulkTextMaxAcreage(maxAcreage);
+      const acresBounds: Record<string, [string, string]> = {
+        any: ["", ""],
+        "lt-1": ["", "1"],
+        "1-5": ["1", "5"],
+        "5-25": ["5", "25"],
+        "25-plus": ["25", ""],
+      };
+      const [minStr, maxStr] = acresBounds[acresBucket] ?? ["", ""];
+      setBulkTextMinAcreage(minStr);
+      setBulkTextMaxAcreage(maxStr);
     }
     setBulkTextModalOpen(true);
     setBulkTextStep("audience");
@@ -3313,62 +3347,59 @@ export default function VaPage() {
 
           {activeTab === "lists" && (
           <section style={contactQueuePage}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12, flexWrap: "wrap", marginBottom: 12 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12, flexWrap: "wrap", marginBottom: 14 }}>
               <div>
-                <h2 style={sectionTitle}>Lists</h2>
-                <p style={{ color: "var(--muted)", fontSize: 13, lineHeight: 1.5, marginTop: 4 }}>
+                <h2 style={{ ...sectionTitle, fontSize: 36, lineHeight: 1.1 }}>Lists</h2>
+                <p style={{ color: "var(--muted)", fontSize: 13, lineHeight: 1.5, marginTop: 6 }}>
                   Browse imported batches, property records, contacts, segments, and campaign audiences.
                 </p>
               </div>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                <button onClick={() => setMessage("List settings are coming next: default filters, columns, assignment rules, and segment permissions.")} style={secondaryButton}>Lists Settings</button>
+                <button onClick={() => setMessage("List settings are coming next: default filters, columns, assignment rules, and segment permissions.")} style={{ ...secondaryButton, alignItems: "center", display: "inline-flex", gap: 8 }}>
+                  <span aria-hidden style={{ fontSize: 13 }}>⚙</span>
+                  Lists Settings
+                </button>
               </div>
             </div>
 
-            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
+            <div style={{ background: "var(--surface)", border: "1px solid var(--fog)", borderRadius: 10, display: "flex", gap: 4, flexWrap: "wrap", marginBottom: 12, padding: 4 }}>
               {LISTS_VIEWS.map(view => {
                 const active = listsView === view.value;
-                const count = view.value === "batches" ? listKpis.batches
-                  : view.value === "properties" ? listKpis.properties
-                    : view.value === "contacts" ? listKpis.contacts
-                      : view.value === "segments" ? savedLeadSegments.length
-                        : bulkTextCategorization.eligible.length;
                 return (
                   <button
                     key={view.value}
                     type="button"
                     onClick={() => setListsView(view.value)}
                     style={{
-                      ...compactButton,
-                      background: active ? "var(--obsidian)" : "var(--surface)",
-                      borderColor: active ? "var(--obsidian)" : "var(--fog)",
+                      alignItems: "center",
+                      background: active ? "var(--obsidian)" : "transparent",
+                      border: "1px solid transparent",
+                      borderRadius: 8,
                       color: active ? "var(--bone)" : "var(--obsidian)",
-                      fontSize: 10,
-                      minHeight: 34,
-                      padding: "8px 11px",
+                      cursor: "pointer",
+                      display: "inline-flex",
+                      fontFamily: "var(--font-body)",
+                      fontSize: 12,
+                      fontWeight: 700,
+                      gap: 8,
+                      letterSpacing: "0.04em",
+                      minHeight: 38,
+                      padding: "8px 14px",
                     }}
                   >
+                    <span aria-hidden style={{ fontSize: 14, lineHeight: 1 }}>{view.icon}</span>
                     {view.label}
-                    <span style={{
-                      background: active ? "rgba(237,230,214,0.18)" : "rgba(176,137,84,0.14)",
-                      borderRadius: 999,
-                      color: active ? "var(--bone)" : "var(--muted)",
-                      display: "inline-block",
-                      marginLeft: 8,
-                      minWidth: 22,
-                      padding: "2px 6px",
-                    }}>{count}</span>
                   </button>
                 );
               })}
             </div>
 
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(5, minmax(0, 1fr))", gap: 8, marginBottom: 12 }} className="number-grid">
-              <MiniStat label="List Batches" value={String(listKpis.batches)} />
-              <MiniStat label="Property Records" value={String(listKpis.properties)} />
-              <MiniStat label="Contacts" value={String(listKpis.contacts)} />
-              <MiniStat label="Textable" value={String(listKpis.textable)} />
-              <MiniStat label="Deal Packets" value={String(listKpis.packets)} />
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(5, minmax(0, 1fr))", gap: 10, marginBottom: 14 }} className="number-grid">
+              <MiniStat label="List Batches" value={String(listKpis.batches)} sub="Uploaded" icon="📁" />
+              <MiniStat label="Property Records" value={listKpis.properties.toLocaleString()} sub="Total imported" icon="🏠" />
+              <MiniStat label="Contacts" value={listKpis.contacts.toLocaleString()} sub="Unique owners" icon="👥" />
+              <MiniStat label="Textable" value={listKpis.textable.toLocaleString()} sub="With phone" icon="📞" />
+              <MiniStat label="Deal Packets" value={String(listKpis.packets)} sub="Created" icon="📦" />
             </div>
 
             {((importStep === "upload" && !importPreview) || (!importPreview && importedLeads.length === 0)) && (
@@ -3443,57 +3474,118 @@ export default function VaPage() {
             <div style={{ display: "grid", gridTemplateColumns: "minmax(260px, 0.72fr) minmax(520px, 1.72fr) minmax(300px, 0.78fr)", gap: 12, marginBottom: 12 }} className="va-form-grid">
               <aside style={subPanel}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: 10 }}>
-                  <div>
-                    <p style={eyebrowSmall}>List Batches</p>
-                    <span style={{ color: "var(--muted)", fontSize: 12 }}>Showing {Math.min(listBatchRows.length, 8)} of {listBatchRows.length}</span>
-                  </div>
-                  <button onClick={startNewImport} style={{ ...compactButton, minHeight: 32, padding: "7px 10px" }}>Upload List</button>
+                  <p style={{ ...eyebrowSmall, marginBottom: 0, color: "var(--obsidian)", fontSize: 13, letterSpacing: "0.04em", textTransform: "none", fontWeight: 800 }}>List Batches</p>
+                  <button onClick={startNewImport} style={{ ...compactButton, alignItems: "center", background: "rgba(176,137,84,0.12)", borderColor: "rgba(176,137,84,0.45)", color: "var(--obsidian)", display: "inline-flex", gap: 6, minHeight: 30, padding: "6px 10px" }}>
+                    <span aria-hidden style={{ fontSize: 12 }}>⬆</span>
+                    Upload List
+                  </button>
                 </div>
-                <div style={{ display: "grid", gap: 7, maxHeight: 520, overflow: "auto", paddingRight: 2 }}>
-                  {listBatchRows.slice(0, 8).map(({ batch, leads, textable }) => (
-                    <button
-                      key={batch.id}
-                      onClick={() => { setSelectedBatchId(batch.id); setListsView("properties"); setImportStep("work"); }}
-                      style={{
-                        border: selectedBatchId === batch.id ? "1px solid var(--brass)" : "1px solid var(--fog)",
-                        background: selectedBatchId === batch.id ? "rgba(176,137,84,0.12)" : "var(--surface)",
-                        borderRadius: 8,
-                        cursor: "pointer",
-                        padding: 10,
-                        textAlign: "left",
-                      }}
-                    >
-                      <strong style={{ color: "var(--obsidian)", display: "block", fontSize: 13 }}>{batch.campaign_source || batch.original_filename || "Imported list"}</strong>
-                      <p style={{ color: "var(--muted)", fontSize: 11, lineHeight: 1.35, marginTop: 3 }}>{batch.original_filename || batch.source_system}</p>
-                      <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", marginTop: 6 }}>
-                        <span style={{ color: "var(--muted)", fontSize: 11 }}>{leads.length || batch.row_count} rows · {textable} textable</span>
-                        <span style={batch.status === "completed" ? hotPill : pill}>{statusLabel(batch.status || "not-started")}</span>
-                      </div>
-                    </button>
-                  ))}
+                <div style={{ color: "var(--muted)", display: "grid", fontSize: 10, fontWeight: 700, gridTemplateColumns: "minmax(0, 1.4fr) 0.9fr 0.7fr 0.6fr 0.7fr", gap: 6, letterSpacing: "0.08em", marginBottom: 6, padding: "0 4px", textTransform: "uppercase" }}>
+                  <span>Batch / Source</span>
+                  <span>County / State</span>
+                  <span>Uploaded</span>
+                  <span style={{ textAlign: "right" }}>Rows</span>
+                  <span style={{ textAlign: "right" }}>Textable</span>
+                </div>
+                <div style={{ display: "grid", gap: 6, maxHeight: 540, overflow: "auto", paddingRight: 2 }}>
+                  {listBatchRows.slice(0, 8).map(({ batch, leads, textable, county, state }) => {
+                    const active = selectedBatchId === batch.id;
+                    const countyLabel = county ? `${county}${state ? `, ${state}` : ""}` : (state || "—");
+                    return (
+                      <button
+                        key={batch.id}
+                        onClick={() => { setSelectedBatchId(batch.id); setListsView("properties"); setImportStep("work"); }}
+                        style={{
+                          background: active ? "rgba(176,137,84,0.12)" : "var(--surface)",
+                          border: active ? "1px solid var(--brass)" : "1px solid var(--fog)",
+                          borderRadius: 8,
+                          cursor: "pointer",
+                          padding: "10px 10px 8px",
+                          textAlign: "left",
+                        }}
+                      >
+                        <div style={{ alignItems: "center", display: "grid", gap: 6, gridTemplateColumns: "minmax(0, 1.4fr) 0.9fr 0.7fr 0.6fr 0.7fr" }}>
+                          <div style={{ alignItems: "center", display: "flex", gap: 8, minWidth: 0 }}>
+                            <span aria-hidden style={{ color: "var(--brass)", fontSize: 14, lineHeight: 1 }}>📄</span>
+                            <div style={{ minWidth: 0 }}>
+                              <strong style={{ color: "var(--obsidian)", display: "block", fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{batch.campaign_source || batch.original_filename || "Imported list"}</strong>
+                              <span style={{ color: "var(--muted)", display: "block", fontSize: 10, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{batch.original_filename || batch.source_system}</span>
+                            </div>
+                          </div>
+                          <span style={{ color: "var(--ink)", fontSize: 11 }}>{countyLabel}</span>
+                          <span style={{ color: "var(--muted)", fontSize: 11 }}>{formatDate(batch.created_at)}</span>
+                          <span style={{ color: "var(--ink)", fontSize: 11, fontWeight: 700, textAlign: "right" }}>{(leads.length || batch.row_count || 0).toLocaleString()}</span>
+                          <span style={{ color: "var(--ink)", fontSize: 11, fontWeight: 700, textAlign: "right" }}>{textable}</span>
+                        </div>
+                        <div style={{ marginTop: 6 }}>
+                          <span style={batch.status === "completed" ? goodPill : batch.status === "in-progress" ? hotPill : mutedPill}>{statusLabel(batch.status || "not-started")}</span>
+                        </div>
+                      </button>
+                    );
+                  })}
                   {listBatchRows.length === 0 && <p style={{ color: "var(--muted)", fontSize: 13 }}>No list batches yet.</p>}
                 </div>
+                {listBatchRows.length > 0 && (
+                  <div style={{ alignItems: "center", display: "flex", justifyContent: "space-between", marginTop: 10 }}>
+                    <span style={{ color: "var(--muted)", fontSize: 11 }}>Showing 1–{Math.min(listBatchRows.length, 8)} of {listBatchRows.length} batches</span>
+                    <button onClick={() => setListsView("batches")} style={{ background: "transparent", border: "none", color: "var(--brass)", cursor: "pointer", fontSize: 11, fontWeight: 700, letterSpacing: "0.04em" }}>View all batches →</button>
+                  </div>
+                )}
               </aside>
 
               <section style={subPanel}>
-                <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "baseline", flexWrap: "wrap", marginBottom: 10 }}>
-                  <div>
-                    <h3 style={{ color: "var(--obsidian)", fontSize: 16, fontWeight: 800 }}>Property Records</h3>
-                    <span style={{ color: "var(--muted)", fontSize: 12 }}>{filteredImportedLeads.length} visible · {importedLeads.length} total</span>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "baseline", flexWrap: "wrap", marginBottom: 12 }}>
+                  <div style={{ alignItems: "baseline", display: "flex", gap: 10 }}>
+                    <h3 style={{ color: "var(--obsidian)", fontFamily: DISPLAY_FONT, fontSize: 22, fontWeight: 500 }}>Property Records</h3>
+                    <span style={{ color: "var(--muted)", fontSize: 12 }}>{propertiesTotal.toLocaleString()} records</span>
                   </div>
                   {selectedBatch && <span style={hotPill}>{batchLeads.length} in selected batch</span>}
                 </div>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(120px, 1fr)) minmax(180px, 1.2fr)", gap: 8, marginBottom: 10 }} className="va-form-grid">
-                  <select value={leadFilter} onChange={e => setLeadFilter(e.target.value as ImportStatusFilter)}>
-                    {IMPORT_STATUS_FILTERS.map(filter => <option key={filter.value} value={filter.value}>{filter.label}</option>)}
-                  </select>
-                  <input value={minAcreage} onChange={e => setMinAcreage(e.target.value)} placeholder="Min acres" />
-                  <input value={maxAcreage} onChange={e => setMaxAcreage(e.target.value)} placeholder="Max acres" />
-                  <select value={selectedBatchId || "all"} onChange={e => setSelectedBatchId(e.target.value === "all" ? null : e.target.value)}>
-                    <option value="all">All batches</option>
-                    {leadBatches.map(batch => <option key={batch.id} value={batch.id}>{batch.campaign_source || batch.original_filename || batch.source_system}</option>)}
-                  </select>
-                  <input value={leadSearch} onChange={e => setLeadSearch(e.target.value)} placeholder="Search APN or address..." />
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(5, minmax(110px, 1fr)) minmax(200px, 1.4fr)", gap: 8, marginBottom: 12 }} className="va-form-grid">
+                  <div>
+                    <label style={{ ...miniLabel, display: "block", marginBottom: 4 }}>County</label>
+                    <select value={countyFilter} onChange={e => { setCountyFilter(e.target.value); setPropertiesPage(1); }}>
+                      <option value="all">All Counties</option>
+                      {countyOptions.map(c => <option key={c} value={c}>{c}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label style={{ ...miniLabel, display: "block", marginBottom: 4 }}>State</label>
+                    <select value={stateFilter} onChange={e => { setStateFilter(e.target.value); setPropertiesPage(1); }}>
+                      <option value="all">All States</option>
+                      {stateOptions.map(s => <option key={s} value={s}>{s}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label style={{ ...miniLabel, display: "block", marginBottom: 4 }}>Acres</label>
+                    <select value={acresBucket} onChange={e => { setAcresBucket(e.target.value); setPropertiesPage(1); }}>
+                      <option value="any">Any</option>
+                      <option value="lt-1">&lt; 1</option>
+                      <option value="1-5">1 – 5</option>
+                      <option value="5-25">5 – 25</option>
+                      <option value="25-plus">25+</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label style={{ ...miniLabel, display: "block", marginBottom: 4 }}>Score</label>
+                    <select value={scoreBucket} onChange={e => { setScoreBucket(e.target.value); setPropertiesPage(1); }}>
+                      <option value="any">Any</option>
+                      <option value="80">80+</option>
+                      <option value="60">60+</option>
+                      <option value="40">40+</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label style={{ ...miniLabel, display: "block", marginBottom: 4 }}>Flags</label>
+                    <select value={flagFilter} onChange={e => { setFlagFilter(e.target.value); setPropertiesPage(1); }}>
+                      <option value="all">All</option>
+                      {flagOptions.map(f => <option key={f} value={f}>{f}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label style={{ ...miniLabel, display: "block", marginBottom: 4 }}>Search</label>
+                    <input value={leadSearch} onChange={e => { setLeadSearch(e.target.value); setPropertiesPage(1); }} placeholder="Search APN or address..." />
+                  </div>
                 </div>
                 <div style={{ overflow: "auto", border: "1px solid var(--fog)", borderRadius: 8, background: "var(--surface)", maxHeight: 548 }}>
                   <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, minWidth: 860 }}>
@@ -3511,8 +3603,13 @@ export default function VaPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {filteredImportedLeads.map(lead => {
+                      {propertiesPageRows.map(lead => {
                         const active = selectedImportedLeadId === lead.id;
+                        const city = lead.city || "";
+                        const state = lead.state || "";
+                        const zip = lead.zip || "";
+                        const addressLine2 = [city, state].filter(Boolean).join(", ") + (zip ? ` ${zip}` : "");
+                        const scoreColor = (lead.lead_score ?? 0) >= 80 ? "var(--pine)" : (lead.lead_score ?? 0) >= 60 ? "var(--brass)" : "var(--muted)";
                         return (
                           <tr
                             key={lead.id}
@@ -3525,71 +3622,198 @@ export default function VaPage() {
                           >
                             <td style={td}><input type="checkbox" checked={active} readOnly /></td>
                             <td style={td}>{lead.parcel_id || "N/A"}</td>
-                            <td style={td}><strong style={{ color: "var(--obsidian)" }}>{lead.property_address || "No address"}</strong><br /><span style={{ color: "var(--muted)" }}>{lead.city || ""}{lead.state ? `, ${lead.state}` : ""}</span></td>
+                            <td style={td}><strong style={{ color: "var(--obsidian)" }}>{lead.property_address || "No address"}</strong><br /><span style={{ color: "var(--muted)" }}>{addressLine2 || "—"}</span></td>
                             <td style={td}>{lead.county || "N/A"}</td>
                             <td style={td}>{lead.acreage ?? "N/A"}</td>
-                            <td style={{ ...td, color: (lead.lead_score ?? 0) >= 80 ? "var(--pine)" : "var(--muted)", fontWeight: 800 }}>{lead.lead_score ?? 0}</td>
+                            <td style={{ ...td, color: scoreColor, fontWeight: 800 }}>{lead.lead_score ?? 0}</td>
                             <td style={td}>{lead.owner_name || "Owner unknown"}<br /><span style={{ color: "var(--muted)" }}>{lead.phone || lead.phone_2 || "No phone"}</span></td>
-                            <td style={td}><span style={lead.status === "interested" ? hotPill : pill}>{statusLabel(lead.status)}</span></td>
-                            <td style={td}>{lead.deal_id ? <button onClick={event => { event.stopPropagation(); openLinkedDeal(lead.deal_id); }} style={pill}>Open</button> : <span style={{ color: "var(--muted)" }}>—</span>}</td>
+                            <td style={td}><span style={statusPillStyle(lead.status)}>{statusLabel(lead.status)}</span></td>
+                            <td style={td}>{lead.deal_id ? (
+                              <button onClick={event => { event.stopPropagation(); openLinkedDeal(lead.deal_id); }} style={{ background: "transparent", border: "none", color: "var(--brass)", cursor: "pointer", fontSize: 12, fontWeight: 700, padding: 0, textDecoration: "underline" }}>
+                                {`Deal-${(lead.deal_id || "").slice(-6).toUpperCase()}`}
+                              </button>
+                            ) : <span style={{ color: "var(--muted)" }}>—</span>}</td>
                           </tr>
                         );
                       })}
                     </tbody>
                   </table>
-                  {filteredImportedLeads.length === 0 && <p style={{ color: "var(--muted)", fontSize: 13, padding: 12 }}>No imported records match this search.</p>}
+                  {propertiesPageRows.length === 0 && <p style={{ color: "var(--muted)", fontSize: 13, padding: 12 }}>No imported records match this search.</p>}
                 </div>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap", marginTop: 10 }}>
-                  <span style={{ color: "var(--muted)", fontSize: 12 }}>Showing 1-{filteredImportedLeads.length} of {importedLeads.length}</span>
-                  <button onClick={() => setMessage("CSV export is next for this inventory table.")} style={compactButton}>Export CSV</button>
+                <div style={{ alignItems: "center", display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 12, marginTop: 12 }}>
+                  <span style={{ color: "var(--muted)", fontSize: 12 }}>
+                    Showing {propertiesTotal === 0 ? 0 : propertiesPageStart + 1}–{Math.min(propertiesPageStart + propertiesPerPage, propertiesTotal)} of {propertiesTotal.toLocaleString()}
+                  </span>
+                  <div style={{ alignItems: "center", display: "flex", gap: 8 }}>
+                    <span style={{ color: "var(--muted)", fontSize: 12 }}>Page</span>
+                    <strong style={{ color: "var(--obsidian)", fontSize: 12 }}>{propertiesPageSafe}</strong>
+                    <span style={{ color: "var(--muted)", fontSize: 12 }}>of {propertiesPageCount}</span>
+                    <button onClick={() => setPropertiesPage(p => Math.max(1, p - 1))} disabled={propertiesPageSafe <= 1} style={{ ...compactButton, minHeight: 30, opacity: propertiesPageSafe <= 1 ? 0.45 : 1, padding: "6px 9px" }} aria-label="Previous page">‹</button>
+                    <button onClick={() => setPropertiesPage(p => Math.min(propertiesPageCount, p + 1))} disabled={propertiesPageSafe >= propertiesPageCount} style={{ ...compactButton, minHeight: 30, opacity: propertiesPageSafe >= propertiesPageCount ? 0.45 : 1, padding: "6px 9px" }} aria-label="Next page">›</button>
+                    <select value={propertiesPerPage} onChange={e => { setPropertiesPerPage(Number(e.target.value)); setPropertiesPage(1); }} style={{ minHeight: 30 }}>
+                      <option value={25}>25 per page</option>
+                      <option value={50}>50 per page</option>
+                      <option value={100}>100 per page</option>
+                    </select>
+                  </div>
+                </div>
+                <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 10 }}>
+                  <button onClick={() => setMessage("CSV export is next for this inventory table.")} style={{ ...compactButton, alignItems: "center", background: "rgba(176,137,84,0.12)", borderColor: "rgba(176,137,84,0.45)", color: "var(--obsidian)", display: "inline-flex", gap: 6 }}>
+                    <span aria-hidden style={{ fontSize: 12 }}>⬇</span>
+                    Export CSV
+                  </button>
                 </div>
               </section>
 
               <aside style={subPanel}>
                 {!selectedImportedLead ? (
                   <p style={{ fontSize: 13, color: "var(--muted)", lineHeight: 1.5 }}>Select a property to see record details, contact eligibility, linked packet, and quick actions.</p>
-                ) : (
-                  <div style={{ display: "grid", gap: 10 }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "start" }}>
-                      <div>
-                        <h3 style={{ color: "var(--obsidian)", fontSize: 16, fontWeight: 800 }}>Selected Property</h3>
-                        <strong style={{ display: "block", color: "var(--obsidian)", fontSize: 18, marginTop: 10 }}>{selectedImportedLead.parcel_id || "No APN"}</strong>
-                        <p style={{ color: "var(--ink)", fontSize: 13, lineHeight: 1.4, marginTop: 5 }}>{selectedImportedLead.property_address || "No address"}<br />{selectedImportedLead.city || ""}{selectedImportedLead.state ? `, ${selectedImportedLead.state}` : ""}</p>
+                ) : (() => {
+                  const lead = selectedImportedLead;
+                  const sms = checkLeadSmsCompliance(lead);
+                  const call = checkLeadCallCompliance(lead);
+                  const flags = leadFlagLabels(lead);
+                  const ownerCount = selectedContactProperties.length;
+                  const isNew = (lead.status || "new") === "new";
+                  const taxStatus = lead.tax_delinquent ? "Delinquent" : lead.tax_delinquent === false ? "Current" : "—";
+                  const hoaLabel = lead.in_hoa === true ? "Yes" : lead.in_hoa === false ? "No" : (lead.hoa_status || "—");
+                  const ownerType = lead.owner_type || "Individual";
+                  const lastSale = lead.last_sale_date || (lead.last_sale_price ? `$${lead.last_sale_price.toLocaleString()}` : "—");
+                  const onDnc = lead.dnc || lead.state_dnc;
+                  const phoneLine = lead.phone || lead.phone_2 || "Phone missing";
+                  const phoneType = lead.phone_1_type || (lead.phone ? "Mobile" : null);
+                  const fieldRow: React.CSSProperties = { display: "grid", gap: 6, gridTemplateColumns: "repeat(3, 1fr)" };
+                  const fieldCell = (label: string, value: React.ReactNode, valueStyle?: React.CSSProperties) => (
+                    <div>
+                      <p style={{ ...miniLabel, color: "var(--muted)" }}>{label}</p>
+                      <strong style={{ color: "var(--obsidian)", display: "block", fontSize: 13, fontWeight: 700, marginTop: 3, ...valueStyle }}>{value}</strong>
+                    </div>
+                  );
+                  const eligibilityRow = (label: string, value: string, ok: boolean) => (
+                    <div style={{ alignItems: "center", display: "flex", justifyContent: "space-between", gap: 8 }}>
+                      <span style={{ color: "var(--muted)", fontSize: 11, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase" }}>{label}</span>
+                      <span style={{ color: ok ? "#2e5a48" : "var(--obsidian)", fontSize: 12, fontWeight: 700 }}>{ok && <span aria-hidden style={{ marginRight: 4 }}>✓</span>}{value}</span>
+                    </div>
+                  );
+                  return (
+                    <div style={{ display: "grid", gap: 12 }}>
+                      <div style={{ alignItems: "center", display: "flex", justifyContent: "space-between", gap: 8 }}>
+                        <h3 style={{ color: "var(--obsidian)", fontFamily: DISPLAY_FONT, fontSize: 16, fontWeight: 500 }}>Selected Property</h3>
+                        <button onClick={() => setMessage("Property quick-actions menu is coming next.")} style={{ background: "transparent", border: "none", color: "var(--muted)", cursor: "pointer", fontSize: 16, lineHeight: 1, padding: 4 }} aria-label="More actions">⋯</button>
                       </div>
-                      <span style={selectedImportedLead.status === "interested" ? hotPill : pill}>{statusLabel(selectedImportedLead.status)}</span>
+                      <div style={{ alignItems: "center", display: "flex", gap: 8, justifyContent: "space-between" }}>
+                        <strong style={{ color: "var(--obsidian)", fontFamily: DISPLAY_FONT, fontSize: 22, fontWeight: 500 }}>{lead.parcel_id || "No APN"}</strong>
+                        {isNew && <span style={goodPill}>New</span>}
+                      </div>
+                      <p style={{ color: "var(--ink)", fontSize: 13, lineHeight: 1.4, marginTop: -6 }}>
+                        {lead.property_address || "No address"}<br />
+                        {[lead.city, lead.state].filter(Boolean).join(", ")}{lead.zip ? ` ${lead.zip}` : ""}
+                      </p>
+                      <div style={fieldRow}>
+                        {fieldCell("County", lead.county || "—")}
+                        {fieldCell("Acres", lead.acreage != null ? lead.acreage : "—")}
+                        {fieldCell("Score", lead.lead_score ?? 0, { color: (lead.lead_score ?? 0) >= 80 ? "var(--pine)" : (lead.lead_score ?? 0) >= 60 ? "var(--brass)" : "var(--obsidian)" })}
+                      </div>
+                      <div style={fieldRow}>
+                        {fieldCell("Land Use", lead.land_use || "—")}
+                        {fieldCell("Zoning", lead.zoning || "—")}
+                        {fieldCell("Tax Status", taxStatus, { color: taxStatus === "Delinquent" ? "#b94a3b" : undefined })}
+                      </div>
+                      <div style={fieldRow}>
+                        {fieldCell("Owner Type", ownerType)}
+                        {fieldCell("HOA", hoaLabel)}
+                        {fieldCell("Last Sale", lastSale)}
+                      </div>
+                      <div>
+                        <p style={{ ...miniLabel, color: "var(--muted)", marginBottom: 6 }}>Flags</p>
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                          {flags.length === 0 && <span style={{ color: "var(--muted)", fontSize: 12 }}>Clear</span>}
+                          {flags.map(flag => <span key={flag} style={flagChip}>{flag}</span>)}
+                          <button onClick={() => setMessage("Add Flag is coming next — pick from a controlled list and attach to this record.")} style={{ ...flagChip, background: "transparent", border: "1px dashed var(--fog)", cursor: "pointer" }} aria-label="Add flag">+</button>
+                        </div>
+                      </div>
+                      <div style={{ border: "1px solid var(--fog)", borderRadius: 8, padding: 12 }}>
+                        <p style={{ ...miniLabel, color: "var(--muted)", marginBottom: 6 }}>Primary Owner / Contact</p>
+                        <div style={{ alignItems: "center", display: "flex", gap: 8, justifyContent: "space-between" }}>
+                          <strong style={{ color: "var(--obsidian)", fontSize: 14 }}>{lead.owner_name || "Owner unknown"}</strong>
+                          <span style={goodPill}>Confirmed</span>
+                        </div>
+                        <div style={{ alignItems: "center", display: "flex", gap: 8, marginTop: 6 }}>
+                          <span style={{ color: "var(--ink)", fontSize: 13 }}>{phoneLine}</span>
+                          {phoneType && <span style={mutedPill}>{phoneType}</span>}
+                        </div>
+                        <p style={{ color: "var(--ink)", fontSize: 13, marginTop: 4 }}>{lead.email || "Email missing"}</p>
+                        <div style={{ alignItems: "center", display: "flex", gap: 8, justifyContent: "space-between", marginTop: 8 }}>
+                          <span style={{ color: "var(--muted)", fontSize: 12 }}>Owner of {ownerCount} propert{ownerCount === 1 ? "y" : "ies"}</span>
+                          <button onClick={() => setListsView("contacts")} style={{ ...compactButton, minHeight: 28, padding: "5px 10px" }}>View Contact</button>
+                        </div>
+                      </div>
+                      <div style={{ border: "1px solid var(--fog)", borderRadius: 8, display: "grid", gap: 6, padding: 12 }}>
+                        {eligibilityRow("Phone Eligibility", sms.allowed ? "Textable" : sms.blockLabel || "Blocked", sms.allowed)}
+                        {eligibilityRow("DNC Status", onDnc ? "On DNC" : "Not on DNC", !onDnc)}
+                        {eligibilityRow("Consent Status", call.allowed ? "On File" : call.blockLabel || "Missing", call.allowed)}
+                      </div>
+                      <div style={{ border: "1px solid var(--fog)", borderRadius: 8, padding: 12 }}>
+                        <p style={{ ...miniLabel, color: "var(--brass)", marginBottom: 6 }}>Linked Deal Packet</p>
+                        {lead.deal_id ? (
+                          <div style={{ alignItems: "center", display: "flex", gap: 8, justifyContent: "space-between" }}>
+                            <div>
+                              <strong style={{ color: "var(--obsidian)", fontSize: 13 }}>{`Deal-${(lead.deal_id || "").slice(-6).toUpperCase()}`}</strong>
+                              <p style={{ color: "var(--muted)", fontSize: 11, marginTop: 2 }}>Created {formatDate(lead.updated_at || lead.created_at || new Date().toISOString())}</p>
+                            </div>
+                            <button onClick={() => loadImportedLead(lead, true)} style={{ ...compactButton, minHeight: 28, padding: "5px 10px" }}>Open Packet</button>
+                          </div>
+                        ) : (
+                          <p style={{ color: "var(--muted)", fontSize: 12 }}>No linked packet yet.</p>
+                        )}
+                      </div>
+                      <div>
+                        <p style={{ ...miniLabel, color: "var(--muted)", marginBottom: 6 }}>Quick Actions</p>
+                        <div style={{ display: "grid", gap: 8, gridTemplateColumns: "1fr 1fr" }}>
+                          <button onClick={() => router.push(`/lead/${lead.id}`)} style={{ ...compactButton, alignItems: "center", display: "inline-flex", gap: 6, justifyContent: "center" }}>
+                            <span aria-hidden>📄</span> Open Property Record
+                          </button>
+                          <button onClick={() => setListsView("contacts")} style={{ ...compactButton, alignItems: "center", display: "inline-flex", gap: 6, justifyContent: "center" }}>
+                            <span aria-hidden>👤</span> View Contact
+                          </button>
+                          <button onClick={() => loadImportedLead(lead, true)} style={{ ...compactButton, alignItems: "center", display: "inline-flex", gap: 6, justifyContent: "center" }}>
+                            <span aria-hidden>📦</span> {lead.deal_id ? "Open Packet" : "Create Packet"}
+                          </button>
+                          <button onClick={() => openBulkTextWorkflow(true)} style={{ ...compactButton, alignItems: "center", display: "inline-flex", gap: 6, justifyContent: "center" }}>
+                            <span aria-hidden>➕</span> Add to Segment
+                          </button>
+                        </div>
+                      </div>
                     </div>
-                    <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
-                      <MiniStat label="County" value={selectedImportedLead.county || "N/A"} />
-                      <MiniStat label="Acres" value={String(selectedImportedLead.acreage ?? "N/A")} />
-                      <MiniStat label="Score" value={String(selectedImportedLead.lead_score ?? 0)} />
-                    </div>
-                    <InfoStack title="Primary Owner / Contact">
-                      <p>{selectedImportedLead.owner_name || "Owner unknown"}</p>
-                      <p>{selectedImportedLead.phone || selectedImportedLead.phone_2 || "Phone missing"}</p>
-                      <p>{selectedImportedLead.email || "Email missing"}</p>
-                      <p>{selectedContactProperties.length} linked propert{selectedContactProperties.length === 1 ? "y" : "ies"}</p>
-                    </InfoStack>
-                    <InfoStack title="Phone Eligibility">
-                      <p>{checkLeadSmsCompliance(selectedImportedLead).allowed ? "Textable" : checkLeadSmsCompliance(selectedImportedLead).blockLabel}</p>
-                      <p>{checkLeadCallCompliance(selectedImportedLead).allowed ? "Callable" : checkLeadCallCompliance(selectedImportedLead).blockLabel}</p>
-                    </InfoStack>
-                    <InfoStack title="Linked Deal Packet">
-                      <p>{selectedImportedLead.deal_id || "No linked packet yet"}</p>
-                    </InfoStack>
-                    <InfoStack title="List Batch">
-                      <p>{selectedPropertyBatch?.campaign_source || selectedPropertyBatch?.original_filename || selectedImportedLead.campaign_source || "Batch unknown"}</p>
-                      <p>{selectedImportedLead.source_system || "Imported source"}</p>
-                    </InfoStack>
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                      <button onClick={() => router.push(`/lead/${selectedImportedLead.id}`)} style={compactButton}>Open Property Record</button>
-                      <button onClick={() => setListsView("contacts")} style={compactButton}>View Contact</button>
-                      <button onClick={() => loadImportedLead(selectedImportedLead, true)} style={compactButton}>{selectedImportedLead.deal_id ? "Open Packet" : "Create Packet"}</button>
-                      <button onClick={() => openBulkTextWorkflow(true)} style={compactButton}>Add to Segment</button>
-                    </div>
-                  </div>
-                )}
+                  );
+                })()}
               </aside>
             </div>
+            )}
+
+            {listsView === "properties" && savedLeadSegments.length > 0 && (
+              <div style={{ marginBottom: 12 }}>
+                <div style={{ alignItems: "baseline", display: "flex", gap: 8, justifyContent: "space-between", marginBottom: 8 }}>
+                  <p style={{ ...miniLabel, color: "var(--muted)" }}>Saved Segments</p>
+                  <button onClick={() => setListsView("segments")} style={{ background: "transparent", border: "none", color: "var(--brass)", cursor: "pointer", fontSize: 11, fontWeight: 700, letterSpacing: "0.04em" }}>View all segments →</button>
+                </div>
+                <div style={{ display: "grid", gap: 8, gridTemplateColumns: `repeat(${Math.min(savedLeadSegments.length, 5)}, minmax(0, 1fr))` }} className="number-grid">
+                  {savedLeadSegments.slice(0, 5).map(segment => {
+                    const audience = importedLeads.filter(l => leadMatchesBulkTextCriteria(l, segment));
+                    return (
+                      <div key={segment.id} style={{ ...subPanel, padding: 12 }}>
+                        <div style={{ alignItems: "center", display: "flex", justifyContent: "space-between", gap: 6 }}>
+                          <span aria-hidden style={{ color: "var(--brass)", fontSize: 14 }}>🧭</span>
+                          <button onClick={() => setMessage("Segment menu is coming next.")} style={{ background: "transparent", border: "none", color: "var(--muted)", cursor: "pointer", fontSize: 14, lineHeight: 1, padding: 2 }} aria-label="Segment menu">⋯</button>
+                        </div>
+                        <strong style={{ color: "var(--obsidian)", display: "block", fontSize: 13, marginTop: 4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{segment.name}</strong>
+                        <p style={{ color: "var(--obsidian)", fontFamily: DISPLAY_FONT, fontSize: 18, fontWeight: 500, marginTop: 4 }}>{audience.length.toLocaleString()} <span style={{ color: "var(--muted)", fontFamily: "var(--font-body)", fontSize: 11, fontWeight: 600 }}>records</span></p>
+                        <p style={{ color: "var(--muted)", fontSize: 11, marginTop: 2 }}>Last updated {formatDate(segment.createdAt || new Date().toISOString())}</p>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
             )}
 
             {listsView === "batches" && (
@@ -5377,11 +5601,36 @@ function LeadPathCard({ label: text, detail, done, active }: { label: string; de
   );
 }
 
-function MiniStat({ label: text, value }: { label: string; value: string }) {
+function MiniStat({ label: text, value, sub, icon }: { label: string; value: string; sub?: string; icon?: React.ReactNode }) {
+  if (!sub && !icon) {
+    return (
+      <div style={miniStat}>
+        <span>{text}</span>
+        <strong>{value}</strong>
+      </div>
+    );
+  }
   return (
-    <div style={miniStat}>
-      <span>{text}</span>
-      <strong>{value}</strong>
+    <div style={{ ...miniStat, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+      <div style={{ display: "grid", gap: 2 }}>
+        <strong style={{ color: "var(--obsidian)", fontFamily: DISPLAY_FONT, fontSize: 26, fontWeight: 500, lineHeight: 1 }}>{value}</strong>
+        <span style={{ color: "var(--obsidian)", fontSize: 12, fontWeight: 700 }}>{text}</span>
+        {sub && <span style={{ color: "var(--muted)", fontSize: 11 }}>{sub}</span>}
+      </div>
+      {icon && (
+        <span aria-hidden style={{
+          alignItems: "center",
+          background: "rgba(176,137,84,0.10)",
+          border: "1px solid rgba(176,137,84,0.30)",
+          borderRadius: 8,
+          color: "var(--brass)",
+          display: "inline-flex",
+          fontSize: 18,
+          height: 38,
+          justifyContent: "center",
+          width: 38,
+        }}>{icon}</span>
+      )}
     </div>
   );
 }
@@ -5671,6 +5920,35 @@ const hotPill: React.CSSProperties = {
   color: "var(--obsidian)",
   background: "rgba(176,137,84,0.14)",
 };
+
+const goodPill: React.CSSProperties = {
+  ...pill,
+  borderColor: "rgba(46,90,72,0.55)",
+  color: "#2e5a48",
+  background: "rgba(46,90,72,0.10)",
+};
+
+const newPill: React.CSSProperties = {
+  ...pill,
+  borderColor: "var(--obsidian)",
+  color: "var(--obsidian)",
+  background: "transparent",
+};
+
+const mutedPill: React.CSSProperties = {
+  ...pill,
+  borderColor: "var(--fog)",
+  color: "var(--muted)",
+  background: "rgba(0,0,0,0.03)",
+};
+
+function statusPillStyle(status: string | null | undefined): React.CSSProperties {
+  const s = (status || "").toLowerCase();
+  if (s === "interested" || s === "converted") return goodPill;
+  if (s === "contacted") return hotPill;
+  if (s === "duplicate" || s === "duplicates" || s === "passed") return mutedPill;
+  return newPill;
+}
 
 const readyDot: React.CSSProperties = {
   width: 10,
