@@ -1517,9 +1517,23 @@ export default function VaPage() {
 
   const openDealBrief = (deal: Deal) => {
     setSelectedImportedLeadId(null);
+    setSelectedCommunicationEventId(null);
     setSelectedId(deal.id);
     setMessage("");
     setActiveTab("packet");
+  };
+
+  const openLinkedDeal = (dealId: string | null | undefined) => {
+    if (!dealId) {
+      setMessage("No linked deal packet found for this contact yet.");
+      return;
+    }
+    const deal = deals.find(row => row.id === dealId);
+    if (deal) {
+      openDealBrief(deal);
+      return;
+    }
+    router.push(`/opportunity?deal=${dealId}`);
   };
 
   const selectImportedLead = (lead: ImportedLandLead, tab: VaTab = "today") => {
@@ -3623,7 +3637,7 @@ export default function VaPage() {
                         <strong style={{ color: "var(--obsidian)", fontSize: 15 }}>{selectedImportedLead.property_address || selectedImportedLead.parcel_id || "No property detail"}</strong>
                         <p style={{ color: "var(--muted)", fontSize: 12, marginTop: 4 }}>{selectedImportedLead.city || "City pending"}{selectedImportedLead.state ? `, ${selectedImportedLead.state}` : ""} · {selectedImportedLead.acreage ?? "N/A"} acres</p>
                       </div>
-                      <button onClick={() => loadImportedLead(selectedImportedLead, true)} style={compactButton}>
+                      <button onClick={() => selectedImportedLead.deal_id ? openLinkedDeal(selectedImportedLead.deal_id) : loadImportedLead(selectedImportedLead, true)} style={compactButton}>
                         {selectedImportedLead.deal_id ? "Open Packet" : "Create Packet"}
                       </button>
                     </div>
@@ -3698,7 +3712,7 @@ export default function VaPage() {
                           {activeCommunicationEvent.matched_deal_id ? "This conversation is connected to a deal packet." : "Create a packet or select a matching relationship from the Relationships tab."}
                         </p>
                       </div>
-                      <button onClick={() => createLeadDraftFromSms(activeCommunicationEvent)} style={compactButton}>
+                      <button onClick={() => activeCommunicationEvent.matched_deal_id ? openLinkedDeal(activeCommunicationEvent.matched_deal_id) : createLeadDraftFromSms(activeCommunicationEvent)} style={compactButton}>
                         {activeCommunicationEvent.matched_deal_id ? "Open Packet" : "Create Packet"}
                       </button>
                     </div>
@@ -3766,9 +3780,9 @@ export default function VaPage() {
                     <section style={contactQueueSidePanel}>
                       <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "baseline", marginBottom: 10 }}>
                         <p style={eyebrowSmall}>Linked Records</p>
-                        <button onClick={() => router.push(`/lead/${selectedImportedLead.id}`)} style={{ background: "transparent", border: "none", color: "var(--brass)", fontWeight: 800, cursor: "pointer" }}>View all</button>
+                        <button onClick={() => selectedImportedLead.deal_id ? openLinkedDeal(selectedImportedLead.deal_id) : router.push(`/lead/${selectedImportedLead.id}`)} style={{ background: "transparent", border: "none", color: "var(--brass)", fontWeight: 800, cursor: "pointer" }}>View all</button>
                       </div>
-                      <button onClick={() => router.push(`/lead/${selectedImportedLead.id}`)} style={{ ...contactQueueCard, width: "100%", background: "var(--surface)" }}>
+                      <button onClick={() => selectedImportedLead.deal_id ? openLinkedDeal(selectedImportedLead.deal_id) : router.push(`/lead/${selectedImportedLead.id}`)} style={{ ...contactQueueCard, width: "100%", background: "var(--surface)" }}>
                         <strong style={{ color: "var(--obsidian)", fontSize: 13 }}>{selectedImportedLead.property_address || selectedImportedLead.parcel_id || "Property record"}</strong>
                         <span style={{ display: "block", color: "var(--muted)", fontSize: 12, marginTop: 4 }}>{selectedImportedLead.deal_id ? "Deal packet connected" : "Lead record"}</span>
                       </button>
@@ -3834,12 +3848,15 @@ export default function VaPage() {
                     </section>
                     <section style={contactQueueSidePanel}>
                       <p style={eyebrowSmall}>Linked Records</p>
-                      <div style={{ ...contactQueueCard, cursor: "default", background: "var(--surface)" }}>
+                      <button
+                        onClick={() => activeCommunicationEvent.matched_deal_id ? openLinkedDeal(activeCommunicationEvent.matched_deal_id) : setContactQueueMode("relationships")}
+                        style={{ ...contactQueueCard, width: "100%", background: "var(--surface)" }}
+                      >
                         <strong style={{ color: "var(--obsidian)", fontSize: 13 }}>{activeCommunicationEvent.matched_deal_id ? "Deal packet connected" : "No linked property yet"}</strong>
                         <span style={{ display: "block", color: "var(--muted)", fontSize: 12, marginTop: 4 }}>
-                          {activeCommunicationEvent.matched_deal_id ? "Use Open Thread to keep working this conversation here." : "Use the selected record card or match this phone to an existing relationship."}
+                          {activeCommunicationEvent.matched_deal_id ? "Open the connected packet for this relationship." : "Use the selected record card or match this phone to an existing relationship."}
                         </span>
-                      </div>
+                      </button>
                     </section>
                     <section style={contactQueueSidePanel}>
                       <p style={eyebrowSmall}>Quick Actions</p>
