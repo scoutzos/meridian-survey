@@ -40,14 +40,13 @@ import {
   fetchImportedLandLeads,
   leadToDealDraft,
   previewLandLeadsCsv,
-  updateLandLeadBatch,
   updateImportedLandLeadStatus,
   type ImportedLandLeadActivity,
   type ImportedLandLead,
   type LandLeadBatch,
   type LandLeadImportPreview,
 } from "@/lib/land-leads";
-import { attachCommunicationEventToDeal, attachCommunicationEventToLead, fetchCommunicationEvents, type CommunicationEvent } from "@/lib/communications";
+import { attachCommunicationEventToDeal, fetchCommunicationEvents, type CommunicationEvent } from "@/lib/communications";
 import {
   createVaDailyBrief,
   fetchVaDailyBriefs,
@@ -1240,7 +1239,6 @@ export default function VaPage() {
     textable: categorizeForBulkSms(importedLeads).eligible.length,
     packets: importedLeads.filter(lead => lead.deal_id || lead.status === "converted").length,
   };
-  const nextBestLead = useMemo(() => filteredImportedLeads.find(lead => lead.status === "new" || lead.status === "contacted") ?? filteredImportedLeads[0] ?? null, [filteredImportedLeads]);
   const priorityImportedLeads = useMemo(() => filteredImportedLeads
     .filter(lead => lead.status === "new" || lead.status === "contacted")
     .sort((a, b) => {
@@ -2133,14 +2131,6 @@ export default function VaPage() {
     setBulkTextTagSubdivide("any");
     setBulkTextTagEntitlement("any");
     setBulkTextResult(null);
-  };
-
-  const attachUnmatchedSmsToLead = async (event: CommunicationEvent) => {
-    if (!selectedImportedLead) { setMessage("Select the matching imported lead first."); return; }
-    const { error } = await attachCommunicationEventToLead(event.id, selectedImportedLead.id, user);
-    if (error) { setMessage(error); return; }
-    await refreshSelectedLeadMessages(selectedImportedLead.id);
-    setMessage("SMS attached to the selected lead.");
   };
 
   const createLeadDraftFromSms = (event: CommunicationEvent) => {
@@ -3373,14 +3363,6 @@ export default function VaPage() {
               })}
             </div>
 
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 8, marginBottom: 12 }} className="number-grid">
-              <ShiftCard label="List Batches" value={String(listKpis.batches)} />
-              <ShiftCard label="Property Records" value={String(listKpis.properties)} />
-              <ShiftCard label="Contacts" value={String(listKpis.contacts)} />
-              <ShiftCard label="Textable" value={String(listKpis.textable)} tone={listKpis.textable ? "hot" : "calm"} />
-              <ShiftCard label="Deal Packets" value={String(listKpis.packets)} />
-            </div>
-
             {(importStep === "upload" || (!importPreview && importedLeads.length === 0)) && (
               <div id="va-list-upload" style={{ ...subPanel, marginBottom: 12, borderColor: "var(--brass)", background: "rgba(176,137,84,0.08)" }}>
                 <div style={{ display: "grid", gridTemplateColumns: "240px minmax(0, 1fr)", gap: 14, alignItems: "stretch" }} className="two-col">
@@ -3460,7 +3442,7 @@ export default function VaPage() {
                 </div>
                 {selectedBatch && <span style={hotPill}>{batchLeads.length} in selected batch</span>}
               </div>
-              <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 0.95fr) minmax(320px, 1.05fr)", gap: 12 }} className="va-form-grid">
+              <div style={{ display: "grid", gridTemplateColumns: "minmax(300px, 0.82fr) minmax(420px, 1.18fr) minmax(280px, 0.72fr)", gap: 12 }} className="va-form-grid">
                 <div>
                   <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 160px", gap: 8, marginBottom: 8 }} className="two-col">
                     <div>
@@ -3533,23 +3515,6 @@ export default function VaPage() {
                         <p>{[selectedImportedLead.phone, selectedImportedLead.phone_2].filter(Boolean).join(" / ") || "Phone missing"}</p>
                         <p>{selectedImportedLead.email || "Email missing"}</p>
                       </InfoStack>
-                      <InfoStack title="List Batch">
-                        <p>{selectedPropertyBatch?.campaign_source || selectedPropertyBatch?.original_filename || selectedImportedLead.campaign_source || "Batch unknown"}</p>
-                        <p>{selectedImportedLead.source_system || "Imported source"}</p>
-                      </InfoStack>
-                      <InfoStack title="Related Properties">
-                        {selectedContactProperties.slice(0, 4).map(lead => (
-                          <button key={lead.id} onClick={() => selectImportedLead(lead, "lists")} style={{ background: "transparent", border: "none", color: "var(--ink)", padding: 0, textAlign: "left", cursor: "pointer" }}>
-                            {lead.property_address || lead.parcel_id || "Property record"} · {lead.acreage ?? "N/A"} acres
-                          </button>
-                        ))}
-                      </InfoStack>
-                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                        <button onClick={() => router.push(`/lead/${selectedImportedLead.id}`)} style={compactButton}>Open Record</button>
-                        <button onClick={() => loadImportedLead(selectedImportedLead, true)} style={compactButton}>{selectedImportedLead.deal_id ? "Open Packet" : "Create Packet"}</button>
-                        <button onClick={() => setListsView("contacts")} style={compactButton}>View Contact</button>
-                        <button onClick={() => openBulkTextWorkflow(true)} style={compactButton}>Add To Segment</button>
-                      </div>
                       <details style={{ borderTop: "1px solid var(--fog)", paddingTop: 10 }}>
                         <summary style={{ color: "var(--obsidian)", cursor: "pointer", fontSize: 12, fontWeight: 800, letterSpacing: "0.1em", textTransform: "uppercase" }}>Relationship work controls</summary>
                         <div style={{ marginTop: 10 }}>
@@ -3575,6 +3540,37 @@ export default function VaPage() {
                           />
                         </div>
                       </details>
+                    </div>
+                  )}
+                </aside>
+
+                <aside style={subPanel}>
+                  {!selectedImportedLead ? (
+                    <p style={{ fontSize: 13, color: "var(--muted)", lineHeight: 1.5 }}>Context, linked records, and packet actions appear here after selecting a property.</p>
+                  ) : (
+                    <div style={{ display: "grid", gap: 10 }}>
+                      <div>
+                        <p style={eyebrowSmall}>Context</p>
+                        <h3 style={{ ...sectionTitle, fontSize: 20 }}>Record actions</h3>
+                      </div>
+                      <InfoStack title="List Batch">
+                        <p>{selectedPropertyBatch?.campaign_source || selectedPropertyBatch?.original_filename || selectedImportedLead.campaign_source || "Batch unknown"}</p>
+                        <p>{selectedImportedLead.source_system || "Imported source"}</p>
+                      </InfoStack>
+                      <InfoStack title="Related Properties">
+                        {selectedContactProperties.slice(0, 4).map(lead => (
+                          <button key={lead.id} onClick={() => selectImportedLead(lead, "lists")} style={{ background: "transparent", border: "none", color: "var(--ink)", padding: 0, textAlign: "left", cursor: "pointer" }}>
+                            {lead.property_address || lead.parcel_id || "Property record"} · {lead.acreage ?? "N/A"} acres
+                          </button>
+                        ))}
+                        {selectedContactProperties.length === 0 && <p>No related properties yet.</p>}
+                      </InfoStack>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                        <button onClick={() => router.push(`/lead/${selectedImportedLead.id}`)} style={compactButton}>Open Record</button>
+                        <button onClick={() => loadImportedLead(selectedImportedLead, true)} style={compactButton}>{selectedImportedLead.deal_id ? "Open Packet" : "Create Packet"}</button>
+                        <button onClick={() => setListsView("contacts")} style={compactButton}>View Contact</button>
+                        <button onClick={() => openBulkTextWorkflow(true)} style={compactButton}>Add To Segment</button>
+                      </div>
                     </div>
                   )}
                 </aside>
@@ -3723,46 +3719,6 @@ export default function VaPage() {
               </div>
             )}
 
-            <div style={{ ...subPanel, marginBottom: 12, display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
-              <div>
-                <p style={eyebrowSmall}>Campaign outreach</p>
-                <h3 style={{ ...sectionTitle, fontSize: 20 }}>{bulkEligibleLeads.length} eligible · {bulkSmsCategorization.excluded.length} excluded</h3>
-                <p style={{ color: "var(--muted)", fontSize: 12, marginTop: 4 }}>
-                  Audience is the current Lists filter. The send drawer shows the full exclusion breakdown and a 3-recipient preview before any text leaves the system.
-                </p>
-              </div>
-              <button onClick={() => openBulkTextWorkflow(true)} style={primaryButton}>
-                Open Bulk Text Filters →
-              </button>
-            </div>
-
-            {unmatchedSms.length > 0 && (
-              <div style={{ ...subPanel, marginBottom: 12, borderColor: "var(--brass)" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "baseline", marginBottom: 10 }}>
-                  <div>
-                  <p style={eyebrowSmall}>Unmatched contact replies</p>
-                    <h3 style={{ ...sectionTitle, fontSize: 20 }}>{unmatchedSms.length} message{unmatchedSms.length === 1 ? "" : "s"} need matching</h3>
-                  </div>
-                  <button onClick={() => { void fetchCommunicationEvents({ unmatched: true, limit: 25 }).then(setUnmatchedSms); }} style={secondaryButton}>Refresh</button>
-                </div>
-                <div style={{ display: "grid", gap: 8 }}>
-                  {unmatchedSms.slice(0, 5).map(event => (
-                    <div key={event.id} style={{ border: "1px solid var(--fog)", borderRadius: 8, padding: 10, background: "var(--surface)" }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", marginBottom: 6 }}>
-                        <strong style={{ color: "var(--obsidian)", fontSize: 13 }}>{event.contact_number || event.from_number || "Unknown number"}</strong>
-                        <span style={pill}>{formatDate(event.provider_created_at || event.created_at)}</span>
-                      </div>
-                      <p style={{ color: "var(--ink)", fontSize: 13, lineHeight: 1.45, marginBottom: 10 }}>{event.body || event.status || event.provider_event_type}</p>
-                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                        <button onClick={() => attachUnmatchedSmsToLead(event)} style={secondaryButton}>Attach To Selected Lead</button>
-                        <button onClick={() => createLeadDraftFromSms(event)} style={primaryButton}>Create Packet</button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
             {importPreview && (
               <div style={{ ...subPanel, marginBottom: 12, borderColor: "var(--brass)" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "baseline", marginBottom: 10 }}>
@@ -3891,60 +3847,6 @@ export default function VaPage() {
                   <StageCard label="Creating batch" active={["creating-batch", "saving-leads", "refreshing", "done"].includes(importStage)} />
                   <StageCard label="Saving leads" active={["saving-leads", "refreshing", "done"].includes(importStage)} />
                   <StageCard label="Refreshing list" active={["refreshing", "done"].includes(importStage)} />
-                </div>
-              </div>
-            )}
-
-            <div style={{ ...subPanel, marginBottom: 12 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", alignItems: "baseline", marginBottom: 8 }}>
-                <p style={eyebrowSmall}>Batch workflow</p>
-                {selectedBatch && <span style={hotPill}>{batchLeads.length} in selected batch</span>}
-              </div>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }} className="three-col">
-                {leadBatches.slice(0, 6).map(batch => (
-                  <div key={batch.id} style={{ border: selectedBatchId === batch.id ? "1px solid var(--brass)" : "1px solid var(--fog)", borderRadius: 8, padding: 10, background: selectedBatchId === batch.id ? "rgba(176,137,84,0.12)" : "var(--surface)" }}>
-                    <button onClick={() => { setSelectedBatchId(batch.id); setImportStep("work"); }} style={{ background: "transparent", border: "none", padding: 0, textAlign: "left", cursor: "pointer", width: "100%" }}>
-                      <strong style={{ display: "block", color: "var(--obsidian)", fontSize: 13 }}>{batch.campaign_source || batch.original_filename || batch.source_system}</strong>
-                    </button>
-                    <p style={{ color: "var(--muted)", fontSize: 12, margin: "4px 0 8px" }}>{batch.row_count} rows · {statusLabel(batch.status || "not-started")}</p>
-                    <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
-                      <select
-                        value={batch.status || "not-started"}
-                        onChange={async e => {
-                          await updateLandLeadBatch(batch.id, { status: e.target.value as LandLeadBatch["status"], assigned_to: user });
-                          setLeadBatches(await fetchLandLeadBatches());
-                        }}
-                        style={{ flex: 1, minWidth: 0 }}
-                      >
-                        <option value="not-started">Not Started</option>
-                        <option value="in-progress">In Progress</option>
-                        <option value="completed">Completed</option>
-                      </select>
-                      <button
-                        onClick={() => router.push(`/lists/${batch.id}`)}
-                        style={{ ...secondaryButton, padding: "8px 10px", fontSize: 10, minHeight: 32 }}
-                      >
-                        Open →
-                      </button>
-                    </div>
-                  </div>
-                ))}
-                {leadBatches.length === 0 && <p style={{ fontSize: 13, color: "var(--muted)" }}>No import batches yet.</p>}
-              </div>
-            </div>
-
-            {nextBestLead && (
-              <div style={{ ...subPanel, marginBottom: 12, borderColor: "var(--brass)" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
-                  <div>
-                    <p style={eyebrowSmall}>Next best lead</p>
-                    <h3 style={{ ...sectionTitle, fontSize: 20 }}>{nextBestLead.owner_name || "Owner unknown"}</h3>
-                    <p style={{ color: "var(--muted)", fontSize: 12, marginTop: 4 }}>{nextBestLead.property_address || nextBestLead.parcel_id || "No address"} · Score {nextBestLead.lead_score ?? 0}</p>
-                  </div>
-                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                    <button onClick={() => selectImportedLead(nextBestLead, "lists")} style={secondaryButton}>Review</button>
-                        <button onClick={() => loadImportedLead(nextBestLead, true)} style={primaryButton}>Build Packet</button>
-                  </div>
                 </div>
               </div>
             )}
@@ -5455,21 +5357,6 @@ function LeadPathCard({ label: text, detail, done, active }: { label: string; de
         {done ? "Complete" : active ? "Now" : "Waiting"}
       </strong>
       <p style={{ color: "var(--muted)", fontSize: 11, lineHeight: 1.35, marginTop: 4 }}>{detail}</p>
-    </div>
-  );
-}
-
-function ShiftCard({ label: text, value, tone = "calm" }: { label: string; value: string; tone?: "calm" | "hot" }) {
-  return (
-    <div style={{
-      background: tone === "hot" ? "rgba(176,137,84,0.14)" : "var(--surface)",
-      border: tone === "hot" ? "1px solid var(--brass)" : "1px solid var(--fog)",
-      borderRadius: 8,
-      padding: 12,
-      minHeight: 72,
-    }}>
-      <p style={{ fontSize: 10, color: "var(--muted)", fontWeight: 700, letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: 5 }}>{text}</p>
-      <p style={{ fontSize: 24, fontWeight: 800, color: "var(--obsidian)", lineHeight: 1 }}>{value}</p>
     </div>
   );
 }
