@@ -357,6 +357,75 @@ button {
   color: var(--bone);
 }
 
+.va-side-phone-card {
+  margin-top: auto;
+  border: 1px solid rgba(214,205,183,0.18);
+  border-radius: 8px;
+  padding: 10px;
+  display: grid;
+  gap: 8px;
+  background: rgba(237,230,214,0.03);
+  color: var(--bone);
+}
+
+.va-side-phone-card > span {
+  color: rgba(237,230,214,0.66);
+  font-size: 10px;
+  line-height: 1.3;
+}
+
+.va-side-phone-card strong {
+  color: #9ed49d;
+  font-size: 11px;
+}
+
+.va-side-phone-card button {
+  border: none;
+  border-top: 1px solid rgba(214,205,183,0.16);
+  background: transparent;
+  color: var(--bone);
+  display: grid;
+  gap: 3px;
+  padding: 8px 0 0;
+  text-align: left;
+}
+
+.va-side-phone-card small {
+  color: rgba(237,230,214,0.66);
+  font-size: 9px;
+}
+
+.va-side-phone-card b {
+  color: var(--bone);
+  font-size: 11px;
+}
+
+.va-side-phone-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: rgba(237,230,214,0.38);
+}
+
+.va-side-phone-dot-online {
+  background: #54c06a;
+}
+
+.contact-action-menu button {
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--obsidian);
+  padding: 8px 9px;
+  text-align: left;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.contact-action-menu button:hover {
+  background: rgba(201,168,120,0.14);
+}
+
 .crm-shell-active .main-content {
   padding-left: 156px;
 }

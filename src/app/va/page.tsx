@@ -827,6 +827,7 @@ export default function VaPage() {
   const [bulkTextModalOpen, setBulkTextModalOpen] = useState(false);
   const [bulkTextStep, setBulkTextStep] = useState<BulkTextStep>("audience");
   const [contactQueueMode, setContactQueueMode] = useState<ContactQueueMode>("inbox");
+  const [contactActionMenuOpen, setContactActionMenuOpen] = useState(false);
   const [savedLeadSegments, setSavedLeadSegments] = useState<SavedLeadSegment[]>([]);
   const [activeLeadSegmentId, setActiveLeadSegmentId] = useState<string | null>(null);
   const [leadSegmentName, setLeadSegmentName] = useState("");
@@ -1381,6 +1382,7 @@ export default function VaPage() {
     }));
   };
   const openIncomingSms = (event: CommunicationEvent) => {
+    setContactActionMenuOpen(false);
     if (event.matched_lead_id) {
       const lead = importedLeads.find(item => item.id === event.matched_lead_id);
       if (lead) {
@@ -1392,6 +1394,10 @@ export default function VaPage() {
     }
     setSelectedImportedLeadId(null);
     setSelectedCommunicationEventId(event.id);
+  };
+
+  const setUnlinkedActionMessage = (action: string) => {
+    setMessage(`${action} needs a linked relationship first. Use Find Match or Create Packet to connect this contact.`);
   };
 
   const addToDailyBrief = (line: string, patch: Partial<VaDailyBriefInput> = {}) => {
@@ -1465,6 +1471,7 @@ export default function VaPage() {
     setSelectedId(null);
     setSelectedImportedLeadId(lead.id);
     setSelectedCommunicationEventId(null);
+    setContactActionMenuOpen(false);
     setActiveTab(tab);
     setMessage("");
   };
@@ -3424,7 +3431,7 @@ export default function VaPage() {
                     </button>
                   ))}
                   {contactQueueMode === "unmatched" && unmatchedSms.slice(0, 25).map(event => (
-                    <button key={event.id} onClick={() => { setSelectedImportedLeadId(null); setSelectedCommunicationEventId(event.id); }} style={{ ...contactQueueCard, background: activeCommunicationEvent?.id === event.id ? "rgba(176,137,84,0.18)" : "rgba(176,137,84,0.10)", borderColor: "var(--brass)" }}>
+                    <button key={event.id} onClick={() => { setSelectedImportedLeadId(null); setSelectedCommunicationEventId(event.id); setContactActionMenuOpen(false); }} style={{ ...contactQueueCard, background: activeCommunicationEvent?.id === event.id ? "rgba(176,137,84,0.18)" : "rgba(176,137,84,0.10)", borderColor: "var(--brass)" }}>
                       <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "start" }}>
                         <div>
                           <strong style={{ color: "var(--obsidian)", fontSize: 14 }}>{event.contact_name || event.contact_number || event.from_number || "Unknown contact"}</strong>
@@ -3490,7 +3497,7 @@ export default function VaPage() {
                           {[selectedImportedLead.phone, selectedImportedLead.phone_2].filter(Boolean).join(" / ") || "No phone"} · {selectedImportedLead.county || "County pending"}
                         </p>
                       </div>
-                      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                      <div style={{ display: "flex", gap: 8, alignItems: "center", position: "relative" }}>
                         <TwilioCallButton
                           toNumber={checkLeadCallCompliance(selectedImportedLead).phone?.number || selectedImportedLead.phone || selectedImportedLead.phone_2}
                           leadId={selectedImportedLead.id}
@@ -3498,7 +3505,14 @@ export default function VaPage() {
                           disabledReason={!checkLeadCallCompliance(selectedImportedLead).allowed ? `Call blocked: ${checkLeadCallCompliance(selectedImportedLead).blockLabel}.` : null}
                           compact
                         />
-                        <button onClick={() => router.push(`/lead/${selectedImportedLead.id}`)} style={compactButton}>Open</button>
+                        <button type="button" onClick={() => setContactActionMenuOpen(open => !open)} style={actionIconButton} title="More actions">...</button>
+                        {contactActionMenuOpen && (
+                          <div className="contact-action-menu" style={contactActionMenu}>
+                            <button onClick={() => router.push(`/lead/${selectedImportedLead.id}`)}>Open record</button>
+                            <button onClick={() => loadImportedLead(selectedImportedLead, true)}>{selectedImportedLead.deal_id ? "Open packet" : "Create packet"}</button>
+                            <button onClick={() => void reload(user)}>Refresh</button>
+                          </div>
+                        )}
                       </div>
                     </div>
                     <div style={{ border: "1px solid var(--fog)", borderRadius: 8, padding: 10, background: "var(--surface)", marginBottom: 10, display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
@@ -3557,9 +3571,20 @@ export default function VaPage() {
                           {activeCommunicationEvent.contact_number || activeCommunicationEvent.from_number || "No phone"} · {activeCommunicationEvent.matched_deal_id ? "Deal linked" : "Needs matching"}
                         </p>
                       </div>
-                      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                        <button onClick={() => openCommsThreadForEvent(activeCommunicationEvent)} style={compactButton}>Open Thread</button>
-                        <button onClick={() => createLeadDraftFromSms(activeCommunicationEvent)} style={compactButton}>Create Packet</button>
+                      <div style={{ display: "flex", gap: 8, alignItems: "center", position: "relative" }}>
+                        <TwilioCallButton
+                          toNumber={activeCommunicationEvent.contact_number || activeCommunicationEvent.from_number || activeCommunicationEvent.to_number}
+                          dealId={activeCommunicationEvent.matched_deal_id}
+                          compact
+                        />
+                        <button type="button" onClick={() => setContactActionMenuOpen(open => !open)} style={actionIconButton} title="More actions">...</button>
+                        {contactActionMenuOpen && (
+                          <div className="contact-action-menu" style={contactActionMenu}>
+                            <button onClick={() => openCommsThreadForEvent(activeCommunicationEvent)}>Open thread</button>
+                            <button onClick={() => createLeadDraftFromSms(activeCommunicationEvent)}>Create packet</button>
+                            <button onClick={() => setContactQueueMode("relationships")}>Find match</button>
+                          </div>
+                        )}
                       </div>
                     </div>
                     <div style={{ border: "1px solid var(--fog)", borderRadius: 8, padding: 10, background: "var(--surface)", marginBottom: 10, display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
@@ -3712,10 +3737,15 @@ export default function VaPage() {
                     <section style={contactQueueSidePanel}>
                       <p style={eyebrowSmall}>Quick Actions</p>
                       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                        <TwilioCallButton
+                          toNumber={activeCommunicationEvent.contact_number || activeCommunicationEvent.from_number || activeCommunicationEvent.to_number}
+                          dealId={activeCommunicationEvent.matched_deal_id}
+                        />
                         <button onClick={() => openCommsThreadForEvent(activeCommunicationEvent)} style={compactButton}>Text</button>
+                        <button onClick={() => setUnlinkedActionMessage("Voicemail drop")} style={compactButton}>Voicemail Drop</button>
+                        <button onClick={() => setUnlinkedActionMessage("Callback")} style={compactButton}>Set Callback</button>
+                        <button onClick={() => setUnlinkedActionMessage("Log outcome")} style={compactButton}>Log Outcome</button>
                         <button onClick={() => createLeadDraftFromSms(activeCommunicationEvent)} style={compactButton}>Create Packet</button>
-                        <button onClick={() => setContactQueueMode("relationships")} style={compactButton}>Find Match</button>
-                        <button onClick={() => void reload(user)} style={compactButton}>Refresh</button>
                       </div>
                     </section>
                     <section style={contactQueueSidePanel}>
@@ -4996,6 +5026,32 @@ const compactButton: React.CSSProperties = {
   background: "transparent",
   color: "var(--obsidian)",
   border: "1px solid var(--fog)",
+};
+
+const actionIconButton: React.CSSProperties = {
+  ...compactButton,
+  minWidth: 38,
+  minHeight: 38,
+  padding: "8px 10px",
+  borderRadius: 8,
+  fontSize: 15,
+  letterSpacing: 0,
+  lineHeight: 1,
+};
+
+const contactActionMenu: React.CSSProperties = {
+  position: "absolute",
+  right: 0,
+  top: "calc(100% + 6px)",
+  zIndex: 20,
+  width: 164,
+  display: "grid",
+  gap: 4,
+  padding: 6,
+  border: "1px solid var(--fog)",
+  borderRadius: 8,
+  background: "var(--bone)",
+  boxShadow: "0 18px 38px rgba(20,17,13,0.14)",
 };
 
 const workItemCard: React.CSSProperties = {

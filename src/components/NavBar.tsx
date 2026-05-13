@@ -77,6 +77,12 @@ export default function NavBar() {
   const [vaTabCounts, setVaTabCounts] = useState<Record<string, number>>({});
   const [contactQueueMode, setContactQueueMode] = useState("inbox");
   const [contactQueueCounts, setContactQueueCounts] = useState<Record<string, number>>({});
+  const [commsStatus, setCommsStatus] = useState<{
+    phoneState?: string;
+    phoneMessage?: string;
+    unread?: number;
+    callDuration?: number;
+  }>({});
   const [moreOpen, setMoreOpen] = useState(false);
 
   useEffect(() => {
@@ -119,6 +125,15 @@ export default function NavBar() {
     };
     window.addEventListener("meridian-contact-queue-state", handleContactQueueState);
     return () => window.removeEventListener("meridian-contact-queue-state", handleContactQueueState);
+  }, []);
+
+  useEffect(() => {
+    const handleCommsStatus = (event: Event) => {
+      const detail = (event as CustomEvent<typeof commsStatus>).detail;
+      if (detail) setCommsStatus(detail);
+    };
+    window.addEventListener("meridian-comms-status", handleCommsStatus);
+    return () => window.removeEventListener("meridian-comms-status", handleCommsStatus);
   }, []);
 
   const shellRoutes = user && isVaUser(user) ? [...crmRoutes, "/actions"] : crmRoutes;
@@ -178,7 +193,7 @@ export default function NavBar() {
             <Logo width={38} onDark />
             <div>
               <strong style={{ display: "block", color: "var(--bone)", fontSize: 12, letterSpacing: "0.18em", textTransform: "uppercase" }}>Meridian</strong>
-              <span style={{ display: "block", color: "var(--brass)", fontSize: 9, letterSpacing: "0.2em", textTransform: "uppercase" }}>{isVaUser(user) ? (vaTab === "outreach" ? "VA Operations" : "Dashboard") : "CRM"}</span>
+              <span style={{ display: "block", color: "var(--brass)", fontSize: vaTab === "outreach" ? 8 : 9, letterSpacing: vaTab === "outreach" ? "0.16em" : "0.2em", textTransform: "uppercase", whiteSpace: "nowrap" }}>{isVaUser(user) ? (vaTab === "outreach" ? "VA Operations" : "Dashboard") : "CRM"}</span>
             </div>
           </div>
           <div style={{ display: "grid", gap: 4 }}>
@@ -217,7 +232,20 @@ export default function NavBar() {
               );
             })}
           </div>
-          <div style={{ marginTop: "auto", border: "1px solid rgba(214,205,183,0.18)", borderRadius: 8, padding: 10 }}>
+          {isVaUser(user) && pathname === "/va" && vaTab === "outreach" && (
+            <div className="va-side-phone-card">
+              <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+                <span className={`va-side-phone-dot ${commsStatus.phoneState === "online" || commsStatus.phoneState === "in-call" ? "va-side-phone-dot-online" : ""}`} />
+                <strong>{commsStatus.phoneState === "online" || commsStatus.phoneState === "in-call" ? "Phone Online" : "Phone Offline"}</strong>
+              </div>
+              <span>All systems operational</span>
+              <button type="button" onClick={() => window.dispatchEvent(new CustomEvent("meridian-open-global-comms"))}>
+                <small>Dial Number</small>
+                <b>(678) 498-5097</b>
+              </button>
+            </div>
+          )}
+          <div style={{ marginTop: isVaUser(user) && pathname === "/va" && vaTab === "outreach" ? 12 : "auto", border: "1px solid rgba(214,205,183,0.18)", borderRadius: 8, padding: 10 }}>
             <span style={{ display: "block", color: "rgba(237,230,214,0.62)", fontSize: 10, marginBottom: 4 }}>Signed in</span>
             <strong style={{ display: "block", color: "var(--bone)", fontSize: 12 }}>{user}</strong>
             <button
