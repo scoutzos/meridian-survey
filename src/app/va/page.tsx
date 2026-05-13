@@ -195,11 +195,11 @@ type SavedLeadSegment = {
   name: string;
   status: ImportStatusFilter;
   batchId: string;
-  county: string;
-  state: string;
-  city: string;
-  zip: string;
-  mailState: string;
+  counties: string[];
+  states: string[];
+  cities: string[];
+  zips: string[];
+  mailStates: string[];
   minScore: string;
   minAcreage: string;
   maxAcreage: string;
@@ -257,11 +257,11 @@ const BULK_TEXT_TEMPLATES = [
 const DEFAULT_SEGMENT_FILTERS: Omit<SavedLeadSegment, "id" | "name" | "createdAt"> = {
   status: "all",
   batchId: "all",
-  county: "",
-  state: "",
-  city: "",
-  zip: "",
-  mailState: "",
+  counties: [],
+  states: [],
+  cities: [],
+  zips: [],
+  mailStates: [],
   minScore: "",
   minAcreage: "",
   maxAcreage: "",
@@ -285,6 +285,13 @@ const DEFAULT_SEGMENT_FILTERS: Omit<SavedLeadSegment, "id" | "name" | "createdAt
 };
 
 function segmentWithDefaults(segment: Partial<SavedLeadSegment>): SavedLeadSegment {
+  const legacy = segment as Partial<SavedLeadSegment> & {
+    county?: string;
+    state?: string;
+    city?: string;
+    zip?: string;
+    mailState?: string;
+  };
   return {
     ...DEFAULT_SEGMENT_FILTERS,
     id: segment.id || `segment-${Date.now()}`,
@@ -292,11 +299,11 @@ function segmentWithDefaults(segment: Partial<SavedLeadSegment>): SavedLeadSegme
     createdAt: segment.createdAt || new Date().toISOString(),
     status: segment.status || "all",
     batchId: segment.batchId || "all",
-    county: segment.county || "",
-    state: segment.state || "",
-    city: segment.city || "",
-    zip: segment.zip || "",
-    mailState: segment.mailState || "",
+    counties: segment.counties?.length ? segment.counties : legacy.county ? [legacy.county] : [],
+    states: segment.states?.length ? segment.states : legacy.state ? [legacy.state] : [],
+    cities: segment.cities?.length ? segment.cities : legacy.city ? [legacy.city] : [],
+    zips: segment.zips?.length ? segment.zips : legacy.zip ? [legacy.zip] : [],
+    mailStates: segment.mailStates?.length ? segment.mailStates : legacy.mailState ? [legacy.mailState] : [],
     minScore: segment.minScore || "",
     minAcreage: segment.minAcreage || "",
     maxAcreage: segment.maxAcreage || "",
@@ -326,6 +333,18 @@ function matchesTextFilter(value: string | null | undefined, query: string): boo
   return (value || "").toLowerCase().includes(normalized);
 }
 
+function matchesAnyTextFilter(value: string | null | undefined, queries: string[]): boolean {
+  const active = queries.map(query => query.trim()).filter(Boolean);
+  if (active.length === 0) return true;
+  return active.some(query => matchesTextFilter(value, query));
+}
+
+function toggleValue(values: string[], next: string): string[] {
+  const trimmed = next.trim();
+  if (!trimmed) return values;
+  return values.includes(trimmed) ? values.filter(value => value !== trimmed) : [...values, trimmed];
+}
+
 function matchesBooleanFilter(value: boolean | null | undefined, filter: SegmentBooleanFilter): boolean {
   if (filter === "any") return true;
   return filter === "yes" ? value === true : value !== true;
@@ -345,7 +364,6 @@ function leadMatchesBulkTextCriteria(
   rawCriteria: Partial<SavedLeadSegment>,
 ): boolean {
   const criteria = segmentWithDefaults(rawCriteria);
-  const countyQuery = criteria.county.trim().toLowerCase();
   const minScore = toNumber(criteria.minScore);
   const minAcres = toNumber(criteria.minAcreage);
   const maxAcres = toNumber(criteria.maxAcreage);
@@ -361,11 +379,11 @@ function leadMatchesBulkTextCriteria(
   if (criteria.status === "flood" && !(toNumber(String(lead.raw_data?.["Flood Zone Percent"] ?? "")) ?? 0)) return false;
   if (criteria.status === "wetlands" && !(toNumber(String(lead.raw_data?.["Wetlands Percent"] ?? "")) ?? 0)) return false;
   if (["new", "contacted", "interested", "passed"].includes(criteria.status) && lead.status !== criteria.status) return false;
-  if (countyQuery && !(lead.county || "").toLowerCase().includes(countyQuery)) return false;
-  if (!matchesTextFilter(lead.state, criteria.state)) return false;
-  if (!matchesTextFilter(lead.city, criteria.city)) return false;
-  if (!matchesTextFilter(lead.zip, criteria.zip)) return false;
-  if (!matchesTextFilter(lead.mail_state, criteria.mailState)) return false;
+  if (!matchesAnyTextFilter(lead.county, criteria.counties)) return false;
+  if (!matchesAnyTextFilter(lead.state, criteria.states)) return false;
+  if (!matchesAnyTextFilter(lead.city, criteria.cities)) return false;
+  if (!matchesAnyTextFilter(lead.zip, criteria.zips)) return false;
+  if (!matchesAnyTextFilter(lead.mail_state, criteria.mailStates)) return false;
   if (!matchesTextFilter(lead.land_use, criteria.landUse)) return false;
   if (!matchesTextFilter(lead.owner_type, criteria.ownerType)) return false;
   if (minScore !== null && (lead.lead_score ?? 0) < minScore) return false;
@@ -811,11 +829,11 @@ export default function VaPage() {
   const [leadSegmentName, setLeadSegmentName] = useState("");
   const [bulkTextAudienceStatus, setBulkTextAudienceStatus] = useState<ImportStatusFilter>("all");
   const [bulkTextBatchId, setBulkTextBatchId] = useState("all");
-  const [bulkTextCounty, setBulkTextCounty] = useState("");
-  const [bulkTextState, setBulkTextState] = useState("");
-  const [bulkTextCity, setBulkTextCity] = useState("");
-  const [bulkTextZip, setBulkTextZip] = useState("");
-  const [bulkTextMailState, setBulkTextMailState] = useState("");
+  const [bulkTextCounties, setBulkTextCounties] = useState<string[]>([]);
+  const [bulkTextStates, setBulkTextStates] = useState<string[]>([]);
+  const [bulkTextCities, setBulkTextCities] = useState<string[]>([]);
+  const [bulkTextZips, setBulkTextZips] = useState<string[]>([]);
+  const [bulkTextMailStates, setBulkTextMailStates] = useState<string[]>([]);
   const [bulkTextMinScore, setBulkTextMinScore] = useState("");
   const [bulkTextMinAcreage, setBulkTextMinAcreage] = useState("");
   const [bulkTextMaxAcreage, setBulkTextMaxAcreage] = useState("");
@@ -1028,11 +1046,11 @@ export default function VaPage() {
     const criteria = {
       status: bulkTextAudienceStatus,
       batchId: bulkTextBatchId,
-      county: bulkTextCounty,
-      state: bulkTextState,
-      city: bulkTextCity,
-      zip: bulkTextZip,
-      mailState: bulkTextMailState,
+      counties: bulkTextCounties,
+      states: bulkTextStates,
+      cities: bulkTextCities,
+      zips: bulkTextZips,
+      mailStates: bulkTextMailStates,
       minScore: bulkTextMinScore,
       minAcreage: bulkTextMinAcreage,
       maxAcreage: bulkTextMaxAcreage,
@@ -1061,13 +1079,13 @@ export default function VaPage() {
   }, [
     bulkTextAudienceStatus,
     bulkTextBatchId,
-    bulkTextCity,
-    bulkTextCounty,
+    bulkTextCities,
+    bulkTextCounties,
     bulkTextFlood,
     bulkTextInHoa,
     bulkTextLandLocked,
     bulkTextLandUse,
-    bulkTextMailState,
+    bulkTextMailStates,
     bulkTextMaxAcreage,
     bulkTextMaxMarketValue,
     bulkTextMinAcreage,
@@ -1077,7 +1095,7 @@ export default function VaPage() {
     bulkTextOwnerOutOfState,
     bulkTextOwnerType,
     bulkTextRoadFrontage,
-    bulkTextState,
+    bulkTextStates,
     bulkTextTagEntitlement,
     bulkTextTagFarmland,
     bulkTextTagOddShape,
@@ -1085,7 +1103,7 @@ export default function VaPage() {
     bulkTextTagSubdivide,
     bulkTextTaxDelinquent,
     bulkTextWetlands,
-    bulkTextZip,
+    bulkTextZips,
     importedLeads,
   ]);
   const bulkTextCategorization = useMemo(() => categorizeForBulkSms(bulkTextAudience), [bulkTextAudience]);
@@ -1094,15 +1112,15 @@ export default function VaPage() {
   const bulkTextPreviewLeads = bulkTextCategorization.eligible.slice(0, 3);
   const bulkTextLocationOptions = useMemo(() => {
     const countyRows = importedLeads;
-    const stateRows = importedLeads.filter(lead => !bulkTextCounty || matchesTextFilter(lead.county, bulkTextCounty));
+    const stateRows = importedLeads.filter(lead => matchesAnyTextFilter(lead.county, bulkTextCounties));
     const cityRows = importedLeads.filter(lead =>
-      (!bulkTextCounty || matchesTextFilter(lead.county, bulkTextCounty))
-      && (!bulkTextState || matchesTextFilter(lead.state, bulkTextState))
+      matchesAnyTextFilter(lead.county, bulkTextCounties)
+      && matchesAnyTextFilter(lead.state, bulkTextStates)
     );
     const zipRows = importedLeads.filter(lead =>
-      (!bulkTextCounty || matchesTextFilter(lead.county, bulkTextCounty))
-      && (!bulkTextState || matchesTextFilter(lead.state, bulkTextState))
-      && (!bulkTextCity || matchesTextFilter(lead.city, bulkTextCity))
+      matchesAnyTextFilter(lead.county, bulkTextCounties)
+      && matchesAnyTextFilter(lead.state, bulkTextStates)
+      && matchesAnyTextFilter(lead.city, bulkTextCities)
     );
     return {
       counties: uniqueSortedOptions(countyRows.map(lead => lead.county)),
@@ -1111,7 +1129,7 @@ export default function VaPage() {
       zips: uniqueSortedOptions(zipRows.map(lead => lead.zip)),
       mailStates: uniqueSortedOptions(importedLeads.map(lead => lead.mail_state)),
     };
-  }, [bulkTextCity, bulkTextCounty, bulkTextState, importedLeads]);
+  }, [bulkTextCities, bulkTextCounties, bulkTextStates, importedLeads]);
   const batchLeads = useMemo(() => selectedBatchId ? importedLeads.filter(lead => lead.batch_id === selectedBatchId) : importedLeads, [importedLeads, selectedBatchId]);
   const nextBestLead = useMemo(() => filteredImportedLeads.find(lead => lead.status === "new" || lead.status === "contacted") ?? filteredImportedLeads[0] ?? null, [filteredImportedLeads]);
   const priorityImportedLeads = useMemo(() => filteredImportedLeads
@@ -1735,11 +1753,11 @@ export default function VaPage() {
     setLeadSegmentName(normalized.name);
     setBulkTextAudienceStatus(normalized.status);
     setBulkTextBatchId(normalized.batchId);
-    setBulkTextCounty(normalized.county);
-    setBulkTextState(normalized.state);
-    setBulkTextCity(normalized.city);
-    setBulkTextZip(normalized.zip);
-    setBulkTextMailState(normalized.mailState);
+    setBulkTextCounties(normalized.counties);
+    setBulkTextStates(normalized.states);
+    setBulkTextCities(normalized.cities);
+    setBulkTextZips(normalized.zips);
+    setBulkTextMailStates(normalized.mailStates);
     setBulkTextMinScore(normalized.minScore);
     setBulkTextMinAcreage(normalized.minAcreage);
     setBulkTextMaxAcreage(normalized.maxAcreage);
@@ -1766,7 +1784,7 @@ export default function VaPage() {
 
   const saveLeadSegment = () => {
     const name = leadSegmentName.trim() || [
-      bulkTextCounty.trim() || null,
+      bulkTextCounties.length ? bulkTextCounties.join(", ") : null,
       bulkTextAudienceStatus !== "all" ? IMPORT_STATUS_FILTERS.find(filter => filter.value === bulkTextAudienceStatus)?.label : null,
       bulkTextMinScore.trim() ? `Score ${bulkTextMinScore.trim()}+` : null,
     ].filter(Boolean).join(" · ") || "Saved segment";
@@ -1775,11 +1793,11 @@ export default function VaPage() {
       name,
       status: bulkTextAudienceStatus,
       batchId: bulkTextBatchId,
-      county: bulkTextCounty.trim(),
-      state: bulkTextState.trim(),
-      city: bulkTextCity.trim(),
-      zip: bulkTextZip.trim(),
-      mailState: bulkTextMailState.trim(),
+      counties: bulkTextCounties,
+      states: bulkTextStates,
+      cities: bulkTextCities,
+      zips: bulkTextZips,
+      mailStates: bulkTextMailStates,
       minScore: bulkTextMinScore.trim(),
       minAcreage: bulkTextMinAcreage.trim(),
       maxAcreage: bulkTextMaxAcreage.trim(),
@@ -1824,11 +1842,11 @@ export default function VaPage() {
     setLeadSegmentName("");
     setBulkTextAudienceStatus("all");
     setBulkTextBatchId("all");
-    setBulkTextCounty("");
-    setBulkTextState("");
-    setBulkTextCity("");
-    setBulkTextZip("");
-    setBulkTextMailState("");
+    setBulkTextCounties([]);
+    setBulkTextStates([]);
+    setBulkTextCities([]);
+    setBulkTextZips([]);
+    setBulkTextMailStates([]);
     setBulkTextMinScore("");
     setBulkTextMinAcreage("");
     setBulkTextMaxAcreage("");
@@ -3866,7 +3884,9 @@ export default function VaPage() {
                               <strong style={{ color: "var(--obsidian)", fontSize: 13 }}>{segment.name}</strong>
                               <span style={{ display: "block", color: "var(--muted)", fontSize: 12, marginTop: 3 }}>
                                 {[
-                                  segment.county || segment.state || segment.city || segment.zip ? [segment.county, segment.city, segment.state, segment.zip].filter(Boolean).join(", ") : "Any location",
+                                  segment.counties.length || segment.states.length || segment.cities.length || segment.zips.length
+                                    ? [...segment.counties, ...segment.cities, ...segment.states, ...segment.zips].filter(Boolean).join(", ")
+                                    : "Any location",
                                   IMPORT_STATUS_FILTERS.find(filter => filter.value === segment.status)?.label || "All",
                                   batchLabel,
                                   segment.minScore ? `Score ${segment.minScore}+` : "Any score",
@@ -3907,13 +3927,7 @@ export default function VaPage() {
                         ))}
                       </select>
                     </label>
-                    <label style={{ display: "grid", gap: 6, color: "var(--muted)", fontSize: 12, fontWeight: 800, textTransform: "uppercase", letterSpacing: 1.2 }}>
-                      County
-                      <select value={bulkTextCounty} onChange={event => setBulkTextCounty(event.target.value)} style={{ minHeight: 42 }}>
-                        <option value="">Any county</option>
-                        {bulkTextLocationOptions.counties.map(county => <option key={county} value={county}>{county}</option>)}
-                      </select>
-                    </label>
+                    <MultiSegmentSelect label="County" values={bulkTextCounties} options={bulkTextLocationOptions.counties} onChange={setBulkTextCounties} placeholder="Any county" />
                     <label style={{ display: "grid", gap: 6, color: "var(--muted)", fontSize: 12, fontWeight: 800, textTransform: "uppercase", letterSpacing: 1.2 }}>
                       Minimum score
                       <input value={bulkTextMinScore} onChange={event => setBulkTextMinScore(event.target.value)} placeholder="Any score" inputMode="numeric" style={{ minHeight: 42 }} />
@@ -3922,34 +3936,10 @@ export default function VaPage() {
                   <div style={{ borderTop: "1px solid var(--fog)", marginTop: 14, paddingTop: 14 }}>
                     <p style={eyebrowSmall}>Location filters</p>
                     <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, marginTop: 10 }} className="number-grid">
-                      <label style={{ display: "grid", gap: 6, color: "var(--muted)", fontSize: 12, fontWeight: 800, textTransform: "uppercase", letterSpacing: 1.2 }}>
-                      State
-                        <select value={bulkTextState} onChange={event => setBulkTextState(event.target.value)} style={{ minHeight: 42 }}>
-                          <option value="">Any state</option>
-                          {bulkTextLocationOptions.states.map(state => <option key={state} value={state}>{state}</option>)}
-                        </select>
-                      </label>
-                      <label style={{ display: "grid", gap: 6, color: "var(--muted)", fontSize: 12, fontWeight: 800, textTransform: "uppercase", letterSpacing: 1.2 }}>
-                        City
-                        <select value={bulkTextCity} onChange={event => setBulkTextCity(event.target.value)} style={{ minHeight: 42 }}>
-                          <option value="">Any city</option>
-                          {bulkTextLocationOptions.cities.map(city => <option key={city} value={city}>{city}</option>)}
-                        </select>
-                      </label>
-                      <label style={{ display: "grid", gap: 6, color: "var(--muted)", fontSize: 12, fontWeight: 800, textTransform: "uppercase", letterSpacing: 1.2 }}>
-                        ZIP
-                        <select value={bulkTextZip} onChange={event => setBulkTextZip(event.target.value)} style={{ minHeight: 42 }}>
-                          <option value="">Any ZIP</option>
-                          {bulkTextLocationOptions.zips.map(zip => <option key={zip} value={zip}>{zip}</option>)}
-                        </select>
-                      </label>
-                      <label style={{ display: "grid", gap: 6, color: "var(--muted)", fontSize: 12, fontWeight: 800, textTransform: "uppercase", letterSpacing: 1.2 }}>
-                        Mailing state
-                        <select value={bulkTextMailState} onChange={event => setBulkTextMailState(event.target.value)} style={{ minHeight: 42 }}>
-                          <option value="">Any mailing state</option>
-                          {bulkTextLocationOptions.mailStates.map(state => <option key={state} value={state}>{state}</option>)}
-                        </select>
-                      </label>
+                      <MultiSegmentSelect label="State" values={bulkTextStates} options={bulkTextLocationOptions.states} onChange={setBulkTextStates} placeholder="Any state" />
+                      <MultiSegmentSelect label="City" values={bulkTextCities} options={bulkTextLocationOptions.cities} onChange={setBulkTextCities} placeholder="Any city" />
+                      <MultiSegmentSelect label="ZIP" values={bulkTextZips} options={bulkTextLocationOptions.zips} onChange={setBulkTextZips} placeholder="Any ZIP" />
+                      <MultiSegmentSelect label="Mailing state" values={bulkTextMailStates} options={bulkTextLocationOptions.mailStates} onChange={setBulkTextMailStates} placeholder="Any mailing state" />
                     </div>
                   </div>
                   <div style={{ borderTop: "1px solid var(--fog)", marginTop: 14, paddingTop: 14 }}>
@@ -4210,6 +4200,53 @@ export default function VaPage() {
         }
       `}</style>
     </div>
+  );
+}
+
+function MultiSegmentSelect({
+  label: text,
+  values,
+  options,
+  onChange,
+  placeholder,
+}: {
+  label: string;
+  values: string[];
+  options: string[];
+  onChange: (values: string[]) => void;
+  placeholder: string;
+}) {
+  const remaining = options.filter(option => !values.includes(option));
+  return (
+    <label style={{ display: "grid", gap: 6, color: "var(--muted)", fontSize: 12, fontWeight: 800, textTransform: "uppercase", letterSpacing: 1.2 }}>
+      {text}
+      <select
+        value=""
+        onChange={event => onChange(toggleValue(values, event.target.value))}
+        style={{ minHeight: 42 }}
+      >
+        <option value="">{values.length ? "Add another..." : placeholder}</option>
+        {remaining.map(option => <option key={option} value={option}>{option}</option>)}
+      </select>
+      {values.length > 0 && (
+        <span style={{ display: "flex", gap: 6, flexWrap: "wrap", textTransform: "none", letterSpacing: 0 }}>
+          {values.map(value => (
+            <button
+              key={value}
+              type="button"
+              onClick={event => {
+                event.preventDefault();
+                onChange(values.filter(item => item !== value));
+              }}
+              style={{ ...pill, cursor: "pointer", fontSize: 10 }}
+              aria-label={`Remove ${value}`}
+            >
+              {value} x
+            </button>
+          ))}
+        </span>
+      )}
+    </label>
   );
 }
 
