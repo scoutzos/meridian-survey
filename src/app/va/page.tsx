@@ -1889,9 +1889,6 @@ export default function VaPage() {
                   </span>
                 </div>
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
-                  <button onClick={() => document.getElementById("va-work-queue")?.scrollIntoView({ behavior: "smooth", block: "start" })} style={{ ...secondaryButton, color: "var(--bone)", borderColor: "rgba(237,230,214,0.45)" }}>
-                    Start Work Queue
-                  </button>
                   <button onClick={openShift ? handleClockOut : handleClockIn} disabled={clockBusy} style={{ ...primaryButton, background: "var(--brass)", borderColor: "var(--brass)", color: "var(--obsidian)", opacity: clockBusy ? 0.65 : 1 }}>
                     {clockBusy ? "Saving..." : openShift ? "Clock Out" : "Clock In"}
                   </button>
