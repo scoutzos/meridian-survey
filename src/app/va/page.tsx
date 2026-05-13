@@ -189,6 +189,18 @@ const IMPORT_STATUS_FILTERS = [
 type ImportStatusFilter = typeof IMPORT_STATUS_FILTERS[number]["value"];
 type ImportStep = "upload" | "preview" | "importing" | "work";
 type ImportStage = "idle" | "previewing" | "creating-batch" | "saving-leads" | "refreshing" | "done";
+type BulkTextStep = "audience" | "compliance" | "message";
+type SavedLeadSegment = {
+  id: string;
+  name: string;
+  status: ImportStatusFilter;
+  batchId: string;
+  county: string;
+  minScore: string;
+  createdAt: string;
+};
+
+const SAVED_LEAD_SEGMENTS_KEY = "meridian_va_saved_lead_segments";
 
 const LEAD_ACTIVITY_TYPES: Array<{ value: ImportedLandLeadActivity["activity_type"]; label: string }> = [
   { value: "called", label: "Called" },
@@ -218,6 +230,27 @@ const BULK_TEXT_TEMPLATES = [
     body: "Hi {{first_name}}, just following up on {{property_list}}. Would a quick call today or tomorrow work?",
   },
 ];
+
+function leadMatchesBulkTextCriteria(
+  lead: ImportedLandLead,
+  criteria: Pick<SavedLeadSegment, "status" | "batchId" | "county" | "minScore">,
+): boolean {
+  const countyQuery = criteria.county.trim().toLowerCase();
+  const minScore = toNumber(criteria.minScore);
+
+  if (criteria.batchId !== "all" && lead.batch_id !== criteria.batchId) return false;
+  if (criteria.status === "duplicates" && lead.duplicate_status === "new") return false;
+  if (criteria.status === "has-phone" && !lead.phone && !lead.phone_2) return false;
+  if (criteria.status === "no-phone" && (lead.phone || lead.phone_2)) return false;
+  if (criteria.status === "score-60" && (lead.lead_score ?? 0) < 60) return false;
+  if (criteria.status === "landlocked" && !String(lead.raw_data?.["Land Locked"] ?? lead.raw_data?.["Tag:Land Locked"] ?? "").toLowerCase().startsWith("y")) return false;
+  if (criteria.status === "flood" && !(toNumber(String(lead.raw_data?.["Flood Zone Percent"] ?? "")) ?? 0)) return false;
+  if (criteria.status === "wetlands" && !(toNumber(String(lead.raw_data?.["Wetlands Percent"] ?? "")) ?? 0)) return false;
+  if (["new", "contacted", "interested", "passed"].includes(criteria.status) && lead.status !== criteria.status) return false;
+  if (countyQuery && !(lead.county || "").toLowerCase().includes(countyQuery)) return false;
+  if (minScore !== null && (lead.lead_score ?? 0) < minScore) return false;
+  return true;
+}
 
 const LEAD_DISPOSITIONS: Array<{
   value: LeadDisposition;
@@ -636,7 +669,10 @@ export default function VaPage() {
   const [smsDraft, setSmsDraft] = useState("");
   const [bulkSmsDrawerOpen, setBulkSmsDrawerOpen] = useState(false);
   const [bulkTextModalOpen, setBulkTextModalOpen] = useState(false);
-  const [bulkTextStep, setBulkTextStep] = useState<"audience" | "compliance" | "message">("audience");
+  const [bulkTextStep, setBulkTextStep] = useState<BulkTextStep>("audience");
+  const [savedLeadSegments, setSavedLeadSegments] = useState<SavedLeadSegment[]>([]);
+  const [activeLeadSegmentId, setActiveLeadSegmentId] = useState<string | null>(null);
+  const [leadSegmentName, setLeadSegmentName] = useState("");
   const [bulkTextAudienceStatus, setBulkTextAudienceStatus] = useState<ImportStatusFilter>("all");
   const [bulkTextBatchId, setBulkTextBatchId] = useState("all");
   const [bulkTextCounty, setBulkTextCounty] = useState("");
@@ -753,6 +789,21 @@ export default function VaPage() {
   }, [openShift]);
 
   useEffect(() => {
+    try {
+      const raw = localStorage.getItem(SAVED_LEAD_SEGMENTS_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as SavedLeadSegment[];
+      if (Array.isArray(parsed)) setSavedLeadSegments(parsed);
+    } catch {
+      setSavedLeadSegments([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem(SAVED_LEAD_SEGMENTS_KEY, JSON.stringify(savedLeadSegments));
+  }, [savedLeadSegments]);
+
+  useEffect(() => {
     const handleCommsStatus = (event: Event) => {
       const detail = (event as CustomEvent<typeof commsStatus>).detail;
       if (detail) setCommsStatus(detail);
@@ -815,23 +866,14 @@ export default function VaPage() {
   const bulkSmsCategorization = useMemo(() => categorizeForBulkSms(filteredImportedLeads), [filteredImportedLeads]);
   const bulkEligibleLeads = bulkSmsCategorization.eligible;
   const bulkTextAudience = useMemo(() => {
-    const countyQuery = bulkTextCounty.trim().toLowerCase();
-    const minScore = toNumber(bulkTextMinScore);
+    const criteria = {
+      status: bulkTextAudienceStatus,
+      batchId: bulkTextBatchId,
+      county: bulkTextCounty,
+      minScore: bulkTextMinScore,
+    };
     return importedLeads
-      .filter(lead => {
-        if (bulkTextBatchId !== "all" && lead.batch_id !== bulkTextBatchId) return false;
-        if (bulkTextAudienceStatus === "duplicates" && lead.duplicate_status === "new") return false;
-        if (bulkTextAudienceStatus === "has-phone" && !lead.phone && !lead.phone_2) return false;
-        if (bulkTextAudienceStatus === "no-phone" && (lead.phone || lead.phone_2)) return false;
-        if (bulkTextAudienceStatus === "score-60" && (lead.lead_score ?? 0) < 60) return false;
-        if (bulkTextAudienceStatus === "landlocked" && !String(lead.raw_data?.["Land Locked"] ?? lead.raw_data?.["Tag:Land Locked"] ?? "").toLowerCase().startsWith("y")) return false;
-        if (bulkTextAudienceStatus === "flood" && !(toNumber(String(lead.raw_data?.["Flood Zone Percent"] ?? "")) ?? 0)) return false;
-        if (bulkTextAudienceStatus === "wetlands" && !(toNumber(String(lead.raw_data?.["Wetlands Percent"] ?? "")) ?? 0)) return false;
-        if (["new", "contacted", "interested", "passed"].includes(bulkTextAudienceStatus) && lead.status !== bulkTextAudienceStatus) return false;
-        if (countyQuery && !(lead.county || "").toLowerCase().includes(countyQuery)) return false;
-        if (minScore !== null && (lead.lead_score ?? 0) < minScore) return false;
-        return true;
-      })
+      .filter(lead => leadMatchesBulkTextCriteria(lead, criteria))
       .sort((a, b) => (b.lead_score ?? 0) - (a.lead_score ?? 0))
       .slice(0, 500);
   }, [bulkTextAudienceStatus, bulkTextBatchId, bulkTextCounty, bulkTextMinScore, importedLeads]);
@@ -1443,6 +1485,59 @@ export default function VaPage() {
     } finally {
       setBulkTextSending(false);
     }
+  };
+
+  const applyLeadSegment = (segment: SavedLeadSegment) => {
+    setActiveLeadSegmentId(segment.id);
+    setLeadSegmentName(segment.name);
+    setBulkTextAudienceStatus(segment.status);
+    setBulkTextBatchId(segment.batchId);
+    setBulkTextCounty(segment.county);
+    setBulkTextMinScore(segment.minScore);
+    setBulkTextStep("audience");
+    setBulkTextResult(null);
+  };
+
+  const saveLeadSegment = () => {
+    const name = leadSegmentName.trim() || [
+      bulkTextCounty.trim() || null,
+      bulkTextAudienceStatus !== "all" ? IMPORT_STATUS_FILTERS.find(filter => filter.value === bulkTextAudienceStatus)?.label : null,
+      bulkTextMinScore.trim() ? `Score ${bulkTextMinScore.trim()}+` : null,
+    ].filter(Boolean).join(" · ") || "Saved segment";
+    const segment: SavedLeadSegment = {
+      id: activeLeadSegmentId || `segment-${Date.now()}`,
+      name,
+      status: bulkTextAudienceStatus,
+      batchId: bulkTextBatchId,
+      county: bulkTextCounty.trim(),
+      minScore: bulkTextMinScore.trim(),
+      createdAt: new Date().toISOString(),
+    };
+    setSavedLeadSegments(prev => {
+      const withoutCurrent = prev.filter(item => item.id !== segment.id);
+      return [segment, ...withoutCurrent].slice(0, 12);
+    });
+    setActiveLeadSegmentId(segment.id);
+    setLeadSegmentName(name);
+    setBulkTextResult(null);
+  };
+
+  const deleteLeadSegment = (segmentId: string) => {
+    setSavedLeadSegments(prev => prev.filter(segment => segment.id !== segmentId));
+    if (activeLeadSegmentId === segmentId) {
+      setActiveLeadSegmentId(null);
+      setLeadSegmentName("");
+    }
+  };
+
+  const clearLeadSegmentFilters = () => {
+    setActiveLeadSegmentId(null);
+    setLeadSegmentName("");
+    setBulkTextAudienceStatus("all");
+    setBulkTextBatchId("all");
+    setBulkTextCounty("");
+    setBulkTextMinScore("");
+    setBulkTextResult(null);
   };
 
   const attachUnmatchedSmsToLead = async (event: CommunicationEvent) => {
@@ -3422,6 +3517,67 @@ export default function VaPage() {
                     <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                       <span style={pill}>{bulkTextCategorization.totalConsidered} considered</span>
                       <span style={hotPill}>{bulkTextCategorization.eligible.length} eligible</span>
+                    </div>
+                  </div>
+                  <div style={{ border: "1px solid var(--fog)", borderRadius: 8, background: "var(--surface)", padding: 12, marginBottom: 14 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap", marginBottom: 10 }}>
+                      <div>
+                        <p style={eyebrowSmall}>Saved Segments</p>
+                        <p style={{ color: "var(--muted)", fontSize: 12, marginTop: 4 }}>Save reusable audiences like county, score, list, or follow-up groups.</p>
+                      </div>
+                      <button onClick={clearLeadSegmentFilters} style={secondaryButton}>Clear Filters</button>
+                    </div>
+                    <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", gap: 8, alignItems: "end" }} className="two-col">
+                      <label style={{ display: "grid", gap: 6, color: "var(--muted)", fontSize: 12, fontWeight: 800, textTransform: "uppercase", letterSpacing: 1.2 }}>
+                        Segment name
+                        <input value={leadSegmentName} onChange={event => setLeadSegmentName(event.target.value)} placeholder="Example: Fulton County score 60+" style={{ minHeight: 42 }} />
+                      </label>
+                      <button onClick={saveLeadSegment} style={primaryButton}>
+                        {activeLeadSegmentId ? "Update Segment" : "Save Segment"}
+                      </button>
+                    </div>
+                    <div style={{ display: "grid", gap: 8, marginTop: 10, maxHeight: 190, overflow: "auto" }}>
+                      {savedLeadSegments.map(segment => {
+                        const segmentAudience = importedLeads.filter(lead => leadMatchesBulkTextCriteria(lead, segment));
+                        const segmentCategorization = categorizeForBulkSms(segmentAudience);
+                        const batchLabel = segment.batchId === "all"
+                          ? "All lists"
+                          : leadBatches.find(batch => batch.id === segment.batchId)?.campaign_source
+                            || leadBatches.find(batch => batch.id === segment.batchId)?.original_filename
+                            || "Saved list";
+                        return (
+                          <div
+                            key={segment.id}
+                            style={{
+                              border: activeLeadSegmentId === segment.id ? "1px solid var(--brass)" : "1px solid var(--fog)",
+                              borderRadius: 8,
+                              padding: 10,
+                              background: activeLeadSegmentId === segment.id ? "rgba(176,137,84,0.12)" : "var(--bone)",
+                              display: "flex",
+                              justifyContent: "space-between",
+                              gap: 10,
+                              alignItems: "center",
+                            }}
+                          >
+                            <button onClick={() => applyLeadSegment(segment)} style={{ background: "transparent", border: "none", padding: 0, textAlign: "left", cursor: "pointer", flex: 1 }}>
+                              <strong style={{ color: "var(--obsidian)", fontSize: 13 }}>{segment.name}</strong>
+                              <span style={{ display: "block", color: "var(--muted)", fontSize: 12, marginTop: 3 }}>
+                                {segment.county || "Any county"} · {IMPORT_STATUS_FILTERS.find(filter => filter.value === segment.status)?.label || "All"} · {batchLabel} · {segment.minScore ? `Score ${segment.minScore}+` : "Any score"}
+                              </span>
+                            </button>
+                            <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", justifyContent: "end" }}>
+                              <span style={hotPill}>{segmentCategorization.eligible.length} eligible</span>
+                              <span style={pill}>{segmentCategorization.excluded.length} excluded</span>
+                              <button onClick={() => deleteLeadSegment(segment.id)} style={{ ...secondaryButton, padding: "8px 10px", fontSize: 10 }}>Delete</button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                      {savedLeadSegments.length === 0 && (
+                        <p style={{ color: "var(--muted)", fontSize: 12, lineHeight: 1.45, margin: 0 }}>
+                          No saved segments yet. Set filters below, name the audience, then save it.
+                        </p>
+                      )}
                     </div>
                   </div>
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }} className="two-col">
