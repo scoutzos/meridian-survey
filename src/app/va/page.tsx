@@ -3359,7 +3359,7 @@ export default function VaPage() {
               </div>
             </div>
 
-            <div style={{ background: "var(--surface)", border: "1px solid var(--fog)", borderRadius: 10, display: "flex", gap: 4, flexWrap: "wrap", marginBottom: 12, padding: 4 }}>
+            <div style={{ borderBottom: "1px solid var(--fog)", display: "flex", flexWrap: "wrap", gap: 2, marginBottom: 14 }}>
               {LISTS_VIEWS.map(view => {
                 const active = listsView === view.value;
                 return (
@@ -3368,20 +3368,17 @@ export default function VaPage() {
                     type="button"
                     onClick={() => setListsView(view.value)}
                     style={{
-                      alignItems: "center",
                       background: active ? "var(--obsidian)" : "transparent",
-                      border: "1px solid transparent",
-                      borderRadius: 8,
-                      color: active ? "var(--bone)" : "var(--obsidian)",
+                      border: "none",
+                      borderRadius: "6px 6px 0 0",
+                      color: active ? "var(--bone)" : "var(--muted)",
                       cursor: "pointer",
-                      display: "inline-flex",
                       fontFamily: "var(--font-body)",
                       fontSize: 12,
-                      fontWeight: 700,
-                      gap: 8,
+                      fontWeight: active ? 700 : 600,
                       letterSpacing: "0.04em",
-                      minHeight: 38,
-                      padding: "8px 14px",
+                      minHeight: 32,
+                      padding: "8px 16px",
                     }}
                   >
                     {view.label}
@@ -3473,17 +3470,10 @@ export default function VaPage() {
                   <p style={{ ...eyebrowSmall, marginBottom: 0, color: "var(--obsidian)", fontSize: 13, letterSpacing: "0.04em", textTransform: "none", fontWeight: 800 }}>List Batches</p>
                   <button onClick={startNewImport} style={{ ...compactButton, background: "rgba(176,137,84,0.12)", borderColor: "rgba(176,137,84,0.45)", color: "var(--obsidian)", minHeight: 30, padding: "6px 10px" }}>Upload List</button>
                 </div>
-                <div style={{ color: "var(--muted)", display: "grid", fontSize: 10, fontWeight: 700, gridTemplateColumns: "minmax(0, 1.4fr) 0.9fr 0.7fr 0.6fr 0.7fr", gap: 6, letterSpacing: "0.08em", marginBottom: 6, padding: "0 4px", textTransform: "uppercase" }}>
-                  <span>Batch / Source</span>
-                  <span>County / State</span>
-                  <span>Uploaded</span>
-                  <span style={{ textAlign: "right" }}>Rows</span>
-                  <span style={{ textAlign: "right" }}>Textable</span>
-                </div>
-                <div style={{ display: "grid", gap: 6, maxHeight: 540, overflow: "auto", paddingRight: 2 }}>
+                <div style={{ display: "grid", gap: 8, maxHeight: 540, overflow: "auto", paddingRight: 2 }}>
                   {listBatchRows.slice(0, 8).map(({ batch, leads, textable, county, state }) => {
                     const active = selectedBatchId === batch.id;
-                    const countyLabel = county ? `${county}${state ? `, ${state}` : ""}` : (state || "—");
+                    const countyLabel = county ? `${county}${state ? `, ${state}` : ""}` : (state || null);
                     return (
                       <button
                         key={batch.id}
@@ -3493,22 +3483,25 @@ export default function VaPage() {
                           border: active ? "1px solid var(--brass)" : "1px solid var(--fog)",
                           borderRadius: 8,
                           cursor: "pointer",
-                          padding: "10px 10px 8px",
+                          padding: 10,
                           textAlign: "left",
                         }}
                       >
-                        <div style={{ alignItems: "center", display: "grid", gap: 6, gridTemplateColumns: "minmax(0, 1.4fr) 0.9fr 0.7fr 0.6fr 0.7fr" }}>
+                        <div style={{ alignItems: "start", display: "flex", gap: 8, justifyContent: "space-between" }}>
                           <div style={{ minWidth: 0 }}>
-                            <strong style={{ color: "var(--obsidian)", display: "block", fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{batch.campaign_source || batch.original_filename || "Imported list"}</strong>
-                            <span style={{ color: "var(--muted)", display: "block", fontSize: 10, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{batch.original_filename || batch.source_system}</span>
+                            <strong style={{ color: "var(--obsidian)", display: "block", fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{batch.campaign_source || batch.original_filename || "Imported list"}</strong>
+                            <span style={{ color: "var(--muted)", display: "block", fontSize: 11, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{batch.original_filename || batch.source_system}</span>
                           </div>
-                          <span style={{ color: "var(--ink)", fontSize: 11 }}>{countyLabel}</span>
-                          <span style={{ color: "var(--muted)", fontSize: 11 }}>{formatDate(batch.created_at)}</span>
-                          <span style={{ color: "var(--ink)", fontSize: 11, fontWeight: 700, textAlign: "right" }}>{(leads.length || batch.row_count || 0).toLocaleString()}</span>
-                          <span style={{ color: "var(--ink)", fontSize: 11, fontWeight: 700, textAlign: "right" }}>{textable}</span>
-                        </div>
-                        <div style={{ marginTop: 6 }}>
                           <span style={batch.status === "completed" ? goodPill : batch.status === "in-progress" ? hotPill : mutedPill}>{statusLabel(batch.status || "not-started")}</span>
+                        </div>
+                        <div style={{ alignItems: "center", color: "var(--muted)", display: "flex", flexWrap: "wrap", fontSize: 11, gap: 8, marginTop: 7 }}>
+                          {countyLabel && <span>{countyLabel}</span>}
+                          {countyLabel && <span style={{ color: "var(--fog)" }}>·</span>}
+                          <span>{formatDate(batch.created_at)}</span>
+                        </div>
+                        <div style={{ alignItems: "center", display: "flex", gap: 12, marginTop: 6 }}>
+                          <span style={{ color: "var(--ink)", fontSize: 11 }}><strong style={{ color: "var(--obsidian)", fontWeight: 700 }}>{(leads.length || batch.row_count || 0).toLocaleString()}</strong> <span style={{ color: "var(--muted)" }}>rows</span></span>
+                          <span style={{ color: "var(--ink)", fontSize: 11 }}><strong style={{ color: "var(--obsidian)", fontWeight: 700 }}>{textable}</strong> <span style={{ color: "var(--muted)" }}>textable</span></span>
                         </div>
                       </button>
                     );
@@ -3531,7 +3524,7 @@ export default function VaPage() {
                   </div>
                   {selectedBatch && <span style={hotPill}>{batchLeads.length} in selected batch</span>}
                 </div>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(5, minmax(110px, 1fr)) minmax(200px, 1.4fr)", gap: 8, marginBottom: 12 }} className="va-form-grid">
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(5, minmax(96px, 1fr)) minmax(240px, 2.4fr)", gap: 8, marginBottom: 12 }} className="va-form-grid">
                   <div>
                     <label style={{ ...miniLabel, display: "block", marginBottom: 4 }}>County</label>
                     <select value={countyFilter} onChange={e => { setCountyFilter(e.target.value); setPropertiesPage(1); }}>
@@ -3581,15 +3574,15 @@ export default function VaPage() {
                   <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, minWidth: 860 }}>
                     <thead>
                       <tr style={{ borderBottom: "1px solid var(--fog)", color: "var(--muted)", textAlign: "left" }}>
-                        <th style={th}></th>
-                        <th style={th}>APN</th>
+                        <th style={{ ...th, width: 28 }}></th>
+                        <th style={{ ...th, minWidth: 96, whiteSpace: "nowrap" }}>APN</th>
                         <th style={th}>Property Address</th>
                         <th style={th}>County</th>
                         <th style={th}>Acres</th>
                         <th style={th}>Score</th>
                         <th style={th}>Owner / Contact</th>
                         <th style={th}>Status</th>
-                        <th style={th}>Linked Deal</th>
+                        <th style={{ ...th, whiteSpace: "nowrap" }}>Linked Deal</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -3611,7 +3604,7 @@ export default function VaPage() {
                             }}
                           >
                             <td style={td}><input type="checkbox" checked={active} readOnly /></td>
-                            <td style={td}>{lead.parcel_id || "N/A"}</td>
+                            <td style={{ ...td, whiteSpace: "nowrap" }}>{lead.parcel_id || "N/A"}</td>
                             <td style={td}><strong style={{ color: "var(--obsidian)" }}>{lead.property_address || "No address"}</strong><br /><span style={{ color: "var(--muted)" }}>{addressLine2 || "—"}</span></td>
                             <td style={td}>{lead.county || "N/A"}</td>
                             <td style={td}>{lead.acreage ?? "N/A"}</td>
@@ -3652,7 +3645,7 @@ export default function VaPage() {
                 </div>
               </section>
 
-              <aside style={subPanel}>
+              <aside style={{ ...subPanel, alignSelf: "start", maxHeight: "calc(100vh - 120px)", overflowY: "auto", position: "sticky", top: 16 }}>
                 {!selectedImportedLead ? (
                   <p style={{ fontSize: 13, color: "var(--muted)", lineHeight: 1.5 }}>Select a property to see record details, contact eligibility, linked packet, and quick actions.</p>
                 ) : (() => {
@@ -5580,8 +5573,8 @@ function LeadPathCard({ label: text, detail, done, active }: { label: string; de
   );
 }
 
-function MiniStat({ label: text, value, sub, icon }: { label: string; value: string; sub?: string; icon?: React.ReactNode }) {
-  if (!sub && !icon) {
+function MiniStat({ label: text, value, sub }: { label: string; value: string; sub?: string }) {
+  if (!sub) {
     return (
       <div style={miniStat}>
         <span>{text}</span>
@@ -5590,26 +5583,10 @@ function MiniStat({ label: text, value, sub, icon }: { label: string; value: str
     );
   }
   return (
-    <div style={{ ...miniStat, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-      <div style={{ display: "grid", gap: 2 }}>
-        <strong style={{ color: "var(--obsidian)", fontFamily: DISPLAY_FONT, fontSize: 26, fontWeight: 500, lineHeight: 1 }}>{value}</strong>
-        <span style={{ color: "var(--obsidian)", fontSize: 12, fontWeight: 700 }}>{text}</span>
-        {sub && <span style={{ color: "var(--muted)", fontSize: 11 }}>{sub}</span>}
-      </div>
-      {icon && (
-        <span aria-hidden style={{
-          alignItems: "center",
-          background: "rgba(176,137,84,0.10)",
-          border: "1px solid rgba(176,137,84,0.30)",
-          borderRadius: 8,
-          color: "var(--brass)",
-          display: "inline-flex",
-          fontSize: 18,
-          height: 38,
-          justifyContent: "center",
-          width: 38,
-        }}>{icon}</span>
-      )}
+    <div style={{ ...miniStat, display: "grid", gap: 3, padding: 12 }}>
+      <strong style={{ color: "var(--obsidian)", fontFamily: DISPLAY_FONT, fontSize: 24, fontWeight: 500, lineHeight: 1 }}>{value}</strong>
+      <span style={{ color: "var(--obsidian)", fontSize: 12, fontWeight: 700 }}>{text}</span>
+      <span style={{ color: "var(--muted)", fontSize: 11 }}>{sub}</span>
     </div>
   );
 }
