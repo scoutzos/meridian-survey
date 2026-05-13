@@ -3353,14 +3353,7 @@ export default function VaPage() {
               <ShiftCard label="Campaign-ready" value={String(campaignReadyLeads.length)} />
             </div>
 
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 10, marginBottom: 14 }} className="number-grid">
-              <ContactActionCard
-                eyebrow="Bulk Text"
-                title="Build Campaign"
-                detail="Choose a saved segment, filter by list/location/property, review compliance, then send."
-                action="Open Builder"
-                onAction={() => openBulkTextWorkflow()}
-              />
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 10, marginBottom: 14 }} className="number-grid">
               <ContactActionCard
                 eyebrow="Callbacks"
                 title="Work Due Follow-ups"
