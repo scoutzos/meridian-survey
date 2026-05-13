@@ -3814,16 +3814,7 @@ export default function VaPage() {
                       </div>
                       <button onClick={clearLeadSegmentFilters} style={secondaryButton}>Clear Filters</button>
                     </div>
-                    <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", gap: 8, alignItems: "end" }} className="two-col">
-                      <label style={{ display: "grid", gap: 6, color: "var(--muted)", fontSize: 12, fontWeight: 800, textTransform: "uppercase", letterSpacing: 1.2 }}>
-                        Segment name
-                        <input value={leadSegmentName} onChange={event => setLeadSegmentName(event.target.value)} placeholder="Example: Fulton County score 60+" style={{ minHeight: 42 }} />
-                      </label>
-                      <button onClick={saveLeadSegment} style={primaryButton}>
-                        {activeLeadSegmentId ? "Update Segment" : "Save Segment"}
-                      </button>
-                    </div>
-                    <div style={{ display: "grid", gap: 8, marginTop: 10, maxHeight: 190, overflow: "auto" }}>
+                    <div style={{ display: "grid", gap: 8, maxHeight: 190, overflow: "auto" }}>
                       {savedLeadSegments.map(segment => {
                         const segmentAudience = importedLeads.filter(lead => leadMatchesBulkTextCriteria(lead, segment));
                         const segmentCategorization = categorizeForBulkSms(segmentAudience);
@@ -3972,6 +3963,29 @@ export default function VaPage() {
                     <MiniStat label="Considered" value={String(bulkTextCategorization.totalConsidered)} />
                     <MiniStat label="Eligible" value={String(bulkTextCategorization.eligible.length)} />
                     <MiniStat label="Send cap" value="500" />
+                  </div>
+                  <div style={{ border: "1px solid var(--brass)", borderRadius: 8, background: "rgba(176,137,84,0.10)", padding: 12, marginTop: 14 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "baseline", marginBottom: 10 }}>
+                      <div>
+                        <p style={eyebrowSmall}>Save This Segment</p>
+                        <p style={{ color: "var(--muted)", fontSize: 12, marginTop: 4 }}>
+                          Save after the filters and counts look right.
+                        </p>
+                      </div>
+                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                        <span style={pill}>{bulkTextCategorization.totalConsidered} matched</span>
+                        <span style={hotPill}>{bulkTextCategorization.eligible.length} eligible</span>
+                      </div>
+                    </div>
+                    <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", gap: 8, alignItems: "end" }} className="two-col">
+                      <label style={{ display: "grid", gap: 6, color: "var(--muted)", fontSize: 12, fontWeight: 800, textTransform: "uppercase", letterSpacing: 1.2 }}>
+                        Segment name
+                        <input value={leadSegmentName} onChange={event => setLeadSegmentName(event.target.value)} placeholder="Example: Fulton County score 60+" style={{ minHeight: 42 }} />
+                      </label>
+                      <button onClick={saveLeadSegment} style={primaryButton}>
+                        {activeLeadSegmentId ? "Update Segment" : "Save Segment"}
+                      </button>
+                    </div>
                   </div>
                 </section>
               )}
