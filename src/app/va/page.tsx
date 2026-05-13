@@ -886,6 +886,24 @@ export default function VaPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, editingBriefId, loading]);
 
+  useEffect(() => {
+    const handleGlobalCommsSent = (event: Event) => {
+      const detail = (event as CustomEvent<{ leadId?: string | null; body?: string }>).detail ?? {};
+      const lead = detail.leadId ? importedLeads.find(row => row.id === detail.leadId) ?? null : null;
+      const label = lead?.owner_name || lead?.property_address || lead?.parcel_id || "global comms contact";
+      const body = detail.body?.trim();
+      const line = `SMS sent to ${label}${body ? `: ${body}` : ""}`;
+      setBriefDraft(prev => ({
+        ...prev,
+        outreach_sent: (prev.outreach_sent ?? 0) + 1,
+        leads_updated: lead ? (prev.leads_updated ?? 0) + 1 : prev.leads_updated,
+        activities_completed: appendBriefText(prev.activities_completed, line),
+      }));
+    };
+    window.addEventListener("meridian-comms-sent", handleGlobalCommsSent);
+    return () => window.removeEventListener("meridian-comms-sent", handleGlobalCommsSent);
+  }, [importedLeads]);
+
   if (!user) return null;
 
   const leadLabel = (lead: ImportedLandLead) => lead.owner_name || lead.property_address || lead.parcel_id || "Selected lead";

@@ -623,6 +623,12 @@ export default function FloatingSmsWindow({
       setNewBody("");
       setShowNew(false);
       setStatus("SMS sent.");
+      window.dispatchEvent(new CustomEvent("meridian-comms-sent", {
+        detail: {
+          leadId: leadId ?? null,
+          body,
+        },
+      }));
       await onSent?.(leadId ?? null);
       if (leadId) setThreadEvents(await fetchCommunicationEvents({ leadId, limit: 50 }));
     } catch (error) {
