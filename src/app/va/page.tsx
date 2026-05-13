@@ -2315,7 +2315,7 @@ export default function VaPage() {
 
   return (
     <div className="va-root" style={{ maxWidth: 1680, margin: "0 auto", padding: "78px 20px 100px" }}>
-      {activeTab !== "today" && (
+      {activeTab !== "today" && activeTab !== "outreach" && (
         <OperatingHeader
           eyebrow={headerCopy[activeTab].eyebrow}
           title={headerCopy[activeTab].title}
