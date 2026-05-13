@@ -172,12 +172,12 @@ const TABS: Array<{ value: VaTab; label: string }> = [
   { value: "brief", label: "Daily Brief" },
 ];
 
-const LISTS_VIEWS: Array<{ value: ListsView; label: string; icon: string }> = [
-  { value: "batches", label: "Batches", icon: "📁" },
-  { value: "properties", label: "Properties", icon: "🏠" },
-  { value: "contacts", label: "Contacts", icon: "👥" },
-  { value: "segments", label: "Segments", icon: "🧭" },
-  { value: "campaigns", label: "Campaigns", icon: "📣" },
+const LISTS_VIEWS: Array<{ value: ListsView; label: string }> = [
+  { value: "batches", label: "Batches" },
+  { value: "properties", label: "Properties" },
+  { value: "contacts", label: "Contacts" },
+  { value: "segments", label: "Segments" },
+  { value: "campaigns", label: "Campaigns" },
 ];
 
 const IMPORT_STATUS_FILTERS = [
@@ -3355,10 +3355,7 @@ export default function VaPage() {
                 </p>
               </div>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                <button onClick={() => setMessage("List settings are coming next: default filters, columns, assignment rules, and segment permissions.")} style={{ ...secondaryButton, alignItems: "center", display: "inline-flex", gap: 8 }}>
-                  <span aria-hidden style={{ fontSize: 13 }}>⚙</span>
-                  Lists Settings
-                </button>
+                <button onClick={() => setMessage("List settings are coming next: default filters, columns, assignment rules, and segment permissions.")} style={secondaryButton}>Lists Settings</button>
               </div>
             </div>
 
@@ -3387,7 +3384,6 @@ export default function VaPage() {
                       padding: "8px 14px",
                     }}
                   >
-                    <span aria-hidden style={{ fontSize: 14, lineHeight: 1 }}>{view.icon}</span>
                     {view.label}
                   </button>
                 );
@@ -3395,11 +3391,11 @@ export default function VaPage() {
             </div>
 
             <div style={{ display: "grid", gridTemplateColumns: "repeat(5, minmax(0, 1fr))", gap: 10, marginBottom: 14 }} className="number-grid">
-              <MiniStat label="List Batches" value={String(listKpis.batches)} sub="Uploaded" icon="📁" />
-              <MiniStat label="Property Records" value={listKpis.properties.toLocaleString()} sub="Total imported" icon="🏠" />
-              <MiniStat label="Contacts" value={listKpis.contacts.toLocaleString()} sub="Unique owners" icon="👥" />
-              <MiniStat label="Textable" value={listKpis.textable.toLocaleString()} sub="With phone" icon="📞" />
-              <MiniStat label="Deal Packets" value={String(listKpis.packets)} sub="Created" icon="📦" />
+              <MiniStat label="List Batches" value={String(listKpis.batches)} sub="Uploaded" />
+              <MiniStat label="Property Records" value={listKpis.properties.toLocaleString()} sub="Total imported" />
+              <MiniStat label="Contacts" value={listKpis.contacts.toLocaleString()} sub="Unique owners" />
+              <MiniStat label="Textable" value={listKpis.textable.toLocaleString()} sub="With phone" />
+              <MiniStat label="Deal Packets" value={String(listKpis.packets)} sub="Created" />
             </div>
 
             {((importStep === "upload" && !importPreview) || (!importPreview && importedLeads.length === 0)) && (
@@ -3475,10 +3471,7 @@ export default function VaPage() {
               <aside style={subPanel}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: 10 }}>
                   <p style={{ ...eyebrowSmall, marginBottom: 0, color: "var(--obsidian)", fontSize: 13, letterSpacing: "0.04em", textTransform: "none", fontWeight: 800 }}>List Batches</p>
-                  <button onClick={startNewImport} style={{ ...compactButton, alignItems: "center", background: "rgba(176,137,84,0.12)", borderColor: "rgba(176,137,84,0.45)", color: "var(--obsidian)", display: "inline-flex", gap: 6, minHeight: 30, padding: "6px 10px" }}>
-                    <span aria-hidden style={{ fontSize: 12 }}>⬆</span>
-                    Upload List
-                  </button>
+                  <button onClick={startNewImport} style={{ ...compactButton, background: "rgba(176,137,84,0.12)", borderColor: "rgba(176,137,84,0.45)", color: "var(--obsidian)", minHeight: 30, padding: "6px 10px" }}>Upload List</button>
                 </div>
                 <div style={{ color: "var(--muted)", display: "grid", fontSize: 10, fontWeight: 700, gridTemplateColumns: "minmax(0, 1.4fr) 0.9fr 0.7fr 0.6fr 0.7fr", gap: 6, letterSpacing: "0.08em", marginBottom: 6, padding: "0 4px", textTransform: "uppercase" }}>
                   <span>Batch / Source</span>
@@ -3505,12 +3498,9 @@ export default function VaPage() {
                         }}
                       >
                         <div style={{ alignItems: "center", display: "grid", gap: 6, gridTemplateColumns: "minmax(0, 1.4fr) 0.9fr 0.7fr 0.6fr 0.7fr" }}>
-                          <div style={{ alignItems: "center", display: "flex", gap: 8, minWidth: 0 }}>
-                            <span aria-hidden style={{ color: "var(--brass)", fontSize: 14, lineHeight: 1 }}>📄</span>
-                            <div style={{ minWidth: 0 }}>
-                              <strong style={{ color: "var(--obsidian)", display: "block", fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{batch.campaign_source || batch.original_filename || "Imported list"}</strong>
-                              <span style={{ color: "var(--muted)", display: "block", fontSize: 10, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{batch.original_filename || batch.source_system}</span>
-                            </div>
+                          <div style={{ minWidth: 0 }}>
+                            <strong style={{ color: "var(--obsidian)", display: "block", fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{batch.campaign_source || batch.original_filename || "Imported list"}</strong>
+                            <span style={{ color: "var(--muted)", display: "block", fontSize: 10, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{batch.original_filename || batch.source_system}</span>
                           </div>
                           <span style={{ color: "var(--ink)", fontSize: 11 }}>{countyLabel}</span>
                           <span style={{ color: "var(--muted)", fontSize: 11 }}>{formatDate(batch.created_at)}</span>
@@ -3658,10 +3648,7 @@ export default function VaPage() {
                   </div>
                 </div>
                 <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 10 }}>
-                  <button onClick={() => setMessage("CSV export is next for this inventory table.")} style={{ ...compactButton, alignItems: "center", background: "rgba(176,137,84,0.12)", borderColor: "rgba(176,137,84,0.45)", color: "var(--obsidian)", display: "inline-flex", gap: 6 }}>
-                    <span aria-hidden style={{ fontSize: 12 }}>⬇</span>
-                    Export CSV
-                  </button>
+                  <button onClick={() => setMessage("CSV export is next for this inventory table.")} style={{ ...compactButton, background: "rgba(176,137,84,0.12)", borderColor: "rgba(176,137,84,0.45)", color: "var(--obsidian)" }}>Export CSV</button>
                 </div>
               </section>
 
@@ -3692,7 +3679,7 @@ export default function VaPage() {
                   const eligibilityRow = (label: string, value: string, ok: boolean) => (
                     <div style={{ alignItems: "center", display: "flex", justifyContent: "space-between", gap: 8 }}>
                       <span style={{ color: "var(--muted)", fontSize: 11, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase" }}>{label}</span>
-                      <span style={{ color: ok ? "#2e5a48" : "var(--obsidian)", fontSize: 12, fontWeight: 700 }}>{ok && <span aria-hidden style={{ marginRight: 4 }}>✓</span>}{value}</span>
+                      <span style={{ color: ok ? "#2e5a48" : "var(--obsidian)", fontSize: 12, fontWeight: 700 }}>{value}</span>
                     </div>
                   );
                   return (
@@ -3770,18 +3757,10 @@ export default function VaPage() {
                       <div>
                         <p style={{ ...miniLabel, color: "var(--muted)", marginBottom: 6 }}>Quick Actions</p>
                         <div style={{ display: "grid", gap: 8, gridTemplateColumns: "1fr 1fr" }}>
-                          <button onClick={() => router.push(`/lead/${lead.id}`)} style={{ ...compactButton, alignItems: "center", display: "inline-flex", gap: 6, justifyContent: "center" }}>
-                            <span aria-hidden>📄</span> Open Property Record
-                          </button>
-                          <button onClick={() => setListsView("contacts")} style={{ ...compactButton, alignItems: "center", display: "inline-flex", gap: 6, justifyContent: "center" }}>
-                            <span aria-hidden>👤</span> View Contact
-                          </button>
-                          <button onClick={() => loadImportedLead(lead, true)} style={{ ...compactButton, alignItems: "center", display: "inline-flex", gap: 6, justifyContent: "center" }}>
-                            <span aria-hidden>📦</span> {lead.deal_id ? "Open Packet" : "Create Packet"}
-                          </button>
-                          <button onClick={() => openBulkTextWorkflow(true)} style={{ ...compactButton, alignItems: "center", display: "inline-flex", gap: 6, justifyContent: "center" }}>
-                            <span aria-hidden>➕</span> Add to Segment
-                          </button>
+                          <button onClick={() => router.push(`/lead/${lead.id}`)} style={compactButton}>Open Property Record</button>
+                          <button onClick={() => setListsView("contacts")} style={compactButton}>View Contact</button>
+                          <button onClick={() => loadImportedLead(lead, true)} style={compactButton}>{lead.deal_id ? "Open Packet" : "Create Packet"}</button>
+                          <button onClick={() => openBulkTextWorkflow(true)} style={compactButton}>Add to Segment</button>
                         </div>
                       </div>
                     </div>
@@ -3803,7 +3782,7 @@ export default function VaPage() {
                     return (
                       <div key={segment.id} style={{ ...subPanel, padding: 12 }}>
                         <div style={{ alignItems: "center", display: "flex", justifyContent: "space-between", gap: 6 }}>
-                          <span aria-hidden style={{ color: "var(--brass)", fontSize: 14 }}>🧭</span>
+                          <p style={{ ...miniLabel, color: "var(--brass)", margin: 0 }}>Segment</p>
                           <button onClick={() => setMessage("Segment menu is coming next.")} style={{ background: "transparent", border: "none", color: "var(--muted)", cursor: "pointer", fontSize: 14, lineHeight: 1, padding: 2 }} aria-label="Segment menu">⋯</button>
                         </div>
                         <strong style={{ color: "var(--obsidian)", display: "block", fontSize: 13, marginTop: 4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{segment.name}</strong>
