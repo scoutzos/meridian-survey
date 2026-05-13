@@ -1608,7 +1608,7 @@ export default function VaPage() {
     today: {
       eyebrow: "Dashboard",
       title: "Sophie Dashboard",
-      subtitle: "Start the shift, see the next priority, then jump into calls, lists, packets, tasks, records, or the daily brief.",
+      subtitle: "Start the shift, then work the next priority from one clear queue.",
     },
     outreach: {
       eyebrow: "Contact Queue",
@@ -1829,7 +1829,7 @@ export default function VaPage() {
                 background: "linear-gradient(135deg, rgba(20,17,13,0.98), rgba(48,38,27,0.94))",
                 color: "var(--bone)",
                 display: "grid",
-                gridTemplateColumns: "minmax(220px, 0.9fr) minmax(0, 1.3fr) auto",
+                gridTemplateColumns: "minmax(260px, 1fr) minmax(240px, 0.55fr) auto",
                 gap: 18,
                 alignItems: "center",
                 padding: "16px 18px",
@@ -1840,34 +1840,40 @@ export default function VaPage() {
                     {`Good ${greetingForHour(new Date().getHours())}${user ? `, ${user.split(" ")[0]}` : ""}`}
                   </h2>
                   <p style={{ color: "rgba(247,242,232,0.72)", fontSize: 12, marginTop: 5 }}>
-                    {openShift ? `On shift ${formatDuration(liveShiftMinutes)}` : "Clock in to start tracking"} · {portalStats.briefSubmitted ? "Brief submitted" : "Brief open"}
+                    Work from the queue below. Calls and texts live in global comms.
                   </p>
                 </div>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 8 }} className="compact-shift-grid">
-                  <MiniStat label="Follow-ups" value={String(followUpsDue.length)} />
-                  <MiniStat label="Interested" value={String(interestedLeads.length)} />
-                  <MiniStat label="Tasks" value={String(openAssignedTasks.length)} />
-                  <MiniStat label="Packets" value={String(draftLeads.length)} />
+                <div style={{ ...subPanel, background: "rgba(247,242,232,0.08)", borderColor: "rgba(237,230,214,0.18)", padding: 12 }}>
+                  <p style={{ ...eyebrowSmall, color: "var(--brass)" }}>Shift status</p>
+                  <strong style={{ display: "block", color: "var(--bone)", fontSize: 22, lineHeight: 1.1, marginTop: 4 }}>
+                    {openShift ? formatDuration(liveShiftMinutes) : "Ready"}
+                  </strong>
+                  <span style={{ display: "block", color: "rgba(247,242,232,0.68)", fontSize: 12, marginTop: 4 }}>
+                    {openShift ? "Time is being tracked" : "Clock in before logging work"}
+                  </span>
                 </div>
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                  <button onClick={() => document.getElementById("va-work-queue")?.scrollIntoView({ behavior: "smooth", block: "start" })} style={{ ...secondaryButton, color: "var(--bone)", borderColor: "rgba(237,230,214,0.45)" }}>
+                    Start Work Queue
+                  </button>
                   <button onClick={openShift ? handleClockOut : handleClockIn} disabled={clockBusy} style={{ ...primaryButton, background: "var(--brass)", borderColor: "var(--brass)", color: "var(--obsidian)", opacity: clockBusy ? 0.65 : 1 }}>
                     {clockBusy ? "Saving..." : openShift ? "Clock Out" : "Clock In"}
                   </button>
-                  <button onClick={() => goToTab("brief")} style={{ ...secondaryButton, color: "var(--bone)", borderColor: "rgba(237,230,214,0.45)" }}>Daily Brief</button>
                 </div>
               </div>
             </section>
 
             <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1.55fr) minmax(330px, 0.85fr)", gap: 14 }} className="va-cockpit-grid">
-              <section style={panel}>
+              <section id="va-work-queue" style={panel}>
                 <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-end", flexWrap: "wrap", marginBottom: 12 }}>
                   <div>
                     <p style={eyebrowSmall}>Next best work</p>
                     <h2 style={{ ...sectionTitle, fontSize: 26 }}>Work this queue first</h2>
+                    <p style={{ color: "var(--muted)", fontSize: 13, lineHeight: 1.45, marginTop: 4 }}>
+                      Follow-ups, interested sellers, packet-ready deals, and assigned tasks are prioritized here.
+                    </p>
                   </div>
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                    <button onClick={() => goToTab("outreach")} style={secondaryButton}>Contact Queue</button>
-                    <button onClick={() => { setLeadFilter("new"); goToTab("lists"); }} style={secondaryButton}>Lists</button>
                     <button onClick={() => void reload(user)} style={secondaryButton}>Refresh</button>
                   </div>
                 </div>
@@ -1961,7 +1967,7 @@ export default function VaPage() {
                     <div style={{ ...subPanel, background: "var(--bone)" }}>
                       <p style={eyebrowSmall}>Clear</p>
                       <h3 style={{ ...sectionTitle, fontSize: 22, marginTop: 4 }}>No urgent queue waiting</h3>
-                      <p style={{ color: "var(--muted)", fontSize: 13, lineHeight: 1.5, marginTop: 6 }}>Import a list, review records, or use the daily brief to prep the next shift.</p>
+                      <p style={{ color: "var(--muted)", fontSize: 13, lineHeight: 1.5, marginTop: 6 }}>Open Lists for imported records or check Records when you need broader property history.</p>
                     </div>
                   )}
                 </div>
@@ -1969,42 +1975,13 @@ export default function VaPage() {
 
               <aside style={{ display: "grid", gap: 14, alignContent: "start" }}>
                 <section style={panel}>
-                  <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "baseline", marginBottom: 12 }}>
-                    <div>
-                      <p style={eyebrowSmall}>Live comms</p>
-                      <h3 style={{ ...sectionTitle, fontSize: 22 }}>Recent replies</h3>
-                    </div>
-                    <button onClick={() => goToTab("outreach")} style={inlineTextButton}>Open →</button>
-                  </div>
-                  <div style={{ display: "grid", gap: 8 }}>
-                    {recentInboundSms.slice(0, 4).map(event => (
-                      <button key={event.id} onClick={() => openIncomingSms(event)} style={miniInboxButton}>
-                        <strong>{event.contact_name || event.contact_number || event.from_number || "Seller"}</strong>
-                        <span>{(event.body || "Incoming message").slice(0, 82)}{(event.body || "").length > 82 ? "..." : ""}</span>
-                        <small>{formatDate(event.provider_created_at || event.created_at)}</small>
-                      </button>
-                    ))}
-                    {recentInboundSms.length === 0 && <p style={{ color: "var(--muted)", fontSize: 13, lineHeight: 1.45 }}>No seller replies are waiting right now.</p>}
-                  </div>
-                </section>
-
-                <section style={panel}>
-                  <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "baseline", marginBottom: 12 }}>
-                    <div>
-                      <p style={eyebrowSmall}>Follow-ups</p>
-                      <h3 style={{ ...sectionTitle, fontSize: 22 }}>Due now</h3>
-                    </div>
-                    <span style={followUpsDue.length ? hotPill : pill}>{followUpsDue.length}</span>
-                  </div>
-                  <div style={{ display: "grid", gap: 8 }}>
-                    {followUpsDue.slice(0, 4).map(deal => (
-                      <button key={deal.id} onClick={() => openDealBrief(deal)} style={miniInboxButton}>
-                        <strong>{deal.title}</strong>
-                        <span>{deal.seller_name || deal.seller_phone || "Seller follow-up"}</span>
-                        <small>Due {deal.next_follow_up_date}</small>
-                      </button>
-                    ))}
-                    {followUpsDue.length === 0 && <p style={{ color: "var(--muted)", fontSize: 13, lineHeight: 1.45 }}>No dated deal follow-ups are overdue.</p>}
+                  <p style={eyebrowSmall}>Today&apos;s progress</p>
+                  <h3 style={{ ...sectionTitle, fontSize: 22, marginTop: 4 }}>Shift activity</h3>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 12 }} className="compact-shift-grid">
+                    <MiniStat label="Calls" value={String(briefDraft.calls_completed ?? 0)} />
+                    <MiniStat label="Texts" value={String(briefDraft.outreach_sent ?? 0)} />
+                    <MiniStat label="Tasks Done" value={String(briefDraft.va_tasks_completed ?? completedAssignedTasksToday.length)} />
+                    <MiniStat label="Packets" value={String(briefDraft.deals_submitted ?? portalStats.submittedToday)} />
                   </div>
                 </section>
 
@@ -2012,7 +1989,7 @@ export default function VaPage() {
                   <p style={eyebrowSmall}>Daily brief</p>
                   <h3 style={{ ...sectionTitle, fontSize: 24, marginTop: 5 }}>{portalStats.briefSubmitted ? "Submitted" : "Open"}</h3>
                   <p style={{ color: "var(--muted)", fontSize: 13, lineHeight: 1.5, marginTop: 6 }}>
-                    Calls {briefDraft.calls_completed ?? 0} · Texts {briefDraft.outreach_sent ?? 0} · Tasks {briefDraft.va_tasks_completed ?? completedAssignedTasksToday.length}
+                    End-of-shift summary for members. Activity totals are pulled from today&apos;s work.
                   </p>
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 12 }}>
                     <button onClick={autofillBriefStats} style={secondaryButton}>Auto-fill</button>
@@ -3694,18 +3671,6 @@ const secondaryButton: React.CSSProperties = {
   background: "transparent",
   color: "var(--obsidian)",
   border: "1px solid var(--fog)",
-};
-
-const inlineTextButton: React.CSSProperties = {
-  background: "transparent",
-  border: "none",
-  color: "var(--brass)",
-  cursor: "pointer",
-  fontSize: 10,
-  fontWeight: 900,
-  letterSpacing: "0.14em",
-  textTransform: "uppercase",
-  padding: 0,
 };
 
 const workItemCard: React.CSSProperties = {
