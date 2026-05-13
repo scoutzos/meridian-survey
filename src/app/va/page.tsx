@@ -847,7 +847,7 @@ export default function VaPage() {
   const [unmatchedSms, setUnmatchedSms] = useState<CommunicationEvent[]>([]);
   const [recentInboundSms, setRecentInboundSms] = useState<CommunicationEvent[]>([]);
   const [importPreview, setImportPreview] = useState<LandLeadImportPreview | null>(null);
-  const [importStep, setImportStep] = useState<ImportStep>("upload");
+  const [importStep, setImportStep] = useState<ImportStep>("work");
   const [importStage, setImportStage] = useState<ImportStage>("idle");
   const [leadSearch, setLeadSearch] = useState("");
   const [leadFilter, setLeadFilter] = useState<ImportStatusFilter>("all");
@@ -3327,7 +3327,7 @@ export default function VaPage() {
               </div>
             </div>
 
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
               {LISTS_VIEWS.map(view => {
                 const active = listsView === view.value;
                 const count = view.value === "batches" ? listKpis.batches
@@ -3345,7 +3345,9 @@ export default function VaPage() {
                       background: active ? "var(--obsidian)" : "var(--surface)",
                       borderColor: active ? "var(--obsidian)" : "var(--fog)",
                       color: active ? "var(--bone)" : "var(--obsidian)",
-                      minHeight: 38,
+                      fontSize: 10,
+                      minHeight: 34,
+                      padding: "8px 11px",
                     }}
                   >
                     {view.label}
@@ -3363,7 +3365,15 @@ export default function VaPage() {
               })}
             </div>
 
-            {(importStep === "upload" || (!importPreview && importedLeads.length === 0)) && (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(5, minmax(0, 1fr))", gap: 8, marginBottom: 12 }} className="number-grid">
+              <MiniStat label="List Batches" value={String(listKpis.batches)} />
+              <MiniStat label="Property Records" value={String(listKpis.properties)} />
+              <MiniStat label="Contacts" value={String(listKpis.contacts)} />
+              <MiniStat label="Textable" value={String(listKpis.textable)} />
+              <MiniStat label="Deal Packets" value={String(listKpis.packets)} />
+            </div>
+
+            {((importStep === "upload" && !importPreview) || (!importPreview && importedLeads.length === 0)) && (
               <div id="va-list-upload" style={{ ...subPanel, marginBottom: 12, borderColor: "var(--brass)", background: "rgba(176,137,84,0.08)" }}>
                 <div style={{ display: "grid", gridTemplateColumns: "240px minmax(0, 1fr)", gap: 14, alignItems: "stretch" }} className="two-col">
                   <button type="button" onClick={() => leadCsvInputRef.current?.click()} disabled={importing} style={{
