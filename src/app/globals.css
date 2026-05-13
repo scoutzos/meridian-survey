@@ -194,6 +194,11 @@ button {
   gap: 10px;
 }
 
+.crm-top-bar-contact {
+  padding: 0 18px;
+  gap: 8px;
+}
+
 .va-top-tabs {
   margin-right: auto;
   min-width: 0;
@@ -203,6 +208,11 @@ button {
   gap: 6px;
   overflow-x: auto;
   scrollbar-width: none;
+}
+
+.va-contact-tabs {
+  flex: 0 1 auto;
+  max-width: 46%;
 }
 
 .va-top-tabs::-webkit-scrollbar {
@@ -256,6 +266,41 @@ button {
 .va-top-tab-active strong {
   background: rgba(237,230,214,0.14);
   color: var(--brass);
+}
+
+.va-contact-search {
+  height: 34px;
+  flex: 1 1 280px;
+  max-width: 390px;
+  min-width: 220px;
+  border: 1px solid rgba(176,137,84,0.34);
+  border-radius: 7px;
+  background: rgba(255,252,245,0.82);
+  color: var(--ink);
+  padding: 0 12px;
+  font-family: var(--font-body);
+  font-size: 12px;
+}
+
+.va-top-utility {
+  height: 34px;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(176,137,84,0.32);
+  border-radius: 7px;
+  background: rgba(255,252,245,0.72);
+  color: var(--obsidian);
+  padding: 0 12px;
+  font-family: var(--font-body);
+  font-size: 11px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.va-top-utility:first-of-type {
+  color: #246b35;
 }
 
 .crm-top-bar-va .va-top-create {

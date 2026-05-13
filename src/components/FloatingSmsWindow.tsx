@@ -534,8 +534,30 @@ export default function FloatingSmsWindow({
     };
 
     window.addEventListener("meridian-open-comms-thread", handleOpenThread);
-    return () => window.removeEventListener("meridian-open-comms-thread", handleOpenThread);
-  }, [selectThread, threads, user]);
+    const handleOpenGlobal = () => {
+      setOpen(true);
+      setMinimized(false);
+      setShowNew(false);
+      try {
+        localStorage.setItem(windowStateStorageKey(user), JSON.stringify({ open: true, minimized: false }));
+      } catch {
+        // Keep the event-driven open behavior even when local storage is unavailable.
+      }
+    };
+    const handleGoOnline = () => {
+      setOpen(true);
+      setMinimized(false);
+      void goOnline();
+    };
+
+    window.addEventListener("meridian-open-global-comms", handleOpenGlobal);
+    window.addEventListener("meridian-comms-go-online", handleGoOnline);
+    return () => {
+      window.removeEventListener("meridian-open-comms-thread", handleOpenThread);
+      window.removeEventListener("meridian-open-global-comms", handleOpenGlobal);
+      window.removeEventListener("meridian-comms-go-online", handleGoOnline);
+    };
+  }, [goOnline, selectThread, threads, user]);
 
   useEffect(() => {
     if (!selectedThread) {

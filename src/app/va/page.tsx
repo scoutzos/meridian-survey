@@ -161,7 +161,7 @@ const DISPOSITION_STATUSES: Array<{ value: DispositionStatus; label: string }> =
 ];
 
 type VaTab = "today" | "outreach" | "lists" | "packet" | "brief";
-type ContactQueueMode = "inbox" | "callbacks" | "campaigns" | "relationships";
+type ContactQueueMode = "inbox" | "callbacks" | "campaigns" | "unmatched" | "relationships" | "recommended";
 
 const TABS: Array<{ value: VaTab; label: string }> = [
   { value: "today", label: "Dashboard" },
@@ -169,13 +169,6 @@ const TABS: Array<{ value: VaTab; label: string }> = [
   { value: "lists", label: "Lists" },
   { value: "packet", label: "Packets" },
   { value: "brief", label: "Daily Brief" },
-];
-
-const CONTACT_QUEUE_MODES: Array<{ value: ContactQueueMode; label: string; detail: string }> = [
-  { value: "inbox", label: "Inbox", detail: "Replies, missed calls, voicemail, and contacts that need matching" },
-  { value: "callbacks", label: "Callbacks", detail: "Scheduled follow-ups due now" },
-  { value: "campaigns", label: "Campaigns", detail: "Bulk text, campaign audiences, and campaign replies" },
-  { value: "relationships", label: "Relationships", detail: "Searchable contact directory across relationship types" },
 ];
 
 const IMPORT_STATUS_FILTERS = [
@@ -1166,15 +1159,17 @@ export default function VaPage() {
     if (contactQueueMode === "callbacks") return leadFollowUpsDue.slice(0, 25);
     if (contactQueueMode === "campaigns") return campaignReadyLeads.slice(0, 25);
     if (contactQueueMode === "relationships") return filteredImportedLeads.slice(0, 25);
+    if (contactQueueMode === "recommended") return workdeskLeadRows;
     return [...interestedLeads, ...leadFollowUpsDue, ...workdeskLeadRows].filter((lead, index, rows) => rows.findIndex(item => item.id === lead.id) === index).slice(0, 25);
   }, [campaignReadyLeads, contactQueueMode, filteredImportedLeads, interestedLeads, leadFollowUpsDue, workdeskLeadRows]);
   const contactQueueModeCounts = useMemo<Record<ContactQueueMode, number>>(() => ({
     inbox: recentInboundSms.length + unmatchedSms.length + interestedLeads.length,
     callbacks: leadFollowUpsDue.length,
     campaigns: campaignReadyLeads.length,
+    unmatched: unmatchedSms.length,
     relationships: filteredImportedLeads.length,
-  }), [campaignReadyLeads.length, filteredImportedLeads.length, interestedLeads.length, leadFollowUpsDue.length, recentInboundSms.length, unmatchedSms.length]);
-  const contactQueueTitle = CONTACT_QUEUE_MODES.find(mode => mode.value === contactQueueMode)?.label ?? "Inbox";
+    recommended: workdeskLeadRows.length,
+  }), [campaignReadyLeads.length, filteredImportedLeads.length, interestedLeads.length, leadFollowUpsDue.length, recentInboundSms.length, unmatchedSms.length, workdeskLeadRows.length]);
   const importStats = useMemo(() => ({
     newRows: importedLeads.filter(lead => lead.status === "new").length,
     contacted: importedLeads.filter(lead => lead.status === "contacted").length,
@@ -1199,6 +1194,29 @@ export default function VaPage() {
   useEffect(() => {
     window.dispatchEvent(new CustomEvent("meridian-va-tab-counts", { detail: tabCounts }));
   }, [tabCounts]);
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent("meridian-contact-queue-state", {
+      detail: { active: contactQueueMode, counts: contactQueueModeCounts },
+    }));
+  }, [contactQueueMode, contactQueueModeCounts]);
+  useEffect(() => {
+    const handleMode = (event: Event) => {
+      const detail = (event as CustomEvent<ContactQueueMode>).detail;
+      if (detail) setContactQueueMode(detail);
+    };
+    const handleSearch = (event: Event) => {
+      setLeadSearch((event as CustomEvent<string>).detail || "");
+    };
+    const handleBulkText = () => openBulkTextWorkflow();
+    window.addEventListener("meridian-contact-queue-mode", handleMode);
+    window.addEventListener("meridian-contact-queue-search", handleSearch);
+    window.addEventListener("meridian-contact-queue-bulk-text", handleBulkText);
+    return () => {
+      window.removeEventListener("meridian-contact-queue-mode", handleMode);
+      window.removeEventListener("meridian-contact-queue-search", handleSearch);
+      window.removeEventListener("meridian-contact-queue-bulk-text", handleBulkText);
+    };
+  });
   const readinessItems = useMemo(() => [
     { label: "Address or parcel", done: !!(liveInput.address || liveInput.parcel_id) },
     { label: "Contact", done: !!(liveInput.seller_name || liveInput.seller_phone) },
@@ -3330,59 +3348,23 @@ export default function VaPage() {
           <section style={panel}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12, flexWrap: "wrap", marginBottom: 12 }}>
               <div>
-                <p style={eyebrowSmall}>Contact Queue</p>
-                <h2 style={sectionTitle}>Relationship conversations and follow-ups</h2>
+                <h2 style={{ ...sectionTitle, fontSize: 34 }}>Contact Queue</h2>
                 <p style={{ color: "var(--muted)", fontSize: 13, lineHeight: 1.5, marginTop: 4 }}>
-                  Pick the queue, work the next contact, and keep every reply, callback, text, call, and outcome tied to the record.
+                  Work inbound replies, callbacks, campaigns, and unmatched relationships from one place.
                 </p>
               </div>
               <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-                <span style={(leadFollowUpsDue.length || recentInboundSms.length || interestedLeads.length) ? hotPill : pill}>
-                  {leadFollowUpsDue.length + recentInboundSms.length + interestedLeads.length} needs review
-                </span>
-                <button onClick={() => void reload(user)} style={secondaryButton}>Refresh</button>
-                <button onClick={() => openBulkTextWorkflow()} style={primaryButton}>
-                  Bulk Text
-                </button>
+                <button onClick={() => void reload(user)} style={secondaryButton}>Queue Settings</button>
               </div>
-            </div>
-
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 14 }}>
-              {CONTACT_QUEUE_MODES.map(mode => (
-                <button
-                  key={mode.value}
-                  type="button"
-                  onClick={() => setContactQueueMode(mode.value)}
-                  style={{
-                    ...(contactQueueMode === mode.value ? primaryButton : secondaryButton),
-                    minHeight: 38,
-                    padding: "8px 11px",
-                    display: "inline-flex",
-                    gap: 8,
-                    alignItems: "center",
-                  }}
-                  title={mode.detail}
-                >
-                  {mode.label}
-                  <span style={contactQueueMode === mode.value ? { ...pill, borderColor: "rgba(255,255,255,0.28)", color: "var(--bone)" } : pill}>
-                    {contactQueueModeCounts[mode.value]}
-                  </span>
-                </button>
-              ))}
             </div>
 
             <div style={{ display: "grid", gridTemplateColumns: "minmax(310px, 0.72fr) minmax(480px, 1.28fr) minmax(300px, 0.82fr)", gap: 14 }} className="lead-inbox-grid">
               <section style={subPanel}>
                 <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", marginBottom: 10 }}>
                   <div>
-                    <p style={eyebrowSmall}>{contactQueueTitle} Queue</p>
-                    <h3 style={{ ...sectionTitle, fontSize: 21 }}>Worklist</h3>
+                    <p style={{ color: "var(--muted)", fontSize: 12, margin: 0 }}>Sort: Newest</p>
                   </div>
-                  <span style={hotPill}>{contactQueueModeCounts[contactQueueMode]} open</span>
-                </div>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 8, marginBottom: 10 }}>
-                  <input value={leadSearch} onChange={event => setLeadSearch(event.target.value)} placeholder="Search contacts, phones, records..." />
-                  <button type="button" onClick={() => setLeadSearch("")} style={secondaryButton}>Clear</button>
+                  <button type="button" onClick={() => setLeadSearch("")} style={secondaryButton}>Filters</button>
                 </div>
                 <div style={{ display: "grid", gap: 8, maxHeight: 720, overflow: "auto", paddingRight: 2 }}>
                   {contactQueueMode === "inbox" && recentInboundSms.slice(0, 25).map(event => (
@@ -3421,13 +3403,27 @@ export default function VaPage() {
                       <span style={{ ...hotPill, marginTop: 8 }}>Needs matching</span>
                     </button>
                   ))}
-                  {contactQueueMode !== "inbox" && contactQueueRows.map(lead => {
+                  {contactQueueMode === "unmatched" && unmatchedSms.slice(0, 25).map(event => (
+                    <button key={event.id} onClick={() => createLeadDraftFromSms(event)} style={{ ...contactQueueCard, background: "rgba(176,137,84,0.12)", borderColor: "var(--brass)" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "start" }}>
+                        <div>
+                          <strong style={{ color: "var(--obsidian)", fontSize: 14 }}>{event.contact_name || event.contact_number || event.from_number || "Unknown contact"}</strong>
+                          <p style={{ color: "var(--muted)", fontSize: 12, marginTop: 3 }}>{event.contact_number || event.from_number || "No phone"} · {formatDate(event.created_at)}</p>
+                        </div>
+                        <span style={hotPill}>Needs matching</span>
+                      </div>
+                      <p style={{ color: "var(--ink)", fontSize: 12, lineHeight: 1.45, marginTop: 8 }}>{event.body || event.status || "Inbound message"}</p>
+                    </button>
+                  ))}
+                  {contactQueueMode !== "inbox" && contactQueueMode !== "unmatched" && contactQueueRows.map(lead => {
                     const active = selectedImportedLeadId === lead.id;
                     const action = sellerActionState(lead);
                     const reason = contactQueueMode === "callbacks"
                       ? `Callback due ${lead.next_follow_up_date || "today"}`
                       : contactQueueMode === "campaigns"
                         ? "Eligible for compliant outreach"
+                        : contactQueueMode === "recommended"
+                          ? action.primary
                         : lead.status === "interested"
                           ? "Interested contact"
                           : action.primary;
@@ -3459,7 +3455,8 @@ export default function VaPage() {
                     );
                   })}
                   {contactQueueMode === "inbox" && recentInboundSms.length === 0 && unmatchedSms.length === 0 && <p style={{ color: "var(--muted)", fontSize: 13 }}>No replies, missed calls, voicemails, or unmatched contacts are waiting.</p>}
-                  {contactQueueMode !== "inbox" && contactQueueRows.length === 0 && <p style={{ color: "var(--muted)", fontSize: 13 }}>No contacts in this queue yet.</p>}
+                  {contactQueueMode === "unmatched" && unmatchedSms.length === 0 && <p style={{ color: "var(--muted)", fontSize: 13 }}>No unmatched contacts are waiting.</p>}
+                  {contactQueueMode !== "inbox" && contactQueueMode !== "unmatched" && contactQueueRows.length === 0 && <p style={{ color: "var(--muted)", fontSize: 13 }}>No contacts in this queue yet.</p>}
                 </div>
               </section>
 

@@ -35,6 +35,15 @@ const vaWorkspaceTabs = [
   { href: "/va?tab=brief", tab: "brief", label: "Daily Brief" },
 ];
 
+const contactQueueTabs = [
+  { mode: "inbox", label: "Inbox" },
+  { mode: "callbacks", label: "Callbacks" },
+  { mode: "campaigns", label: "Campaigns" },
+  { mode: "unmatched", label: "Unmatched" },
+  { mode: "relationships", label: "Relationships" },
+  { mode: "recommended", label: "Recommended Outbound" },
+];
+
 const crmCreateButton: CSSProperties = {
   border: "1px solid var(--brass)",
   background: "var(--brass)",
@@ -66,6 +75,8 @@ export default function NavBar() {
   const [crmView, setCrmView] = useState<string | null>(null);
   const [vaTab, setVaTab] = useState<string | null>(null);
   const [vaTabCounts, setVaTabCounts] = useState<Record<string, number>>({});
+  const [contactQueueMode, setContactQueueMode] = useState("inbox");
+  const [contactQueueCounts, setContactQueueCounts] = useState<Record<string, number>>({});
   const [moreOpen, setMoreOpen] = useState(false);
 
   useEffect(() => {
@@ -98,6 +109,16 @@ export default function NavBar() {
     };
     window.addEventListener("meridian-va-tab", handleVaTab);
     return () => window.removeEventListener("meridian-va-tab", handleVaTab);
+  }, []);
+
+  useEffect(() => {
+    const handleContactQueueState = (event: Event) => {
+      const detail = (event as CustomEvent<{ active?: string; counts?: Record<string, number> }>).detail;
+      if (detail?.active) setContactQueueMode(detail.active);
+      if (detail?.counts) setContactQueueCounts(detail.counts);
+    };
+    window.addEventListener("meridian-contact-queue-state", handleContactQueueState);
+    return () => window.removeEventListener("meridian-contact-queue-state", handleContactQueueState);
   }, []);
 
   const shellRoutes = user && isVaUser(user) ? [...crmRoutes, "/actions"] : crmRoutes;
@@ -207,8 +228,29 @@ export default function NavBar() {
             </button>
           </div>
         </aside>
-        <nav className={`crm-top-bar ${isVaUser(user) && pathname === "/va" ? "crm-top-bar-va" : ""}`}>
-          {isVaUser(user) && pathname === "/va" && (
+        <nav className={`crm-top-bar ${isVaUser(user) && pathname === "/va" ? "crm-top-bar-va" : ""} ${isVaUser(user) && pathname === "/va" && vaTab === "outreach" ? "crm-top-bar-contact" : ""}`}>
+          {isVaUser(user) && pathname === "/va" && vaTab === "outreach" && (
+            <div className="va-top-tabs va-contact-tabs" aria-label="Contact queue navigation">
+              {contactQueueTabs.map(tab => {
+                const active = contactQueueMode === tab.mode;
+                return (
+                  <button
+                    key={tab.mode}
+                    type="button"
+                    onClick={() => {
+                      setContactQueueMode(tab.mode);
+                      window.dispatchEvent(new CustomEvent("meridian-contact-queue-mode", { detail: tab.mode }));
+                    }}
+                    className={active ? "va-top-tab va-top-tab-active" : "va-top-tab"}
+                  >
+                    <span>{tab.label}</span>
+                    <strong>{contactQueueCounts[tab.mode] ?? 0}</strong>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+          {isVaUser(user) && pathname === "/va" && vaTab !== "outreach" && (
             <div className="va-top-tabs" aria-label="VA workspace navigation">
               {vaWorkspaceTabs.map(tab => {
                 const active = vaTab === tab.tab || (!vaTab && tab.tab === "today");
@@ -231,8 +273,25 @@ export default function NavBar() {
               })}
             </div>
           )}
+          {isVaUser(user) && pathname === "/va" && vaTab === "outreach" && (
+            <input
+              aria-label="Search contact queue"
+              className="va-contact-search"
+              placeholder="Search contacts, notes, records..."
+              onChange={event => window.dispatchEvent(new CustomEvent("meridian-contact-queue-search", { detail: event.target.value }))}
+            />
+          )}
           {!isVaUser(user) && <button onClick={() => router.push("/dashboard")} style={crmPortalButton}>Member Portal</button>}
-          <button className={isVaUser(user) && pathname === "/va" ? "va-top-create" : undefined} onClick={() => router.push(isVaUser(user) ? "/va?tab=packet" : "/va")} style={crmCreateButton}>{isVaUser(user) ? "+ Deal Brief" : "+ Create"}</button>
+          {isVaUser(user) && pathname === "/va" && vaTab === "outreach" && (
+            <>
+              <button className="va-top-utility" onClick={() => window.dispatchEvent(new CustomEvent("meridian-comms-go-online"))}>Phone Online</button>
+              <button className="va-top-utility" onClick={() => window.dispatchEvent(new CustomEvent("meridian-open-global-comms"))}>Dial Number</button>
+              <button className="va-top-utility" onClick={() => window.dispatchEvent(new CustomEvent("meridian-contact-queue-bulk-text"))}>Bulk Text</button>
+            </>
+          )}
+          {!(isVaUser(user) && pathname === "/va" && vaTab === "outreach") && (
+            <button className={isVaUser(user) && pathname === "/va" ? "va-top-create" : undefined} onClick={() => router.push(isVaUser(user) ? "/va?tab=packet" : "/va")} style={crmCreateButton}>{isVaUser(user) ? "+ Deal Brief" : "+ Create"}</button>
+          )}
           <span className={isVaUser(user) && pathname === "/va" ? "va-top-dot" : undefined} style={{ color: "var(--fog)", fontSize: 12 }}>●</span>
           <div className={isVaUser(user) && pathname === "/va" ? "va-top-user" : undefined} style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <span style={{ display: "grid", placeItems: "center", width: 28, height: 28, borderRadius: 999, background: "var(--obsidian)", color: "var(--bone)", fontSize: 11 }}>{user.split(/\s+/).map(part => part[0]).join("").slice(0, 2)}</span>
