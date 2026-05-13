@@ -161,7 +161,7 @@ const DISPOSITION_STATUSES: Array<{ value: DispositionStatus; label: string }> =
 ];
 
 type VaTab = "today" | "outreach" | "lists" | "packet" | "brief";
-type ContactQueueMode = "priority" | "replies" | "callbacks" | "interested" | "unmatched" | "campaigns";
+type ContactQueueMode = "inbox" | "callbacks" | "campaigns" | "relationships";
 
 const TABS: Array<{ value: VaTab; label: string }> = [
   { value: "today", label: "Dashboard" },
@@ -172,12 +172,10 @@ const TABS: Array<{ value: VaTab; label: string }> = [
 ];
 
 const CONTACT_QUEUE_MODES: Array<{ value: ContactQueueMode; label: string; detail: string }> = [
-  { value: "priority", label: "Priority", detail: "Best next work" },
-  { value: "replies", label: "Replies", detail: "Inbound responses" },
-  { value: "callbacks", label: "Callbacks", detail: "Due follow-ups" },
-  { value: "interested", label: "Interested", detail: "Ready to qualify" },
-  { value: "unmatched", label: "Unmatched", detail: "Needs linking" },
-  { value: "campaigns", label: "Campaign-ready", detail: "Eligible audience" },
+  { value: "inbox", label: "Inbox", detail: "Replies, missed calls, voicemail, and contacts that need matching" },
+  { value: "callbacks", label: "Callbacks", detail: "Scheduled follow-ups due now" },
+  { value: "campaigns", label: "Campaigns", detail: "Bulk text, campaign audiences, and campaign replies" },
+  { value: "relationships", label: "Relationships", detail: "Searchable contact directory across relationship types" },
 ];
 
 const IMPORT_STATUS_FILTERS = [
@@ -834,7 +832,7 @@ export default function VaPage() {
   const [smsDraft, setSmsDraft] = useState("");
   const [bulkTextModalOpen, setBulkTextModalOpen] = useState(false);
   const [bulkTextStep, setBulkTextStep] = useState<BulkTextStep>("audience");
-  const [contactQueueMode, setContactQueueMode] = useState<ContactQueueMode>("priority");
+  const [contactQueueMode, setContactQueueMode] = useState<ContactQueueMode>("inbox");
   const [savedLeadSegments, setSavedLeadSegments] = useState<SavedLeadSegment[]>([]);
   const [activeLeadSegmentId, setActiveLeadSegmentId] = useState<string | null>(null);
   const [leadSegmentName, setLeadSegmentName] = useState("");
@@ -1166,19 +1164,17 @@ export default function VaPage() {
   const campaignReadyLeads = useMemo(() => categorizeForBulkSms(importedLeads).eligible, [importedLeads]);
   const contactQueueRows = useMemo(() => {
     if (contactQueueMode === "callbacks") return leadFollowUpsDue.slice(0, 25);
-    if (contactQueueMode === "interested") return interestedLeads.slice(0, 25);
     if (contactQueueMode === "campaigns") return campaignReadyLeads.slice(0, 25);
-    return workdeskLeadRows;
-  }, [campaignReadyLeads, contactQueueMode, interestedLeads, leadFollowUpsDue, workdeskLeadRows]);
+    if (contactQueueMode === "relationships") return filteredImportedLeads.slice(0, 25);
+    return [...interestedLeads, ...leadFollowUpsDue, ...workdeskLeadRows].filter((lead, index, rows) => rows.findIndex(item => item.id === lead.id) === index).slice(0, 25);
+  }, [campaignReadyLeads, contactQueueMode, filteredImportedLeads, interestedLeads, leadFollowUpsDue, workdeskLeadRows]);
   const contactQueueModeCounts = useMemo<Record<ContactQueueMode, number>>(() => ({
-    priority: workdeskLeadRows.length,
-    replies: recentInboundSms.length,
+    inbox: recentInboundSms.length + unmatchedSms.length + interestedLeads.length,
     callbacks: leadFollowUpsDue.length,
-    interested: interestedLeads.length,
-    unmatched: unmatchedSms.length,
     campaigns: campaignReadyLeads.length,
-  }), [campaignReadyLeads.length, interestedLeads.length, leadFollowUpsDue.length, recentInboundSms.length, unmatchedSms.length, workdeskLeadRows.length]);
-  const contactQueueTitle = CONTACT_QUEUE_MODES.find(mode => mode.value === contactQueueMode)?.label ?? "Priority";
+    relationships: filteredImportedLeads.length,
+  }), [campaignReadyLeads.length, filteredImportedLeads.length, interestedLeads.length, leadFollowUpsDue.length, recentInboundSms.length, unmatchedSms.length]);
+  const contactQueueTitle = CONTACT_QUEUE_MODES.find(mode => mode.value === contactQueueMode)?.label ?? "Inbox";
   const importStats = useMemo(() => ({
     newRows: importedLeads.filter(lead => lead.status === "new").length,
     contacted: importedLeads.filter(lead => lead.status === "contacted").length,
@@ -3375,17 +3371,21 @@ export default function VaPage() {
               ))}
             </div>
 
-            <div style={{ display: "grid", gridTemplateColumns: "minmax(360px, 0.9fr) minmax(420px, 1.1fr)", gap: 14 }} className="lead-inbox-grid">
+            <div style={{ display: "grid", gridTemplateColumns: "minmax(310px, 0.72fr) minmax(480px, 1.28fr) minmax(300px, 0.82fr)", gap: 14 }} className="lead-inbox-grid">
               <section style={subPanel}>
-                <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", marginBottom: 12 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", marginBottom: 10 }}>
                   <div>
                     <p style={eyebrowSmall}>{contactQueueTitle} Queue</p>
-                    <h3 style={{ ...sectionTitle, fontSize: 22 }}>{contactQueueTitle} work</h3>
+                    <h3 style={{ ...sectionTitle, fontSize: 21 }}>Worklist</h3>
                   </div>
                   <span style={hotPill}>{contactQueueModeCounts[contactQueueMode]} open</span>
                 </div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 8, marginBottom: 10 }}>
+                  <input value={leadSearch} onChange={event => setLeadSearch(event.target.value)} placeholder="Search contacts, phones, records..." />
+                  <button type="button" onClick={() => setLeadSearch("")} style={secondaryButton}>Clear</button>
+                </div>
                 <div style={{ display: "grid", gap: 8, maxHeight: 720, overflow: "auto", paddingRight: 2 }}>
-                  {contactQueueMode === "replies" && recentInboundSms.slice(0, 25).map(event => (
+                  {contactQueueMode === "inbox" && recentInboundSms.slice(0, 25).map(event => (
                     <button
                       key={event.id}
                       onClick={() => openIncomingSms(event)}
@@ -3406,7 +3406,7 @@ export default function VaPage() {
                           </p>
                         </div>
                         <span style={event.matched_lead_id || event.matched_deal_id ? pill : hotPill}>
-                          {event.matched_deal_id ? "Deal" : event.matched_lead_id ? "Lead" : "Unmatched"}
+                          {event.matched_deal_id ? "Deal linked" : event.matched_lead_id ? "Lead linked" : "Needs matching"}
                         </span>
                       </div>
                       <p style={{ color: "var(--ink)", fontSize: 12, lineHeight: 1.45, marginTop: 8 }}>
@@ -3414,45 +3414,30 @@ export default function VaPage() {
                       </p>
                     </button>
                   ))}
-                  {contactQueueMode === "unmatched" && unmatchedSms.slice(0, 25).map(event => (
-                    <button
-                      key={event.id}
-                      onClick={() => createLeadDraftFromSms(event)}
-                      style={{
-                        ...subPanel,
-                        padding: 12,
-                        textAlign: "left",
-                        cursor: "pointer",
-                        background: "rgba(176,137,84,0.12)",
-                        borderColor: "var(--brass)",
-                      }}
-                    >
-                      <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "start" }}>
-                        <div>
-                          <strong style={{ color: "var(--obsidian)", fontSize: 14 }}>{event.contact_name || event.contact_number || event.from_number || "Unknown contact"}</strong>
-                          <p style={{ color: "var(--muted)", fontSize: 12, marginTop: 3 }}>
-                            {event.contact_number || event.from_number || "No phone"} · {formatDate(event.created_at)}
-                          </p>
-                        </div>
-                        <span style={hotPill}>Unmatched</span>
-                      </div>
-                      <p style={{ color: "var(--ink)", fontSize: 12, lineHeight: 1.45, marginTop: 8 }}>
-                        {event.body || event.status || "Inbound message"} · Create packet or match to an existing record.
-                      </p>
+                  {contactQueueMode === "inbox" && unmatchedSms.filter(event => !recentInboundSms.some(reply => reply.id === event.id)).slice(0, 10).map(event => (
+                    <button key={event.id} onClick={() => createLeadDraftFromSms(event)} style={{ ...contactQueueCard, background: "rgba(176,137,84,0.12)", borderColor: "var(--brass)" }}>
+                      <strong style={{ color: "var(--obsidian)", fontSize: 14 }}>{event.contact_name || event.contact_number || event.from_number || "Unknown contact"}</strong>
+                      <p style={{ color: "var(--muted)", fontSize: 12, marginTop: 3 }}>{event.contact_number || event.from_number || "No phone"} · {formatDate(event.created_at)}</p>
+                      <span style={{ ...hotPill, marginTop: 8 }}>Needs matching</span>
                     </button>
                   ))}
-                  {contactQueueMode !== "unmatched" && contactQueueMode !== "replies" && contactQueueRows.map(lead => {
+                  {contactQueueMode !== "inbox" && contactQueueRows.map(lead => {
                     const active = selectedImportedLeadId === lead.id;
                     const action = sellerActionState(lead);
+                    const reason = contactQueueMode === "callbacks"
+                      ? `Callback due ${lead.next_follow_up_date || "today"}`
+                      : contactQueueMode === "campaigns"
+                        ? "Eligible for compliant outreach"
+                        : lead.status === "interested"
+                          ? "Interested contact"
+                          : action.primary;
                     return (
                       <button
                         key={lead.id}
                         onClick={() => selectImportedLead(lead, "outreach")}
                         style={{
-                          ...subPanel,
-                          padding: 12,
+                          ...contactQueueCard,
                           textAlign: "left",
-                          cursor: "pointer",
                           background: active ? "rgba(176,137,84,0.15)" : "var(--surface)",
                           borderColor: active ? "var(--brass)" : "var(--fog)",
                         }}
@@ -3467,46 +3452,173 @@ export default function VaPage() {
                           <span style={lead.status === "interested" ? hotPill : pill}>{statusLabel(lead.status)}</span>
                         </div>
                         <p style={{ color: "var(--ink)", fontSize: 12, lineHeight: 1.45, marginTop: 8 }}>
-                          {lead.property_address || lead.parcel_id || "No property detail"} · {action.primary}
+                          {lead.property_address || lead.parcel_id || "No property detail"}
                         </p>
+                        <span style={{ ...pill, marginTop: 8 }}>{reason}</span>
                       </button>
                     );
                   })}
-                  {contactQueueMode === "replies" && recentInboundSms.length === 0 && <p style={{ color: "var(--muted)", fontSize: 13 }}>No recent replies are waiting.</p>}
-                  {contactQueueMode === "unmatched" && unmatchedSms.length === 0 && <p style={{ color: "var(--muted)", fontSize: 13 }}>No unmatched replies are waiting.</p>}
-                  {contactQueueMode !== "unmatched" && contactQueueMode !== "replies" && contactQueueRows.length === 0 && <p style={{ color: "var(--muted)", fontSize: 13 }}>No contacts in this queue yet.</p>}
+                  {contactQueueMode === "inbox" && recentInboundSms.length === 0 && unmatchedSms.length === 0 && <p style={{ color: "var(--muted)", fontSize: 13 }}>No replies, missed calls, voicemails, or unmatched contacts are waiting.</p>}
+                  {contactQueueMode !== "inbox" && contactQueueRows.length === 0 && <p style={{ color: "var(--muted)", fontSize: 13 }}>No contacts in this queue yet.</p>}
                 </div>
               </section>
 
-              <aside style={{ display: "grid", gap: 12, alignContent: "start" }}>
+              <section style={subPanel}>
                 {selectedImportedLead ? (
-                  <SellerCommandCenter
-                    lead={selectedImportedLead}
-                    communications={communicationEvents}
-                    activities={leadActivities}
-                    smsDraft={smsDraft}
-                    setSmsDraft={setSmsDraft}
-                    smsSending={smsSending}
-                    onSendSms={sendSmsToLead}
-                    dispositionDraft={dispositionDraft}
-                    setDispositionDraft={setDispositionDraft}
-                    onSaveDisposition={applyLeadDisposition}
-                    onQuickDisposition={quickLeadDisposition}
-                    activityDraft={activityDraft}
-                    setActivityDraft={setActivityDraft}
-                    onLogActivity={logLeadActivity}
-                    onOpenFile={() => router.push(`/lead/${selectedImportedLead.id}`)}
-                    onBuildPacket={() => loadImportedLead(selectedImportedLead, true)}
-                    onPass={async () => { await updateImportedLandLeadStatus(selectedImportedLead.id, "passed", selectedImportedLead.deal_id); setImportedLeads(await fetchImportedLandLeads(500)); }}
-                    compact
-                  />
+                  <>
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "start", marginBottom: 12 }}>
+                      <div>
+                        <h3 style={{ ...sectionTitle, fontSize: 25 }}>{selectedImportedLead.owner_name || "Owner unknown"}</h3>
+                        <p style={{ color: "var(--muted)", fontSize: 13, marginTop: 4 }}>
+                          {[selectedImportedLead.phone, selectedImportedLead.phone_2].filter(Boolean).join(" / ") || "No phone"} · {selectedImportedLead.county || "County pending"}
+                        </p>
+                      </div>
+                      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                        <TwilioCallButton
+                          toNumber={checkLeadCallCompliance(selectedImportedLead).phone?.number || selectedImportedLead.phone || selectedImportedLead.phone_2}
+                          leadId={selectedImportedLead.id}
+                          disabled={!checkLeadCallCompliance(selectedImportedLead).allowed}
+                          disabledReason={!checkLeadCallCompliance(selectedImportedLead).allowed ? `Call blocked: ${checkLeadCallCompliance(selectedImportedLead).blockLabel}.` : null}
+                          compact
+                        />
+                        <button onClick={() => router.push(`/lead/${selectedImportedLead.id}`)} style={secondaryButton}>Open</button>
+                      </div>
+                    </div>
+                    <div style={{ border: "1px solid var(--fog)", borderRadius: 8, padding: 12, background: "var(--surface)", marginBottom: 12, display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
+                      <div>
+                        <p style={eyebrowSmall}>{selectedImportedLead.deal_id ? "Linked record" : "Property record"}</p>
+                        <strong style={{ color: "var(--obsidian)", fontSize: 15 }}>{selectedImportedLead.property_address || selectedImportedLead.parcel_id || "No property detail"}</strong>
+                        <p style={{ color: "var(--muted)", fontSize: 12, marginTop: 4 }}>{selectedImportedLead.city || "City pending"}{selectedImportedLead.state ? `, ${selectedImportedLead.state}` : ""} · {selectedImportedLead.acreage ?? "N/A"} acres</p>
+                      </div>
+                      <button onClick={() => loadImportedLead(selectedImportedLead, true)} style={secondaryButton}>
+                        {selectedImportedLead.deal_id ? "Open Packet" : "Create Packet"}
+                      </button>
+                    </div>
+                    <ConversationPanel
+                      eyebrow="Conversation"
+                      title="Timeline"
+                      subject={selectedImportedLead.phone || selectedImportedLead.phone_2 || "No phone"}
+                      communications={communicationEvents}
+                      activities={leadActivities.map(activity => ({
+                        id: activity.id,
+                        title: statusLabel(activity.activity_type),
+                        date: activity.created_at,
+                        body: activity.summary,
+                        meta: activity.next_follow_up_date ? `Follow up ${activity.next_follow_up_date}` : undefined,
+                      }))}
+                      emptyText="No communication yet. Start with a text, call, outcome, or note."
+                      maxHeight={360}
+                    />
+                    <div style={{ borderTop: "1px solid var(--fog)", marginTop: 12, paddingTop: 12 }}>
+                      <div style={{ display: "flex", gap: 12, marginBottom: 8, color: "var(--muted)", fontSize: 13 }}>
+                        <strong style={{ color: "var(--obsidian)", borderBottom: "2px solid var(--obsidian)", paddingBottom: 5 }}>Text</strong>
+                        <span>Note</span>
+                        <span>Log</span>
+                      </div>
+                      <textarea
+                        id="va-contact-queue-sms"
+                        rows={4}
+                        value={smsDraft}
+                        onChange={event => setSmsDraft(event.target.value)}
+                        placeholder={checkLeadSmsCompliance(selectedImportedLead).allowed ? "Type a message..." : `SMS blocked: ${checkLeadSmsCompliance(selectedImportedLead).blockLabel}.`}
+                        disabled={!checkLeadSmsCompliance(selectedImportedLead).allowed}
+                      />
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", marginTop: 8 }}>
+                        <span style={{ color: "var(--muted)", fontSize: 12 }}>{smsDraft.trim().length}/1200</span>
+                        <button onClick={sendSmsToLead} disabled={smsSending || !checkLeadSmsCompliance(selectedImportedLead).allowed} style={{ ...primaryButton, opacity: smsSending || !checkLeadSmsCompliance(selectedImportedLead).allowed ? 0.55 : 1 }}>
+                          {smsSending ? "Sending..." : "Send Text"}
+                        </button>
+                      </div>
+                    </div>
+                  </>
                 ) : (
-                  <section style={subPanel}>
+                  <div>
                     <p style={eyebrowSmall}>Relationship workspace</p>
                     <h3 style={{ ...sectionTitle, fontSize: 22 }}>Pick a contact</h3>
                     <p style={{ color: "var(--muted)", fontSize: 13, lineHeight: 1.5, marginTop: 8 }}>
                       Select a contact from the queue to see conversation history, send a Sakari text, log a call, set disposition, or build a packet.
                     </p>
+                  </div>
+                )}
+              </section>
+
+              <aside style={{ display: "grid", gap: 12, alignContent: "start" }}>
+                {selectedImportedLead ? (
+                  <>
+                    <section style={subPanel}>
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "baseline", marginBottom: 10 }}>
+                        <p style={eyebrowSmall}>Relationship</p>
+                        <button onClick={() => router.push(`/lead/${selectedImportedLead.id}`)} style={{ background: "transparent", border: "none", color: "var(--brass)", fontWeight: 800, cursor: "pointer" }}>Edit</button>
+                      </div>
+                      <InfoStack title="Primary Contact">
+                        <p>{selectedImportedLead.owner_name || "Owner unknown"}</p>
+                        <p>{[selectedImportedLead.phone, selectedImportedLead.phone_2].filter(Boolean).join(" / ") || "Phone missing"}</p>
+                        <p>{selectedImportedLead.email || "Email missing"}</p>
+                      </InfoStack>
+                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 10 }}>
+                        <span style={selectedImportedLead.status === "interested" ? hotPill : pill}>{statusLabel(selectedImportedLead.status)}</span>
+                        <span style={pill}>{selectedImportedLead.source_system || "Imported"}</span>
+                        {selectedImportedLead.campaign_source && <span style={pill}>{selectedImportedLead.campaign_source}</span>}
+                      </div>
+                    </section>
+                    <section style={subPanel}>
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "baseline", marginBottom: 10 }}>
+                        <p style={eyebrowSmall}>Linked Records</p>
+                        <button onClick={() => router.push(`/lead/${selectedImportedLead.id}`)} style={{ background: "transparent", border: "none", color: "var(--brass)", fontWeight: 800, cursor: "pointer" }}>View all</button>
+                      </div>
+                      <button onClick={() => router.push(`/lead/${selectedImportedLead.id}`)} style={{ ...contactQueueCard, width: "100%", background: "var(--surface)" }}>
+                        <strong style={{ color: "var(--obsidian)", fontSize: 13 }}>{selectedImportedLead.property_address || selectedImportedLead.parcel_id || "Property record"}</strong>
+                        <span style={{ display: "block", color: "var(--muted)", fontSize: 12, marginTop: 4 }}>{selectedImportedLead.deal_id ? "Deal packet connected" : "Lead record"}</span>
+                      </button>
+                    </section>
+                    <section style={subPanel}>
+                      <p style={eyebrowSmall}>Quick Actions</p>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                        <TwilioCallButton
+                          toNumber={checkLeadCallCompliance(selectedImportedLead).phone?.number || selectedImportedLead.phone || selectedImportedLead.phone_2}
+                          leadId={selectedImportedLead.id}
+                          disabled={!checkLeadCallCompliance(selectedImportedLead).allowed}
+                          disabledReason={!checkLeadCallCompliance(selectedImportedLead).allowed ? `Call blocked: ${checkLeadCallCompliance(selectedImportedLead).blockLabel}.` : null}
+                        />
+                        <button onClick={() => document.getElementById("va-contact-queue-sms")?.focus()} style={secondaryButton}>Text</button>
+                        <button onClick={() => quickLeadDisposition("left-voicemail", "Left voicemail")} style={secondaryButton}>Voicemail</button>
+                        <button onClick={() => setDispositionDraft({ ...dispositionDraft, disposition: "follow-up", nextFollowUpDate: addDays(2) })} style={secondaryButton}>Set Callback</button>
+                        <button onClick={applyLeadDisposition} style={secondaryButton}>Log Outcome</button>
+                        <button onClick={() => loadImportedLead(selectedImportedLead, true)} style={secondaryButton}>Create Packet</button>
+                      </div>
+                      <div style={{ borderTop: "1px solid var(--fog)", marginTop: 12, paddingTop: 12, display: "grid", gap: 8 }}>
+                        <select value={dispositionDraft.disposition} onChange={event => setDispositionDraft({ ...dispositionDraft, disposition: event.target.value as LeadDisposition })}>
+                          {LEAD_DISPOSITIONS.map(item => <option key={item.value} value={item.value}>{item.label}</option>)}
+                        </select>
+                        <input value={dispositionDraft.note} onChange={event => setDispositionDraft({ ...dispositionDraft, note: event.target.value })} placeholder="Outcome note" />
+                        <input value={dispositionDraft.nextFollowUpDate} onChange={event => setDispositionDraft({ ...dispositionDraft, nextFollowUpDate: event.target.value })} type="date" />
+                        <button onClick={applyLeadDisposition} style={primaryButton}>Save Outcome</button>
+                      </div>
+                      <div style={{ borderTop: "1px solid var(--fog)", marginTop: 12, paddingTop: 12, display: "grid", gap: 8 }}>
+                        <select value={activityDraft.activityType} onChange={event => setActivityDraft({ ...activityDraft, activityType: event.target.value as ImportedLandLeadActivity["activity_type"] })}>
+                          {LEAD_ACTIVITY_TYPES.map(type => <option key={type.value} value={type.value}>{type.label}</option>)}
+                        </select>
+                        <textarea rows={3} value={activityDraft.summary} onChange={event => setActivityDraft({ ...activityDraft, summary: event.target.value })} placeholder="Internal note, call notes, or research context." />
+                        <button onClick={logLeadActivity} style={secondaryButton}>Save Note</button>
+                      </div>
+                    </section>
+                    <section style={subPanel}>
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "baseline", marginBottom: 10 }}>
+                        <p style={eyebrowSmall}>Compliance Status</p>
+                        <span style={checkLeadSmsCompliance(selectedImportedLead).allowed && checkLeadCallCompliance(selectedImportedLead).allowed ? hotPill : pill}>
+                          {checkLeadSmsCompliance(selectedImportedLead).allowed && checkLeadCallCompliance(selectedImportedLead).allowed ? "Good standing" : "Review"}
+                        </span>
+                      </div>
+                      <InfoStack title="Outbound rules">
+                        <p>SMS: {checkLeadSmsCompliance(selectedImportedLead).allowed ? "Allowed" : checkLeadSmsCompliance(selectedImportedLead).blockLabel}</p>
+                        <p>Calls: {checkLeadCallCompliance(selectedImportedLead).allowed ? "Allowed" : checkLeadCallCompliance(selectedImportedLead).blockLabel}</p>
+                      </InfoStack>
+                    </section>
+                  </>
+                ) : (
+                  <section style={subPanel}>
+                    <p style={eyebrowSmall}>Context</p>
+                    <p style={{ color: "var(--muted)", fontSize: 13, lineHeight: 1.5 }}>Relationship details, linked records, quick actions, and compliance status appear here after selecting a contact.</p>
                   </section>
                 )}
               </aside>
@@ -4761,6 +4873,17 @@ const workItemCard: React.CSSProperties = {
   gap: 12,
   gridTemplateColumns: "48px minmax(0, 1fr)",
   minHeight: 94,
+  padding: 12,
+  textAlign: "left",
+};
+
+const contactQueueCard: React.CSSProperties = {
+  border: "1px solid var(--fog)",
+  borderRadius: 8,
+  background: "var(--surface)",
+  color: "var(--ink)",
+  cursor: "pointer",
+  display: "block",
   padding: 12,
   textAlign: "left",
 };
