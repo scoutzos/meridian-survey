@@ -76,6 +76,13 @@ function leadName(lead: ImportedLandLead | null): string {
   return lead.owner_name || lead.property_address || lead.parcel_id || lead.phone || lead.phone_2 || "Imported lead";
 }
 
+function threadPreview(thread: SmsThread): string {
+  const latest = [...thread.events].sort((a, b) => eventTime(b).localeCompare(eventTime(a)))[0];
+  if (!latest) return thread.subtitle;
+  const body = eventBody(latest);
+  return body.length > 74 ? `${body.slice(0, 74)}...` : body;
+}
+
 function eventTime(event: CommunicationEvent): string {
   return event.provider_created_at || event.created_at;
 }
@@ -650,12 +657,29 @@ export default function FloatingSmsWindow({
         onPointerUp={endDrag}
         onPointerCancel={endDrag}
       >
-        <div>
-          <p style={eyebrow}>Comms</p>
-          <strong style={{ color: "var(--bone)", fontSize: 13 }}>Relationship comms</strong>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
+          <div>
+            <p style={eyebrow}>Comms</p>
+            <strong style={titleText}>Relationship comms</strong>
+          </div>
+          {!minimized && selectedThread && (
+            <div style={headerContact}>
+              <span style={headerContactName}>{selectedThread.label}</span>
+              <span style={headerContactMeta}>{displayPhone(selectedThread.phone)}</span>
+            </div>
+          )}
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <span style={badge}>{threads.length}</span>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          {!minimized && (
+            <span style={{
+              ...phoneHeaderPill,
+              borderColor: phoneState === "online" || phoneState === "in-call" ? "rgba(68,144,95,0.42)" : "rgba(237,230,214,0.18)",
+              color: phoneState === "online" || phoneState === "in-call" ? "#bfe6ca" : "var(--bone)",
+            }}>
+              {phoneState === "in-call" ? `On call ${formatCallDuration(callDuration)}` : phoneState === "online" ? "Phone online" : phoneState === "ringing" ? "Incoming" : "Phone offline"}
+            </span>
+          )}
+          <span style={badge}>{unreadTotal || threads.length}</span>
           <button type="button" onPointerDown={event => event.stopPropagation()} onClick={toggleMinimized} style={iconButton}>{minimized ? "Open" : "Min"}</button>
           <button type="button" onPointerDown={event => event.stopPropagation()} onClick={closeWindow} style={iconButton}>Close</button>
         </div>
@@ -741,6 +765,7 @@ export default function FloatingSmsWindow({
                   <span style={threadTime}>{formatTime(thread.lastAt)}</span>
                 </span>
                 <span style={threadMeta}>{thread.subtitle}</span>
+                <span style={threadSnippet}>{threadPreview(thread)}</span>
                 <span style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginTop: 6 }}>
                   <span style={{ ...statusChip, ...(thread.status.includes("deal") ? dealChip : thread.status === "interested" ? interestedChip : {}) }}>{thread.status}</span>
                   {thread.unread > 0 && <span style={unreadBadge}>{thread.unread}</span>}
@@ -780,9 +805,12 @@ export default function FloatingSmsWindow({
             ) : selectedThread ? (
               <>
                 <div style={contextCard}>
-                  <div>
+                  <div style={{ minWidth: 0 }}>
+                    <p style={eyebrowLight}>Selected relationship</p>
                     <h3 style={personTitle}>{selectedThread.label}</h3>
-                    <p style={personMeta}>{displayPhone(selectedPhone)}</p>
+                    <p style={personMeta}>
+                      {displayPhone(selectedPhone)} · {selectedThread.dealId ? "Deal linked" : selectedLead ? "Lead linked" : "No record linked"}
+                    </p>
                   </div>
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
                     <button
@@ -805,15 +833,19 @@ export default function FloatingSmsWindow({
                     <strong style={propertyTitle}>{contextTitleText}</strong>
                     <p style={propertyMeta}>{contextMetaText || selectedThread.subtitle}</p>
                   </div>
-                  <button type="button" onClick={openSelectedRecord} style={openLeadButton}>
-                    {selectedThread.dealId ? "Open Deal" : selectedLead ? "Open Lead" : "No Record"}
-                  </button>
+                  <span style={{
+                    ...recordStatePill,
+                    ...(selectedThread.dealId ? dealChip : selectedLead ? interestedChip : {}),
+                  }}>
+                    {selectedThread.dealId ? "Deal Linked" : selectedLead ? "Lead Linked" : "No Record"}
+                  </span>
                 </div>
 
                 <div style={actionRow}>
                   {selectedLead && <button type="button" onClick={() => onOpenLead?.(selectedLead)} style={smallAction}>Open Lead</button>}
                   {selectedThread.dealId && <button type="button" onClick={() => onOpenDeal?.(selectedThread.dealId!)} style={smallAction}>Open Deal</button>}
                   <button type="button" onClick={createPacketFromSelectedContact} style={smallAction}>Create Packet</button>
+                  {!selectedLead && !selectedThread.dealId && <button type="button" onClick={openSelectedRecord} style={smallAction}>Find Record</button>}
                   {canSend && selectedLead && selectedLead.status !== "interested" && <button type="button" onClick={() => onMarkInterested?.(selectedLead)} style={smallAction}>Mark Interested</button>}
                 </div>
 
@@ -908,7 +940,7 @@ const shell: CSSProperties = {
   right: 24,
   bottom: 24,
   zIndex: 260,
-  width: "min(860px, calc(100vw - 32px))",
+  width: "min(980px, calc(100vw - 32px))",
   background: "var(--surface)",
   border: "1px solid rgba(176,137,84,0.42)",
   borderRadius: 8,
@@ -925,7 +957,8 @@ const titleBar: CSSProperties = {
   background: "var(--obsidian)",
   display: "flex",
   justifyContent: "space-between",
-  padding: "10px 14px",
+  minHeight: 58,
+  padding: "9px 14px",
   userSelect: "none",
 };
 
@@ -935,8 +968,8 @@ const minimizedTitleBar: CSSProperties = {
 
 const body: CSSProperties = {
   display: "grid",
-  gridTemplateColumns: "320px minmax(0, 1fr)",
-  minHeight: 520,
+  gridTemplateColumns: "310px minmax(0, 1fr)",
+  minHeight: 610,
 };
 
 const threadList: CSSProperties = {
@@ -945,9 +978,9 @@ const threadList: CSSProperties = {
   display: "flex",
   flexDirection: "column",
   gap: 8,
-  maxHeight: 520,
+  maxHeight: 610,
   overflowY: "auto",
-  padding: 10,
+  padding: 12,
 };
 
 const conversation: CSSProperties = {
@@ -955,11 +988,11 @@ const conversation: CSSProperties = {
   display: "flex",
   flexDirection: "column",
   minWidth: 0,
-  padding: 12,
+  padding: 14,
 };
 
 const phoneDesk: CSSProperties = {
-  background: "var(--surface)",
+  background: "linear-gradient(135deg, rgba(20,17,13,0.96), rgba(48,38,27,0.9))",
   border: "1px solid rgba(176,137,84,0.32)",
   borderRadius: 8,
   display: "grid",
@@ -968,7 +1001,7 @@ const phoneDesk: CSSProperties = {
 };
 
 const phoneStateText: CSSProperties = {
-  color: "var(--obsidian)",
+  color: "var(--bone)",
   display: "block",
   fontSize: 13,
   marginTop: 2,
@@ -983,7 +1016,7 @@ const phoneDot: CSSProperties = {
 };
 
 const phoneMessageText: CSSProperties = {
-  color: "var(--muted)",
+  color: "rgba(247,242,232,0.72)",
   fontSize: 11,
   lineHeight: 1.35,
 };
@@ -1006,10 +1039,10 @@ const phonePrimary: CSSProperties = {
 };
 
 const phoneSecondary: CSSProperties = {
-  background: "var(--surface)",
-  border: "1px solid var(--fog)",
+  background: "rgba(237,230,214,0.08)",
+  border: "1px solid rgba(237,230,214,0.18)",
   borderRadius: 7,
-  color: "var(--obsidian)",
+  color: "var(--bone)",
   cursor: "pointer",
   fontSize: 11,
   fontWeight: 800,
@@ -1073,17 +1106,19 @@ const newButton: CSSProperties = {
 };
 
 const threadButton: CSSProperties = {
-  background: "transparent",
-  border: "none",
+  background: "rgba(255,255,255,0.48)",
+  border: "1px solid transparent",
   borderBottom: "1px solid var(--fog)",
-  borderRadius: 0,
+  borderRadius: 8,
   color: "var(--obsidian)",
-  padding: "12px 8px",
+  cursor: "pointer",
+  padding: "11px 10px",
   textAlign: "left",
 };
 
 const activeThread: CSSProperties = {
-  background: "rgba(176,137,84,0.12)",
+  background: "var(--surface)",
+  borderColor: "rgba(176,137,84,0.38)",
   boxShadow: "inset 3px 0 0 var(--brass)",
 };
 
@@ -1103,6 +1138,15 @@ const threadMeta: CSSProperties = {
   display: "block",
   fontSize: 11,
   marginTop: 3,
+};
+
+const threadSnippet: CSSProperties = {
+  color: "var(--ink)",
+  display: "block",
+  fontSize: 11,
+  lineHeight: 1.35,
+  marginTop: 5,
+  opacity: 0.78,
 };
 
 const statusChip: CSSProperties = {
@@ -1141,13 +1185,14 @@ const unreadBadge: CSSProperties = {
 
 const contextCard: CSSProperties = {
   alignItems: "center",
-  background: "transparent",
-  borderBottom: "1px solid var(--fog)",
+  background: "var(--surface)",
+  border: "1px solid var(--fog)",
+  borderRadius: 8,
   display: "flex",
   gap: 10,
   justifyContent: "space-between",
   marginBottom: 10,
-  padding: "0 0 10px",
+  padding: 12,
 };
 
 const personTitle: CSSProperties = {
@@ -1175,7 +1220,7 @@ const roundAction: CSSProperties = {
 
 const propertyStrip: CSSProperties = {
   alignItems: "center",
-  background: "var(--surface)",
+  background: "rgba(237,230,214,0.34)",
   border: "1px solid var(--fog)",
   borderRadius: 8,
   display: "grid",
@@ -1214,16 +1259,16 @@ const propertyMeta: CSSProperties = {
   whiteSpace: "nowrap",
 };
 
-const openLeadButton: CSSProperties = {
-  background: "var(--bone)",
+const recordStatePill: CSSProperties = {
   border: "1px solid var(--fog)",
-  borderRadius: 7,
-  color: "var(--obsidian)",
-  fontSize: 10,
-  fontWeight: 800,
-  letterSpacing: "0.08em",
-  padding: "8px 10px",
+  borderRadius: 999,
+  color: "var(--muted)",
+  fontSize: 9,
+  fontWeight: 900,
+  letterSpacing: "0.1em",
+  padding: "6px 9px",
   textTransform: "uppercase",
+  whiteSpace: "nowrap",
 };
 
 const actionRow: CSSProperties = {
@@ -1249,10 +1294,10 @@ const messages: CSSProperties = {
   display: "flex",
   flex: 1,
   flexDirection: "column",
-  gap: 8,
-  maxHeight: 235,
+  gap: 7,
+  maxHeight: 320,
   overflowY: "auto",
-  padding: "4px 2px 10px",
+  padding: "6px 2px 12px",
 };
 
 const bubble: CSSProperties = {
@@ -1261,8 +1306,8 @@ const bubble: CSSProperties = {
   color: "var(--obsidian)",
   fontSize: 13,
   lineHeight: 1.42,
-  maxWidth: "86%",
-  padding: "9px 10px",
+  maxWidth: "78%",
+  padding: "10px 11px",
 };
 
 const incoming: CSSProperties = {
@@ -1308,8 +1353,12 @@ const bubbleTime: CSSProperties = {
 };
 
 const composer: CSSProperties = {
+  background: "rgba(255,252,245,0.96)",
   borderTop: "1px solid var(--fog)",
-  paddingTop: 10,
+  bottom: 0,
+  margin: "0 -2px",
+  padding: "10px 2px 0",
+  position: "sticky",
 };
 
 const composerTabs: CSSProperties = {
@@ -1438,6 +1487,47 @@ const eyebrowLight: CSSProperties = {
   letterSpacing: "0.16em",
   marginBottom: 7,
   textTransform: "uppercase",
+};
+
+const titleText: CSSProperties = {
+  color: "var(--bone)",
+  display: "block",
+  fontSize: 13,
+  lineHeight: 1.1,
+};
+
+const headerContact: CSSProperties = {
+  borderLeft: "1px solid rgba(237,230,214,0.18)",
+  display: "grid",
+  gap: 2,
+  minWidth: 0,
+  paddingLeft: 12,
+};
+
+const headerContactName: CSSProperties = {
+  color: "var(--bone)",
+  fontSize: 12,
+  fontWeight: 800,
+  maxWidth: 230,
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  whiteSpace: "nowrap",
+};
+
+const headerContactMeta: CSSProperties = {
+  color: "rgba(247,242,232,0.62)",
+  fontSize: 10,
+};
+
+const phoneHeaderPill: CSSProperties = {
+  border: "1px solid rgba(237,230,214,0.18)",
+  borderRadius: 999,
+  fontSize: 10,
+  fontWeight: 900,
+  letterSpacing: "0.08em",
+  padding: "6px 9px",
+  textTransform: "uppercase",
+  whiteSpace: "nowrap",
 };
 
 const badge: CSSProperties = {
