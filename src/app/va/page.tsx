@@ -3526,21 +3526,21 @@ export default function VaPage() {
                 </div>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(5, minmax(96px, 1fr)) minmax(240px, 2.4fr)", gap: 8, marginBottom: 12 }} className="va-form-grid">
                   <div>
-                    <label style={{ ...miniLabel, display: "block", marginBottom: 4 }}>County</label>
+                    <label style={{ color: "var(--muted)", display: "block", fontSize: 11, fontWeight: 600, marginBottom: 4 }}>County</label>
                     <select value={countyFilter} onChange={e => { setCountyFilter(e.target.value); setPropertiesPage(1); }}>
                       <option value="all">All Counties</option>
                       {countyOptions.map(c => <option key={c} value={c}>{c}</option>)}
                     </select>
                   </div>
                   <div>
-                    <label style={{ ...miniLabel, display: "block", marginBottom: 4 }}>State</label>
+                    <label style={{ color: "var(--muted)", display: "block", fontSize: 11, fontWeight: 600, marginBottom: 4 }}>State</label>
                     <select value={stateFilter} onChange={e => { setStateFilter(e.target.value); setPropertiesPage(1); }}>
                       <option value="all">All States</option>
                       {stateOptions.map(s => <option key={s} value={s}>{s}</option>)}
                     </select>
                   </div>
                   <div>
-                    <label style={{ ...miniLabel, display: "block", marginBottom: 4 }}>Acres</label>
+                    <label style={{ color: "var(--muted)", display: "block", fontSize: 11, fontWeight: 600, marginBottom: 4 }}>Acres</label>
                     <select value={acresBucket} onChange={e => { setAcresBucket(e.target.value); setPropertiesPage(1); }}>
                       <option value="any">Any</option>
                       <option value="lt-1">&lt; 1</option>
@@ -3550,7 +3550,7 @@ export default function VaPage() {
                     </select>
                   </div>
                   <div>
-                    <label style={{ ...miniLabel, display: "block", marginBottom: 4 }}>Score</label>
+                    <label style={{ color: "var(--muted)", display: "block", fontSize: 11, fontWeight: 600, marginBottom: 4 }}>Score</label>
                     <select value={scoreBucket} onChange={e => { setScoreBucket(e.target.value); setPropertiesPage(1); }}>
                       <option value="any">Any</option>
                       <option value="80">80+</option>
@@ -3559,14 +3559,14 @@ export default function VaPage() {
                     </select>
                   </div>
                   <div>
-                    <label style={{ ...miniLabel, display: "block", marginBottom: 4 }}>Flags</label>
+                    <label style={{ color: "var(--muted)", display: "block", fontSize: 11, fontWeight: 600, marginBottom: 4 }}>Flags</label>
                     <select value={flagFilter} onChange={e => { setFlagFilter(e.target.value); setPropertiesPage(1); }}>
                       <option value="all">All</option>
                       {flagOptions.map(f => <option key={f} value={f}>{f}</option>)}
                     </select>
                   </div>
                   <div>
-                    <label style={{ ...miniLabel, display: "block", marginBottom: 4 }}>Search</label>
+                    <label style={{ color: "var(--muted)", display: "block", fontSize: 11, fontWeight: 600, marginBottom: 4 }}>Search</label>
                     <input value={leadSearch} onChange={e => { setLeadSearch(e.target.value); setPropertiesPage(1); }} placeholder="Search APN or address..." />
                   </div>
                 </div>
