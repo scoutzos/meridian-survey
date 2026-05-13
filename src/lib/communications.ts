@@ -201,12 +201,14 @@ export async function handleSakariWebhook(body: SakariWebhookBody): Promise<{ ev
   return { event, error: null };
 }
 
-export async function fetchCommunicationEvents(args: { leadId?: string | null; dealId?: string | null; unmatched?: boolean; limit?: number } = {}): Promise<CommunicationEvent[]> {
+export async function fetchCommunicationEvents(args: { leadId?: string | null; dealId?: string | null; phone?: string | null; unmatched?: boolean; limit?: number } = {}): Promise<CommunicationEvent[]> {
+  const phone = args.phone ? last10(args.phone) : "";
   if (!supabase) {
     return localGet<CommunicationEvent[]>(LOCAL_COMMS, [])
       .filter(event =>
         (!args.leadId || event.matched_lead_id === args.leadId)
         && (!args.dealId || event.matched_deal_id === args.dealId)
+        && (!phone || [event.contact_number, event.from_number, event.to_number].some(value => last10(value) === phone))
         && (!args.unmatched || (!event.matched_lead_id && !event.matched_deal_id))
       )
       .slice(0, args.limit ?? 50);
@@ -218,10 +220,16 @@ export async function fetchCommunicationEvents(args: { leadId?: string | null; d
     .limit(args.limit ?? 50);
   if (args.leadId) query = query.eq("matched_lead_id", args.leadId);
   if (args.dealId) query = query.eq("matched_deal_id", args.dealId);
+  if (phone) {
+    query = query.or(`contact_number.ilike.%${phone.slice(-7)}%,from_number.ilike.%${phone.slice(-7)}%,to_number.ilike.%${phone.slice(-7)}%`);
+  }
   if (args.unmatched) query = query.is("matched_lead_id", null).is("matched_deal_id", null);
   const { data, error } = await query;
   if (error || !data) return [];
-  return data as CommunicationEvent[];
+  const rows = data as CommunicationEvent[];
+  return phone
+    ? rows.filter(event => [event.contact_number, event.from_number, event.to_number].some(value => last10(value) === phone))
+    : rows;
 }
 
 export async function attachCommunicationEventToLead(eventId: string, leadId: string, actor: string): Promise<{ error: string | null }> {

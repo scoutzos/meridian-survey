@@ -82,7 +82,7 @@ export default function ConversationPanel({
       meta: activity.meta || undefined,
       recording: null,
     })),
-  ].sort((a, b) => b.date.localeCompare(a.date));
+  ].sort((a, b) => a.date.localeCompare(b.date));
 
   return (
     <section style={panel}>

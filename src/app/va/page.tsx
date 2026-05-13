@@ -570,6 +570,19 @@ function formatCallSeconds(seconds: number): string {
   return `${minutes}:${String(rest).padStart(2, "0")}`;
 }
 
+function normalizedPhone(value: string | null | undefined): string | null {
+  const digits = String(value || "").replace(/\D/g, "");
+  if (!digits) return null;
+  if (digits.length === 10) return `+1${digits}`;
+  if (digits.length === 11 && digits.startsWith("1")) return `+${digits}`;
+  return value || null;
+}
+
+function phoneForCommunicationEvent(event: CommunicationEvent | null): string | null {
+  if (!event) return null;
+  return normalizedPhone(event.contact_number || event.from_number || event.to_number);
+}
+
 type ConversationItem = {
   id: string;
   kind: "sms-in" | "sms-out" | "activity";
@@ -1302,15 +1315,36 @@ export default function VaPage() {
   }, [selected]);
 
   useEffect(() => {
-    if (!selectedImportedLeadId) { setLeadActivities([]); setCommunicationEvents([]); return; }
+    if (!selectedImportedLeadId) {
+      setLeadActivities([]);
+      if (!selectedCommunicationEventId) setCommunicationEvents([]);
+      return;
+    }
     void Promise.all([
       fetchImportedLandLeadActivities(selectedImportedLeadId),
-      fetchCommunicationEvents({ leadId: selectedImportedLeadId, limit: 30 }),
+      fetchCommunicationEvents({ leadId: selectedImportedLeadId, limit: 80 }),
     ]).then(([activities, comms]) => {
       setLeadActivities(activities);
       setCommunicationEvents(comms);
     });
-  }, [selectedImportedLeadId]);
+  }, [selectedCommunicationEventId, selectedImportedLeadId]);
+
+  useEffect(() => {
+    if (!selectedCommunicationEvent || selectedImportedLeadId) return;
+    setCommunicationEvents([selectedCommunicationEvent]);
+    const phone = phoneForCommunicationEvent(selectedCommunicationEvent);
+    if (!phone && !selectedCommunicationEvent.matched_deal_id) {
+      setCommunicationEvents([selectedCommunicationEvent]);
+      return;
+    }
+    void fetchCommunicationEvents({
+      phone,
+      dealId: selectedCommunicationEvent.matched_deal_id,
+      limit: 80,
+    }).then(comms => {
+      setCommunicationEvents(comms.length ? comms : [selectedCommunicationEvent]);
+    });
+  }, [selectedCommunicationEvent, selectedImportedLeadId]);
 
   useEffect(() => {
     if (activeTab !== "brief" || editingBriefId || loading) return;
@@ -1708,7 +1742,7 @@ export default function VaPage() {
     const [leadRows, activityRows, commRows, unmatchedRows, recentRows] = await Promise.all([
       fetchImportedLandLeads(500),
       fetchImportedLandLeadActivities(leadId),
-      fetchCommunicationEvents({ leadId, limit: 30 }),
+      fetchCommunicationEvents({ leadId, limit: 80 }),
       fetchCommunicationEvents({ unmatched: true, limit: 25 }),
       fetchCommunicationEvents({ limit: 120 }),
     ]);
@@ -1717,6 +1751,18 @@ export default function VaPage() {
     setCommunicationEvents(commRows);
     setUnmatchedSms(unmatchedRows);
     setRecentInboundSms(recentRows.filter(event => event.direction === "inbound").slice(0, 40));
+  };
+
+  const refreshSelectedEventMessages = async (event: CommunicationEvent) => {
+    const phone = phoneForCommunicationEvent(event);
+    const [commRows, unmatchedRows, recentRows] = await Promise.all([
+      fetchCommunicationEvents({ phone, dealId: event.matched_deal_id, limit: 80 }),
+      fetchCommunicationEvents({ unmatched: true, limit: 25 }),
+      fetchCommunicationEvents({ limit: 120 }),
+    ]);
+    setCommunicationEvents(commRows.length ? commRows : [event]);
+    setUnmatchedSms(unmatchedRows);
+    setRecentInboundSms(recentRows.filter(row => row.direction === "inbound").slice(0, 40));
   };
 
   const sendSmsToLead = async () => {
@@ -1757,6 +1803,43 @@ export default function VaPage() {
       addToDailyBrief(`SMS sent to ${leadLabel(selectedImportedLead)}: ${body}`, {
         outreach_sent: (briefDraft.outreach_sent ?? 0) + 1,
         leads_updated: (briefDraft.leads_updated ?? 0) + 1,
+      });
+      setMessage("SMS sent through Sakari.");
+    } catch (error) {
+      setMessage(`SMS failed: ${error instanceof Error ? error.message : "Unknown error"}`);
+    } finally {
+      setSmsSending(false);
+    }
+  };
+
+  const sendSmsToSelectedEvent = async () => {
+    if (!activeCommunicationEvent) { setMessage("Select a contact first."); return; }
+    const toNumber = phoneForCommunicationEvent(activeCommunicationEvent);
+    if (!toNumber) { setMessage("This contact does not have a usable phone number."); return; }
+    const body = smsDraft.trim();
+    if (!body) { setMessage("Write a text message before sending."); return; }
+    setSmsSending(true);
+    setMessage("");
+    try {
+      const response = await fetch("/api/sakari/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          toNumber,
+          message: body,
+          actor: user,
+          dealId: activeCommunicationEvent.matched_deal_id,
+        }),
+      });
+      const result = await response.json().catch(() => ({})) as { error?: string };
+      if (!response.ok || result.error) {
+        setMessage(`SMS failed: ${result.error || response.statusText}`);
+        return;
+      }
+      setSmsDraft("");
+      await refreshSelectedEventMessages(activeCommunicationEvent);
+      addToDailyBrief(`SMS sent to ${toNumber}: ${body}`, {
+        outreach_sent: (briefDraft.outreach_sent ?? 0) + 1,
       });
       setMessage("SMS sent through Sakari.");
     } catch (error) {
@@ -3546,7 +3629,7 @@ export default function VaPage() {
                     </div>
                     <ConversationPanel
                       eyebrow="Conversation"
-                      title="Timeline"
+                      title="Conversation"
                       subject={selectedImportedLead.phone || selectedImportedLead.phone_2 || "No phone"}
                       communications={communicationEvents}
                       activities={leadActivities.map(activity => ({
@@ -3558,28 +3641,30 @@ export default function VaPage() {
                       }))}
                       emptyText="No communication yet. Start with a text, call, outcome, or note."
                       maxHeight={318}
+                      composer={(
+                        <div>
+                          <div style={{ display: "flex", gap: 12, marginBottom: 8, color: "var(--muted)", fontSize: 13 }}>
+                            <strong style={{ color: "var(--obsidian)", borderBottom: "2px solid var(--obsidian)", paddingBottom: 5 }}>Text</strong>
+                            <span>Note</span>
+                            <span>Log</span>
+                          </div>
+                          <textarea
+                            id="va-contact-queue-sms"
+                            rows={4}
+                            value={smsDraft}
+                            onChange={event => setSmsDraft(event.target.value)}
+                            placeholder={checkLeadSmsCompliance(selectedImportedLead).allowed ? "Type a message..." : `SMS blocked: ${checkLeadSmsCompliance(selectedImportedLead).blockLabel}.`}
+                            disabled={!checkLeadSmsCompliance(selectedImportedLead).allowed}
+                          />
+                          <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", marginTop: 8 }}>
+                            <span style={{ color: "var(--muted)", fontSize: 12 }}>{smsDraft.trim().length}/1200</span>
+                            <button onClick={sendSmsToLead} disabled={smsSending || !checkLeadSmsCompliance(selectedImportedLead).allowed} style={{ ...compactPrimaryButton, opacity: smsSending || !checkLeadSmsCompliance(selectedImportedLead).allowed ? 0.55 : 1 }}>
+                              {smsSending ? "Sending..." : "Send Text"}
+                            </button>
+                          </div>
+                        </div>
+                      )}
                     />
-                    <div style={{ borderTop: "1px solid var(--fog)", marginTop: 12, paddingTop: 12 }}>
-                      <div style={{ display: "flex", gap: 12, marginBottom: 8, color: "var(--muted)", fontSize: 13 }}>
-                        <strong style={{ color: "var(--obsidian)", borderBottom: "2px solid var(--obsidian)", paddingBottom: 5 }}>Text</strong>
-                        <span>Note</span>
-                        <span>Log</span>
-                      </div>
-                      <textarea
-                        id="va-contact-queue-sms"
-                        rows={4}
-                        value={smsDraft}
-                        onChange={event => setSmsDraft(event.target.value)}
-                        placeholder={checkLeadSmsCompliance(selectedImportedLead).allowed ? "Type a message..." : `SMS blocked: ${checkLeadSmsCompliance(selectedImportedLead).blockLabel}.`}
-                        disabled={!checkLeadSmsCompliance(selectedImportedLead).allowed}
-                      />
-                      <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", marginTop: 8 }}>
-                        <span style={{ color: "var(--muted)", fontSize: 12 }}>{smsDraft.trim().length}/1200</span>
-                        <button onClick={sendSmsToLead} disabled={smsSending || !checkLeadSmsCompliance(selectedImportedLead).allowed} style={{ ...compactPrimaryButton, opacity: smsSending || !checkLeadSmsCompliance(selectedImportedLead).allowed ? 0.55 : 1 }}>
-                          {smsSending ? "Sending..." : "Send Text"}
-                        </button>
-                      </div>
-                    </div>
                   </>
                 ) : activeCommunicationEvent ? (
                   <>
@@ -3619,29 +3704,34 @@ export default function VaPage() {
                     </div>
                     <ConversationPanel
                       eyebrow="Conversation"
-                      title="Timeline"
-                      subject={activeCommunicationEvent.contact_number || activeCommunicationEvent.from_number || "Unknown contact"}
-                      communications={[activeCommunicationEvent]}
+                      title="Conversation"
+                      subject={phoneForCommunicationEvent(activeCommunicationEvent) || "Unknown contact"}
+                      communications={communicationEvents}
                       activities={[]}
                       emptyText="No communication yet."
                       maxHeight={318}
+                      composer={(
+                        <div>
+                          <div style={{ display: "flex", gap: 12, marginBottom: 8, color: "var(--muted)", fontSize: 13 }}>
+                            <strong style={{ color: "var(--obsidian)", borderBottom: "2px solid var(--obsidian)", paddingBottom: 5 }}>Text</strong>
+                            <span>Note</span>
+                            <span>Log</span>
+                          </div>
+                          <textarea
+                            rows={4}
+                            value={smsDraft}
+                            onChange={event => setSmsDraft(event.target.value)}
+                            placeholder="Type a message..."
+                          />
+                          <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", marginTop: 8 }}>
+                            <span style={{ color: "var(--muted)", fontSize: 12 }}>{smsDraft.trim().length}/1200</span>
+                            <button onClick={sendSmsToSelectedEvent} disabled={smsSending || !phoneForCommunicationEvent(activeCommunicationEvent)} style={{ ...compactPrimaryButton, opacity: smsSending || !phoneForCommunicationEvent(activeCommunicationEvent) ? 0.55 : 1 }}>
+                              {smsSending ? "Sending..." : "Send Text"}
+                            </button>
+                          </div>
+                        </div>
+                      )}
                     />
-                    <div style={{ borderTop: "1px solid var(--fog)", marginTop: 12, paddingTop: 12 }}>
-                      <div style={{ display: "flex", gap: 12, marginBottom: 8, color: "var(--muted)", fontSize: 13 }}>
-                        <strong style={{ color: "var(--obsidian)", borderBottom: "2px solid var(--obsidian)", paddingBottom: 5 }}>Text</strong>
-                        <span>Note</span>
-                        <span>Log</span>
-                      </div>
-                      <textarea
-                        rows={4}
-                        value={smsDraft}
-                        onChange={event => setSmsDraft(event.target.value)}
-                        placeholder="Link this contact before sending a tracked reply."
-                      />
-                      <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", marginTop: 8 }}>
-                        <span style={{ color: "var(--muted)", fontSize: 12 }}>{smsDraft.trim().length}/1200</span>
-                      </div>
-                    </div>
                   </>
                 ) : (
                   <div>
