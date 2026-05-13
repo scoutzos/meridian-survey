@@ -331,6 +331,11 @@ function matchesBooleanFilter(value: boolean | null | undefined, filter: Segment
   return filter === "yes" ? value === true : value !== true;
 }
 
+function uniqueSortedOptions(values: Array<string | null | undefined>): string[] {
+  return Array.from(new Set(values.map(value => (value || "").trim()).filter(Boolean)))
+    .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
+}
+
 function hasPositive(value: number | null | undefined): boolean {
   return typeof value === "number" && value > 0;
 }
@@ -1087,6 +1092,26 @@ export default function VaPage() {
   const bulkTextSegments = useMemo(() => estimateSegments(bulkTextMessage), [bulkTextMessage]);
   const bulkTextFinalMessage = useMemo(() => appendComplianceFooter(bulkTextMessage), [bulkTextMessage]);
   const bulkTextPreviewLeads = bulkTextCategorization.eligible.slice(0, 3);
+  const bulkTextLocationOptions = useMemo(() => {
+    const countyRows = importedLeads;
+    const stateRows = importedLeads.filter(lead => !bulkTextCounty || matchesTextFilter(lead.county, bulkTextCounty));
+    const cityRows = importedLeads.filter(lead =>
+      (!bulkTextCounty || matchesTextFilter(lead.county, bulkTextCounty))
+      && (!bulkTextState || matchesTextFilter(lead.state, bulkTextState))
+    );
+    const zipRows = importedLeads.filter(lead =>
+      (!bulkTextCounty || matchesTextFilter(lead.county, bulkTextCounty))
+      && (!bulkTextState || matchesTextFilter(lead.state, bulkTextState))
+      && (!bulkTextCity || matchesTextFilter(lead.city, bulkTextCity))
+    );
+    return {
+      counties: uniqueSortedOptions(countyRows.map(lead => lead.county)),
+      states: uniqueSortedOptions(stateRows.map(lead => lead.state)),
+      cities: uniqueSortedOptions(cityRows.map(lead => lead.city)),
+      zips: uniqueSortedOptions(zipRows.map(lead => lead.zip)),
+      mailStates: uniqueSortedOptions(importedLeads.map(lead => lead.mail_state)),
+    };
+  }, [bulkTextCity, bulkTextCounty, bulkTextState, importedLeads]);
   const batchLeads = useMemo(() => selectedBatchId ? importedLeads.filter(lead => lead.batch_id === selectedBatchId) : importedLeads, [importedLeads, selectedBatchId]);
   const nextBestLead = useMemo(() => filteredImportedLeads.find(lead => lead.status === "new" || lead.status === "contacted") ?? filteredImportedLeads[0] ?? null, [filteredImportedLeads]);
   const priorityImportedLeads = useMemo(() => filteredImportedLeads
@@ -3884,7 +3909,10 @@ export default function VaPage() {
                     </label>
                     <label style={{ display: "grid", gap: 6, color: "var(--muted)", fontSize: 12, fontWeight: 800, textTransform: "uppercase", letterSpacing: 1.2 }}>
                       County
-                      <input value={bulkTextCounty} onChange={event => setBulkTextCounty(event.target.value)} placeholder="Any county" style={{ minHeight: 42 }} />
+                      <select value={bulkTextCounty} onChange={event => setBulkTextCounty(event.target.value)} style={{ minHeight: 42 }}>
+                        <option value="">Any county</option>
+                        {bulkTextLocationOptions.counties.map(county => <option key={county} value={county}>{county}</option>)}
+                      </select>
                     </label>
                     <label style={{ display: "grid", gap: 6, color: "var(--muted)", fontSize: 12, fontWeight: 800, textTransform: "uppercase", letterSpacing: 1.2 }}>
                       Minimum score
@@ -3895,20 +3923,32 @@ export default function VaPage() {
                     <p style={eyebrowSmall}>Location filters</p>
                     <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, marginTop: 10 }} className="number-grid">
                       <label style={{ display: "grid", gap: 6, color: "var(--muted)", fontSize: 12, fontWeight: 800, textTransform: "uppercase", letterSpacing: 1.2 }}>
-                        State
-                        <input value={bulkTextState} onChange={event => setBulkTextState(event.target.value)} placeholder="GA" style={{ minHeight: 42 }} />
+                      State
+                        <select value={bulkTextState} onChange={event => setBulkTextState(event.target.value)} style={{ minHeight: 42 }}>
+                          <option value="">Any state</option>
+                          {bulkTextLocationOptions.states.map(state => <option key={state} value={state}>{state}</option>)}
+                        </select>
                       </label>
                       <label style={{ display: "grid", gap: 6, color: "var(--muted)", fontSize: 12, fontWeight: 800, textTransform: "uppercase", letterSpacing: 1.2 }}>
                         City
-                        <input value={bulkTextCity} onChange={event => setBulkTextCity(event.target.value)} placeholder="Any city" style={{ minHeight: 42 }} />
+                        <select value={bulkTextCity} onChange={event => setBulkTextCity(event.target.value)} style={{ minHeight: 42 }}>
+                          <option value="">Any city</option>
+                          {bulkTextLocationOptions.cities.map(city => <option key={city} value={city}>{city}</option>)}
+                        </select>
                       </label>
                       <label style={{ display: "grid", gap: 6, color: "var(--muted)", fontSize: 12, fontWeight: 800, textTransform: "uppercase", letterSpacing: 1.2 }}>
                         ZIP
-                        <input value={bulkTextZip} onChange={event => setBulkTextZip(event.target.value)} placeholder="Any ZIP" style={{ minHeight: 42 }} />
+                        <select value={bulkTextZip} onChange={event => setBulkTextZip(event.target.value)} style={{ minHeight: 42 }}>
+                          <option value="">Any ZIP</option>
+                          {bulkTextLocationOptions.zips.map(zip => <option key={zip} value={zip}>{zip}</option>)}
+                        </select>
                       </label>
                       <label style={{ display: "grid", gap: 6, color: "var(--muted)", fontSize: 12, fontWeight: 800, textTransform: "uppercase", letterSpacing: 1.2 }}>
                         Mailing state
-                        <input value={bulkTextMailState} onChange={event => setBulkTextMailState(event.target.value)} placeholder="Any" style={{ minHeight: 42 }} />
+                        <select value={bulkTextMailState} onChange={event => setBulkTextMailState(event.target.value)} style={{ minHeight: 42 }}>
+                          <option value="">Any mailing state</option>
+                          {bulkTextLocationOptions.mailStates.map(state => <option key={state} value={state}>{state}</option>)}
+                        </select>
                       </label>
                     </div>
                   </div>
