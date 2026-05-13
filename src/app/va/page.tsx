@@ -75,7 +75,6 @@ import ConversationPanel from "@/components/ConversationPanel";
 import { labelForStatus } from "@/lib/status-map";
 import { getLeadNextAction, type WorkflowTone } from "@/lib/workflow-actions";
 import OperatingHeader from "@/components/OperatingHeader";
-import BulkSmsDrawer from "@/components/BulkSmsDrawer";
 import TwilioCallButton from "@/components/TwilioCallButton";
 import {
   BULK_SMS_MERGE_FIELDS,
@@ -800,7 +799,6 @@ export default function VaPage() {
   const [activityDraft, setActivityDraft] = useState<{ activityType: ImportedLandLeadActivity["activity_type"]; summary: string; nextFollowUpDate: string }>({ activityType: "called", summary: "", nextFollowUpDate: "" });
   const [dispositionDraft, setDispositionDraft] = useState<{ disposition: LeadDisposition; note: string; nextFollowUpDate: string }>({ disposition: "no-answer", note: "", nextFollowUpDate: "" });
   const [smsDraft, setSmsDraft] = useState("");
-  const [bulkSmsDrawerOpen, setBulkSmsDrawerOpen] = useState(false);
   const [bulkTextModalOpen, setBulkTextModalOpen] = useState(false);
   const [bulkTextStep, setBulkTextStep] = useState<BulkTextStep>("audience");
   const [savedLeadSegments, setSavedLeadSegments] = useState<SavedLeadSegment[]>([]);
@@ -1226,13 +1224,24 @@ export default function VaPage() {
     window.dispatchEvent(new CustomEvent("meridian-va-tab", { detail: tab }));
     window.setTimeout(() => document.getElementById(`va-tab-${tab}`)?.scrollIntoView({ behavior: "smooth", block: "start" }), 80);
   };
+  const openBulkTextWorkflow = (useCurrentListFilters = false) => {
+    if (useCurrentListFilters) {
+      setBulkTextBatchId(selectedBatchId || "all");
+      setBulkTextAudienceStatus(leadFilter === "no-phone" ? "all" : leadFilter);
+      setBulkTextMinAcreage(minAcreage);
+      setBulkTextMaxAcreage(maxAcreage);
+    }
+    setBulkTextModalOpen(true);
+    setBulkTextStep("audience");
+    setBulkTextResult(null);
+  };
   const startNewImport = () => {
     goToTab("lists");
     setImportStep("upload");
     setImportPreview(null);
     setSelectedBatchId(null);
     setSelectedImportedLeadId(null);
-    setBulkSmsDrawerOpen(false);
+    setBulkTextModalOpen(false);
     setMessage("Choose a Land Portal or Land Insights CSV to preview.");
     if (!importing) leadCsvInputRef.current?.click();
   };
@@ -2181,14 +2190,14 @@ export default function VaPage() {
     ),
     outreach: (
       <>
-      <button onClick={() => setBulkSmsDrawerOpen(true)} disabled={bulkEligibleLeads.length === 0} style={{ ...headerSecondaryAction, opacity: bulkEligibleLeads.length === 0 ? 0.55 : 1 }}>Bulk Text</button>
+      <button onClick={() => openBulkTextWorkflow()} style={headerSecondaryAction}>Bulk Text</button>
       <button onClick={startNew} style={headerPrimaryAction}>New Deal Brief</button>
       </>
     ),
     lists: (
       <>
       <button onClick={startNewImport} style={headerSecondaryAction}>New Import</button>
-      <button onClick={() => setBulkSmsDrawerOpen(true)} disabled={bulkEligibleLeads.length === 0} style={{ ...headerSecondaryAction, opacity: bulkEligibleLeads.length === 0 ? 0.55 : 1 }}>Bulk Text</button>
+      <button onClick={() => openBulkTextWorkflow(true)} style={headerSecondaryAction}>Bulk Text</button>
       <button onClick={() => goToTab("outreach")} style={headerPrimaryAction}>Work Contact Queue</button>
       </>
     ),
@@ -2224,7 +2233,7 @@ export default function VaPage() {
   ] : activeTab === "lists" ? [
     { label: "Imported", value: String(importedLeads.length), detail: "Total list records", action: "Upload", onAction: startNewImport, tone: "default" as const },
     { label: "New", value: String(importStats.newRows), detail: "Fresh from lists", action: "Filter", onAction: () => setLeadFilter("new"), tone: importStats.newRows ? "hot" as const : "default" as const },
-    { label: "Eligible", value: String(bulkEligibleLeads.length), detail: "Current view recipients", action: "Bulk Text", onAction: () => setBulkSmsDrawerOpen(true), tone: bulkEligibleLeads.length ? "hot" as const : "default" as const },
+    { label: "Eligible", value: String(bulkEligibleLeads.length), detail: "Current view recipients", action: "Bulk Text", onAction: () => openBulkTextWorkflow(true), tone: bulkEligibleLeads.length ? "hot" as const : "default" as const },
     { label: "Converted", value: String(importStats.converted), detail: "Moved into deal flow", action: "Packets", onAction: () => goToTab("packet"), tone: "default" as const },
   ] : activeTab === "packet" ? [
     { label: "Active Packets", value: String(deals.length), detail: "Drafts and reviews", action: "New", onAction: startNew, tone: "default" as const },
@@ -3030,8 +3039,8 @@ export default function VaPage() {
                   Audience is the current Lists filter. The send drawer shows the full exclusion breakdown and a 3-recipient preview before any text leaves the system.
                 </p>
               </div>
-              <button onClick={() => setBulkSmsDrawerOpen(true)} disabled={bulkEligibleLeads.length === 0} style={{ ...primaryButton, opacity: bulkEligibleLeads.length === 0 ? 0.55 : 1 }}>
-                Send Bulk Text →
+              <button onClick={() => openBulkTextWorkflow(true)} style={primaryButton}>
+                Open Bulk Text Filters →
               </button>
             </div>
 
@@ -3262,7 +3271,7 @@ export default function VaPage() {
                 <span style={(followUpsDue.length || recentInboundSms.length || interestedLeads.length) ? hotPill : pill}>
                   {followUpsDue.length + recentInboundSms.length + interestedLeads.length} needs review
                 </span>
-                <button onClick={() => { setBulkTextModalOpen(true); setBulkTextStep("audience"); }} style={primaryButton}>
+                <button onClick={() => openBulkTextWorkflow()} style={primaryButton}>
                   Bulk Text
                 </button>
               </div>
@@ -4091,19 +4100,6 @@ export default function VaPage() {
           </div>
         </div>
       )}
-
-      <BulkSmsDrawer
-        open={bulkSmsDrawerOpen}
-        onClose={() => setBulkSmsDrawerOpen(false)}
-        audienceLabel={selectedBatch ? `List: ${selectedBatch.campaign_source || selectedBatch.original_filename || selectedBatch.source_system}` : "Imported leads · current Lists filter"}
-        audienceContext={[
-          leadFilter !== "all" ? `Status filter: ${leadFilter}` : null,
-          leadSearch.trim() ? `Search: "${leadSearch.trim()}"` : null,
-          minAcreage || maxAcreage ? `Acres: ${minAcreage || "0"}–${maxAcreage || "∞"}` : null,
-        ].filter(Boolean).join(" · ") || undefined}
-        categorization={bulkSmsCategorization}
-        onSend={sendBulkSms}
-      />
 
       <style jsx>{`
         input, select, textarea {
