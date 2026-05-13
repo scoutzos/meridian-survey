@@ -2582,6 +2582,13 @@ export default function VaPage() {
     { label: "Brief", value: portalStats.briefSubmitted ? "Done" : "Open", detail: "Member daily summary", action: "Submit", onAction: submitDailyBrief, tone: portalStats.briefSubmitted ? "good" as const : "hot" as const },
   ];
 
+  const contactQueueSubTabs: Array<{ mode: ContactQueueMode; label: string }> = [
+    { mode: "inbox", label: "Inbox" },
+    { mode: "callbacks", label: "Callbacks" },
+    { mode: "campaigns", label: "Campaigns" },
+    { mode: "relationships", label: "Relationships" },
+  ];
+
   const renderContactQueueComposer = () => {
     const activeLead = selectedImportedLead;
     const activeEvent = activeCommunicationEvent;
@@ -3700,8 +3707,45 @@ export default function VaPage() {
                 </p>
               </div>
               <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-                <button onClick={() => void reload(user)} style={compactButton}>Queue Settings</button>
+                <button onClick={() => void reload(user)} style={compactButton}>Refresh</button>
               </div>
+            </div>
+
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }} aria-label="Contact queue filters">
+              {contactQueueSubTabs.map(tab => {
+                const active = contactQueueMode === tab.mode;
+                return (
+                  <button
+                    key={tab.mode}
+                    type="button"
+                    onClick={() => {
+                      setContactQueueMode(tab.mode);
+                      setSelectedImportedLeadId(null);
+                      setSelectedCommunicationEventId(null);
+                    }}
+                    style={{
+                      ...compactButton,
+                      background: active ? "var(--obsidian)" : "var(--surface)",
+                      borderColor: active ? "var(--obsidian)" : "var(--fog)",
+                      color: active ? "var(--bone)" : "var(--obsidian)",
+                      minHeight: 38,
+                    }}
+                  >
+                    {tab.label}
+                    <span style={{
+                      background: active ? "rgba(237,230,214,0.18)" : "rgba(176,137,84,0.14)",
+                      borderRadius: 999,
+                      color: active ? "var(--bone)" : "var(--muted)",
+                      display: "inline-block",
+                      marginLeft: 8,
+                      minWidth: 22,
+                      padding: "2px 6px",
+                    }}>
+                      {contactQueueModeCounts[tab.mode] ?? 0}
+                    </span>
+                  </button>
+                );
+              })}
             </div>
 
             <div style={{ display: "grid", gridTemplateColumns: "minmax(300px, 0.76fr) minmax(500px, 1.36fr) minmax(300px, 0.88fr)", gap: 12 }} className="lead-inbox-grid">

@@ -35,15 +35,6 @@ const vaWorkspaceTabs = [
   { href: "/va?tab=brief", tab: "brief", label: "Daily Brief" },
 ];
 
-const contactQueueTabs = [
-  { mode: "inbox", label: "Inbox" },
-  { mode: "callbacks", label: "Callbacks" },
-  { mode: "campaigns", label: "Campaigns" },
-  { mode: "unmatched", label: "Unmatched" },
-  { mode: "relationships", label: "Relationships" },
-  { mode: "recommended", label: "Recommended Outbound" },
-];
-
 const crmCreateButton: CSSProperties = {
   border: "1px solid var(--brass)",
   background: "var(--brass)",
@@ -75,8 +66,6 @@ export default function NavBar() {
   const [crmView, setCrmView] = useState<string | null>(null);
   const [vaTab, setVaTab] = useState<string | null>(null);
   const [vaTabCounts, setVaTabCounts] = useState<Record<string, number>>({});
-  const [contactQueueMode, setContactQueueMode] = useState("inbox");
-  const [contactQueueCounts, setContactQueueCounts] = useState<Record<string, number>>({});
   const [commsStatus, setCommsStatus] = useState<{
     phoneState?: string;
     phoneMessage?: string;
@@ -115,16 +104,6 @@ export default function NavBar() {
     };
     window.addEventListener("meridian-va-tab", handleVaTab);
     return () => window.removeEventListener("meridian-va-tab", handleVaTab);
-  }, []);
-
-  useEffect(() => {
-    const handleContactQueueState = (event: Event) => {
-      const detail = (event as CustomEvent<{ active?: string; counts?: Record<string, number> }>).detail;
-      if (detail?.active) setContactQueueMode(detail.active);
-      if (detail?.counts) setContactQueueCounts(detail.counts);
-    };
-    window.addEventListener("meridian-contact-queue-state", handleContactQueueState);
-    return () => window.removeEventListener("meridian-contact-queue-state", handleContactQueueState);
   }, []);
 
   useEffect(() => {
@@ -257,28 +236,7 @@ export default function NavBar() {
           </div>
         </aside>
         <nav className={`crm-top-bar ${isVaUser(user) && pathname === "/va" ? "crm-top-bar-va" : ""} ${isVaUser(user) && pathname === "/va" && vaTab === "outreach" ? "crm-top-bar-contact" : ""}`}>
-          {isVaUser(user) && pathname === "/va" && vaTab === "outreach" && (
-            <div className="va-top-tabs va-contact-tabs" aria-label="Contact queue navigation">
-              {contactQueueTabs.map(tab => {
-                const active = contactQueueMode === tab.mode;
-                return (
-                  <button
-                    key={tab.mode}
-                    type="button"
-                    onClick={() => {
-                      setContactQueueMode(tab.mode);
-                      window.dispatchEvent(new CustomEvent("meridian-contact-queue-mode", { detail: tab.mode }));
-                    }}
-                    className={active ? "va-top-tab va-top-tab-active" : "va-top-tab"}
-                  >
-                    <span>{tab.label}</span>
-                    <strong>{contactQueueCounts[tab.mode] ?? 0}</strong>
-                  </button>
-                );
-              })}
-            </div>
-          )}
-          {isVaUser(user) && pathname === "/va" && vaTab !== "outreach" && (
+          {isVaUser(user) && pathname === "/va" && (
             <div className="va-top-tabs" aria-label="VA workspace navigation">
               {vaWorkspaceTabs.map(tab => {
                 const active = vaTab === tab.tab || (!vaTab && tab.tab === "today");
