@@ -260,6 +260,7 @@ export default function FloatingSmsWindow({
 
   const threads = useMemo(() => buildThreads(events, leads, readState), [events, leads, readState]);
   const selectedThread = threads.find(thread => thread.key === selectedKey) ?? threads[0] ?? null;
+  const unreadTotal = threads.reduce((sum, thread) => sum + thread.unread, 0);
   const selectedLead = selectedThread?.lead ?? null;
   const selectedPhone = selectedThread?.phone ?? last10(newPhone);
   const selectedCompliance = selectedLead ? checkLeadSmsCompliance(selectedLead) : null;
@@ -453,6 +454,18 @@ export default function FloatingSmsWindow({
     const timer = window.setInterval(() => setCallTick(tick => tick + 1), 1000);
     return () => window.clearInterval(timer);
   }, [phoneState]);
+
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent("meridian-comms-status", {
+      detail: {
+        phoneState,
+        phoneMessage,
+        unread: unreadTotal,
+        callDuration,
+        open,
+      },
+    }));
+  }, [callDuration, open, phoneMessage, phoneState, unreadTotal]);
 
   useEffect(() => {
     if (!selectedKey && threads[0]) setSelectedKey(threads[0].key);

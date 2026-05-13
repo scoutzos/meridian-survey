@@ -336,6 +336,24 @@ function formatDate(iso: string): string {
   }
 }
 
+function formatQueueDueReason(dueDate: string | null | undefined): string {
+  if (!dueDate) return "Why: follow-up date is due.";
+  const due = new Date(`${dueDate}T00:00:00`);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const diff = Math.round((today.getTime() - due.getTime()) / 86400000);
+  if (diff > 1) return `Why: follow-up is ${diff} days overdue.`;
+  if (diff === 1) return "Why: follow-up was due yesterday.";
+  if (diff === 0) return "Why: follow-up is due today.";
+  return `Why: follow-up is due ${dueDate}.`;
+}
+
+function formatCallSeconds(seconds: number): string {
+  const minutes = Math.floor(seconds / 60);
+  const rest = seconds % 60;
+  return `${minutes}:${String(rest).padStart(2, "0")}`;
+}
+
 type ConversationItem = {
   id: string;
   kind: "sms-in" | "sms-out" | "activity";
@@ -598,6 +616,14 @@ export default function VaPage() {
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
   const [activeTab, setActiveTab] = useState<VaTab>("today");
+  const [lastRefreshedAt, setLastRefreshedAt] = useState<string | null>(null);
+  const [commsStatus, setCommsStatus] = useState<{
+    phoneState: "offline" | "connecting" | "online" | "ringing" | "in-call" | "error";
+    phoneMessage: string;
+    unread: number;
+    callDuration: number;
+    open: boolean;
+  }>({ phoneState: "offline", phoneMessage: "Global comms is closed.", unread: 0, callDuration: 0, open: false });
   const [notifyReviewUpdate, setNotifyReviewUpdate] = useState(false);
   const [activeMemberNames, setActiveMemberNames] = useState<string[]>([]);
   const leadCsvInputRef = useRef<HTMLInputElement | null>(null);
@@ -634,6 +660,7 @@ export default function VaPage() {
     setRecentInboundSms(recentSmsRows.filter(event => event.direction === "inbound").slice(0, 40));
     setActiveMemberNames(memberNames);
     setSelectedId(prev => prev && activeRows.some(d => d.id === prev) ? prev : activeRows[0]?.id ?? null);
+    setLastRefreshedAt(new Date().toISOString());
     setLoading(false);
   }, [user]);
 
@@ -686,6 +713,15 @@ export default function VaPage() {
     const timer = window.setInterval(() => setClockTick(tick => tick + 1), 30000);
     return () => window.clearInterval(timer);
   }, [openShift]);
+
+  useEffect(() => {
+    const handleCommsStatus = (event: Event) => {
+      const detail = (event as CustomEvent<typeof commsStatus>).detail;
+      if (detail) setCommsStatus(detail);
+    };
+    window.addEventListener("meridian-comms-status", handleCommsStatus);
+    return () => window.removeEventListener("meridian-comms-status", handleCommsStatus);
+  }, []);
 
   const selected = useMemo(() => deals.find(deal => deal.id === selectedId) ?? null, [deals, selectedId]);
   const liveInput = useMemo(() => buildPayload(draft, draft.status ?? "lead"), [draft]);
@@ -1874,6 +1910,9 @@ export default function VaPage() {
                     </p>
                   </div>
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    <span style={{ alignSelf: "center", color: "var(--muted)", fontSize: 12 }}>
+                      {lastRefreshedAt ? `Last refreshed ${formatDate(lastRefreshedAt)}` : loading ? "Refreshing..." : "Not refreshed yet"}
+                    </span>
                     <button onClick={() => void reload(user)} style={secondaryButton}>Refresh</button>
                   </div>
                 </div>
@@ -1888,7 +1927,7 @@ export default function VaPage() {
                           <span style={hotPill}>Due Follow-Up</span>
                         </div>
                         <p style={workItemBody}>{lead.property_address || lead.parcel_id || "Seller follow-up is due."}</p>
-                        <small style={workItemMeta}>Due {lead.next_follow_up_date} · Open seller card</small>
+                        <small style={workItemMeta}>{formatQueueDueReason(lead.next_follow_up_date)} · Open seller card</small>
                       </div>
                     </button>
                   ))}
@@ -1902,7 +1941,7 @@ export default function VaPage() {
                           <span style={hotPill}>Due Follow-Up</span>
                         </div>
                         <p style={workItemBody}>{deal.seller_name || deal.seller_phone || "Deal follow-up is due."}</p>
-                        <small style={workItemMeta}>Due {deal.next_follow_up_date} · Open packet</small>
+                        <small style={workItemMeta}>{formatQueueDueReason(deal.next_follow_up_date)} · Open packet</small>
                       </div>
                     </button>
                   ))}
@@ -1916,7 +1955,7 @@ export default function VaPage() {
                           <span style={hotPill}>Interested Seller</span>
                         </div>
                         <p style={workItemBody}>{lead.property_address || lead.parcel_id || "Property record needs review."}</p>
-                        <small style={workItemMeta}>{lead.phone || lead.phone_2 || "No phone"} · Build packet</small>
+                        <small style={workItemMeta}>Why: seller is marked interested · {lead.phone || lead.phone_2 || "No phone"} · Build packet</small>
                       </div>
                     </button>
                   ))}
@@ -1930,7 +1969,7 @@ export default function VaPage() {
                           <span style={pill}>Packet Ready</span>
                         </div>
                         <p style={workItemBody}>{deal.address || deal.parcel_id || "Draft deal brief needs readiness checks."}</p>
-                        <small style={workItemMeta}>{deal.seller_name || deal.seller_phone || "Seller pending"} · Review packet</small>
+                        <small style={workItemMeta}>Why: draft packet needs readiness review · {deal.seller_name || deal.seller_phone || "Seller pending"}</small>
                       </div>
                     </button>
                   ))}
@@ -1944,7 +1983,7 @@ export default function VaPage() {
                           <span style={hotPill}>Blocked Task</span>
                         </div>
                         <p style={workItemBody}>{task.description || "Member-assigned task needs a status update."}</p>
-                        <small style={workItemMeta}>{task.created_by ? `Assigned by ${task.created_by}` : "Assigned"}{task.due_date ? ` · Due ${task.due_date}` : ""} · {taskRecordLabel(task)}</small>
+                        <small style={workItemMeta}>Why: task is blocked · {task.created_by ? `Assigned by ${task.created_by}` : "Assigned"}{task.due_date ? ` · Due ${task.due_date}` : ""} · {taskRecordLabel(task)}</small>
                       </div>
                     </button>
                   ))}
@@ -1958,7 +1997,7 @@ export default function VaPage() {
                           <span style={task.priority === "urgent" || task.priority === "high" ? hotPill : pill}>Member Task</span>
                         </div>
                         <p style={workItemBody}>{task.description || "Member-assigned task needs a status update."}</p>
-                        <small style={workItemMeta}>{task.created_by ? `Assigned by ${task.created_by}` : "Assigned"}{task.due_date ? ` · Due ${task.due_date}` : ""} · {taskRecordLabel(task)}</small>
+                        <small style={workItemMeta}>Why: member assigned this task{task.priority ? ` · ${statusLabel(task.priority)} priority` : ""} · {task.created_by ? `Assigned by ${task.created_by}` : "Assigned"}{task.due_date ? ` · Due ${task.due_date}` : ""}</small>
                       </div>
                     </button>
                   ))}
@@ -1974,6 +2013,26 @@ export default function VaPage() {
               </section>
 
               <aside style={{ display: "grid", gap: 14, alignContent: "start" }}>
+                <section style={panel}>
+                  <p style={eyebrowSmall}>Global comms</p>
+                  <h3 style={{ ...sectionTitle, fontSize: 22, marginTop: 4 }}>
+                    {commsStatus.phoneState === "in-call"
+                      ? `On call ${formatCallSeconds(commsStatus.callDuration)}`
+                      : commsStatus.phoneState === "ringing"
+                        ? "Incoming call"
+                        : commsStatus.phoneState === "online"
+                          ? "Phone online"
+                          : commsStatus.phoneState === "connecting"
+                            ? "Phone connecting"
+                            : commsStatus.phoneState === "error"
+                              ? "Phone needs attention"
+                              : "Phone offline"}
+                  </h3>
+                  <p style={{ color: "var(--muted)", fontSize: 13, lineHeight: 1.45, marginTop: 6 }}>
+                    {commsStatus.unread > 0 ? `${commsStatus.unread} unread message${commsStatus.unread === 1 ? "" : "s"}` : "No unread messages"} · {commsStatus.phoneMessage}
+                  </p>
+                </section>
+
                 <section style={panel}>
                   <p style={eyebrowSmall}>Today&apos;s progress</p>
                   <h3 style={{ ...sectionTitle, fontSize: 22, marginTop: 4 }}>Shift activity</h3>
