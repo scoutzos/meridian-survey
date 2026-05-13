@@ -2723,7 +2723,7 @@ export default function VaPage() {
 
   return (
     <div className="va-root" style={{ maxWidth: 1680, margin: "0 auto", padding: "78px 20px 100px" }}>
-      {activeTab !== "today" && activeTab !== "outreach" && (
+      {activeTab !== "today" && activeTab !== "outreach" && activeTab !== "lists" && (
         <OperatingHeader
           eyebrow={headerCopy[activeTab].eyebrow}
           title={headerCopy[activeTab].title}
@@ -2750,7 +2750,7 @@ export default function VaPage() {
         </div>
       )}
 
-      {!openShift && activeTab !== "today" && activeTab !== "outreach" && (
+      {!openShift && activeTab !== "today" && activeTab !== "outreach" && activeTab !== "lists" && (
         <section style={clockInBanner} className="va-clock-banner">
           <div>
             <p style={{ ...eyebrowSmall, color: "var(--bone)", opacity: 0.85 }}>Shift status</p>
@@ -3312,7 +3312,7 @@ export default function VaPage() {
           )}
 
           {activeTab === "lists" && (
-          <section style={panel}>
+          <section style={contactQueuePage}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12, flexWrap: "wrap", marginBottom: 12 }}>
               <div>
                 <p style={eyebrowSmall}>Lists</p>
