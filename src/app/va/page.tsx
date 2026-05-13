@@ -190,13 +190,37 @@ type ImportStatusFilter = typeof IMPORT_STATUS_FILTERS[number]["value"];
 type ImportStep = "upload" | "preview" | "importing" | "work";
 type ImportStage = "idle" | "previewing" | "creating-batch" | "saving-leads" | "refreshing" | "done";
 type BulkTextStep = "audience" | "compliance" | "message";
+type SegmentBooleanFilter = "any" | "yes" | "no";
 type SavedLeadSegment = {
   id: string;
   name: string;
   status: ImportStatusFilter;
   batchId: string;
   county: string;
+  state: string;
+  city: string;
+  zip: string;
+  mailState: string;
   minScore: string;
+  minAcreage: string;
+  maxAcreage: string;
+  minMarketValue: string;
+  maxMarketValue: string;
+  landUse: string;
+  ownerType: string;
+  ownerOutOfState: SegmentBooleanFilter;
+  ownerOutOfCounty: SegmentBooleanFilter;
+  taxDelinquent: SegmentBooleanFilter;
+  inHoa: SegmentBooleanFilter;
+  landLocked: SegmentBooleanFilter;
+  flood: SegmentBooleanFilter;
+  wetlands: SegmentBooleanFilter;
+  roadFrontage: SegmentBooleanFilter;
+  tagOddShape: SegmentBooleanFilter;
+  tagStructure: SegmentBooleanFilter;
+  tagFarmland: SegmentBooleanFilter;
+  tagSubdivide: SegmentBooleanFilter;
+  tagEntitlement: SegmentBooleanFilter;
   createdAt: string;
 };
 
@@ -231,12 +255,98 @@ const BULK_TEXT_TEMPLATES = [
   },
 ];
 
+const DEFAULT_SEGMENT_FILTERS: Omit<SavedLeadSegment, "id" | "name" | "createdAt"> = {
+  status: "all",
+  batchId: "all",
+  county: "",
+  state: "",
+  city: "",
+  zip: "",
+  mailState: "",
+  minScore: "",
+  minAcreage: "",
+  maxAcreage: "",
+  minMarketValue: "",
+  maxMarketValue: "",
+  landUse: "",
+  ownerType: "",
+  ownerOutOfState: "any",
+  ownerOutOfCounty: "any",
+  taxDelinquent: "any",
+  inHoa: "any",
+  landLocked: "any",
+  flood: "any",
+  wetlands: "any",
+  roadFrontage: "any",
+  tagOddShape: "any",
+  tagStructure: "any",
+  tagFarmland: "any",
+  tagSubdivide: "any",
+  tagEntitlement: "any",
+};
+
+function segmentWithDefaults(segment: Partial<SavedLeadSegment>): SavedLeadSegment {
+  return {
+    ...DEFAULT_SEGMENT_FILTERS,
+    id: segment.id || `segment-${Date.now()}`,
+    name: segment.name || "Saved segment",
+    createdAt: segment.createdAt || new Date().toISOString(),
+    status: segment.status || "all",
+    batchId: segment.batchId || "all",
+    county: segment.county || "",
+    state: segment.state || "",
+    city: segment.city || "",
+    zip: segment.zip || "",
+    mailState: segment.mailState || "",
+    minScore: segment.minScore || "",
+    minAcreage: segment.minAcreage || "",
+    maxAcreage: segment.maxAcreage || "",
+    minMarketValue: segment.minMarketValue || "",
+    maxMarketValue: segment.maxMarketValue || "",
+    landUse: segment.landUse || "",
+    ownerType: segment.ownerType || "",
+    ownerOutOfState: segment.ownerOutOfState || "any",
+    ownerOutOfCounty: segment.ownerOutOfCounty || "any",
+    taxDelinquent: segment.taxDelinquent || "any",
+    inHoa: segment.inHoa || "any",
+    landLocked: segment.landLocked || "any",
+    flood: segment.flood || "any",
+    wetlands: segment.wetlands || "any",
+    roadFrontage: segment.roadFrontage || "any",
+    tagOddShape: segment.tagOddShape || "any",
+    tagStructure: segment.tagStructure || "any",
+    tagFarmland: segment.tagFarmland || "any",
+    tagSubdivide: segment.tagSubdivide || "any",
+    tagEntitlement: segment.tagEntitlement || "any",
+  };
+}
+
+function matchesTextFilter(value: string | null | undefined, query: string): boolean {
+  const normalized = query.trim().toLowerCase();
+  if (!normalized) return true;
+  return (value || "").toLowerCase().includes(normalized);
+}
+
+function matchesBooleanFilter(value: boolean | null | undefined, filter: SegmentBooleanFilter): boolean {
+  if (filter === "any") return true;
+  return filter === "yes" ? value === true : value !== true;
+}
+
+function hasPositive(value: number | null | undefined): boolean {
+  return typeof value === "number" && value > 0;
+}
+
 function leadMatchesBulkTextCriteria(
   lead: ImportedLandLead,
-  criteria: Pick<SavedLeadSegment, "status" | "batchId" | "county" | "minScore">,
+  rawCriteria: Partial<SavedLeadSegment>,
 ): boolean {
+  const criteria = segmentWithDefaults(rawCriteria);
   const countyQuery = criteria.county.trim().toLowerCase();
   const minScore = toNumber(criteria.minScore);
+  const minAcres = toNumber(criteria.minAcreage);
+  const maxAcres = toNumber(criteria.maxAcreage);
+  const minMarketValue = toNumber(criteria.minMarketValue);
+  const maxMarketValue = toNumber(criteria.maxMarketValue);
 
   if (criteria.batchId !== "all" && lead.batch_id !== criteria.batchId) return false;
   if (criteria.status === "duplicates" && lead.duplicate_status === "new") return false;
@@ -248,7 +358,30 @@ function leadMatchesBulkTextCriteria(
   if (criteria.status === "wetlands" && !(toNumber(String(lead.raw_data?.["Wetlands Percent"] ?? "")) ?? 0)) return false;
   if (["new", "contacted", "interested", "passed"].includes(criteria.status) && lead.status !== criteria.status) return false;
   if (countyQuery && !(lead.county || "").toLowerCase().includes(countyQuery)) return false;
+  if (!matchesTextFilter(lead.state, criteria.state)) return false;
+  if (!matchesTextFilter(lead.city, criteria.city)) return false;
+  if (!matchesTextFilter(lead.zip, criteria.zip)) return false;
+  if (!matchesTextFilter(lead.mail_state, criteria.mailState)) return false;
+  if (!matchesTextFilter(lead.land_use, criteria.landUse)) return false;
+  if (!matchesTextFilter(lead.owner_type, criteria.ownerType)) return false;
   if (minScore !== null && (lead.lead_score ?? 0) < minScore) return false;
+  if (minAcres !== null && (lead.acreage ?? 0) < minAcres) return false;
+  if (maxAcres !== null && (lead.acreage ?? 0) > maxAcres) return false;
+  if (minMarketValue !== null && (lead.market_value ?? lead.total_parcel_value ?? 0) < minMarketValue) return false;
+  if (maxMarketValue !== null && (lead.market_value ?? lead.total_parcel_value ?? 0) > maxMarketValue) return false;
+  if (!matchesBooleanFilter(lead.owner_out_of_state, criteria.ownerOutOfState)) return false;
+  if (!matchesBooleanFilter(lead.owner_out_of_county, criteria.ownerOutOfCounty)) return false;
+  if (!matchesBooleanFilter(lead.tax_delinquent, criteria.taxDelinquent)) return false;
+  if (!matchesBooleanFilter(lead.in_hoa, criteria.inHoa)) return false;
+  if (!matchesBooleanFilter(lead.is_land_locked, criteria.landLocked)) return false;
+  if (!matchesBooleanFilter(hasPositive(lead.flood_zone_percent), criteria.flood)) return false;
+  if (!matchesBooleanFilter(hasPositive(lead.wetlands_percent), criteria.wetlands)) return false;
+  if (!matchesBooleanFilter(hasPositive(lead.road_frontage_ft), criteria.roadFrontage)) return false;
+  if (!matchesBooleanFilter(lead.tag_odd_shape, criteria.tagOddShape)) return false;
+  if (!matchesBooleanFilter(lead.tag_structure, criteria.tagStructure)) return false;
+  if (!matchesBooleanFilter(lead.tag_farmland, criteria.tagFarmland)) return false;
+  if (!matchesBooleanFilter(lead.tag_subdivide, criteria.tagSubdivide)) return false;
+  if (!matchesBooleanFilter(lead.tag_entitlement, criteria.tagEntitlement)) return false;
   return true;
 }
 
@@ -676,7 +809,30 @@ export default function VaPage() {
   const [bulkTextAudienceStatus, setBulkTextAudienceStatus] = useState<ImportStatusFilter>("all");
   const [bulkTextBatchId, setBulkTextBatchId] = useState("all");
   const [bulkTextCounty, setBulkTextCounty] = useState("");
+  const [bulkTextState, setBulkTextState] = useState("");
+  const [bulkTextCity, setBulkTextCity] = useState("");
+  const [bulkTextZip, setBulkTextZip] = useState("");
+  const [bulkTextMailState, setBulkTextMailState] = useState("");
   const [bulkTextMinScore, setBulkTextMinScore] = useState("");
+  const [bulkTextMinAcreage, setBulkTextMinAcreage] = useState("");
+  const [bulkTextMaxAcreage, setBulkTextMaxAcreage] = useState("");
+  const [bulkTextMinMarketValue, setBulkTextMinMarketValue] = useState("");
+  const [bulkTextMaxMarketValue, setBulkTextMaxMarketValue] = useState("");
+  const [bulkTextLandUse, setBulkTextLandUse] = useState("");
+  const [bulkTextOwnerType, setBulkTextOwnerType] = useState("");
+  const [bulkTextOwnerOutOfState, setBulkTextOwnerOutOfState] = useState<SegmentBooleanFilter>("any");
+  const [bulkTextOwnerOutOfCounty, setBulkTextOwnerOutOfCounty] = useState<SegmentBooleanFilter>("any");
+  const [bulkTextTaxDelinquent, setBulkTextTaxDelinquent] = useState<SegmentBooleanFilter>("any");
+  const [bulkTextInHoa, setBulkTextInHoa] = useState<SegmentBooleanFilter>("any");
+  const [bulkTextLandLocked, setBulkTextLandLocked] = useState<SegmentBooleanFilter>("any");
+  const [bulkTextFlood, setBulkTextFlood] = useState<SegmentBooleanFilter>("any");
+  const [bulkTextWetlands, setBulkTextWetlands] = useState<SegmentBooleanFilter>("any");
+  const [bulkTextRoadFrontage, setBulkTextRoadFrontage] = useState<SegmentBooleanFilter>("any");
+  const [bulkTextTagOddShape, setBulkTextTagOddShape] = useState<SegmentBooleanFilter>("any");
+  const [bulkTextTagStructure, setBulkTextTagStructure] = useState<SegmentBooleanFilter>("any");
+  const [bulkTextTagFarmland, setBulkTextTagFarmland] = useState<SegmentBooleanFilter>("any");
+  const [bulkTextTagSubdivide, setBulkTextTagSubdivide] = useState<SegmentBooleanFilter>("any");
+  const [bulkTextTagEntitlement, setBulkTextTagEntitlement] = useState<SegmentBooleanFilter>("any");
   const [bulkTextMessage, setBulkTextMessage] = useState("");
   const [bulkTextSendWindow, setBulkTextSendWindow] = useState("Business hours");
   const [bulkTextThrottle, setBulkTextThrottle] = useState("50/hour");
@@ -792,8 +948,8 @@ export default function VaPage() {
     try {
       const raw = localStorage.getItem(SAVED_LEAD_SEGMENTS_KEY);
       if (!raw) return;
-      const parsed = JSON.parse(raw) as SavedLeadSegment[];
-      if (Array.isArray(parsed)) setSavedLeadSegments(parsed);
+      const parsed = JSON.parse(raw) as Partial<SavedLeadSegment>[];
+      if (Array.isArray(parsed)) setSavedLeadSegments(parsed.map(segmentWithDefaults));
     } catch {
       setSavedLeadSegments([]);
     }
@@ -870,13 +1026,65 @@ export default function VaPage() {
       status: bulkTextAudienceStatus,
       batchId: bulkTextBatchId,
       county: bulkTextCounty,
+      state: bulkTextState,
+      city: bulkTextCity,
+      zip: bulkTextZip,
+      mailState: bulkTextMailState,
       minScore: bulkTextMinScore,
+      minAcreage: bulkTextMinAcreage,
+      maxAcreage: bulkTextMaxAcreage,
+      minMarketValue: bulkTextMinMarketValue,
+      maxMarketValue: bulkTextMaxMarketValue,
+      landUse: bulkTextLandUse,
+      ownerType: bulkTextOwnerType,
+      ownerOutOfState: bulkTextOwnerOutOfState,
+      ownerOutOfCounty: bulkTextOwnerOutOfCounty,
+      taxDelinquent: bulkTextTaxDelinquent,
+      inHoa: bulkTextInHoa,
+      landLocked: bulkTextLandLocked,
+      flood: bulkTextFlood,
+      wetlands: bulkTextWetlands,
+      roadFrontage: bulkTextRoadFrontage,
+      tagOddShape: bulkTextTagOddShape,
+      tagStructure: bulkTextTagStructure,
+      tagFarmland: bulkTextTagFarmland,
+      tagSubdivide: bulkTextTagSubdivide,
+      tagEntitlement: bulkTextTagEntitlement,
     };
     return importedLeads
       .filter(lead => leadMatchesBulkTextCriteria(lead, criteria))
       .sort((a, b) => (b.lead_score ?? 0) - (a.lead_score ?? 0))
       .slice(0, 500);
-  }, [bulkTextAudienceStatus, bulkTextBatchId, bulkTextCounty, bulkTextMinScore, importedLeads]);
+  }, [
+    bulkTextAudienceStatus,
+    bulkTextBatchId,
+    bulkTextCity,
+    bulkTextCounty,
+    bulkTextFlood,
+    bulkTextInHoa,
+    bulkTextLandLocked,
+    bulkTextLandUse,
+    bulkTextMailState,
+    bulkTextMaxAcreage,
+    bulkTextMaxMarketValue,
+    bulkTextMinAcreage,
+    bulkTextMinMarketValue,
+    bulkTextMinScore,
+    bulkTextOwnerOutOfCounty,
+    bulkTextOwnerOutOfState,
+    bulkTextOwnerType,
+    bulkTextRoadFrontage,
+    bulkTextState,
+    bulkTextTagEntitlement,
+    bulkTextTagFarmland,
+    bulkTextTagOddShape,
+    bulkTextTagStructure,
+    bulkTextTagSubdivide,
+    bulkTextTaxDelinquent,
+    bulkTextWetlands,
+    bulkTextZip,
+    importedLeads,
+  ]);
   const bulkTextCategorization = useMemo(() => categorizeForBulkSms(bulkTextAudience), [bulkTextAudience]);
   const bulkTextSegments = useMemo(() => estimateSegments(bulkTextMessage), [bulkTextMessage]);
   const bulkTextFinalMessage = useMemo(() => appendComplianceFooter(bulkTextMessage), [bulkTextMessage]);
@@ -1488,12 +1696,36 @@ export default function VaPage() {
   };
 
   const applyLeadSegment = (segment: SavedLeadSegment) => {
+    const normalized = segmentWithDefaults(segment);
     setActiveLeadSegmentId(segment.id);
-    setLeadSegmentName(segment.name);
-    setBulkTextAudienceStatus(segment.status);
-    setBulkTextBatchId(segment.batchId);
-    setBulkTextCounty(segment.county);
-    setBulkTextMinScore(segment.minScore);
+    setLeadSegmentName(normalized.name);
+    setBulkTextAudienceStatus(normalized.status);
+    setBulkTextBatchId(normalized.batchId);
+    setBulkTextCounty(normalized.county);
+    setBulkTextState(normalized.state);
+    setBulkTextCity(normalized.city);
+    setBulkTextZip(normalized.zip);
+    setBulkTextMailState(normalized.mailState);
+    setBulkTextMinScore(normalized.minScore);
+    setBulkTextMinAcreage(normalized.minAcreage);
+    setBulkTextMaxAcreage(normalized.maxAcreage);
+    setBulkTextMinMarketValue(normalized.minMarketValue);
+    setBulkTextMaxMarketValue(normalized.maxMarketValue);
+    setBulkTextLandUse(normalized.landUse);
+    setBulkTextOwnerType(normalized.ownerType);
+    setBulkTextOwnerOutOfState(normalized.ownerOutOfState);
+    setBulkTextOwnerOutOfCounty(normalized.ownerOutOfCounty);
+    setBulkTextTaxDelinquent(normalized.taxDelinquent);
+    setBulkTextInHoa(normalized.inHoa);
+    setBulkTextLandLocked(normalized.landLocked);
+    setBulkTextFlood(normalized.flood);
+    setBulkTextWetlands(normalized.wetlands);
+    setBulkTextRoadFrontage(normalized.roadFrontage);
+    setBulkTextTagOddShape(normalized.tagOddShape);
+    setBulkTextTagStructure(normalized.tagStructure);
+    setBulkTextTagFarmland(normalized.tagFarmland);
+    setBulkTextTagSubdivide(normalized.tagSubdivide);
+    setBulkTextTagEntitlement(normalized.tagEntitlement);
     setBulkTextStep("audience");
     setBulkTextResult(null);
   };
@@ -1510,7 +1742,30 @@ export default function VaPage() {
       status: bulkTextAudienceStatus,
       batchId: bulkTextBatchId,
       county: bulkTextCounty.trim(),
+      state: bulkTextState.trim(),
+      city: bulkTextCity.trim(),
+      zip: bulkTextZip.trim(),
+      mailState: bulkTextMailState.trim(),
       minScore: bulkTextMinScore.trim(),
+      minAcreage: bulkTextMinAcreage.trim(),
+      maxAcreage: bulkTextMaxAcreage.trim(),
+      minMarketValue: bulkTextMinMarketValue.trim(),
+      maxMarketValue: bulkTextMaxMarketValue.trim(),
+      landUse: bulkTextLandUse.trim(),
+      ownerType: bulkTextOwnerType.trim(),
+      ownerOutOfState: bulkTextOwnerOutOfState,
+      ownerOutOfCounty: bulkTextOwnerOutOfCounty,
+      taxDelinquent: bulkTextTaxDelinquent,
+      inHoa: bulkTextInHoa,
+      landLocked: bulkTextLandLocked,
+      flood: bulkTextFlood,
+      wetlands: bulkTextWetlands,
+      roadFrontage: bulkTextRoadFrontage,
+      tagOddShape: bulkTextTagOddShape,
+      tagStructure: bulkTextTagStructure,
+      tagFarmland: bulkTextTagFarmland,
+      tagSubdivide: bulkTextTagSubdivide,
+      tagEntitlement: bulkTextTagEntitlement,
       createdAt: new Date().toISOString(),
     };
     setSavedLeadSegments(prev => {
@@ -1536,7 +1791,30 @@ export default function VaPage() {
     setBulkTextAudienceStatus("all");
     setBulkTextBatchId("all");
     setBulkTextCounty("");
+    setBulkTextState("");
+    setBulkTextCity("");
+    setBulkTextZip("");
+    setBulkTextMailState("");
     setBulkTextMinScore("");
+    setBulkTextMinAcreage("");
+    setBulkTextMaxAcreage("");
+    setBulkTextMinMarketValue("");
+    setBulkTextMaxMarketValue("");
+    setBulkTextLandUse("");
+    setBulkTextOwnerType("");
+    setBulkTextOwnerOutOfState("any");
+    setBulkTextOwnerOutOfCounty("any");
+    setBulkTextTaxDelinquent("any");
+    setBulkTextInHoa("any");
+    setBulkTextLandLocked("any");
+    setBulkTextFlood("any");
+    setBulkTextWetlands("any");
+    setBulkTextRoadFrontage("any");
+    setBulkTextTagOddShape("any");
+    setBulkTextTagStructure("any");
+    setBulkTextTagFarmland("any");
+    setBulkTextTagSubdivide("any");
+    setBulkTextTagEntitlement("any");
     setBulkTextResult(null);
   };
 
@@ -3562,7 +3840,13 @@ export default function VaPage() {
                             <button onClick={() => applyLeadSegment(segment)} style={{ background: "transparent", border: "none", padding: 0, textAlign: "left", cursor: "pointer", flex: 1 }}>
                               <strong style={{ color: "var(--obsidian)", fontSize: 13 }}>{segment.name}</strong>
                               <span style={{ display: "block", color: "var(--muted)", fontSize: 12, marginTop: 3 }}>
-                                {segment.county || "Any county"} · {IMPORT_STATUS_FILTERS.find(filter => filter.value === segment.status)?.label || "All"} · {batchLabel} · {segment.minScore ? `Score ${segment.minScore}+` : "Any score"}
+                                {[
+                                  segment.county || segment.state || segment.city || segment.zip ? [segment.county, segment.city, segment.state, segment.zip].filter(Boolean).join(", ") : "Any location",
+                                  IMPORT_STATUS_FILTERS.find(filter => filter.value === segment.status)?.label || "All",
+                                  batchLabel,
+                                  segment.minScore ? `Score ${segment.minScore}+` : "Any score",
+                                  segment.minAcreage || segment.maxAcreage ? `${segment.minAcreage || "0"}-${segment.maxAcreage || "∞"} acres` : null,
+                                ].filter(Boolean).join(" · ")}
                               </span>
                             </button>
                             <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", justifyContent: "end" }}>
@@ -3606,6 +3890,74 @@ export default function VaPage() {
                       Minimum score
                       <input value={bulkTextMinScore} onChange={event => setBulkTextMinScore(event.target.value)} placeholder="Any score" inputMode="numeric" style={{ minHeight: 42 }} />
                     </label>
+                  </div>
+                  <div style={{ borderTop: "1px solid var(--fog)", marginTop: 14, paddingTop: 14 }}>
+                    <p style={eyebrowSmall}>Location filters</p>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, marginTop: 10 }} className="number-grid">
+                      <label style={{ display: "grid", gap: 6, color: "var(--muted)", fontSize: 12, fontWeight: 800, textTransform: "uppercase", letterSpacing: 1.2 }}>
+                        State
+                        <input value={bulkTextState} onChange={event => setBulkTextState(event.target.value)} placeholder="GA" style={{ minHeight: 42 }} />
+                      </label>
+                      <label style={{ display: "grid", gap: 6, color: "var(--muted)", fontSize: 12, fontWeight: 800, textTransform: "uppercase", letterSpacing: 1.2 }}>
+                        City
+                        <input value={bulkTextCity} onChange={event => setBulkTextCity(event.target.value)} placeholder="Any city" style={{ minHeight: 42 }} />
+                      </label>
+                      <label style={{ display: "grid", gap: 6, color: "var(--muted)", fontSize: 12, fontWeight: 800, textTransform: "uppercase", letterSpacing: 1.2 }}>
+                        ZIP
+                        <input value={bulkTextZip} onChange={event => setBulkTextZip(event.target.value)} placeholder="Any ZIP" style={{ minHeight: 42 }} />
+                      </label>
+                      <label style={{ display: "grid", gap: 6, color: "var(--muted)", fontSize: 12, fontWeight: 800, textTransform: "uppercase", letterSpacing: 1.2 }}>
+                        Mailing state
+                        <input value={bulkTextMailState} onChange={event => setBulkTextMailState(event.target.value)} placeholder="Any" style={{ minHeight: 42 }} />
+                      </label>
+                    </div>
+                  </div>
+                  <div style={{ borderTop: "1px solid var(--fog)", marginTop: 14, paddingTop: 14 }}>
+                    <p style={eyebrowSmall}>Property filters</p>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, marginTop: 10 }} className="number-grid">
+                      <label style={{ display: "grid", gap: 6, color: "var(--muted)", fontSize: 12, fontWeight: 800, textTransform: "uppercase", letterSpacing: 1.2 }}>
+                        Min acres
+                        <input value={bulkTextMinAcreage} onChange={event => setBulkTextMinAcreage(event.target.value)} placeholder="Any" inputMode="decimal" style={{ minHeight: 42 }} />
+                      </label>
+                      <label style={{ display: "grid", gap: 6, color: "var(--muted)", fontSize: 12, fontWeight: 800, textTransform: "uppercase", letterSpacing: 1.2 }}>
+                        Max acres
+                        <input value={bulkTextMaxAcreage} onChange={event => setBulkTextMaxAcreage(event.target.value)} placeholder="Any" inputMode="decimal" style={{ minHeight: 42 }} />
+                      </label>
+                      <label style={{ display: "grid", gap: 6, color: "var(--muted)", fontSize: 12, fontWeight: 800, textTransform: "uppercase", letterSpacing: 1.2 }}>
+                        Min value
+                        <input value={bulkTextMinMarketValue} onChange={event => setBulkTextMinMarketValue(event.target.value)} placeholder="$" inputMode="numeric" style={{ minHeight: 42 }} />
+                      </label>
+                      <label style={{ display: "grid", gap: 6, color: "var(--muted)", fontSize: 12, fontWeight: 800, textTransform: "uppercase", letterSpacing: 1.2 }}>
+                        Max value
+                        <input value={bulkTextMaxMarketValue} onChange={event => setBulkTextMaxMarketValue(event.target.value)} placeholder="$" inputMode="numeric" style={{ minHeight: 42 }} />
+                      </label>
+                      <label style={{ display: "grid", gap: 6, color: "var(--muted)", fontSize: 12, fontWeight: 800, textTransform: "uppercase", letterSpacing: 1.2 }}>
+                        Land use
+                        <input value={bulkTextLandUse} onChange={event => setBulkTextLandUse(event.target.value)} placeholder="Vacant, residential..." style={{ minHeight: 42 }} />
+                      </label>
+                      <label style={{ display: "grid", gap: 6, color: "var(--muted)", fontSize: 12, fontWeight: 800, textTransform: "uppercase", letterSpacing: 1.2 }}>
+                        Owner type
+                        <input value={bulkTextOwnerType} onChange={event => setBulkTextOwnerType(event.target.value)} placeholder="Individual, LLC..." style={{ minHeight: 42 }} />
+                      </label>
+                      <BooleanSegmentSelect label="Owner out of state" value={bulkTextOwnerOutOfState} onChange={setBulkTextOwnerOutOfState} />
+                      <BooleanSegmentSelect label="Owner out of county" value={bulkTextOwnerOutOfCounty} onChange={setBulkTextOwnerOutOfCounty} />
+                    </div>
+                  </div>
+                  <div style={{ borderTop: "1px solid var(--fog)", marginTop: 14, paddingTop: 14 }}>
+                    <p style={eyebrowSmall}>Risk and Land Insights filters</p>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, marginTop: 10 }} className="number-grid">
+                      <BooleanSegmentSelect label="Tax delinquent" value={bulkTextTaxDelinquent} onChange={setBulkTextTaxDelinquent} />
+                      <BooleanSegmentSelect label="In HOA" value={bulkTextInHoa} onChange={setBulkTextInHoa} />
+                      <BooleanSegmentSelect label="Land locked" value={bulkTextLandLocked} onChange={setBulkTextLandLocked} />
+                      <BooleanSegmentSelect label="Flood flag" value={bulkTextFlood} onChange={setBulkTextFlood} />
+                      <BooleanSegmentSelect label="Wetlands flag" value={bulkTextWetlands} onChange={setBulkTextWetlands} />
+                      <BooleanSegmentSelect label="Road frontage" value={bulkTextRoadFrontage} onChange={setBulkTextRoadFrontage} />
+                      <BooleanSegmentSelect label="Odd shape" value={bulkTextTagOddShape} onChange={setBulkTextTagOddShape} />
+                      <BooleanSegmentSelect label="Structure" value={bulkTextTagStructure} onChange={setBulkTextTagStructure} />
+                      <BooleanSegmentSelect label="Farmland" value={bulkTextTagFarmland} onChange={setBulkTextTagFarmland} />
+                      <BooleanSegmentSelect label="Subdivide" value={bulkTextTagSubdivide} onChange={setBulkTextTagSubdivide} />
+                      <BooleanSegmentSelect label="Entitlement" value={bulkTextTagEntitlement} onChange={setBulkTextTagEntitlement} />
+                    </div>
                   </div>
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10, marginTop: 14 }} className="number-grid">
                     <MiniStat label="Considered" value={String(bulkTextCategorization.totalConsidered)} />
@@ -3808,6 +4160,27 @@ export default function VaPage() {
         }
       `}</style>
     </div>
+  );
+}
+
+function BooleanSegmentSelect({
+  label: text,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: SegmentBooleanFilter;
+  onChange: (value: SegmentBooleanFilter) => void;
+}) {
+  return (
+    <label style={{ display: "grid", gap: 6, color: "var(--muted)", fontSize: 12, fontWeight: 800, textTransform: "uppercase", letterSpacing: 1.2 }}>
+      {text}
+      <select value={value} onChange={event => onChange(event.target.value as SegmentBooleanFilter)} style={{ minHeight: 42 }}>
+        <option value="any">Any</option>
+        <option value="yes">Yes</option>
+        <option value="no">No</option>
+      </select>
+    </label>
   );
 }
 
