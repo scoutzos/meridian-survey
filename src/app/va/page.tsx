@@ -886,7 +886,7 @@ export default function VaPage() {
 
   const reload = useCallback(async (memberName = user) => {
     setLoading(true);
-    const [rows, briefRows, timeRows, requestRows, currentShift, importRows, batchRows, smsRows, recentSmsRows, taskRows, memberNames] = await Promise.all([
+    const results = await Promise.allSettled([
       fetchDeals(),
       fetchVaDailyBriefs(8),
       fetchVaTimeEntries(80),
@@ -899,6 +899,24 @@ export default function VaPage() {
       fetchActionItems(),
       fetchActiveMemberNames(),
     ]);
+    const value = <T,>(index: number, fallback: T) => {
+      const result = results[index] as PromiseSettledResult<T>;
+      return result.status === "fulfilled" ? result.value : fallback;
+    };
+    const rows = value<Deal[]>(0, []);
+    const briefRows = value<VaDailyBrief[]>(1, []);
+    const timeRows = value<VaTimeEntry[]>(2, []);
+    const requestRows = value<VaTimeChangeRequest[]>(3, []);
+    const currentShift = value<VaTimeEntry | null>(4, null);
+    const importRows = value<ImportedLandLead[]>(5, []);
+    const batchRows = value<LandLeadBatch[]>(6, []);
+    const smsRows = value<CommunicationEvent[]>(7, []);
+    const recentSmsRows = value<CommunicationEvent[]>(8, []);
+    const taskRows = value<ActionItem[]>(9, []);
+    const memberNames = value<string[]>(10, []);
+    const failedLoads = results
+      .map((result, index) => result.status === "rejected" ? index : null)
+      .filter((index): index is number => index !== null);
     const activeRows = rows.filter(deal =>
       !["closed", "active-project", "stabilized", "sold"].includes(deal.status)
       && (!memberName || deal.created_by === memberName || deal.submitted_by === memberName || deal.assigned_to === memberName)
@@ -916,6 +934,9 @@ export default function VaPage() {
     setActiveMemberNames(memberNames);
     setSelectedId(prev => prev && activeRows.some(d => d.id === prev) ? prev : activeRows[0]?.id ?? null);
     setLastRefreshedAt(new Date().toISOString());
+    if (failedLoads.length) {
+      setMessage("Some VA data did not load. Refresh the queue or check the deployment environment if counts stay at zero.");
+    }
     setLoading(false);
   }, [user]);
 
