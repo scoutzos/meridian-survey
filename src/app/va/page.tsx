@@ -3336,47 +3336,19 @@ export default function VaPage() {
               <div>
                 <p style={eyebrowSmall}>Contact Queue</p>
                 <h2 style={sectionTitle}>Relationship conversations and follow-ups</h2>
+                <p style={{ color: "var(--muted)", fontSize: 13, lineHeight: 1.5, marginTop: 4 }}>
+                  Pick the queue, work the next contact, and keep every reply, callback, text, call, and outcome tied to the record.
+                </p>
               </div>
               <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-                <span style={(followUpsDue.length || recentInboundSms.length || interestedLeads.length) ? hotPill : pill}>
-                  {followUpsDue.length + recentInboundSms.length + interestedLeads.length} needs review
+                <span style={(leadFollowUpsDue.length || recentInboundSms.length || interestedLeads.length) ? hotPill : pill}>
+                  {leadFollowUpsDue.length + recentInboundSms.length + interestedLeads.length} needs review
                 </span>
+                <button onClick={() => void reload(user)} style={secondaryButton}>Refresh</button>
                 <button onClick={() => openBulkTextWorkflow()} style={primaryButton}>
                   Bulk Text
                 </button>
               </div>
-            </div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, marginBottom: 14 }} className="number-grid">
-              <ShiftCard label="Unread replies" value={String(recentInboundSms.length)} tone={recentInboundSms.length ? "hot" : "calm"} />
-              <ShiftCard label="Callbacks due" value={String(leadFollowUpsDue.length)} tone={leadFollowUpsDue.length ? "hot" : "calm"} />
-              <ShiftCard label="Interested contacts" value={String(interestedLeads.length)} tone={interestedLeads.length ? "hot" : "calm"} />
-              <ShiftCard label="Campaign-ready" value={String(campaignReadyLeads.length)} />
-            </div>
-
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 10, marginBottom: 14 }} className="number-grid">
-              <ContactActionCard
-                eyebrow="Callbacks"
-                title="Work Due Follow-ups"
-                detail="Show contacts with a follow-up date due now, then call, text, or log the result."
-                action="Show Queue"
-                onAction={() => setContactQueueMode("callbacks")}
-                hot={contactQueueModeCounts.callbacks > 0}
-              />
-              <ContactActionCard
-                eyebrow="Voicemail"
-                title="Prep Call List"
-                detail="Use campaign-ready contacts with phone-safe records for manual calling and voicemail outcomes."
-                action="Show Contacts"
-                onAction={() => setContactQueueMode("campaigns")}
-              />
-              <ContactActionCard
-                eyebrow="Matching"
-                title="Resolve Unmatched"
-                detail="Link inbound messages to a contact, lead, or deal packet before follow-up."
-                action="Review"
-                onAction={() => setContactQueueMode("unmatched")}
-                hot={unmatchedSms.length > 0}
-              />
             </div>
 
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 14 }}>
@@ -3403,55 +3375,14 @@ export default function VaPage() {
               ))}
             </div>
 
-            <div style={{ display: "grid", gridTemplateColumns: "260px minmax(0, 1fr) 420px", gap: 14 }} className="lead-inbox-grid">
-              <aside style={{ display: "grid", gap: 12, alignContent: "start" }}>
-                <section style={{ ...subPanel, borderColor: recentInboundSms.length ? "var(--brass)" : "var(--fog)", background: recentInboundSms.length ? "rgba(176,137,84,0.08)" : "var(--bone)" }}>
-                  <p style={eyebrowSmall}>Recent replies</p>
-                  <div style={{ display: "grid", gap: 8, marginTop: 10 }}>
-                    {recentInboundSms.slice(0, 8).map(event => (
-                      <button key={event.id} onClick={() => openIncomingSms(event)} style={{ ...miniInboxButton, borderColor: event.matched_lead_id || event.matched_deal_id ? "var(--fog)" : "var(--brass)" }}>
-                        <strong>{event.contact_name || event.contact_number || event.from_number || "Unknown contact"}</strong>
-                        <span>{event.body || event.status || "Inbound SMS"}</span>
-                        <em>{event.matched_deal_id ? "Matched deal" : event.matched_lead_id ? "Matched lead" : "Unmatched"}</em>
-                      </button>
-                    ))}
-                    {recentInboundSms.length === 0 && <p style={{ color: "var(--muted)", fontSize: 12, lineHeight: 1.45 }}>No contact replies have been received yet.</p>}
-                  </div>
-                </section>
-
-                <section style={subPanel}>
-                  <p style={eyebrowSmall}>Conversation queues</p>
-                  <div style={{ display: "grid", gap: 8, marginTop: 10 }}>
-                    <QueueButton label="Unmatched replies" detail="Need lead/deal matching" count={unmatchedSms.length} hot={!!unmatchedSms.length} onClick={() => setContactQueueMode("unmatched")} />
-                    <QueueButton label="Interested contacts" detail="Ready for response" count={interestedLeads.length} hot={!!interestedLeads.length} onClick={() => setContactQueueMode("interested")} />
-                    <QueueButton label="Callbacks due" detail="Needs call or text" count={leadFollowUpsDue.length} hot={!!leadFollowUpsDue.length} onClick={() => setContactQueueMode("callbacks")} />
-                    <QueueButton label="Campaign-ready" detail="Eligible for compliant outreach" count={campaignReadyLeads.length} onClick={() => setContactQueueMode("campaigns")} />
-                  </div>
-                </section>
-
-                {unmatchedSms.length > 0 && (
-                  <section style={{ ...subPanel, borderColor: "var(--brass)", background: "rgba(176,137,84,0.08)" }}>
-                    <p style={eyebrowSmall}>Unmatched inbound</p>
-                    <div style={{ display: "grid", gap: 8, marginTop: 10 }}>
-                      {unmatchedSms.slice(0, 5).map(event => (
-                        <button key={event.id} onClick={() => createLeadDraftFromSms(event)} style={{ ...miniInboxButton, borderColor: "var(--brass)" }}>
-                          <strong>{event.contact_number || event.from_number || "Unknown number"}</strong>
-                          <span>{event.body || event.status || "Inbound message"}</span>
-                          <em>Create packet or match</em>
-                        </button>
-                      ))}
-                    </div>
-                  </section>
-                )}
-              </aside>
-
+            <div style={{ display: "grid", gridTemplateColumns: "minmax(360px, 0.9fr) minmax(420px, 1.1fr)", gap: 14 }} className="lead-inbox-grid">
               <section style={subPanel}>
                 <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", marginBottom: 12 }}>
                   <div>
-                    <p style={eyebrowSmall}>Contact queue</p>
+                    <p style={eyebrowSmall}>{contactQueueTitle} Queue</p>
                     <h3 style={{ ...sectionTitle, fontSize: 22 }}>{contactQueueTitle} work</h3>
                   </div>
-                  <button onClick={() => void reload(user)} style={secondaryButton}>Refresh</button>
+                  <span style={hotPill}>{contactQueueModeCounts[contactQueueMode]} open</span>
                 </div>
                 <div style={{ display: "grid", gap: 8, maxHeight: 720, overflow: "auto", paddingRight: 2 }}>
                   {contactQueueMode === "replies" && recentInboundSms.slice(0, 25).map(event => (
@@ -4757,69 +4688,6 @@ function FlagRow({ lead }: { lead: Partial<ImportedLandLead> }) {
   );
 }
 
-function QueueButton({ label: text, detail, count, hot = false, onClick }: { label: string; detail: string; count: number; hot?: boolean; onClick: () => void }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      style={{
-        display: "grid",
-        gridTemplateColumns: "minmax(0, 1fr) auto",
-        gap: 10,
-        alignItems: "center",
-        textAlign: "left",
-        border: hot ? "1px solid var(--brass)" : "1px solid var(--fog)",
-        borderRadius: 8,
-        padding: "10px 12px",
-        background: hot ? "rgba(176,137,84,0.14)" : "var(--surface)",
-      }}
-    >
-      <span>
-        <strong style={{ display: "block", color: "var(--obsidian)", fontSize: 13 }}>{text}</strong>
-        <span style={{ display: "block", color: "var(--muted)", fontSize: 11, marginTop: 2 }}>{detail}</span>
-      </span>
-      <span style={{ ...pill, color: hot ? "var(--obsidian)" : "var(--muted)", background: hot ? "rgba(176,137,84,0.18)" : "rgba(255,255,255,0.5)" }}>{count}</span>
-    </button>
-  );
-}
-
-function ContactActionCard({
-  eyebrow: eyebrowText,
-  title,
-  detail,
-  action,
-  onAction,
-  hot = false,
-}: {
-  eyebrow: string;
-  title: string;
-  detail: string;
-  action: string;
-  onAction: () => void;
-  hot?: boolean;
-}) {
-  return (
-    <div style={{
-      ...subPanel,
-      minHeight: 154,
-      display: "flex",
-      flexDirection: "column",
-      justifyContent: "space-between",
-      background: hot ? "rgba(176,137,84,0.12)" : "var(--bone)",
-      borderColor: hot ? "var(--brass)" : "var(--fog)",
-    }}>
-      <div>
-        <p style={eyebrowSmall}>{eyebrowText}</p>
-        <strong style={{ display: "block", color: "var(--obsidian)", fontSize: 15, marginBottom: 6 }}>{title}</strong>
-        <p style={{ color: "var(--muted)", fontSize: 12, lineHeight: 1.45 }}>{detail}</p>
-      </div>
-      <button type="button" onClick={onAction} style={{ ...secondaryButton, marginTop: 12, alignSelf: "flex-start" }}>
-        {action}
-      </button>
-    </div>
-  );
-}
-
 function InfoStack({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div style={{ border: "1px solid var(--fog)", borderRadius: 8, padding: 10, background: "var(--surface)", color: "var(--muted)", fontSize: 12, lineHeight: 1.55 }}>
@@ -4931,20 +4799,6 @@ const workItemMeta: React.CSSProperties = {
   display: "block",
   fontSize: 11,
   marginTop: 7,
-};
-
-const miniInboxButton: React.CSSProperties = {
-  border: "1px solid var(--fog)",
-  borderRadius: 8,
-  background: "var(--surface)",
-  padding: 10,
-  textAlign: "left",
-  cursor: "pointer",
-  display: "grid",
-  gap: 4,
-  color: "var(--ink)",
-  fontSize: 12,
-  lineHeight: 1.35,
 };
 
 const label: React.CSSProperties = {
