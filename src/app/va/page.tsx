@@ -7,6 +7,7 @@ import {
   createDeal,
   createDealActivity,
   createDealAttachment,
+  fetchDealActivity,
   fetchDealAttachments,
   fetchDealChecklist,
   fetchDeals,
@@ -71,7 +72,7 @@ import {
   type VaTimeChangeRequest,
   type VaTimeChangeRequestType,
 } from "@/lib/va-time";
-import ConversationPanel from "@/components/ConversationPanel";
+import ConversationPanel, { type ConversationActivity } from "@/components/ConversationPanel";
 import { labelForStatus } from "@/lib/status-map";
 import { getLeadNextAction, type WorkflowTone } from "@/lib/workflow-actions";
 import OperatingHeader from "@/components/OperatingHeader";
@@ -239,6 +240,7 @@ const LEAD_ACTIVITY_TYPES: Array<{ value: ImportedLandLeadActivity["activity_typ
 ];
 
 type LeadDisposition = "no-answer" | "left-voicemail" | "texted" | "interested" | "wants-offer" | "follow-up" | "wrong-number" | "dnc" | "not-interested";
+type ContactComposerMode = "text" | "note" | "log";
 
 const BULK_TEXT_TEMPLATES = [
   {
@@ -619,6 +621,16 @@ function buildConversationItems(communications: CommunicationEvent[], activities
   ].sort((a, b) => b.date.localeCompare(a.date));
 }
 
+function dealActivitiesToConversationItems(rows: Awaited<ReturnType<typeof fetchDealActivity>>): ConversationActivity[] {
+  return rows.map(activity => ({
+    id: activity.id,
+    title: statusLabel(activity.activity_type),
+    date: activity.created_at,
+    body: activity.summary,
+    meta: activity.actor || undefined,
+  }));
+}
+
 function isSameDay(iso: string | null | undefined, date: string): boolean {
   return !!iso && iso.slice(0, 10) === date;
 }
@@ -823,6 +835,7 @@ export default function VaPage() {
   const [selectedBatchId, setSelectedBatchId] = useState<string | null>(null);
   const [leadActivities, setLeadActivities] = useState<ImportedLandLeadActivity[]>([]);
   const [communicationEvents, setCommunicationEvents] = useState<CommunicationEvent[]>([]);
+  const [eventActivities, setEventActivities] = useState<ConversationActivity[]>([]);
   const [unmatchedSms, setUnmatchedSms] = useState<CommunicationEvent[]>([]);
   const [recentInboundSms, setRecentInboundSms] = useState<CommunicationEvent[]>([]);
   const [importPreview, setImportPreview] = useState<LandLeadImportPreview | null>(null);
@@ -837,6 +850,7 @@ export default function VaPage() {
   const [activityDraft, setActivityDraft] = useState<{ activityType: ImportedLandLeadActivity["activity_type"]; summary: string; nextFollowUpDate: string }>({ activityType: "called", summary: "", nextFollowUpDate: "" });
   const [dispositionDraft, setDispositionDraft] = useState<{ disposition: LeadDisposition; note: string; nextFollowUpDate: string }>({ disposition: "no-answer", note: "", nextFollowUpDate: "" });
   const [smsDraft, setSmsDraft] = useState("");
+  const [contactComposerMode, setContactComposerMode] = useState<ContactComposerMode>("text");
   const [bulkTextModalOpen, setBulkTextModalOpen] = useState(false);
   const [bulkTextStep, setBulkTextStep] = useState<BulkTextStep>("audience");
   const [contactQueueMode, setContactQueueMode] = useState<ContactQueueMode>("inbox");
@@ -1317,6 +1331,7 @@ export default function VaPage() {
   useEffect(() => {
     if (!selectedImportedLeadId) {
       setLeadActivities([]);
+      if (!selectedCommunicationEventId) setEventActivities([]);
       if (!selectedCommunicationEventId) setCommunicationEvents([]);
       return;
     }
@@ -1330,18 +1345,26 @@ export default function VaPage() {
   }, [selectedCommunicationEventId, selectedImportedLeadId]);
 
   useEffect(() => {
-    if (!selectedCommunicationEvent || selectedImportedLeadId) return;
-    setCommunicationEvents([selectedCommunicationEvent]);
-    const phone = phoneForCommunicationEvent(selectedCommunicationEvent);
-    if (!phone && !selectedCommunicationEvent.matched_deal_id) {
-      setCommunicationEvents([selectedCommunicationEvent]);
+    if (!selectedCommunicationEvent || selectedImportedLeadId) {
+      if (!selectedCommunicationEvent) setEventActivities([]);
       return;
     }
-    void fetchCommunicationEvents({
+    setCommunicationEvents([selectedCommunicationEvent]);
+    setEventActivities([]);
+    const phone = phoneForCommunicationEvent(selectedCommunicationEvent);
+    const loadDealActivity = selectedCommunicationEvent.matched_deal_id
+      ? fetchDealActivity(selectedCommunicationEvent.matched_deal_id).then(rows => setEventActivities(dealActivitiesToConversationItems(rows)))
+      : Promise.resolve();
+    if (!phone && !selectedCommunicationEvent.matched_deal_id) {
+      setCommunicationEvents([selectedCommunicationEvent]);
+      void loadDealActivity;
+      return;
+    }
+    void Promise.all([fetchCommunicationEvents({
       phone,
       dealId: selectedCommunicationEvent.matched_deal_id,
       limit: 80,
-    }).then(comms => {
+    }), loadDealActivity]).then(([comms]) => {
       setCommunicationEvents(comms.length ? comms : [selectedCommunicationEvent]);
     });
   }, [selectedCommunicationEvent, selectedImportedLeadId]);
@@ -1769,12 +1792,14 @@ export default function VaPage() {
 
   const refreshSelectedEventMessages = async (event: CommunicationEvent) => {
     const phone = phoneForCommunicationEvent(event);
-    const [commRows, unmatchedRows, recentRows] = await Promise.all([
+    const [commRows, unmatchedRows, recentRows, activityRows] = await Promise.all([
       fetchCommunicationEvents({ phone, dealId: event.matched_deal_id, limit: 80 }),
       fetchCommunicationEvents({ unmatched: true, limit: 25 }),
       fetchCommunicationEvents({ limit: 120 }),
+      event.matched_deal_id ? fetchDealActivity(event.matched_deal_id) : Promise.resolve([]),
     ]);
     setCommunicationEvents(commRows.length ? commRows : [event]);
+    setEventActivities(dealActivitiesToConversationItems(activityRows));
     setUnmatchedSms(unmatchedRows);
     setRecentInboundSms(recentRows.filter(row => row.direction === "inbound").slice(0, 40));
   };
@@ -2120,6 +2145,81 @@ export default function VaPage() {
     });
     setActivityDraft({ activityType: "called", summary: "", nextFollowUpDate: "" });
     setMessage("Lead activity logged.");
+  };
+
+  const saveContactQueueNote = async () => {
+    const summary = activityDraft.summary.trim();
+    if (!summary) { setMessage("Write a note before saving."); return; }
+    if (selectedImportedLead) {
+      const { error } = await createImportedLandLeadActivity({
+        leadId: selectedImportedLead.id,
+        actor: user,
+        activityType: "note",
+        summary,
+        nextFollowUpDate: null,
+      });
+      if (error) { setMessage(error); return; }
+      await refreshSelectedLeadMessages(selectedImportedLead.id);
+      setActivityDraft({ activityType: "called", summary: "", nextFollowUpDate: "" });
+      addToDailyBrief(`Note: ${leadLabel(selectedImportedLead)} — ${summary}`, {
+        leads_updated: (briefDraft.leads_updated ?? 0) + 1,
+      });
+      setMessage("Note saved.");
+      return;
+    }
+    if (activeCommunicationEvent?.matched_deal_id) {
+      const { error } = await createDealActivity({
+        deal_id: activeCommunicationEvent.matched_deal_id,
+        actor: user || "Sophie / VA",
+        activity_type: "note",
+        summary,
+        field_changes: { source: "va_contact_queue", communication_event_id: activeCommunicationEvent.id },
+      });
+      if (error) { setMessage(error); return; }
+      await refreshSelectedEventMessages(activeCommunicationEvent);
+      setActivityDraft({ activityType: "called", summary: "", nextFollowUpDate: "" });
+      addToDailyBrief(`Note: ${phoneForCommunicationEvent(activeCommunicationEvent) || "contact"} — ${summary}`, {
+        leads_updated: (briefDraft.leads_updated ?? 0) + 1,
+      });
+      setMessage("Note saved to the linked deal.");
+      return;
+    }
+    setMessage("Create or match a packet before saving notes for this contact.");
+  };
+
+  const saveContactQueueLog = async () => {
+    const label = LEAD_ACTIVITY_TYPES.find(type => type.value === activityDraft.activityType)?.label || "Activity logged";
+    const summary = activityDraft.summary.trim() || label;
+    if (selectedImportedLead) {
+      await logLeadActivity();
+      return;
+    }
+    if (activeCommunicationEvent?.matched_deal_id) {
+      const { error } = await createDealActivity({
+        deal_id: activeCommunicationEvent.matched_deal_id,
+        actor: user || "Sophie / VA",
+        activity_type: "note",
+        summary: `${label}: ${summary}`,
+        field_changes: {
+          source: "va_contact_queue",
+          communication_event_id: activeCommunicationEvent.id,
+          activity_type: activityDraft.activityType,
+          next_follow_up_date: activityDraft.nextFollowUpDate || null,
+        },
+      });
+      if (error) { setMessage(error); return; }
+      await refreshSelectedEventMessages(activeCommunicationEvent);
+      addToDailyBrief(`${label}: ${phoneForCommunicationEvent(activeCommunicationEvent) || "contact"} — ${summary}`, {
+        outreach_sent: ["called", "texted", "emailed", "left-voicemail"].includes(activityDraft.activityType) ? (briefDraft.outreach_sent ?? 0) + 1 : briefDraft.outreach_sent,
+        seller_replies: activityDraft.activityType === "interested" ? (briefDraft.seller_replies ?? 0) + 1 : briefDraft.seller_replies,
+        leads_updated: (briefDraft.leads_updated ?? 0) + 1,
+        calls_completed: ["called", "left-voicemail"].includes(activityDraft.activityType) ? (briefDraft.calls_completed ?? 0) + 1 : briefDraft.calls_completed,
+      });
+      setActivityDraft({ activityType: "called", summary: "", nextFollowUpDate: "" });
+      setMessage("Activity logged to the linked deal.");
+      return;
+    }
+    setMessage("Create or match a packet before logging activity for this contact.");
   };
 
   const handleClockIn = async () => {
@@ -2481,6 +2581,101 @@ export default function VaPage() {
     { label: "Tasks Done", value: String(briefDraft.va_tasks_completed ?? completedAssignedTasksToday.length), detail: "Member-assigned work completed", action: "Review", onAction: () => goToTab("today"), tone: "default" as const },
     { label: "Brief", value: portalStats.briefSubmitted ? "Done" : "Open", detail: "Member daily summary", action: "Submit", onAction: submitDailyBrief, tone: portalStats.briefSubmitted ? "good" as const : "hot" as const },
   ];
+
+  const renderContactQueueComposer = () => {
+    const activeLead = selectedImportedLead;
+    const activeEvent = activeCommunicationEvent;
+    const smsCompliance = activeLead ? checkLeadSmsCompliance(activeLead) : null;
+    const canText = activeLead ? !!smsCompliance?.allowed : !!phoneForCommunicationEvent(activeEvent);
+    const textPlaceholder = activeLead
+      ? smsCompliance?.allowed ? "Type a message..." : `SMS blocked: ${smsCompliance?.blockLabel || "Compliance review required"}.`
+      : phoneForCommunicationEvent(activeEvent) ? "Type a message..." : "No usable phone number.";
+    const modeButton = (mode: ContactComposerMode, label: string) => (
+      <button
+        type="button"
+        onClick={() => setContactComposerMode(mode)}
+        style={{
+          background: "transparent",
+          border: "none",
+          borderBottom: contactComposerMode === mode ? "2px solid var(--obsidian)" : "2px solid transparent",
+          color: contactComposerMode === mode ? "var(--obsidian)" : "var(--muted)",
+          cursor: "pointer",
+          fontSize: 13,
+          fontWeight: contactComposerMode === mode ? 800 : 600,
+          padding: "0 0 5px",
+        }}
+      >
+        {label}
+      </button>
+    );
+    return (
+      <div>
+        <div style={{ display: "flex", gap: 12, marginBottom: 8 }}>
+          {modeButton("text", "Text")}
+          {modeButton("note", "Note")}
+          {modeButton("log", "Log")}
+        </div>
+        {contactComposerMode === "text" && (
+          <>
+            <textarea
+              id="va-contact-queue-sms"
+              rows={4}
+              value={smsDraft}
+              onChange={event => setSmsDraft(event.target.value)}
+              placeholder={textPlaceholder}
+              disabled={!canText}
+            />
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", marginTop: 8 }}>
+              <span style={{ color: "var(--muted)", fontSize: 12 }}>{smsDraft.trim().length}/1200</span>
+              <button
+                onClick={activeLead ? sendSmsToLead : sendSmsToSelectedEvent}
+                disabled={smsSending || !canText}
+                style={{ ...compactPrimaryButton, opacity: smsSending || !canText ? 0.55 : 1 }}
+              >
+                {smsSending ? "Sending..." : "Send Text"}
+              </button>
+            </div>
+          </>
+        )}
+        {contactComposerMode === "note" && (
+          <>
+            <textarea
+              rows={4}
+              value={activityDraft.summary}
+              onChange={event => setActivityDraft({ ...activityDraft, summary: event.target.value })}
+              placeholder="Internal note for this relationship..."
+            />
+            {!activeLead && activeEvent && !activeEvent.matched_deal_id && (
+              <p style={{ color: "var(--muted)", fontSize: 12, marginTop: 7 }}>Notes can be saved after this contact is matched or a packet is created.</p>
+            )}
+            <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 8 }}>
+              <button onClick={saveContactQueueNote} style={compactPrimaryButton}>Save Note</button>
+            </div>
+          </>
+        )}
+        {contactComposerMode === "log" && (
+          <div style={{ display: "grid", gap: 8 }}>
+            <select value={activityDraft.activityType} onChange={event => setActivityDraft({ ...activityDraft, activityType: event.target.value as ImportedLandLeadActivity["activity_type"] })}>
+              {LEAD_ACTIVITY_TYPES.map(type => <option key={type.value} value={type.value}>{type.label}</option>)}
+            </select>
+            <input value={activityDraft.nextFollowUpDate} onChange={event => setActivityDraft({ ...activityDraft, nextFollowUpDate: event.target.value })} type="date" />
+            <textarea
+              rows={3}
+              value={activityDraft.summary}
+              onChange={event => setActivityDraft({ ...activityDraft, summary: event.target.value })}
+              placeholder="Outcome, call notes, callback details, or next step."
+            />
+            {!activeLead && activeEvent && !activeEvent.matched_deal_id && (
+              <p style={{ color: "var(--muted)", fontSize: 12 }}>Activity logs can be saved after this contact is matched or a packet is created.</p>
+            )}
+            <div style={{ display: "flex", justifyContent: "flex-end" }}>
+              <button onClick={saveContactQueueLog} style={compactPrimaryButton}>Save Log</button>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
 
   return (
     <div className="va-root" style={{ maxWidth: 1680, margin: "0 auto", padding: "78px 20px 100px" }}>
@@ -3655,29 +3850,7 @@ export default function VaPage() {
                       }))}
                       emptyText="No communication yet. Start with a text, call, outcome, or note."
                       maxHeight={318}
-                      composer={(
-                        <div>
-                          <div style={{ display: "flex", gap: 12, marginBottom: 8, color: "var(--muted)", fontSize: 13 }}>
-                            <strong style={{ color: "var(--obsidian)", borderBottom: "2px solid var(--obsidian)", paddingBottom: 5 }}>Text</strong>
-                            <span>Note</span>
-                            <span>Log</span>
-                          </div>
-                          <textarea
-                            id="va-contact-queue-sms"
-                            rows={4}
-                            value={smsDraft}
-                            onChange={event => setSmsDraft(event.target.value)}
-                            placeholder={checkLeadSmsCompliance(selectedImportedLead).allowed ? "Type a message..." : `SMS blocked: ${checkLeadSmsCompliance(selectedImportedLead).blockLabel}.`}
-                            disabled={!checkLeadSmsCompliance(selectedImportedLead).allowed}
-                          />
-                          <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", marginTop: 8 }}>
-                            <span style={{ color: "var(--muted)", fontSize: 12 }}>{smsDraft.trim().length}/1200</span>
-                            <button onClick={sendSmsToLead} disabled={smsSending || !checkLeadSmsCompliance(selectedImportedLead).allowed} style={{ ...compactPrimaryButton, opacity: smsSending || !checkLeadSmsCompliance(selectedImportedLead).allowed ? 0.55 : 1 }}>
-                              {smsSending ? "Sending..." : "Send Text"}
-                            </button>
-                          </div>
-                        </div>
-                      )}
+                      composer={renderContactQueueComposer()}
                     />
                   </>
                 ) : activeCommunicationEvent ? (
@@ -3721,30 +3894,10 @@ export default function VaPage() {
                       title="Conversation"
                       subject={phoneForCommunicationEvent(activeCommunicationEvent) || "Unknown contact"}
                       communications={communicationEvents}
-                      activities={[]}
+                      activities={eventActivities}
                       emptyText="No communication yet."
                       maxHeight={318}
-                      composer={(
-                        <div>
-                          <div style={{ display: "flex", gap: 12, marginBottom: 8, color: "var(--muted)", fontSize: 13 }}>
-                            <strong style={{ color: "var(--obsidian)", borderBottom: "2px solid var(--obsidian)", paddingBottom: 5 }}>Text</strong>
-                            <span>Note</span>
-                            <span>Log</span>
-                          </div>
-                          <textarea
-                            rows={4}
-                            value={smsDraft}
-                            onChange={event => setSmsDraft(event.target.value)}
-                            placeholder="Type a message..."
-                          />
-                          <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", marginTop: 8 }}>
-                            <span style={{ color: "var(--muted)", fontSize: 12 }}>{smsDraft.trim().length}/1200</span>
-                            <button onClick={sendSmsToSelectedEvent} disabled={smsSending || !phoneForCommunicationEvent(activeCommunicationEvent)} style={{ ...compactPrimaryButton, opacity: smsSending || !phoneForCommunicationEvent(activeCommunicationEvent) ? 0.55 : 1 }}>
-                              {smsSending ? "Sending..." : "Send Text"}
-                            </button>
-                          </div>
-                        </div>
-                      )}
+                      composer={renderContactQueueComposer()}
                     />
                   </>
                 ) : (
