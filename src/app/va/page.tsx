@@ -3315,15 +3315,13 @@ export default function VaPage() {
           <section style={contactQueuePage}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12, flexWrap: "wrap", marginBottom: 12 }}>
               <div>
-                <p style={eyebrowSmall}>Lists</p>
-                <h2 style={sectionTitle}>Imported Data Inventory</h2>
+                <h2 style={sectionTitle}>Lists</h2>
                 <p style={{ color: "var(--muted)", fontSize: 13, lineHeight: 1.5, marginTop: 4 }}>
-                  Browse list batches, property records, contacts, saved segments, and campaign audiences.
+                  Browse imported batches, property records, contacts, segments, and campaign audiences.
                 </p>
               </div>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                <button onClick={startNewImport} style={secondaryButton}>New Import</button>
-                <button onClick={() => openBulkTextWorkflow(true)} style={primaryButton}>Bulk Text</button>
+                <button onClick={() => setMessage("List settings are coming next: default filters, columns, assignment rules, and segment permissions.")} style={secondaryButton}>Lists Settings</button>
               </div>
             </div>
 
@@ -3442,149 +3440,155 @@ export default function VaPage() {
             )}
 
             {listsView === "properties" && (
-            <div style={{ ...subPanel, marginBottom: 12 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "baseline", marginBottom: 10 }}>
-                <div>
-                  <p style={eyebrowSmall}>Property Records</p>
-                  <h3 style={{ ...sectionTitle, fontSize: 22 }}>
-                    {filteredImportedLeads.length} visible of {importedLeads.filter(lead => lead.status !== "converted").length} active property records
-                  </h3>
+            <div style={{ display: "grid", gridTemplateColumns: "minmax(260px, 0.72fr) minmax(520px, 1.72fr) minmax(300px, 0.78fr)", gap: 12, marginBottom: 12 }} className="va-form-grid">
+              <aside style={subPanel}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: 10 }}>
+                  <div>
+                    <p style={eyebrowSmall}>List Batches</p>
+                    <span style={{ color: "var(--muted)", fontSize: 12 }}>Showing {Math.min(listBatchRows.length, 8)} of {listBatchRows.length}</span>
+                  </div>
+                  <button onClick={startNewImport} style={{ ...compactButton, minHeight: 32, padding: "7px 10px" }}>Upload List</button>
                 </div>
-                {selectedBatch && <span style={hotPill}>{batchLeads.length} in selected batch</span>}
-              </div>
-              <div style={{ display: "grid", gridTemplateColumns: "minmax(300px, 0.82fr) minmax(420px, 1.18fr) minmax(280px, 0.72fr)", gap: 12 }} className="va-form-grid">
-                <div>
-                  <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 160px", gap: 8, marginBottom: 8 }} className="two-col">
-                    <div>
-                      <label style={label}>Search property records</label>
-                      <input value={leadSearch} onChange={e => setLeadSearch(e.target.value)} placeholder="Search APN, address, owner, phone, county" />
-                    </div>
-                    <div>
-                      <label style={label}>Filter</label>
-                      <select value={leadFilter} onChange={e => setLeadFilter(e.target.value as ImportStatusFilter)}>
-                        {IMPORT_STATUS_FILTERS.map(filter => <option key={filter.value} value={filter.value}>{filter.label}</option>)}
-                      </select>
-                    </div>
-                  </div>
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 12 }} className="two-col">
-                    <input value={minAcreage} onChange={e => setMinAcreage(e.target.value)} placeholder="Min acreage" />
-                    <input value={maxAcreage} onChange={e => setMaxAcreage(e.target.value)} placeholder="Max acreage" />
-                  </div>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 760, overflow: "auto", paddingRight: 2 }}>
-                    {filteredImportedLeads.map(lead => (
-                      <button
-                        key={lead.id}
-                        onClick={() => selectImportedLead(lead, "lists")}
-                        style={{
-                          ...subPanel,
-                          textAlign: "left",
-                          cursor: "pointer",
-                          background: selectedImportedLeadId === lead.id ? "rgba(176,137,84,0.14)" : "var(--bone)",
-                        }}
-                      >
-                        <div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginBottom: 8 }}>
-                          <strong style={{ color: "var(--obsidian)", fontSize: 14 }}>{lead.property_address || lead.parcel_id || "Property record"}</strong>
-                          <span style={lead.status === "interested" ? hotPill : pill}>Score {lead.lead_score ?? 0}</span>
-                        </div>
-                        <p style={{ fontSize: 12, color: "var(--muted)", lineHeight: 1.45 }}>
-                          APN {lead.parcel_id || "N/A"} · {lead.county || "County pending"}{lead.state ? `, ${lead.state}` : ""}
-                        </p>
-                        <p style={{ fontSize: 12, color: "var(--muted)", lineHeight: 1.45, marginTop: 4 }}>
-                          {lead.owner_name || "Owner unknown"} · {lead.phone || lead.phone_2 || "No phone"}{lead.acreage ? ` · ${lead.acreage} acres` : ""}
-                        </p>
-                        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8 }}>
-                          <span style={lead.status === "interested" ? hotPill : pill}>{statusLabel(lead.status)}</span>
-                          {lead.duplicate_status && lead.duplicate_status !== "new" && <span style={pill}>{statusLabel(lead.duplicate_status)}</span>}
-                          {!!lead.outreach_count && <span style={pill}>{lead.outreach_count} touches</span>}
-                        </div>
-                      </button>
-                    ))}
-                    {filteredImportedLeads.length === 0 && (
-                      <p style={{ fontSize: 13, color: "var(--muted)" }}>No imported leads match this search yet.</p>
-                    )}
-                  </div>
+                <div style={{ display: "grid", gap: 7, maxHeight: 520, overflow: "auto", paddingRight: 2 }}>
+                  {listBatchRows.slice(0, 8).map(({ batch, leads, textable }) => (
+                    <button
+                      key={batch.id}
+                      onClick={() => { setSelectedBatchId(batch.id); setListsView("properties"); setImportStep("work"); }}
+                      style={{
+                        border: selectedBatchId === batch.id ? "1px solid var(--brass)" : "1px solid var(--fog)",
+                        background: selectedBatchId === batch.id ? "rgba(176,137,84,0.12)" : "var(--surface)",
+                        borderRadius: 8,
+                        cursor: "pointer",
+                        padding: 10,
+                        textAlign: "left",
+                      }}
+                    >
+                      <strong style={{ color: "var(--obsidian)", display: "block", fontSize: 13 }}>{batch.campaign_source || batch.original_filename || "Imported list"}</strong>
+                      <p style={{ color: "var(--muted)", fontSize: 11, lineHeight: 1.35, marginTop: 3 }}>{batch.original_filename || batch.source_system}</p>
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", marginTop: 6 }}>
+                        <span style={{ color: "var(--muted)", fontSize: 11 }}>{leads.length || batch.row_count} rows · {textable} textable</span>
+                        <span style={batch.status === "completed" ? hotPill : pill}>{statusLabel(batch.status || "not-started")}</span>
+                      </div>
+                    </button>
+                  ))}
+                  {listBatchRows.length === 0 && <p style={{ color: "var(--muted)", fontSize: 13 }}>No list batches yet.</p>}
                 </div>
+              </aside>
 
-                <aside style={subPanel}>
-                  {!selectedImportedLead && <p style={{ fontSize: 13, color: "var(--muted)" }}>Select any property record to review the parcel, linked contact, communication history, eligibility, and packet actions.</p>}
-                  {selectedImportedLead && (
-                    <div style={{ display: "grid", gap: 10 }}>
-                      <div>
-                        <p style={eyebrowSmall}>Selected Property</p>
-                        <h3 style={{ ...sectionTitle, fontSize: 22 }}>{selectedImportedLead.property_address || selectedImportedLead.parcel_id || "Property record"}</h3>
-                        <p style={{ color: "var(--muted)", fontSize: 12, lineHeight: 1.5, marginTop: 4 }}>
-                          APN {selectedImportedLead.parcel_id || "N/A"} · {selectedImportedLead.county || "County pending"}{selectedImportedLead.state ? `, ${selectedImportedLead.state}` : ""} · {selectedImportedLead.acreage ?? "N/A"} acres
-                        </p>
-                      </div>
-                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }} className="two-col">
-                        <MiniStat label="Score" value={String(selectedImportedLead.lead_score ?? 0)} />
-                        <MiniStat label="Status" value={statusLabel(selectedImportedLead.status)} />
-                      </div>
-                      <InfoStack title="Owner / Contact">
-                        <p>{selectedImportedLead.owner_name || "Owner unknown"}</p>
-                        <p>{[selectedImportedLead.phone, selectedImportedLead.phone_2].filter(Boolean).join(" / ") || "Phone missing"}</p>
-                        <p>{selectedImportedLead.email || "Email missing"}</p>
-                      </InfoStack>
-                      <details style={{ borderTop: "1px solid var(--fog)", paddingTop: 10 }}>
-                        <summary style={{ color: "var(--obsidian)", cursor: "pointer", fontSize: 12, fontWeight: 800, letterSpacing: "0.1em", textTransform: "uppercase" }}>Relationship work controls</summary>
-                        <div style={{ marginTop: 10 }}>
-                          <SellerCommandCenter
-                            lead={selectedImportedLead}
-                            communications={communicationEvents}
-                            activities={leadActivities}
-                            smsDraft={smsDraft}
-                            setSmsDraft={setSmsDraft}
-                            smsSending={smsSending}
-                            onSendSms={sendSmsToLead}
-                            dispositionDraft={dispositionDraft}
-                            setDispositionDraft={setDispositionDraft}
-                            onSaveDisposition={applyLeadDisposition}
-                            onQuickDisposition={quickLeadDisposition}
-                            activityDraft={activityDraft}
-                            setActivityDraft={setActivityDraft}
-                            onLogActivity={logLeadActivity}
-                            onOpenFile={() => router.push(`/lead/${selectedImportedLead.id}`)}
-                            onBuildPacket={() => loadImportedLead(selectedImportedLead, true)}
-                            onPass={async () => { await updateImportedLandLeadStatus(selectedImportedLead.id, "passed", selectedImportedLead.deal_id); setImportedLeads(await fetchImportedLandLeads(500)); }}
-                            compact
-                          />
-                        </div>
-                      </details>
-                    </div>
-                  )}
-                </aside>
+              <section style={subPanel}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "baseline", flexWrap: "wrap", marginBottom: 10 }}>
+                  <div>
+                    <h3 style={{ color: "var(--obsidian)", fontSize: 16, fontWeight: 800 }}>Property Records</h3>
+                    <span style={{ color: "var(--muted)", fontSize: 12 }}>{filteredImportedLeads.length} visible · {importedLeads.length} total</span>
+                  </div>
+                  {selectedBatch && <span style={hotPill}>{batchLeads.length} in selected batch</span>}
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(120px, 1fr)) minmax(180px, 1.2fr)", gap: 8, marginBottom: 10 }} className="va-form-grid">
+                  <select value={leadFilter} onChange={e => setLeadFilter(e.target.value as ImportStatusFilter)}>
+                    {IMPORT_STATUS_FILTERS.map(filter => <option key={filter.value} value={filter.value}>{filter.label}</option>)}
+                  </select>
+                  <input value={minAcreage} onChange={e => setMinAcreage(e.target.value)} placeholder="Min acres" />
+                  <input value={maxAcreage} onChange={e => setMaxAcreage(e.target.value)} placeholder="Max acres" />
+                  <select value={selectedBatchId || "all"} onChange={e => setSelectedBatchId(e.target.value === "all" ? null : e.target.value)}>
+                    <option value="all">All batches</option>
+                    {leadBatches.map(batch => <option key={batch.id} value={batch.id}>{batch.campaign_source || batch.original_filename || batch.source_system}</option>)}
+                  </select>
+                  <input value={leadSearch} onChange={e => setLeadSearch(e.target.value)} placeholder="Search APN or address..." />
+                </div>
+                <div style={{ overflow: "auto", border: "1px solid var(--fog)", borderRadius: 8, background: "var(--surface)", maxHeight: 548 }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, minWidth: 860 }}>
+                    <thead>
+                      <tr style={{ borderBottom: "1px solid var(--fog)", color: "var(--muted)", textAlign: "left" }}>
+                        <th style={th}></th>
+                        <th style={th}>APN</th>
+                        <th style={th}>Property Address</th>
+                        <th style={th}>County</th>
+                        <th style={th}>Acres</th>
+                        <th style={th}>Score</th>
+                        <th style={th}>Owner / Contact</th>
+                        <th style={th}>Status</th>
+                        <th style={th}>Linked Deal</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredImportedLeads.map(lead => {
+                        const active = selectedImportedLeadId === lead.id;
+                        return (
+                          <tr
+                            key={lead.id}
+                            onClick={() => selectImportedLead(lead, "lists")}
+                            style={{
+                              background: active ? "rgba(176,137,84,0.16)" : "transparent",
+                              borderBottom: "1px solid var(--fog)",
+                              cursor: "pointer",
+                            }}
+                          >
+                            <td style={td}><input type="checkbox" checked={active} readOnly /></td>
+                            <td style={td}>{lead.parcel_id || "N/A"}</td>
+                            <td style={td}><strong style={{ color: "var(--obsidian)" }}>{lead.property_address || "No address"}</strong><br /><span style={{ color: "var(--muted)" }}>{lead.city || ""}{lead.state ? `, ${lead.state}` : ""}</span></td>
+                            <td style={td}>{lead.county || "N/A"}</td>
+                            <td style={td}>{lead.acreage ?? "N/A"}</td>
+                            <td style={{ ...td, color: (lead.lead_score ?? 0) >= 80 ? "var(--pine)" : "var(--muted)", fontWeight: 800 }}>{lead.lead_score ?? 0}</td>
+                            <td style={td}>{lead.owner_name || "Owner unknown"}<br /><span style={{ color: "var(--muted)" }}>{lead.phone || lead.phone_2 || "No phone"}</span></td>
+                            <td style={td}><span style={lead.status === "interested" ? hotPill : pill}>{statusLabel(lead.status)}</span></td>
+                            <td style={td}>{lead.deal_id ? <button onClick={event => { event.stopPropagation(); openLinkedDeal(lead.deal_id); }} style={pill}>Open</button> : <span style={{ color: "var(--muted)" }}>—</span>}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                  {filteredImportedLeads.length === 0 && <p style={{ color: "var(--muted)", fontSize: 13, padding: 12 }}>No imported records match this search.</p>}
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap", marginTop: 10 }}>
+                  <span style={{ color: "var(--muted)", fontSize: 12 }}>Showing 1-{filteredImportedLeads.length} of {importedLeads.length}</span>
+                  <button onClick={() => setMessage("CSV export is next for this inventory table.")} style={compactButton}>Export CSV</button>
+                </div>
+              </section>
 
-                <aside style={subPanel}>
-                  {!selectedImportedLead ? (
-                    <p style={{ fontSize: 13, color: "var(--muted)", lineHeight: 1.5 }}>Context, linked records, and packet actions appear here after selecting a property.</p>
-                  ) : (
-                    <div style={{ display: "grid", gap: 10 }}>
+              <aside style={subPanel}>
+                {!selectedImportedLead ? (
+                  <p style={{ fontSize: 13, color: "var(--muted)", lineHeight: 1.5 }}>Select a property to see record details, contact eligibility, linked packet, and quick actions.</p>
+                ) : (
+                  <div style={{ display: "grid", gap: 10 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "start" }}>
                       <div>
-                        <p style={eyebrowSmall}>Context</p>
-                        <h3 style={{ ...sectionTitle, fontSize: 20 }}>Record actions</h3>
+                        <h3 style={{ color: "var(--obsidian)", fontSize: 16, fontWeight: 800 }}>Selected Property</h3>
+                        <strong style={{ display: "block", color: "var(--obsidian)", fontSize: 18, marginTop: 10 }}>{selectedImportedLead.parcel_id || "No APN"}</strong>
+                        <p style={{ color: "var(--ink)", fontSize: 13, lineHeight: 1.4, marginTop: 5 }}>{selectedImportedLead.property_address || "No address"}<br />{selectedImportedLead.city || ""}{selectedImportedLead.state ? `, ${selectedImportedLead.state}` : ""}</p>
                       </div>
-                      <InfoStack title="List Batch">
-                        <p>{selectedPropertyBatch?.campaign_source || selectedPropertyBatch?.original_filename || selectedImportedLead.campaign_source || "Batch unknown"}</p>
-                        <p>{selectedImportedLead.source_system || "Imported source"}</p>
-                      </InfoStack>
-                      <InfoStack title="Related Properties">
-                        {selectedContactProperties.slice(0, 4).map(lead => (
-                          <button key={lead.id} onClick={() => selectImportedLead(lead, "lists")} style={{ background: "transparent", border: "none", color: "var(--ink)", padding: 0, textAlign: "left", cursor: "pointer" }}>
-                            {lead.property_address || lead.parcel_id || "Property record"} · {lead.acreage ?? "N/A"} acres
-                          </button>
-                        ))}
-                        {selectedContactProperties.length === 0 && <p>No related properties yet.</p>}
-                      </InfoStack>
-                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                        <button onClick={() => router.push(`/lead/${selectedImportedLead.id}`)} style={compactButton}>Open Record</button>
-                        <button onClick={() => loadImportedLead(selectedImportedLead, true)} style={compactButton}>{selectedImportedLead.deal_id ? "Open Packet" : "Create Packet"}</button>
-                        <button onClick={() => setListsView("contacts")} style={compactButton}>View Contact</button>
-                        <button onClick={() => openBulkTextWorkflow(true)} style={compactButton}>Add To Segment</button>
-                      </div>
+                      <span style={selectedImportedLead.status === "interested" ? hotPill : pill}>{statusLabel(selectedImportedLead.status)}</span>
                     </div>
-                  )}
-                </aside>
-              </div>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
+                      <MiniStat label="County" value={selectedImportedLead.county || "N/A"} />
+                      <MiniStat label="Acres" value={String(selectedImportedLead.acreage ?? "N/A")} />
+                      <MiniStat label="Score" value={String(selectedImportedLead.lead_score ?? 0)} />
+                    </div>
+                    <InfoStack title="Primary Owner / Contact">
+                      <p>{selectedImportedLead.owner_name || "Owner unknown"}</p>
+                      <p>{selectedImportedLead.phone || selectedImportedLead.phone_2 || "Phone missing"}</p>
+                      <p>{selectedImportedLead.email || "Email missing"}</p>
+                      <p>{selectedContactProperties.length} linked propert{selectedContactProperties.length === 1 ? "y" : "ies"}</p>
+                    </InfoStack>
+                    <InfoStack title="Phone Eligibility">
+                      <p>{checkLeadSmsCompliance(selectedImportedLead).allowed ? "Textable" : checkLeadSmsCompliance(selectedImportedLead).blockLabel}</p>
+                      <p>{checkLeadCallCompliance(selectedImportedLead).allowed ? "Callable" : checkLeadCallCompliance(selectedImportedLead).blockLabel}</p>
+                    </InfoStack>
+                    <InfoStack title="Linked Deal Packet">
+                      <p>{selectedImportedLead.deal_id || "No linked packet yet"}</p>
+                    </InfoStack>
+                    <InfoStack title="List Batch">
+                      <p>{selectedPropertyBatch?.campaign_source || selectedPropertyBatch?.original_filename || selectedImportedLead.campaign_source || "Batch unknown"}</p>
+                      <p>{selectedImportedLead.source_system || "Imported source"}</p>
+                    </InfoStack>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                      <button onClick={() => router.push(`/lead/${selectedImportedLead.id}`)} style={compactButton}>Open Property Record</button>
+                      <button onClick={() => setListsView("contacts")} style={compactButton}>View Contact</button>
+                      <button onClick={() => loadImportedLead(selectedImportedLead, true)} style={compactButton}>{selectedImportedLead.deal_id ? "Open Packet" : "Create Packet"}</button>
+                      <button onClick={() => openBulkTextWorkflow(true)} style={compactButton}>Add to Segment</button>
+                    </div>
+                  </div>
+                )}
+              </aside>
             </div>
             )}
 
@@ -5094,6 +5098,8 @@ function NumberField({ label: text, value, onChange }: { label: string; value: n
   );
 }
 
+// Kept while the contact queue still owns the full relationship workflow; the Lists page now surfaces only inventory actions.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function SellerCommandCenter({
   lead,
   communications,
