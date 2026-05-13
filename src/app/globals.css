@@ -195,8 +195,8 @@ button {
 }
 
 .crm-top-bar-contact {
-  padding: 0 18px;
-  gap: 8px;
+  padding: 0 14px;
+  gap: 7px;
 }
 
 .va-top-tabs {
@@ -211,8 +211,8 @@ button {
 }
 
 .va-contact-tabs {
-  flex: 0 1 auto;
-  max-width: 46%;
+  flex: 1 1 560px;
+  max-width: 56%;
 }
 
 .va-top-tabs::-webkit-scrollbar {
@@ -220,17 +220,17 @@ button {
 }
 
 .va-top-tab {
-  height: 34px;
+  height: 30px;
   flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 0 10px;
+  gap: 5px;
+  padding: 0 8px;
   border: 1px solid rgba(176,137,84,0.28);
   border-radius: 999px;
   background: rgba(255,252,245,0.72);
   color: var(--obsidian);
-  font-size: 10px;
+  font-size: 9px;
   font-weight: 850;
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -251,15 +251,15 @@ button {
 }
 
 .va-top-tab strong {
-  min-width: 22px;
-  height: 22px;
-  padding: 0 6px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
   display: inline-grid;
   place-items: center;
   border-radius: 999px;
   background: rgba(176,137,84,0.16);
   color: var(--muted);
-  font-size: 10px;
+  font-size: 9px;
   letter-spacing: 0;
 }
 
@@ -269,21 +269,21 @@ button {
 }
 
 .va-contact-search {
-  height: 34px;
-  flex: 1 1 280px;
-  max-width: 390px;
-  min-width: 220px;
+  height: 30px;
+  flex: 0 1 310px;
+  max-width: 340px;
+  min-width: 190px;
   border: 1px solid rgba(176,137,84,0.34);
   border-radius: 7px;
   background: rgba(255,252,245,0.82);
   color: var(--ink);
   padding: 0 12px;
   font-family: var(--font-body);
-  font-size: 12px;
+  font-size: 11px;
 }
 
 .va-top-utility {
-  height: 34px;
+  height: 30px;
   flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
@@ -292,9 +292,9 @@ button {
   border-radius: 7px;
   background: rgba(255,252,245,0.72);
   color: var(--obsidian);
-  padding: 0 12px;
+  padding: 0 10px;
   font-family: var(--font-body);
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 800;
   cursor: pointer;
 }
@@ -319,6 +319,20 @@ button {
   flex: 0 0 auto;
   min-width: max-content;
   white-space: nowrap;
+}
+
+@media (max-width: 1280px) {
+  .va-contact-tabs {
+    max-width: 48%;
+  }
+
+  .va-contact-search {
+    max-width: 260px;
+  }
+
+  .crm-top-bar-va .va-top-user span:last-child {
+    display: none;
+  }
 }
 
 .crm-side-link {

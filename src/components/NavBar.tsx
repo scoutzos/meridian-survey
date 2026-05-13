@@ -178,7 +178,7 @@ export default function NavBar() {
             <Logo width={38} onDark />
             <div>
               <strong style={{ display: "block", color: "var(--bone)", fontSize: 12, letterSpacing: "0.18em", textTransform: "uppercase" }}>Meridian</strong>
-              <span style={{ display: "block", color: "var(--brass)", fontSize: 9, letterSpacing: "0.2em", textTransform: "uppercase" }}>{isVaUser(user) ? "Dashboard" : "CRM"}</span>
+              <span style={{ display: "block", color: "var(--brass)", fontSize: 9, letterSpacing: "0.2em", textTransform: "uppercase" }}>{isVaUser(user) ? (vaTab === "outreach" ? "VA Operations" : "Dashboard") : "CRM"}</span>
             </div>
           </div>
           <div style={{ display: "grid", gap: 4 }}>
