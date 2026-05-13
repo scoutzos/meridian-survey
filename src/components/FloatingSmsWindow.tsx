@@ -267,6 +267,12 @@ export default function FloatingSmsWindow({
   const dialLead = useMemo(() => leads.find(lead => last10(lead.phone) === last10(dialNumber) || last10(lead.phone_2) === last10(dialNumber)) ?? null, [dialNumber, leads]);
   const dialCompliance = dialLead ? checkLeadCallCompliance(dialLead) : null;
   const callDuration = activeCallStartedAt ? Math.max(0, Math.floor((Date.now() - activeCallStartedAt) / 1000) + callTick * 0) : 0;
+  const noteDestination = selectedLead
+    ? { label: `Lead activity: ${leadName(selectedLead)}`, placeholder: "Save an internal note to this lead activity timeline." }
+    : selectedThread?.dealId
+      ? { label: `Deal activity: ${selectedThread.label}`, placeholder: "Save an internal note to this deal activity timeline." }
+      : { label: "No linked record", placeholder: "Link or create a lead/deal before saving notes." };
+  const noteBlocked = !selectedLead && !selectedThread?.dealId;
   const replyBlocked = !!selectedCompliance && !selectedCompliance.allowed;
   const contextTitleText = selectedLead?.property_address || (selectedThread?.dealId ? "Connected deal packet" : "No linked property yet");
   const contextMetaText = [
@@ -603,7 +609,7 @@ export default function FloatingSmsWindow({
         });
         if (error) { setStatus(`Note failed: ${error}`); return; }
       } else {
-        setStatus("Link this SMS to a lead or deal before saving a note.");
+        setStatus("Link this contact to a lead or deal before saving notes.");
         return;
       }
       setNoteDraft("");
@@ -853,10 +859,14 @@ export default function FloatingSmsWindow({
                       </>
                     ) : (
                       <>
-                        <textarea value={noteDraft} onChange={event => setNoteDraft(event.target.value)} rows={3} placeholder="Save an internal note to the connected lead or deal..." style={textarea} />
+                        <div style={noteDestinationCard}>
+                          <strong>{noteDestination.label}</strong>
+                          <span>{noteBlocked ? "Create a packet or link this contact before saving a note." : "This note will be saved to the record named above, not as an SMS."}</span>
+                        </div>
+                        <textarea value={noteDraft} onChange={event => setNoteDraft(event.target.value)} rows={3} placeholder={noteDestination.placeholder} disabled={noteBlocked} style={{ ...textarea, opacity: noteBlocked ? 0.62 : 1 }} />
                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
-                          <span style={counter}>Internal note</span>
-                          <button type="button" onClick={saveNote} disabled={sending || !noteDraft.trim()} style={{ ...sendButton, opacity: sending || !noteDraft.trim() ? 0.55 : 1 }}>
+                          <span style={counter}>{selectedLead ? "Save note to lead activity" : selectedThread?.dealId ? "Save note to deal activity" : "No note destination"}</span>
+                          <button type="button" onClick={saveNote} disabled={sending || !noteDraft.trim() || noteBlocked} style={{ ...sendButton, opacity: sending || !noteDraft.trim() || noteBlocked ? 0.55 : 1 }}>
                             {sending ? "Saving..." : "Save Note"}
                           </button>
                         </div>
@@ -1025,6 +1035,16 @@ const dialBlock: CSSProperties = {
   fontSize: 11,
   fontWeight: 700,
   lineHeight: 1.35,
+};
+
+const noteDestinationCard: CSSProperties = {
+  background: "rgba(176,137,84,0.1)",
+  border: "1px solid rgba(176,137,84,0.28)",
+  borderRadius: 7,
+  display: "grid",
+  gap: 3,
+  marginBottom: 8,
+  padding: "8px 10px",
 };
 
 const newButton: CSSProperties = {

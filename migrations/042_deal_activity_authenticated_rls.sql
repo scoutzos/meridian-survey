@@ -9,6 +9,53 @@
 
 alter table if exists meridian_deal_activity enable row level security;
 
+create or replace function meridian_current_member_name()
+returns text
+language sql
+stable
+as $$
+  select nullif(coalesce(
+    auth.jwt() ->> 'member_name',
+    auth.jwt() -> 'user_metadata' ->> 'member_name',
+    auth.jwt() ->> 'name',
+    current_setting('request.jwt.claim.member_name', true)
+  ), '');
+$$;
+
+create or replace function meridian_current_member_role()
+returns text
+language sql
+stable
+as $$
+  select coalesce((
+    select role
+    from meridian_members
+    where name = meridian_current_member_name()
+    limit 1
+  ), 'member');
+$$;
+
+create or replace function meridian_is_va()
+returns boolean
+language sql
+stable
+as $$
+  select meridian_current_member_role() = 'va';
+$$;
+
+create or replace function meridian_is_admin()
+returns boolean
+language sql
+stable
+as $$
+  select coalesce((
+    select is_admin
+    from tracker_member_profiles
+    where member_name = meridian_current_member_name()
+    limit 1
+  ), false);
+$$;
+
 drop policy if exists "meridian_deal_activity authenticated read" on meridian_deal_activity;
 drop policy if exists "meridian_deal_activity authenticated write" on meridian_deal_activity;
 
