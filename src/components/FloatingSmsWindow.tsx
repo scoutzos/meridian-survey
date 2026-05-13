@@ -937,10 +937,11 @@ export default function FloatingSmsWindow({
 
 const shell: CSSProperties = {
   position: "fixed",
-  right: 24,
-  bottom: 24,
+  right: 20,
+  bottom: 20,
   zIndex: 260,
-  width: "min(980px, calc(100vw - 32px))",
+  width: "min(880px, calc(100vw - 260px))",
+  maxHeight: "calc(100vh - 112px)",
   background: "var(--surface)",
   border: "1px solid rgba(176,137,84,0.42)",
   borderRadius: 8,
@@ -968,8 +969,9 @@ const minimizedTitleBar: CSSProperties = {
 
 const body: CSSProperties = {
   display: "grid",
-  gridTemplateColumns: "310px minmax(0, 1fr)",
-  minHeight: 610,
+  gridTemplateColumns: "300px minmax(0, 1fr)",
+  height: "min(560px, calc(100vh - 178px))",
+  minHeight: 460,
 };
 
 const threadList: CSSProperties = {
@@ -978,7 +980,7 @@ const threadList: CSSProperties = {
   display: "flex",
   flexDirection: "column",
   gap: 8,
-  maxHeight: 610,
+  minHeight: 0,
   overflowY: "auto",
   padding: 12,
 };
@@ -987,7 +989,9 @@ const conversation: CSSProperties = {
   background: "rgba(255,252,245,0.86)",
   display: "flex",
   flexDirection: "column",
+  minHeight: 0,
   minWidth: 0,
+  overflow: "hidden",
   padding: 14,
 };
 
@@ -1295,7 +1299,7 @@ const messages: CSSProperties = {
   flex: 1,
   flexDirection: "column",
   gap: 7,
-  maxHeight: 320,
+  minHeight: 0,
   overflowY: "auto",
   padding: "6px 2px 12px",
 };
