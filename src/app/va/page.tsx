@@ -1173,14 +1173,22 @@ export default function VaPage() {
     if (contactQueueMode === "recommended") return workdeskLeadRows;
     return [...interestedLeads, ...leadFollowUpsDue, ...workdeskLeadRows].filter((lead, index, rows) => rows.findIndex(item => item.id === lead.id) === index).slice(0, 25);
   }, [campaignReadyLeads, contactQueueMode, filteredImportedLeads, interestedLeads, leadFollowUpsDue, workdeskLeadRows]);
+  const inboxEventRows = useMemo(() => {
+    const seen = new Set<string>();
+    return [...recentInboundSms, ...unmatchedSms].filter(event => {
+      if (seen.has(event.id)) return false;
+      seen.add(event.id);
+      return true;
+    }).slice(0, 35);
+  }, [recentInboundSms, unmatchedSms]);
   const contactQueueModeCounts = useMemo<Record<ContactQueueMode, number>>(() => ({
-    inbox: recentInboundSms.length + unmatchedSms.length + interestedLeads.length,
+    inbox: inboxEventRows.length || contactQueueRows.length,
     callbacks: leadFollowUpsDue.length,
     campaigns: campaignReadyLeads.length,
     unmatched: unmatchedSms.length,
     relationships: filteredImportedLeads.length,
     recommended: workdeskLeadRows.length,
-  }), [campaignReadyLeads.length, filteredImportedLeads.length, interestedLeads.length, leadFollowUpsDue.length, recentInboundSms.length, unmatchedSms.length, workdeskLeadRows.length]);
+  }), [campaignReadyLeads.length, contactQueueRows.length, filteredImportedLeads.length, inboxEventRows.length, leadFollowUpsDue.length, unmatchedSms.length, workdeskLeadRows.length]);
   useEffect(() => {
     if (activeTab !== "outreach" || selectedImportedLeadId || selectedCommunicationEventId) return;
     const firstEvent = recentInboundSms[0] ?? unmatchedSms[0] ?? null;
@@ -2379,7 +2387,7 @@ export default function VaPage() {
         </div>
       )}
 
-      {!openShift && activeTab !== "today" && (
+      {!openShift && activeTab !== "today" && activeTab !== "outreach" && (
         <section style={clockInBanner} className="va-clock-banner">
           <div>
             <p style={{ ...eyebrowSmall, color: "var(--bone)", opacity: 0.85 }}>Shift status</p>
@@ -3386,7 +3394,7 @@ export default function VaPage() {
                   <button type="button" onClick={() => setLeadSearch("")} style={secondaryButton}>Filters</button>
                 </div>
                 <div style={{ display: "grid", gap: 8, maxHeight: 720, overflow: "auto", paddingRight: 2 }}>
-                  {contactQueueMode === "inbox" && recentInboundSms.slice(0, 25).map(event => (
+                  {contactQueueMode === "inbox" && inboxEventRows.map(event => (
                     <button
                       key={event.id}
                       onClick={() => openIncomingSms(event)}
@@ -3415,13 +3423,6 @@ export default function VaPage() {
                       </p>
                     </button>
                   ))}
-                  {contactQueueMode === "inbox" && unmatchedSms.filter(event => !recentInboundSms.some(reply => reply.id === event.id)).slice(0, 10).map(event => (
-                    <button key={event.id} onClick={() => { setSelectedImportedLeadId(null); setSelectedCommunicationEventId(event.id); }} style={{ ...contactQueueCard, background: activeCommunicationEvent?.id === event.id ? "rgba(176,137,84,0.18)" : "rgba(176,137,84,0.10)", borderColor: "var(--brass)" }}>
-                      <strong style={{ color: "var(--obsidian)", fontSize: 14 }}>{event.contact_name || event.contact_number || event.from_number || "Unknown contact"}</strong>
-                      <p style={{ color: "var(--muted)", fontSize: 12, marginTop: 3 }}>{event.contact_number || event.from_number || "No phone"} · {formatDate(event.created_at)}</p>
-                      <span style={{ ...hotPill, marginTop: 8 }}>Needs matching</span>
-                    </button>
-                  ))}
                   {contactQueueMode === "unmatched" && unmatchedSms.slice(0, 25).map(event => (
                     <button key={event.id} onClick={() => { setSelectedImportedLeadId(null); setSelectedCommunicationEventId(event.id); }} style={{ ...contactQueueCard, background: activeCommunicationEvent?.id === event.id ? "rgba(176,137,84,0.18)" : "rgba(176,137,84,0.10)", borderColor: "var(--brass)" }}>
                       <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "start" }}>
@@ -3434,14 +3435,14 @@ export default function VaPage() {
                       <p style={{ color: "var(--ink)", fontSize: 12, lineHeight: 1.45, marginTop: 8 }}>{event.body || event.status || "Inbound message"}</p>
                     </button>
                   ))}
-                  {contactQueueMode !== "inbox" && contactQueueMode !== "unmatched" && contactQueueRows.map(lead => {
+                  {((contactQueueMode === "inbox" && inboxEventRows.length === 0) || (contactQueueMode !== "inbox" && contactQueueMode !== "unmatched")) && contactQueueRows.map(lead => {
                     const active = selectedImportedLeadId === lead.id;
                     const action = sellerActionState(lead);
                     const reason = contactQueueMode === "callbacks"
                       ? `Callback due ${lead.next_follow_up_date || "today"}`
                       : contactQueueMode === "campaigns"
                         ? "Eligible for compliant outreach"
-                        : contactQueueMode === "recommended"
+                        : contactQueueMode === "recommended" || contactQueueMode === "inbox"
                           ? action.primary
                         : lead.status === "interested"
                           ? "Interested contact"
@@ -3473,7 +3474,7 @@ export default function VaPage() {
                       </button>
                     );
                   })}
-                  {contactQueueMode === "inbox" && recentInboundSms.length === 0 && unmatchedSms.length === 0 && <p style={{ color: "var(--muted)", fontSize: 13 }}>No replies, missed calls, voicemails, or unmatched contacts are waiting.</p>}
+                  {contactQueueMode === "inbox" && inboxEventRows.length === 0 && contactQueueRows.length === 0 && <p style={{ color: "var(--muted)", fontSize: 13 }}>No replies, missed calls, voicemails, or contacts are waiting.</p>}
                   {contactQueueMode === "unmatched" && unmatchedSms.length === 0 && <p style={{ color: "var(--muted)", fontSize: 13 }}>No unmatched contacts are waiting.</p>}
                   {contactQueueMode !== "inbox" && contactQueueMode !== "unmatched" && contactQueueRows.length === 0 && <p style={{ color: "var(--muted)", fontSize: 13 }}>No contacts in this queue yet.</p>}
                 </div>
