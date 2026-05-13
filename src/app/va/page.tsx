@@ -1373,7 +1373,6 @@ export default function VaPage() {
     }));
   };
   const openIncomingSms = (event: CommunicationEvent) => {
-    openCommsThreadForEvent(event);
     if (event.matched_lead_id) {
       const lead = importedLeads.find(item => item.id === event.matched_lead_id);
       if (lead) {
@@ -1382,10 +1381,6 @@ export default function VaPage() {
         window.setTimeout(() => document.getElementById("va-tab-outreach")?.scrollIntoView({ behavior: "smooth", block: "start" }), 80);
         return;
       }
-    }
-    if (event.matched_deal_id) {
-      router.push(`/opportunity?deal=${event.matched_deal_id}`);
-      return;
     }
     setSelectedImportedLeadId(null);
     setSelectedCommunicationEventId(event.id);
@@ -3558,7 +3553,7 @@ export default function VaPage() {
                       <div>
                         <h3 style={{ ...sectionTitle, fontSize: 25 }}>{activeCommunicationEvent.contact_name || activeCommunicationEvent.contact_number || activeCommunicationEvent.from_number || "Unmatched contact"}</h3>
                         <p style={{ color: "var(--muted)", fontSize: 13, marginTop: 4 }}>
-                          {activeCommunicationEvent.contact_number || activeCommunicationEvent.from_number || "No phone"} · Needs matching
+                          {activeCommunicationEvent.contact_number || activeCommunicationEvent.from_number || "No phone"} · {activeCommunicationEvent.matched_deal_id ? "Deal linked" : "Needs matching"}
                         </p>
                       </div>
                       <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
@@ -3568,11 +3563,13 @@ export default function VaPage() {
                     </div>
                     <div style={{ border: "1px solid var(--fog)", borderRadius: 8, padding: 12, background: "var(--surface)", marginBottom: 12, display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
                       <div>
-                        <p style={eyebrowSmall}>No linked record yet</p>
+                        <p style={eyebrowSmall}>{activeCommunicationEvent.matched_deal_id ? "Linked record" : "No linked record yet"}</p>
                         <strong style={{ color: "var(--obsidian)", fontSize: 15 }}>{activeCommunicationEvent.contact_number || activeCommunicationEvent.from_number || "Unknown phone"}</strong>
-                        <p style={{ color: "var(--muted)", fontSize: 12, marginTop: 4 }}>Create a packet or select a matching relationship from the Relationships tab.</p>
+                        <p style={{ color: "var(--muted)", fontSize: 12, marginTop: 4 }}>
+                          {activeCommunicationEvent.matched_deal_id ? "This conversation is connected to a deal packet." : "Create a packet or select a matching relationship from the Relationships tab."}
+                        </p>
                       </div>
-                      <span style={hotPill}>Needs matching</span>
+                      <span style={activeCommunicationEvent.matched_deal_id ? pill : hotPill}>{activeCommunicationEvent.matched_deal_id ? "Deal linked" : "Needs matching"}</span>
                     </div>
                     <ConversationPanel
                       eyebrow="Conversation"
@@ -3692,21 +3689,23 @@ export default function VaPage() {
                         <p style={eyebrowSmall}>Relationship</p>
                         <button onClick={() => createLeadDraftFromSms(activeCommunicationEvent)} style={{ background: "transparent", border: "none", color: "var(--brass)", fontWeight: 800, cursor: "pointer" }}>Create</button>
                       </div>
-                      <InfoStack title="Unmatched Contact">
+                      <InfoStack title={activeCommunicationEvent.matched_deal_id ? "Linked Contact" : "Unmatched Contact"}>
                         <p>{activeCommunicationEvent.contact_name || "Name unknown"}</p>
                         <p>{activeCommunicationEvent.contact_number || activeCommunicationEvent.from_number || "Phone missing"}</p>
                         <p>Received {formatDate(activeCommunicationEvent.provider_created_at || activeCommunicationEvent.created_at)}</p>
                       </InfoStack>
                       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 10 }}>
-                        <span style={hotPill}>Needs matching</span>
+                        <span style={activeCommunicationEvent.matched_deal_id ? pill : hotPill}>{activeCommunicationEvent.matched_deal_id ? "Deal linked" : "Needs matching"}</span>
                         <span style={pill}>Inbound</span>
                       </div>
                     </section>
                     <section style={subPanel}>
                       <p style={eyebrowSmall}>Linked Records</p>
                       <div style={{ ...contactQueueCard, cursor: "default", background: "var(--surface)" }}>
-                        <strong style={{ color: "var(--obsidian)", fontSize: 13 }}>No linked property yet</strong>
-                        <span style={{ display: "block", color: "var(--muted)", fontSize: 12, marginTop: 4 }}>Use Create Packet or match this phone to an existing relationship.</span>
+                        <strong style={{ color: "var(--obsidian)", fontSize: 13 }}>{activeCommunicationEvent.matched_deal_id ? "Deal packet connected" : "No linked property yet"}</strong>
+                        <span style={{ display: "block", color: "var(--muted)", fontSize: 12, marginTop: 4 }}>
+                          {activeCommunicationEvent.matched_deal_id ? "Use Open Thread to keep working this conversation here." : "Use Create Packet or match this phone to an existing relationship."}
+                        </span>
                       </div>
                     </section>
                     <section style={subPanel}>
