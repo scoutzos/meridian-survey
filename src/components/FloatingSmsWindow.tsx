@@ -209,6 +209,7 @@ export default function FloatingSmsWindow({
   const [unreadOnly, setUnreadOnly] = useState(false);
   const [composerMode, setComposerMode] = useState<"text" | "note">("text");
   const [noteDraft, setNoteDraft] = useState("");
+  const [threadActionsOpen, setThreadActionsOpen] = useState(false);
   const [readState, setReadState] = useState<ReadState>({});
   const [sending, setSending] = useState(false);
   const [status, setStatus] = useState("");
@@ -291,11 +292,13 @@ export default function FloatingSmsWindow({
     selectedLead?.campaign_source || selectedLead?.source_system,
   ].filter(Boolean).join(" · ");
   const openSelectedRecord = () => {
+    setThreadActionsOpen(false);
     if (selectedThread?.dealId) onOpenDeal?.(selectedThread.dealId);
     else if (selectedLead) onOpenLead?.(selectedLead);
     else setStatus("This contact is not linked to a lead or deal yet. Use Create Packet to start one from this phone number.");
   };
   const createPacketFromSelectedContact = () => {
+    setThreadActionsOpen(false);
     if (selectedLead) {
       onCreateDealBrief?.(selectedLead);
       return;
@@ -313,6 +316,29 @@ export default function FloatingSmsWindow({
     }
     setStatus("Add or select a phone number before creating a packet.");
   };
+  const copySelectedPhone = async () => {
+    setThreadActionsOpen(false);
+    if (!selectedPhone) {
+      setStatus("No phone number is available to copy.");
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(displayPhone(selectedPhone));
+      setStatus("Phone number copied.");
+    } catch {
+      setStatus(displayPhone(selectedPhone));
+    }
+  };
+  const markSelectedThreadUnread = () => {
+    if (!selectedThread) return;
+    setThreadActionsOpen(false);
+    setReadState(prev => {
+      const next = { ...prev, [selectedThread.key]: "" };
+      localStorage.setItem(readStorageKey(user), JSON.stringify(next));
+      return next;
+    });
+    setStatus("Thread marked unread.");
+  };
   const markThreadRead = useCallback((thread: SmsThread) => {
     if (!thread.unread) return;
     setReadState(prev => {
@@ -322,6 +348,7 @@ export default function FloatingSmsWindow({
     });
   }, [user]);
   const selectThread = useCallback((thread: SmsThread) => {
+    setThreadActionsOpen(false);
     setSelectedKey(thread.key);
     setShowNew(false);
     markThreadRead(thread);
@@ -812,7 +839,7 @@ export default function FloatingSmsWindow({
                       {displayPhone(selectedPhone)} · {selectedThread.dealId ? "Deal linked" : selectedLead ? "Lead linked" : "No record linked"}
                     </p>
                   </div>
-                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                  <div style={contextActions}>
                     <button
                       type="button"
                       onClick={() => void startCall(selectedCallCompliance?.phone?.number || selectedPhone, selectedLead?.id ?? null, selectedThread.dealId)}
@@ -823,7 +850,19 @@ export default function FloatingSmsWindow({
                       ☎
                     </button>
                     <button type="button" onClick={createPacketFromSelectedContact} style={roundAction} title={selectedLead ? "Create packet from lead" : selectedThread.dealId ? "Open linked deal" : "Create packet from this contact"}>◇</button>
-                    <button type="button" onClick={openSelectedRecord} style={roundAction}>…</button>
+                    <button type="button" onClick={() => setThreadActionsOpen(value => !value)} style={moreButton}>More</button>
+                    {threadActionsOpen && (
+                      <div style={moreMenu}>
+                        <button type="button" onClick={openSelectedRecord} style={moreMenuItem}>
+                          {selectedThread.dealId ? "Open deal" : selectedLead ? "Open lead" : "Find linked record"}
+                        </button>
+                        <button type="button" onClick={createPacketFromSelectedContact} style={moreMenuItem}>
+                          {selectedThread.dealId ? "Open packet" : "Create packet"}
+                        </button>
+                        <button type="button" onClick={copySelectedPhone} style={moreMenuItem}>Copy phone number</button>
+                        <button type="button" onClick={markSelectedThreadUnread} style={moreMenuItem}>Mark unread</button>
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -1220,6 +1259,49 @@ const roundAction: CSSProperties = {
   fontSize: 14,
   height: 34,
   width: 38,
+};
+
+const contextActions: CSSProperties = {
+  display: "flex",
+  flexWrap: "wrap",
+  gap: 8,
+  justifyContent: "flex-end",
+  position: "relative",
+};
+
+const moreButton: CSSProperties = {
+  ...roundAction,
+  fontSize: 10,
+  fontWeight: 900,
+  letterSpacing: "0.08em",
+  textTransform: "uppercase",
+  width: 58,
+};
+
+const moreMenu: CSSProperties = {
+  background: "var(--surface)",
+  border: "1px solid var(--fog)",
+  borderRadius: 8,
+  boxShadow: "0 18px 38px rgba(20,17,13,0.18)",
+  display: "grid",
+  minWidth: 180,
+  overflow: "hidden",
+  position: "absolute",
+  right: 0,
+  top: 42,
+  zIndex: 4,
+};
+
+const moreMenuItem: CSSProperties = {
+  background: "transparent",
+  border: "none",
+  borderBottom: "1px solid var(--fog)",
+  color: "var(--obsidian)",
+  cursor: "pointer",
+  fontSize: 12,
+  fontWeight: 800,
+  padding: "11px 12px",
+  textAlign: "left",
 };
 
 const propertyStrip: CSSProperties = {
