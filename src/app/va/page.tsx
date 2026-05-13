@@ -806,6 +806,7 @@ export default function VaPage() {
   const [importedLeads, setImportedLeads] = useState<ImportedLandLead[]>([]);
   const [leadBatches, setLeadBatches] = useState<LandLeadBatch[]>([]);
   const [selectedImportedLeadId, setSelectedImportedLeadId] = useState<string | null>(null);
+  const [selectedCommunicationEventId, setSelectedCommunicationEventId] = useState<string | null>(null);
   const [selectedBatchId, setSelectedBatchId] = useState<string | null>(null);
   const [leadActivities, setLeadActivities] = useState<ImportedLandLeadActivity[]>([]);
   const [communicationEvents, setCommunicationEvents] = useState<CommunicationEvent[]>([]);
@@ -1020,6 +1021,10 @@ export default function VaPage() {
   const memberAssignedTasks = useMemo(() => openAssignedTasks.filter(task => task.status !== "blocked"), [openAssignedTasks]);
   const dashboardWorkQueueCount = leadFollowUpsDue.length + followUpsDue.length + interestedLeads.length + draftLeads.length + memberAssignedTasks.length + blockedAssignedTasks.length;
   const selectedImportedLead = useMemo(() => importedLeads.find(lead => lead.id === selectedImportedLeadId) ?? null, [importedLeads, selectedImportedLeadId]);
+  const selectedCommunicationEvent = useMemo(() => {
+    if (!selectedCommunicationEventId) return null;
+    return [...recentInboundSms, ...unmatchedSms].find(event => event.id === selectedCommunicationEventId) ?? null;
+  }, [recentInboundSms, selectedCommunicationEventId, unmatchedSms]);
   const selectedBatch = useMemo(() => leadBatches.find(batch => batch.id === selectedBatchId) ?? null, [leadBatches, selectedBatchId]);
   const filteredImportedLeads = useMemo(() => {
     const query = leadSearch.trim().toLowerCase();
@@ -1170,6 +1175,16 @@ export default function VaPage() {
     relationships: filteredImportedLeads.length,
     recommended: workdeskLeadRows.length,
   }), [campaignReadyLeads.length, filteredImportedLeads.length, interestedLeads.length, leadFollowUpsDue.length, recentInboundSms.length, unmatchedSms.length, workdeskLeadRows.length]);
+  useEffect(() => {
+    if (activeTab !== "outreach" || selectedImportedLeadId || selectedCommunicationEventId) return;
+    const firstEvent = recentInboundSms[0] ?? unmatchedSms[0] ?? null;
+    if (firstEvent) {
+      setSelectedCommunicationEventId(firstEvent.id);
+      return;
+    }
+    const firstLead = contactQueueRows[0] ?? null;
+    if (firstLead) setSelectedImportedLeadId(firstLead.id);
+  }, [activeTab, contactQueueRows, recentInboundSms, selectedCommunicationEventId, selectedImportedLeadId, unmatchedSms]);
   const importStats = useMemo(() => ({
     newRows: importedLeads.filter(lead => lead.status === "new").length,
     contacted: importedLeads.filter(lead => lead.status === "contacted").length,
@@ -1356,6 +1371,7 @@ export default function VaPage() {
     if (event.matched_lead_id) {
       const lead = importedLeads.find(item => item.id === event.matched_lead_id);
       if (lead) {
+        setSelectedCommunicationEventId(null);
         selectImportedLead(lead, "outreach");
         window.setTimeout(() => document.getElementById("va-tab-outreach")?.scrollIntoView({ behavior: "smooth", block: "start" }), 80);
         return;
@@ -1365,7 +1381,8 @@ export default function VaPage() {
       router.push(`/opportunity?deal=${event.matched_deal_id}`);
       return;
     }
-    createLeadDraftFromSms(event);
+    setSelectedImportedLeadId(null);
+    setSelectedCommunicationEventId(event.id);
   };
 
   const addToDailyBrief = (line: string, patch: Partial<VaDailyBriefInput> = {}) => {
@@ -1438,6 +1455,7 @@ export default function VaPage() {
   const selectImportedLead = (lead: ImportedLandLead, tab: VaTab = "today") => {
     setSelectedId(null);
     setSelectedImportedLeadId(lead.id);
+    setSelectedCommunicationEventId(null);
     setActiveTab(tab);
     setMessage("");
   };
@@ -3345,7 +3363,7 @@ export default function VaPage() {
           )}
 
           {activeTab === "outreach" && (
-          <section style={panel}>
+          <section style={contactQueuePage}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12, flexWrap: "wrap", marginBottom: 12 }}>
               <div>
                 <h2 style={{ ...sectionTitle, fontSize: 34 }}>Contact Queue</h2>
@@ -3376,8 +3394,8 @@ export default function VaPage() {
                         padding: 12,
                         textAlign: "left",
                         cursor: "pointer",
-                        background: event.matched_lead_id || event.matched_deal_id ? "var(--surface)" : "rgba(176,137,84,0.12)",
-                        borderColor: event.matched_lead_id || event.matched_deal_id ? "var(--fog)" : "var(--brass)",
+                        background: selectedCommunicationEventId === event.id ? "rgba(176,137,84,0.18)" : event.matched_lead_id || event.matched_deal_id ? "var(--surface)" : "rgba(176,137,84,0.10)",
+                        borderColor: selectedCommunicationEventId === event.id || !(event.matched_lead_id || event.matched_deal_id) ? "var(--brass)" : "var(--fog)",
                       }}
                     >
                       <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "start" }}>
@@ -3397,14 +3415,14 @@ export default function VaPage() {
                     </button>
                   ))}
                   {contactQueueMode === "inbox" && unmatchedSms.filter(event => !recentInboundSms.some(reply => reply.id === event.id)).slice(0, 10).map(event => (
-                    <button key={event.id} onClick={() => createLeadDraftFromSms(event)} style={{ ...contactQueueCard, background: "rgba(176,137,84,0.12)", borderColor: "var(--brass)" }}>
+                    <button key={event.id} onClick={() => { setSelectedImportedLeadId(null); setSelectedCommunicationEventId(event.id); }} style={{ ...contactQueueCard, background: selectedCommunicationEventId === event.id ? "rgba(176,137,84,0.18)" : "rgba(176,137,84,0.10)", borderColor: "var(--brass)" }}>
                       <strong style={{ color: "var(--obsidian)", fontSize: 14 }}>{event.contact_name || event.contact_number || event.from_number || "Unknown contact"}</strong>
                       <p style={{ color: "var(--muted)", fontSize: 12, marginTop: 3 }}>{event.contact_number || event.from_number || "No phone"} · {formatDate(event.created_at)}</p>
                       <span style={{ ...hotPill, marginTop: 8 }}>Needs matching</span>
                     </button>
                   ))}
                   {contactQueueMode === "unmatched" && unmatchedSms.slice(0, 25).map(event => (
-                    <button key={event.id} onClick={() => createLeadDraftFromSms(event)} style={{ ...contactQueueCard, background: "rgba(176,137,84,0.12)", borderColor: "var(--brass)" }}>
+                    <button key={event.id} onClick={() => { setSelectedImportedLeadId(null); setSelectedCommunicationEventId(event.id); }} style={{ ...contactQueueCard, background: selectedCommunicationEventId === event.id ? "rgba(176,137,84,0.18)" : "rgba(176,137,84,0.10)", borderColor: "var(--brass)" }}>
                       <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "start" }}>
                         <div>
                           <strong style={{ color: "var(--obsidian)", fontSize: 14 }}>{event.contact_name || event.contact_number || event.from_number || "Unknown contact"}</strong>
@@ -3528,6 +3546,55 @@ export default function VaPage() {
                       </div>
                     </div>
                   </>
+                ) : selectedCommunicationEvent ? (
+                  <>
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "start", marginBottom: 12 }}>
+                      <div>
+                        <h3 style={{ ...sectionTitle, fontSize: 25 }}>{selectedCommunicationEvent.contact_name || selectedCommunicationEvent.contact_number || selectedCommunicationEvent.from_number || "Unmatched contact"}</h3>
+                        <p style={{ color: "var(--muted)", fontSize: 13, marginTop: 4 }}>
+                          {selectedCommunicationEvent.contact_number || selectedCommunicationEvent.from_number || "No phone"} · Needs matching
+                        </p>
+                      </div>
+                      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                        <button onClick={() => openCommsThreadForEvent(selectedCommunicationEvent)} style={secondaryButton}>Open Thread</button>
+                        <button onClick={() => createLeadDraftFromSms(selectedCommunicationEvent)} style={secondaryButton}>Create Packet</button>
+                      </div>
+                    </div>
+                    <div style={{ border: "1px solid var(--fog)", borderRadius: 8, padding: 12, background: "var(--surface)", marginBottom: 12, display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
+                      <div>
+                        <p style={eyebrowSmall}>No linked record yet</p>
+                        <strong style={{ color: "var(--obsidian)", fontSize: 15 }}>{selectedCommunicationEvent.contact_number || selectedCommunicationEvent.from_number || "Unknown phone"}</strong>
+                        <p style={{ color: "var(--muted)", fontSize: 12, marginTop: 4 }}>Create a packet or select a matching relationship from the Relationships tab.</p>
+                      </div>
+                      <span style={hotPill}>Needs matching</span>
+                    </div>
+                    <ConversationPanel
+                      eyebrow="Conversation"
+                      title="Timeline"
+                      subject={selectedCommunicationEvent.contact_number || selectedCommunicationEvent.from_number || "Unknown contact"}
+                      communications={[selectedCommunicationEvent]}
+                      activities={[]}
+                      emptyText="No communication yet."
+                      maxHeight={360}
+                    />
+                    <div style={{ borderTop: "1px solid var(--fog)", marginTop: 12, paddingTop: 12 }}>
+                      <div style={{ display: "flex", gap: 12, marginBottom: 8, color: "var(--muted)", fontSize: 13 }}>
+                        <strong style={{ color: "var(--obsidian)", borderBottom: "2px solid var(--obsidian)", paddingBottom: 5 }}>Text</strong>
+                        <span>Note</span>
+                        <span>Log</span>
+                      </div>
+                      <textarea
+                        rows={4}
+                        value={smsDraft}
+                        onChange={event => setSmsDraft(event.target.value)}
+                        placeholder="Link this contact before sending a tracked reply."
+                      />
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", marginTop: 8 }}>
+                        <span style={{ color: "var(--muted)", fontSize: 12 }}>{smsDraft.trim().length}/1200</span>
+                        <button onClick={() => createLeadDraftFromSms(selectedCommunicationEvent)} style={primaryButton}>Create Packet</button>
+                      </div>
+                    </div>
+                  </>
                 ) : (
                   <div>
                     <p style={eyebrowSmall}>Relationship workspace</p>
@@ -3609,6 +3676,50 @@ export default function VaPage() {
                       <InfoStack title="Outbound rules">
                         <p>SMS: {checkLeadSmsCompliance(selectedImportedLead).allowed ? "Allowed" : checkLeadSmsCompliance(selectedImportedLead).blockLabel}</p>
                         <p>Calls: {checkLeadCallCompliance(selectedImportedLead).allowed ? "Allowed" : checkLeadCallCompliance(selectedImportedLead).blockLabel}</p>
+                      </InfoStack>
+                    </section>
+                  </>
+                ) : selectedCommunicationEvent ? (
+                  <>
+                    <section style={subPanel}>
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "baseline", marginBottom: 10 }}>
+                        <p style={eyebrowSmall}>Relationship</p>
+                        <button onClick={() => createLeadDraftFromSms(selectedCommunicationEvent)} style={{ background: "transparent", border: "none", color: "var(--brass)", fontWeight: 800, cursor: "pointer" }}>Create</button>
+                      </div>
+                      <InfoStack title="Unmatched Contact">
+                        <p>{selectedCommunicationEvent.contact_name || "Name unknown"}</p>
+                        <p>{selectedCommunicationEvent.contact_number || selectedCommunicationEvent.from_number || "Phone missing"}</p>
+                        <p>Received {formatDate(selectedCommunicationEvent.provider_created_at || selectedCommunicationEvent.created_at)}</p>
+                      </InfoStack>
+                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 10 }}>
+                        <span style={hotPill}>Needs matching</span>
+                        <span style={pill}>Inbound</span>
+                      </div>
+                    </section>
+                    <section style={subPanel}>
+                      <p style={eyebrowSmall}>Linked Records</p>
+                      <div style={{ ...contactQueueCard, cursor: "default", background: "var(--surface)" }}>
+                        <strong style={{ color: "var(--obsidian)", fontSize: 13 }}>No linked property yet</strong>
+                        <span style={{ display: "block", color: "var(--muted)", fontSize: 12, marginTop: 4 }}>Use Create Packet or match this phone to an existing relationship.</span>
+                      </div>
+                    </section>
+                    <section style={subPanel}>
+                      <p style={eyebrowSmall}>Quick Actions</p>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                        <button onClick={() => openCommsThreadForEvent(selectedCommunicationEvent)} style={secondaryButton}>Text</button>
+                        <button onClick={() => createLeadDraftFromSms(selectedCommunicationEvent)} style={secondaryButton}>Create Packet</button>
+                        <button onClick={() => setContactQueueMode("relationships")} style={secondaryButton}>Find Match</button>
+                        <button onClick={() => void reload(user)} style={secondaryButton}>Refresh</button>
+                      </div>
+                    </section>
+                    <section style={subPanel}>
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "baseline", marginBottom: 10 }}>
+                        <p style={eyebrowSmall}>Compliance Status</p>
+                        <span style={pill}>Review</span>
+                      </div>
+                      <InfoStack title="Outbound rules">
+                        <p>SMS: Link before tracked reply</p>
+                        <p>Calls: Link before tracked call</p>
                       </InfoStack>
                     </section>
                   </>
@@ -4827,6 +4938,14 @@ const panel: React.CSSProperties = {
   borderRadius: 8,
   padding: 16,
   boxShadow: "0 16px 44px rgba(20,17,13,0.06)",
+};
+
+const contactQueuePage: React.CSSProperties = {
+  background: "transparent",
+  border: "none",
+  borderRadius: 0,
+  padding: "6px 0 0",
+  boxShadow: "none",
 };
 
 const subPanel: React.CSSProperties = {

@@ -64,12 +64,23 @@ export default function GlobalLeadSearch() {
   const [open, setOpen] = useState(false);
   const [leads, setLeads] = useState<ImportedLandLead[]>([]);
   const [deals, setDeals] = useState<Deal[]>([]);
+  const [vaTab, setVaTab] = useState<string | null>(null);
 
   useEffect(() => {
     setUser(localStorage.getItem("meridian_user"));
+    if (pathname === "/va") setVaTab(new URLSearchParams(window.location.search).get("tab") || "today");
+    else setVaTab(null);
   }, [pathname]);
 
-  const shouldShow = !!user && pathname !== "/" && pathname !== "/apply";
+  useEffect(() => {
+    const handleVaTab = (event: Event) => {
+      setVaTab((event as CustomEvent<string>).detail || null);
+    };
+    window.addEventListener("meridian-va-tab", handleVaTab);
+    return () => window.removeEventListener("meridian-va-tab", handleVaTab);
+  }, []);
+
+  const shouldShow = !!user && pathname !== "/" && pathname !== "/apply" && !(pathname === "/va" && vaTab === "outreach");
   const crmShell = ["/crm", "/va", "/deals", "/opportunity", "/actions", "/operations", "/meetings"].some(route => pathname === route || pathname.startsWith(route + "/"));
 
   useEffect(() => {
