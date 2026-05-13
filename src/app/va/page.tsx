@@ -589,7 +589,7 @@ function buildConversationItems(communications: CommunicationEvent[], activities
       kind: event.direction === "inbound" ? "sms-in" as const : "sms-out" as const,
       title: event.channel === "voice"
         ? event.direction === "inbound" ? "Inbound call" : event.direction === "outbound" ? "Outbound call" : "Call update"
-        : event.direction === "inbound" ? "Seller SMS" : event.direction === "outbound" ? "Meridian SMS" : "SMS update",
+        : event.direction === "inbound" ? "Contact SMS" : event.direction === "outbound" ? "Meridian SMS" : "SMS update",
       date: event.provider_created_at || event.created_at,
       body: event.body || event.status || event.provider_event_type,
       meta: event.status || event.provider_event_type,
@@ -941,7 +941,7 @@ export default function VaPage() {
           seller_name: sellerName,
           seller_phone: sellerPhone,
           source: "Comms",
-          notes: "Created from an unmatched global comms contact. Add the property address, parcel, and seller context before submitting.",
+          notes: "Created from an unmatched global comms contact. Add the property address, parcel, and relationship context before submitting.",
         });
         setMessage("Started a packet from the unmatched comms contact. Add property details before saving.");
       }
@@ -1178,7 +1178,7 @@ export default function VaPage() {
   }, [tabCounts]);
   const readinessItems = useMemo(() => [
     { label: "Address or parcel", done: !!(liveInput.address || liveInput.parcel_id) },
-    { label: "Seller contact", done: !!(liveInput.seller_name || liveInput.seller_phone) },
+    { label: "Contact", done: !!(liveInput.seller_name || liveInput.seller_phone) },
     { label: "Asking price", done: typeof liveInput.asking_price === "number" && Number.isFinite(liveInput.asking_price) },
     { label: liveInput.property_type === "land" ? "Exit value or comp support" : "ARV or value", done: typeof liveInput.arv === "number" && Number.isFinite(liveInput.arv) },
     { label: "Disposition thesis", done: !!(liveInput.exit_strategy && liveInput.target_buyer_type && liveInput.buyer_demand_evidence) },
@@ -1704,9 +1704,9 @@ export default function VaPage() {
     setBriefDraft(prev => ({
       ...prev,
       outreach_sent: (prev.outreach_sent ?? 0) + sentCount,
-      activities_completed: appendBriefText(prev.activities_completed, `Bulk SMS sent to ${sentCount} seller${sentCount === 1 ? "" : "s"} from ${selectedBatch?.campaign_source || selectedBatch?.original_filename || "current filtered list"}.`),
+      activities_completed: appendBriefText(prev.activities_completed, `Bulk SMS sent to ${sentCount} contact${sentCount === 1 ? "" : "s"} from ${selectedBatch?.campaign_source || selectedBatch?.original_filename || "current filtered list"}.`),
     }));
-    setMessage(`Bulk SMS sent to ${sentCount} seller${sentCount === 1 ? "" : "s"}.`);
+    setMessage(`Bulk SMS sent to ${sentCount} contact${sentCount === 1 ? "" : "s"}.`);
     return { sent: sentCount };
   };
 
@@ -1719,7 +1719,7 @@ export default function VaPage() {
       setBulkTextResult({ error: "No eligible recipients passed the current audience and compliance review." });
       return;
     }
-    const confirmed = window.confirm(`Send this bulk text to ${bulkTextCategorization.eligible.length} eligible seller${bulkTextCategorization.eligible.length === 1 ? "" : "s"}?`);
+    const confirmed = window.confirm(`Send this bulk text to ${bulkTextCategorization.eligible.length} eligible contact${bulkTextCategorization.eligible.length === 1 ? "" : "s"}?`);
     if (!confirmed) return;
 
     setBulkTextSending(true);
@@ -1892,7 +1892,7 @@ export default function VaPage() {
       seller_phone: event.contact_number || event.from_number || "",
       notes: [
         "Lead started from unmatched Sakari message.",
-        event.body ? `Seller text: ${event.body}` : "",
+        event.body ? `Contact text: ${event.body}` : "",
         event.provider_created_at ? `Received: ${formatDate(event.provider_created_at)}` : "",
       ].filter(Boolean).join("\n"),
       submitted_by: user,
@@ -2084,12 +2084,12 @@ export default function VaPage() {
       return event.matched_lead_id || event.matched_deal_id || ["offer", "price", "interested", "call", "yes", "sell"].some(term => body.includes(term));
     }).slice(0, 6);
     const lineFor = (event: CommunicationEvent) => {
-      const who = event.contact_name || event.contact_number || event.from_number || event.to_number || "Unknown seller";
+      const who = event.contact_name || event.contact_number || event.from_number || event.to_number || "Unknown contact";
       const body = event.body ? `: ${event.body}` : "";
       return `- ${who}${body}`;
     };
     const activityLines = [
-      `Sakari SMS: ${outbound.length} sent, ${inbound.length} seller replies received.`,
+      `Sakari SMS: ${outbound.length} sent, ${inbound.length} contact replies received.`,
       hotReplies.length ? `Priority replies:\n${hotReplies.map(lineFor).join("\n")}` : "",
     ].filter(Boolean).join("\n");
     const followUpLines = [
@@ -2192,7 +2192,7 @@ export default function VaPage() {
     outreach: {
       eyebrow: "Contact Queue",
       title: "Contact Queue",
-      subtitle: "Work due follow-ups, calls, texts, and outcomes from the selected seller record.",
+      subtitle: "Work due follow-ups, calls, texts, and outcomes from the selected contact record.",
     },
     lists: {
       eyebrow: "Lists",
@@ -2202,7 +2202,7 @@ export default function VaPage() {
     packet: {
       eyebrow: "Packets",
       title: "Packet Builder",
-      subtitle: "Turn qualified seller interest into a member-ready review packet with diligence, calculator notes, and a clear ask.",
+      subtitle: "Turn qualified relationship interest into a member-ready review packet with diligence, calculator notes, and a clear ask.",
     },
     brief: {
       eyebrow: "Daily Brief",
@@ -2269,9 +2269,9 @@ export default function VaPage() {
     onAction: card.disabled ? undefined : card.onAction,
     tone: card.hot ? "hot" as const : card.label === "Brief" && portalStats.briefSubmitted ? "good" as const : "default" as const,
   })) : activeTab === "outreach" ? [
-    { label: "Seller Replies", value: String(recentInboundSms.length), detail: "Recent seller replies", action: "Open", onAction: () => goToTab("outreach"), tone: recentInboundSms.length ? "hot" as const : "default" as const },
+    { label: "Recent Replies", value: String(recentInboundSms.length), detail: "Recent contact replies", action: "Open", onAction: () => goToTab("outreach"), tone: recentInboundSms.length ? "hot" as const : "default" as const },
     { label: "Follow-ups", value: String(followUpsDue.length), detail: "Dated follow-ups due", action: "Review", onAction: () => goToTab("outreach"), tone: followUpsDue.length ? "hot" as const : "default" as const },
-    { label: "Interested", value: String(interestedLeads.length), detail: "Sellers showing interest", action: "Open Leads", onAction: () => { setLeadFilter("interested"); goToTab("lists"); }, tone: interestedLeads.length ? "hot" as const : "default" as const },
+    { label: "Interested", value: String(interestedLeads.length), detail: "Contacts showing interest", action: "Open Leads", onAction: () => { setLeadFilter("interested"); goToTab("lists"); }, tone: interestedLeads.length ? "hot" as const : "default" as const },
     { label: "Draft Packets", value: String(draftLeads.length), detail: "Leads ready to package", action: "Build", onAction: () => draftLeads[0] ? openDealBrief(draftLeads[0]) : goToTab("packet"), tone: draftLeads.length ? "hot" as const : "default" as const },
   ] : activeTab === "lists" ? [
     { label: "Imported", value: String(importedLeads.length), detail: "Total list records", action: "Upload", onAction: startNewImport, tone: "default" as const },
@@ -2446,7 +2446,7 @@ export default function VaPage() {
                     <p style={eyebrowSmall}>Next best work</p>
                     <h2 style={{ ...sectionTitle, fontSize: 26 }}>Work this queue first</h2>
                     <p style={{ color: "var(--muted)", fontSize: 13, lineHeight: 1.45, marginTop: 4 }}>
-                      Follow-ups, interested sellers, packet-ready deals, and assigned tasks are prioritized here.
+                      Follow-ups, interested contacts, packet-ready deals, and assigned tasks are prioritized here.
                     </p>
                   </div>
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -2466,8 +2466,8 @@ export default function VaPage() {
                           <strong>{lead.owner_name || lead.property_address || "Due follow-up"}</strong>
                           <span style={hotPill}>Due Follow-Up</span>
                         </div>
-                        <p style={workItemBody}>{lead.property_address || lead.parcel_id || "Seller follow-up is due."}</p>
-                        <small style={workItemMeta}>{formatQueueDueReason(lead.next_follow_up_date)} · Open seller card</small>
+                        <p style={workItemBody}>{lead.property_address || lead.parcel_id || "Contact follow-up is due."}</p>
+                        <small style={workItemMeta}>{formatQueueDueReason(lead.next_follow_up_date)} · Open contact card</small>
                       </div>
                     </button>
                   ))}
@@ -2491,11 +2491,11 @@ export default function VaPage() {
                       <div style={workItemIcon}>INT</div>
                       <div style={{ minWidth: 0 }}>
                         <div style={workItemHeader}>
-                          <strong>{lead.owner_name || lead.property_address || "Interested seller"}</strong>
-                          <span style={hotPill}>Interested Seller</span>
+                          <strong>{lead.owner_name || lead.property_address || "Interested contact"}</strong>
+                          <span style={hotPill}>Interested Contact</span>
                         </div>
                         <p style={workItemBody}>{lead.property_address || lead.parcel_id || "Property record needs review."}</p>
-                        <small style={workItemMeta}>Why: seller is marked interested · {lead.phone || lead.phone_2 || "No phone"} · Build packet</small>
+                        <small style={workItemMeta}>Why: contact is marked interested · {lead.phone || lead.phone_2 || "No phone"} · Build packet</small>
                       </div>
                     </button>
                   ))}
@@ -2509,7 +2509,7 @@ export default function VaPage() {
                           <span style={pill}>Packet Ready</span>
                         </div>
                         <p style={workItemBody}>{deal.address || deal.parcel_id || "Draft deal brief needs readiness checks."}</p>
-                        <small style={workItemMeta}>Why: draft packet needs readiness review · {deal.seller_name || deal.seller_phone || "Seller pending"}</small>
+                        <small style={workItemMeta}>Why: draft packet needs readiness review · {deal.seller_name || deal.seller_phone || "Contact pending"}</small>
                       </div>
                     </button>
                   ))}
@@ -2702,7 +2702,7 @@ export default function VaPage() {
                   </div>
                   <div style={{ marginTop: 10 }}>
                     <label style={label}>Missing / uncertain items</label>
-                    <textarea rows={2} value={draft.submit_uncertainties ?? ""} onChange={e => setDraft({ ...draft, submit_uncertainties: e.target.value })} placeholder="Open questions, weak comps, seller uncertainty, county records still pending." />
+                    <textarea rows={2} value={draft.submit_uncertainties ?? ""} onChange={e => setDraft({ ...draft, submit_uncertainties: e.target.value })} placeholder="Open questions, weak comps, contact uncertainty, county records still pending." />
                   </div>
                 </div>
                 <div style={twoCol} className="two-col">
@@ -2717,11 +2717,11 @@ export default function VaPage() {
                 </div>
                 <div style={twoCol} className="two-col">
                   <div>
-                    <label style={label}>Seller</label>
+                    <label style={label}>Primary contact</label>
                     <input type="text" value={draft.seller_name ?? ""} onChange={e => setDraft({ ...draft, seller_name: e.target.value })} />
                   </div>
                   <div>
-                    <label style={label}>Seller phone</label>
+                    <label style={label}>Contact phone</label>
                     <input type="text" autoComplete="off" inputMode="tel" value={draft.seller_phone ?? ""} onChange={e => setDraft({ ...draft, seller_phone: e.target.value })} />
                   </div>
                 </div>
@@ -2795,8 +2795,8 @@ export default function VaPage() {
                   <textarea rows={3} value={draft.linksText} onChange={e => setDraft({ ...draft, linksText: e.target.value })} placeholder="One county, portal, comp, map, photo, or document link per line" />
                 </div>
                 <div>
-                  <label style={label}>Seller / research notes</label>
-                  <textarea rows={5} value={draft.notes ?? ""} onChange={e => setDraft({ ...draft, notes: e.target.value })} placeholder="Seller motivation, timeline, condition, due diligence notes, county calls, concerns, next follow-up" />
+                  <label style={label}>Contact / research notes</label>
+                  <textarea rows={5} value={draft.notes ?? ""} onChange={e => setDraft({ ...draft, notes: e.target.value })} placeholder="Contact motivation, timeline, condition, due diligence notes, county calls, concerns, next follow-up" />
                 </div>
               </div>
 
@@ -3047,7 +3047,7 @@ export default function VaPage() {
                 </div>
 
                 <aside style={subPanel}>
-                  {!selectedImportedLead && <p style={{ fontSize: 13, color: "var(--muted)" }}>Select any imported lead to review details, log outreach, text the seller, pass it, or build a deal packet.</p>}
+                  {!selectedImportedLead && <p style={{ fontSize: 13, color: "var(--muted)" }}>Select any imported lead to review details, log outreach, text the contact, pass it, or build a deal packet.</p>}
                   {selectedImportedLead && (
                     <SellerCommandCenter
                       lead={selectedImportedLead}
@@ -3091,7 +3091,7 @@ export default function VaPage() {
               <div style={{ ...subPanel, marginBottom: 12, borderColor: "var(--brass)" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "baseline", marginBottom: 10 }}>
                   <div>
-                  <p style={eyebrowSmall}>Unmatched seller replies</p>
+                  <p style={eyebrowSmall}>Unmatched contact replies</p>
                     <h3 style={{ ...sectionTitle, fontSize: 20 }}>{unmatchedSms.length} message{unmatchedSms.length === 1 ? "" : "s"} need matching</h3>
                   </div>
                   <button onClick={() => { void fetchCommunicationEvents({ unmatched: true, limit: 25 }).then(setUnmatchedSms); }} style={secondaryButton}>Refresh</button>
@@ -3308,7 +3308,7 @@ export default function VaPage() {
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12, flexWrap: "wrap", marginBottom: 12 }}>
               <div>
                 <p style={eyebrowSmall}>Contact Queue</p>
-                <h2 style={sectionTitle}>Seller conversations and follow-ups</h2>
+                <h2 style={sectionTitle}>Relationship conversations and follow-ups</h2>
               </div>
               <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
                 <span style={(followUpsDue.length || recentInboundSms.length || interestedLeads.length) ? hotPill : pill}>
@@ -3320,25 +3320,25 @@ export default function VaPage() {
               </div>
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, marginBottom: 14 }} className="number-grid">
-              <ShiftCard label="Seller replies" value={String(recentInboundSms.length)} tone={recentInboundSms.length ? "hot" : "calm"} />
+              <ShiftCard label="Recent replies" value={String(recentInboundSms.length)} tone={recentInboundSms.length ? "hot" : "calm"} />
               <ShiftCard label="Due follow-ups" value={String(followUpsDue.length)} tone={followUpsDue.length ? "hot" : "calm"} />
-              <ShiftCard label="Interested sellers" value={String(interestedLeads.length)} tone={interestedLeads.length ? "hot" : "calm"} />
+              <ShiftCard label="Interested contacts" value={String(interestedLeads.length)} tone={interestedLeads.length ? "hot" : "calm"} />
               <ShiftCard label="Textable audience" value={String(bulkTextCategorization.eligible.length)} />
             </div>
 
             <div style={{ display: "grid", gridTemplateColumns: "260px minmax(0, 1fr) 420px", gap: 14 }} className="lead-inbox-grid">
               <aside style={{ display: "grid", gap: 12, alignContent: "start" }}>
                 <section style={{ ...subPanel, borderColor: recentInboundSms.length ? "var(--brass)" : "var(--fog)", background: recentInboundSms.length ? "rgba(176,137,84,0.08)" : "var(--bone)" }}>
-                  <p style={eyebrowSmall}>Recent seller replies</p>
+                  <p style={eyebrowSmall}>Recent replies</p>
                   <div style={{ display: "grid", gap: 8, marginTop: 10 }}>
                     {recentInboundSms.slice(0, 8).map(event => (
                       <button key={event.id} onClick={() => openIncomingSms(event)} style={{ ...miniInboxButton, borderColor: event.matched_lead_id || event.matched_deal_id ? "var(--fog)" : "var(--brass)" }}>
-                        <strong>{event.contact_name || event.contact_number || event.from_number || "Unknown seller"}</strong>
+                        <strong>{event.contact_name || event.contact_number || event.from_number || "Unknown contact"}</strong>
                         <span>{event.body || event.status || "Inbound SMS"}</span>
                         <em>{event.matched_deal_id ? "Matched deal" : event.matched_lead_id ? "Matched lead" : "Unmatched"}</em>
                       </button>
                     ))}
-                    {recentInboundSms.length === 0 && <p style={{ color: "var(--muted)", fontSize: 12, lineHeight: 1.45 }}>No seller replies have been received yet.</p>}
+                    {recentInboundSms.length === 0 && <p style={{ color: "var(--muted)", fontSize: 12, lineHeight: 1.45 }}>No contact replies have been received yet.</p>}
                   </div>
                 </section>
 
@@ -3346,7 +3346,7 @@ export default function VaPage() {
                   <p style={eyebrowSmall}>Conversation queues</p>
                   <div style={{ display: "grid", gap: 8, marginTop: 10 }}>
                     <QueueButton label="Unmatched replies" detail="Need lead/deal matching" count={unmatchedSms.length} hot={!!unmatchedSms.length} onClick={() => void reload(user)} />
-                    <QueueButton label="Interested sellers" detail="Ready for response" count={interestedLeads.length} hot={!!interestedLeads.length} onClick={() => { setLeadFilter("interested"); goToTab("lists"); }} />
+                    <QueueButton label="Interested contacts" detail="Ready for response" count={interestedLeads.length} hot={!!interestedLeads.length} onClick={() => { setLeadFilter("interested"); goToTab("lists"); }} />
                     <QueueButton label="Follow-up due" detail="Needs call or text" count={followUpsDue.length} hot={!!followUpsDue.length} onClick={() => goToTab("outreach")} />
                     <QueueButton label="New imported leads" detail="Start first touch" count={importStats.newRows} onClick={() => { setLeadFilter("new"); goToTab("lists"); }} />
                   </div>
@@ -3371,8 +3371,8 @@ export default function VaPage() {
               <section style={subPanel}>
                 <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", marginBottom: 12 }}>
                   <div>
-                    <p style={eyebrowSmall}>Seller queue</p>
-                    <h3 style={{ ...sectionTitle, fontSize: 22 }}>Select a seller to text</h3>
+                    <p style={eyebrowSmall}>Contact queue</p>
+                    <h3 style={{ ...sectionTitle, fontSize: 22 }}>Select a contact to work</h3>
                   </div>
                   <button onClick={() => void reload(user)} style={secondaryButton}>Refresh</button>
                 </div>
@@ -3408,7 +3408,7 @@ export default function VaPage() {
                       </button>
                     );
                   })}
-                  {workdeskLeadRows.length === 0 && <p style={{ color: "var(--muted)", fontSize: 13 }}>No seller work items yet. Import a list or wait for inbound replies.</p>}
+                  {workdeskLeadRows.length === 0 && <p style={{ color: "var(--muted)", fontSize: 13 }}>No contact work items yet. Import a list or wait for inbound replies.</p>}
                 </div>
               </section>
 
@@ -3436,10 +3436,10 @@ export default function VaPage() {
                   />
                 ) : (
                   <section style={subPanel}>
-                    <p style={eyebrowSmall}>Seller workspace</p>
-                    <h3 style={{ ...sectionTitle, fontSize: 22 }}>Pick a seller</h3>
+                    <p style={eyebrowSmall}>Relationship workspace</p>
+                    <h3 style={{ ...sectionTitle, fontSize: 22 }}>Pick a contact</h3>
                     <p style={{ color: "var(--muted)", fontSize: 13, lineHeight: 1.5, marginTop: 8 }}>
-                      Select a seller from the queue to see conversation history, send a Sakari text, log a call, set disposition, or build a packet.
+                      Select a contact from the queue to see conversation history, send a Sakari text, log a call, set disposition, or build a packet.
                     </p>
                   </section>
                 )}
@@ -3540,7 +3540,7 @@ export default function VaPage() {
               <NumberField label="Leads added" value={briefDraft.leads_added} onChange={v => setBriefDraft({ ...briefDraft, leads_added: v })} />
               <NumberField label="Leads updated" value={briefDraft.leads_updated} onChange={v => setBriefDraft({ ...briefDraft, leads_updated: v })} />
               <NumberField label="Outreach sent" value={briefDraft.outreach_sent} onChange={v => setBriefDraft({ ...briefDraft, outreach_sent: v })} />
-              <NumberField label="Seller replies" value={briefDraft.seller_replies} onChange={v => setBriefDraft({ ...briefDraft, seller_replies: v })} />
+              <NumberField label="Contact replies" value={briefDraft.seller_replies} onChange={v => setBriefDraft({ ...briefDraft, seller_replies: v })} />
               <NumberField label="Calls completed" value={briefDraft.calls_completed} onChange={v => setBriefDraft({ ...briefDraft, calls_completed: v })} />
               <NumberField label="Deals submitted" value={briefDraft.deals_submitted} onChange={v => setBriefDraft({ ...briefDraft, deals_submitted: v })} />
               <NumberField label="VA tasks done" value={briefDraft.va_tasks_completed} onChange={v => setBriefDraft({ ...briefDraft, va_tasks_completed: v })} />
@@ -3719,7 +3719,7 @@ export default function VaPage() {
               </div>
               <div>
                 <label style={label}>Blockers / decisions needed</label>
-                <textarea rows={4} value={briefDraft.blockers ?? ""} onChange={e => setBriefDraft({ ...briefDraft, blockers: e.target.value })} placeholder="Missing access, unclear direction, member decisions needed, seller issues." />
+                <textarea rows={4} value={briefDraft.blockers ?? ""} onChange={e => setBriefDraft({ ...briefDraft, blockers: e.target.value })} placeholder="Missing access, unclear direction, member decisions needed, contact issues." />
               </div>
               <div>
                 <label style={label}>Plan for next shift</label>
@@ -4061,7 +4061,7 @@ export default function VaPage() {
                   <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "baseline", marginBottom: 14 }}>
                     <div>
                       <p style={eyebrowSmall}>Message Builder</p>
-                      <h3 style={{ ...sectionTitle, fontSize: 24 }}>Write once, preview per seller</h3>
+                      <h3 style={{ ...sectionTitle, fontSize: 24 }}>Write once, preview per contact</h3>
                     </div>
                     <span style={pill}>{bulkTextMessage.trim() ? bulkTextFinalMessage.length : 0}/1200</span>
                   </div>
@@ -4082,7 +4082,7 @@ export default function VaPage() {
                   <textarea
                     value={bulkTextMessage}
                     onChange={event => setBulkTextMessage(event.target.value)}
-                    placeholder="Write the seller message..."
+                    placeholder="Write the contact message..."
                     rows={5}
                     style={{ width: "100%", minHeight: 130, resize: "vertical" }}
                   />
@@ -4124,7 +4124,7 @@ export default function VaPage() {
 
             <footer style={{ borderTop: "1px solid var(--fog)", padding: "14px 22px", display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap", background: "var(--surface)" }}>
               <p style={{ color: bulkTextResult?.error ? "#9f3412" : "var(--muted)", fontSize: 12, margin: 0 }}>
-                {bulkTextResult?.error || (bulkTextResult?.sent ? `Sent to ${bulkTextResult.sent} sellers.` : `${bulkTextCategorization.eligible.length} eligible · ${bulkTextSendWindow} · ${bulkTextThrottle}`)}
+                {bulkTextResult?.error || (bulkTextResult?.sent ? `Sent to ${bulkTextResult.sent} contacts.` : `${bulkTextCategorization.eligible.length} eligible · ${bulkTextSendWindow} · ${bulkTextThrottle}`)}
               </p>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                 {bulkTextStep !== "audience" && <button onClick={() => setBulkTextStep(bulkTextStep === "message" ? "compliance" : "audience")} style={secondaryButton}>Back</button>}
@@ -4386,7 +4386,7 @@ function SellerCommandCenter({
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }} className="number-grid">
-        <LeadPathCard label="1. Contact" detail={hasContact ? "Touch logged" : "Call or text seller"} done={hasContact} active={!hasContact} />
+        <LeadPathCard label="1. Contact" detail={hasContact ? "Touch logged" : "Call or text contact"} done={hasContact} active={!hasContact} />
         <LeadPathCard label="2. Outcome" detail={hasOutcome ? statusLabel(lead.last_activity_type || lead.status) : "Log result"} done={hasOutcome} active={hasContact && !hasOutcome} />
         <LeadPathCard label="3. Packet" detail={packetReady ? "Ready for brief" : "Need interest or facts"} done={packetReady} active={hasOutcome && !packetReady} />
       </div>
@@ -4395,7 +4395,7 @@ function SellerCommandCenter({
         <section style={subPanel}>
           <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "baseline", flexWrap: "wrap", marginBottom: 10 }}>
             <div>
-              <p style={eyebrowSmall}>Seller record</p>
+              <p style={eyebrowSmall}>Contact record</p>
               <h3 style={{ ...sectionTitle, fontSize: 24 }}>{lead.owner_name || "Owner unknown"}</h3>
             </div>
             <span style={lead.status === "interested" ? hotPill : pill}>{statusLabel(lead.status)}</span>
@@ -4431,7 +4431,7 @@ function SellerCommandCenter({
 
           <ConversationPanel
             eyebrow="Conversation"
-            title="Seller timeline"
+            title="Contact timeline"
             subject={[lead.phone, lead.phone_2].filter(Boolean).join(" / ") || "No phone"}
             communications={communications}
             activities={conversationActivities}
@@ -4446,14 +4446,14 @@ function SellerCommandCenter({
             <button onClick={() => onQuickDisposition("no-answer", "No answer")} style={secondaryButton}>No Answer</button>
             <button onClick={() => onQuickDisposition("left-voicemail", "Left voicemail")} style={secondaryButton}>Voicemail</button>
             <button onClick={() => onQuickDisposition("wrong-number", "Wrong number")} style={secondaryButton}>Wrong #</button>
-            <button onClick={() => onQuickDisposition("interested", "Seller is interested")} style={secondaryButton}>Interested</button>
+            <button onClick={() => onQuickDisposition("interested", "Contact is interested")} style={secondaryButton}>Interested</button>
             <button onClick={() => onQuickDisposition("follow-up", "Follow-up set", 2)} style={secondaryButton}>Follow Up</button>
           </div>
 
           <div style={{ border: "1px solid var(--fog)", borderRadius: 8, padding: 10, background: "var(--surface)", marginBottom: 12 }}>
             <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", marginBottom: 10 }}>
               <div>
-                <strong style={{ color: "var(--obsidian)", fontSize: 13 }}>Call seller</strong>
+                <strong style={{ color: "var(--obsidian)", fontSize: 13 }}>Call contact</strong>
                 <p style={{ color: "var(--muted)", fontSize: 11, marginTop: 2 }}>{lead.phone || lead.phone_2 || "No phone"}</p>
               </div>
               <TwilioCallButton
@@ -4467,7 +4467,7 @@ function SellerCommandCenter({
 
           <div style={{ border: "1px solid var(--fog)", borderRadius: 8, padding: 10, background: "var(--surface)", marginBottom: 12 }}>
             <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 8 }}>
-              <strong style={{ color: "var(--obsidian)", fontSize: 13 }}>Message seller</strong>
+              <strong style={{ color: "var(--obsidian)", fontSize: 13 }}>Message contact</strong>
               <span style={pill}>{smsCompliance.phone?.number || lead.phone || lead.phone_2 || "No phone"}</span>
             </div>
             {smsBlocked && (
@@ -4535,7 +4535,7 @@ function SellerCommandCenter({
               {LEAD_ACTIVITY_TYPES.map(type => <option key={type.value} value={type.value}>{type.label}</option>)}
             </select>
             <input style={{ marginTop: 8 }} value={activityDraft.nextFollowUpDate} onChange={e => setActivityDraft({ ...activityDraft, nextFollowUpDate: e.target.value })} type="date" />
-            <textarea id="va-workdesk-note" rows={3} value={activityDraft.summary} onChange={e => setActivityDraft({ ...activityDraft, summary: e.target.value })} placeholder="Call notes, email notes, seller response, or research context." style={{ marginTop: 8 }} />
+            <textarea id="va-workdesk-note" rows={3} value={activityDraft.summary} onChange={e => setActivityDraft({ ...activityDraft, summary: e.target.value })} placeholder="Call notes, email notes, contact response, or research context." style={{ marginTop: 8 }} />
             <button onClick={onLogActivity} style={{ ...secondaryButton, marginTop: 8 }}>Save Note</button>
           </div>
         </aside>
