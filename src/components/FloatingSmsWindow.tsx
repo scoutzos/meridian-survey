@@ -833,11 +833,11 @@ export default function FloatingSmsWindow({
               <>
                 <div style={contextCard}>
                   <div style={{ minWidth: 0 }}>
-                    <p style={eyebrowLight}>Selected relationship</p>
                     <h3 style={personTitle}>{selectedThread.label}</h3>
                     <p style={personMeta}>
-                      {displayPhone(selectedPhone)} · {selectedThread.dealId ? "Deal linked" : selectedLead ? "Lead linked" : "No record linked"}
+                      {displayPhone(selectedPhone)} · {selectedThread.dealId ? "Deal linked" : selectedLead ? "Lead linked" : "No record linked"} · {contextTitleText}
                     </p>
+                    <p style={personSubMeta}>{contextMetaText || selectedThread.subtitle}</p>
                   </div>
                   <div style={contextActions}>
                     <button
@@ -849,7 +849,13 @@ export default function FloatingSmsWindow({
                     >
                       ☎
                     </button>
-                    <button type="button" onClick={createPacketFromSelectedContact} style={roundAction} title={selectedLead ? "Create packet from lead" : selectedThread.dealId ? "Open linked deal" : "Create packet from this contact"}>◇</button>
+                    {selectedThread.dealId && <button type="button" onClick={() => onOpenDeal?.(selectedThread.dealId!)} style={compactAction}>Open Deal</button>}
+                    {selectedLead && !selectedThread.dealId && <button type="button" onClick={() => onOpenLead?.(selectedLead)} style={compactAction}>Open Lead</button>}
+                    {!selectedLead && !selectedThread.dealId && <button type="button" onClick={openSelectedRecord} style={compactAction}>Find Record</button>}
+                    <button type="button" onClick={createPacketFromSelectedContact} style={compactAction} title={selectedLead ? "Create packet from lead" : selectedThread.dealId ? "Open linked deal" : "Create packet from this contact"}>
+                      {selectedThread.dealId ? "Packet" : "Create Packet"}
+                    </button>
+                    {canSend && selectedLead && selectedLead.status !== "interested" && <button type="button" onClick={() => onMarkInterested?.(selectedLead)} style={compactAction}>Interested</button>}
                     <button type="button" onClick={() => setThreadActionsOpen(value => !value)} style={moreButton}>More</button>
                     {threadActionsOpen && (
                       <div style={moreMenu}>
@@ -864,28 +870,6 @@ export default function FloatingSmsWindow({
                       </div>
                     )}
                   </div>
-                </div>
-
-                <div style={propertyStrip}>
-                  <div style={propertyIcon}>⌂</div>
-                  <div style={{ minWidth: 0 }}>
-                    <strong style={propertyTitle}>{contextTitleText}</strong>
-                    <p style={propertyMeta}>{contextMetaText || selectedThread.subtitle}</p>
-                  </div>
-                  <span style={{
-                    ...recordStatePill,
-                    ...(selectedThread.dealId ? dealChip : selectedLead ? interestedChip : {}),
-                  }}>
-                    {selectedThread.dealId ? "Deal Linked" : selectedLead ? "Lead Linked" : "No Record"}
-                  </span>
-                </div>
-
-                <div style={actionRow}>
-                  {selectedLead && <button type="button" onClick={() => onOpenLead?.(selectedLead)} style={smallAction}>Open Lead</button>}
-                  {selectedThread.dealId && <button type="button" onClick={() => onOpenDeal?.(selectedThread.dealId!)} style={smallAction}>Open Deal</button>}
-                  <button type="button" onClick={createPacketFromSelectedContact} style={smallAction}>Create Packet</button>
-                  {!selectedLead && !selectedThread.dealId && <button type="button" onClick={openSelectedRecord} style={smallAction}>Find Record</button>}
-                  {canSend && selectedLead && selectedLead.status !== "interested" && <button type="button" onClick={() => onMarkInterested?.(selectedLead)} style={smallAction}>Mark Interested</button>}
                 </div>
 
                 <div style={messages}>
@@ -1232,10 +1216,10 @@ const contextCard: CSSProperties = {
   border: "1px solid var(--fog)",
   borderRadius: 8,
   display: "flex",
-  gap: 10,
+  gap: 12,
   justifyContent: "space-between",
-  marginBottom: 10,
-  padding: 12,
+  marginBottom: 8,
+  padding: "10px 12px",
 };
 
 const personTitle: CSSProperties = {
@@ -1249,6 +1233,19 @@ const personMeta: CSSProperties = {
   color: "var(--muted)",
   fontSize: 12,
   marginTop: 3,
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  whiteSpace: "nowrap",
+};
+
+const personSubMeta: CSSProperties = {
+  color: "var(--muted)",
+  fontSize: 11,
+  marginTop: 3,
+  opacity: 0.78,
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  whiteSpace: "nowrap",
 };
 
 const roundAction: CSSProperties = {
@@ -1278,6 +1275,21 @@ const moreButton: CSSProperties = {
   width: 58,
 };
 
+const compactAction: CSSProperties = {
+  background: "var(--surface)",
+  border: "1px solid var(--fog)",
+  borderRadius: 8,
+  color: "var(--obsidian)",
+  cursor: "pointer",
+  fontSize: 10,
+  fontWeight: 900,
+  height: 34,
+  letterSpacing: "0.08em",
+  padding: "0 10px",
+  textTransform: "uppercase",
+  whiteSpace: "nowrap",
+};
+
 const moreMenu: CSSProperties = {
   background: "var(--surface)",
   border: "1px solid var(--fog)",
@@ -1302,78 +1314,6 @@ const moreMenuItem: CSSProperties = {
   fontWeight: 800,
   padding: "11px 12px",
   textAlign: "left",
-};
-
-const propertyStrip: CSSProperties = {
-  alignItems: "center",
-  background: "rgba(237,230,214,0.34)",
-  border: "1px solid var(--fog)",
-  borderRadius: 8,
-  display: "grid",
-  gap: 10,
-  gridTemplateColumns: "36px minmax(0, 1fr) auto",
-  marginBottom: 12,
-  padding: 10,
-};
-
-const propertyIcon: CSSProperties = {
-  background: "rgba(176,137,84,0.14)",
-  border: "1px solid rgba(176,137,84,0.32)",
-  borderRadius: 7,
-  color: "var(--brass)",
-  display: "grid",
-  height: 34,
-  placeItems: "center",
-  width: 34,
-};
-
-const propertyTitle: CSSProperties = {
-  color: "var(--obsidian)",
-  display: "block",
-  fontSize: 13,
-  overflow: "hidden",
-  textOverflow: "ellipsis",
-  whiteSpace: "nowrap",
-};
-
-const propertyMeta: CSSProperties = {
-  color: "var(--muted)",
-  fontSize: 11,
-  marginTop: 3,
-  overflow: "hidden",
-  textOverflow: "ellipsis",
-  whiteSpace: "nowrap",
-};
-
-const recordStatePill: CSSProperties = {
-  border: "1px solid var(--fog)",
-  borderRadius: 999,
-  color: "var(--muted)",
-  fontSize: 9,
-  fontWeight: 900,
-  letterSpacing: "0.1em",
-  padding: "6px 9px",
-  textTransform: "uppercase",
-  whiteSpace: "nowrap",
-};
-
-const actionRow: CSSProperties = {
-  display: "flex",
-  flexWrap: "wrap",
-  gap: 8,
-  marginBottom: 12,
-};
-
-const smallAction: CSSProperties = {
-  background: "transparent",
-  border: "1px solid var(--fog)",
-  borderRadius: 7,
-  color: "var(--obsidian)",
-  fontSize: 10,
-  fontWeight: 800,
-  letterSpacing: "0.1em",
-  padding: "8px 9px",
-  textTransform: "uppercase",
 };
 
 const messages: CSSProperties = {
