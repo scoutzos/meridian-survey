@@ -602,6 +602,57 @@ type ConversationItem = {
   meta?: string;
 };
 
+type ContactThread = {
+  key: string;
+  phone: string | null;
+  title: string;
+  statusLabel: "Deal linked" | "Lead linked" | "Needs matching";
+  latestEvent: CommunicationEvent;
+  events: CommunicationEvent[];
+  latestAt: string;
+  preview: string;
+};
+
+function communicationEventDate(event: CommunicationEvent): string {
+  return event.provider_created_at || event.created_at;
+}
+
+function threadKeyForCommunicationEvent(event: CommunicationEvent): string {
+  const phone = phoneForCommunicationEvent(event);
+  const phoneDigits = (phone ?? "").replace(/\D/g, "");
+  const phoneKey = phoneDigits.length > 10 ? phoneDigits.slice(-10) : phoneDigits;
+  if (event.matched_deal_id) return `deal:${event.matched_deal_id}`;
+  if (event.matched_lead_id) return `lead:${event.matched_lead_id}`;
+  if (event.provider_conversation_id) return `conversation:${event.provider_conversation_id}`;
+  if (phoneKey) return `phone:${phoneKey}`;
+  return `event:${event.id}`;
+}
+
+function buildContactThreads(events: CommunicationEvent[]): ContactThread[] {
+  const groups = new Map<string, CommunicationEvent[]>();
+  events.forEach(event => {
+    const key = threadKeyForCommunicationEvent(event);
+    groups.set(key, [...(groups.get(key) ?? []), event]);
+  });
+
+  return Array.from(groups.entries()).map(([key, rows]) => {
+    const sorted = rows.slice().sort((a, b) => communicationEventDate(b).localeCompare(communicationEventDate(a)));
+    const latestEvent = sorted[0];
+    const phone = phoneForCommunicationEvent(latestEvent);
+    const statusLabel: ContactThread["statusLabel"] = latestEvent.matched_deal_id ? "Deal linked" : latestEvent.matched_lead_id ? "Lead linked" : "Needs matching";
+    return {
+      key,
+      phone,
+      title: latestEvent.contact_name || latestEvent.contact_number || latestEvent.from_number || latestEvent.to_number || "Unknown contact",
+      statusLabel,
+      latestEvent,
+      events: sorted,
+      latestAt: communicationEventDate(latestEvent),
+      preview: latestEvent.body || latestEvent.status || latestEvent.provider_event_type || "Conversation update",
+    };
+  }).sort((a, b) => b.latestAt.localeCompare(a.latestAt));
+}
+
 function sellerActionState(lead: ImportedLandLead): { label: string; title: string; detail: string; tone: WorkflowTone; primary: string; target: string } {
   return getLeadNextAction(lead);
 }
@@ -1089,6 +1140,7 @@ export default function VaPage() {
     if (activeTab !== "outreach") return null;
     return recentInboundSms[0] ?? unmatchedSms[0] ?? null;
   }, [activeTab, recentInboundSms, selectedCommunicationEvent, selectedImportedLead, unmatchedSms]);
+  const activeCommunicationThreadKey = activeCommunicationEvent ? threadKeyForCommunicationEvent(activeCommunicationEvent) : null;
   const selectedBatch = useMemo(() => leadBatches.find(batch => batch.id === selectedBatchId) ?? null, [leadBatches, selectedBatchId]);
   const filteredImportedLeads = useMemo(() => {
     const query = leadSearch.trim().toLowerCase();
@@ -1275,24 +1327,26 @@ export default function VaPage() {
       return true;
     }).slice(0, 35);
   }, [recentInboundSms, unmatchedSms]);
+  const inboxThreadRows = useMemo(() => buildContactThreads(inboxEventRows), [inboxEventRows]);
+  const unmatchedThreadRows = useMemo(() => buildContactThreads(unmatchedSms).slice(0, 25), [unmatchedSms]);
   const contactQueueModeCounts = useMemo<Record<ContactQueueMode, number>>(() => ({
-    inbox: inboxEventRows.length || contactQueueRows.length,
+    inbox: inboxThreadRows.length || contactQueueRows.length,
     callbacks: leadFollowUpsDue.length,
     campaigns: campaignReadyLeads.length,
-    unmatched: unmatchedSms.length,
+    unmatched: unmatchedThreadRows.length,
     relationships: filteredImportedLeads.length,
     recommended: workdeskLeadRows.length,
-  }), [campaignReadyLeads.length, contactQueueRows.length, filteredImportedLeads.length, inboxEventRows.length, leadFollowUpsDue.length, unmatchedSms.length, workdeskLeadRows.length]);
+  }), [campaignReadyLeads.length, contactQueueRows.length, filteredImportedLeads.length, inboxThreadRows.length, leadFollowUpsDue.length, unmatchedThreadRows.length, workdeskLeadRows.length]);
   useEffect(() => {
     if (activeTab !== "outreach" || selectedImportedLeadId || selectedCommunicationEventId) return;
-    const firstEvent = recentInboundSms[0] ?? unmatchedSms[0] ?? null;
-    if (firstEvent) {
-      setSelectedCommunicationEventId(firstEvent.id);
+    const firstThread = inboxThreadRows[0] ?? null;
+    if (firstThread) {
+      setSelectedCommunicationEventId(firstThread.latestEvent.id);
       return;
     }
     const firstLead = contactQueueRows[0] ?? null;
     if (firstLead) setSelectedImportedLeadId(firstLead.id);
-  }, [activeTab, contactQueueRows, recentInboundSms, selectedCommunicationEventId, selectedImportedLeadId, unmatchedSms]);
+  }, [activeTab, contactQueueRows, inboxThreadRows, selectedCommunicationEventId, selectedImportedLeadId]);
   const importStats = useMemo(() => ({
     newRows: importedLeads.filter(lead => lead.status === "new").length,
     contacted: importedLeads.filter(lead => lead.status === "contacted").length,
@@ -1517,6 +1571,9 @@ export default function VaPage() {
     }
     setSelectedImportedLeadId(null);
     setSelectedCommunicationEventId(event.id);
+  };
+  const openIncomingThread = (thread: ContactThread) => {
+    openIncomingSms(thread.latestEvent);
   };
 
   const setUnlinkedActionMessage = (action: string) => {
@@ -3928,48 +3985,52 @@ export default function VaPage() {
                   <button type="button" onClick={() => setLeadSearch("")} style={compactButton}>Filters</button>
                 </div>
                 <div style={{ display: "grid", gap: 7, maxHeight: 720, overflow: "auto", paddingRight: 2 }}>
-                  {contactQueueMode === "inbox" && inboxEventRows.map(event => (
+                  {contactQueueMode === "inbox" && inboxThreadRows.map(thread => (
                     <button
-                      key={event.id}
-                      onClick={() => openIncomingSms(event)}
+                      key={thread.key}
+                      onClick={() => openIncomingThread(thread)}
                       style={{
                         ...contactQueueCard,
                         padding: "9px 10px",
                         textAlign: "left",
                         cursor: "pointer",
-                        background: activeCommunicationEvent?.id === event.id ? "rgba(176,137,84,0.18)" : event.matched_lead_id || event.matched_deal_id ? "var(--surface)" : "rgba(176,137,84,0.10)",
-                        borderColor: activeCommunicationEvent?.id === event.id || !(event.matched_lead_id || event.matched_deal_id) ? "var(--brass)" : "var(--fog)",
+                        background: activeCommunicationThreadKey === thread.key ? "rgba(176,137,84,0.18)" : thread.statusLabel !== "Needs matching" ? "var(--surface)" : "rgba(176,137,84,0.10)",
+                        borderColor: activeCommunicationThreadKey === thread.key || thread.statusLabel === "Needs matching" ? "var(--brass)" : "var(--fog)",
                       }}
                     >
                       <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "start" }}>
                         <div>
-                          <strong style={{ color: "var(--obsidian)", fontSize: 13 }}>{event.contact_name || event.contact_number || event.from_number || "Unknown contact"}</strong>
+                          <strong style={{ color: "var(--obsidian)", fontSize: 13 }}>{thread.title}</strong>
                           <p style={{ color: "var(--muted)", fontSize: 11, marginTop: 2, lineHeight: 1.25 }}>
-                            {event.contact_number || event.from_number || "No phone"} · {formatDate(event.created_at)}
+                            {thread.phone || "No phone"} · {formatDate(thread.latestAt)}
+                            {thread.events.length > 1 ? ` · ${thread.events.length} messages` : ""}
                           </p>
                         </div>
-                        <span style={event.matched_lead_id || event.matched_deal_id ? pill : hotPill}>
-                          {event.matched_deal_id ? "Deal linked" : event.matched_lead_id ? "Lead linked" : "Needs matching"}
+                        <span style={thread.statusLabel === "Needs matching" ? hotPill : pill}>
+                          {thread.statusLabel}
                         </span>
                       </div>
                       <p style={{ color: "var(--ink)", fontSize: 12, lineHeight: 1.35, marginTop: 6 }}>
-                        {event.body || event.status || "Inbound message"}
+                        {thread.preview}
                       </p>
                     </button>
                   ))}
-                  {contactQueueMode === "unmatched" && unmatchedSms.slice(0, 25).map(event => (
-                    <button key={event.id} onClick={() => { setSelectedImportedLeadId(null); setSelectedCommunicationEventId(event.id); setContactActionMenuOpen(false); }} style={{ ...contactQueueCard, background: activeCommunicationEvent?.id === event.id ? "rgba(176,137,84,0.18)" : "rgba(176,137,84,0.10)", borderColor: "var(--brass)" }}>
+                  {contactQueueMode === "unmatched" && unmatchedThreadRows.map(thread => (
+                    <button key={thread.key} onClick={() => openIncomingThread(thread)} style={{ ...contactQueueCard, background: activeCommunicationThreadKey === thread.key ? "rgba(176,137,84,0.18)" : "rgba(176,137,84,0.10)", borderColor: "var(--brass)" }}>
                       <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "start" }}>
                         <div>
-                          <strong style={{ color: "var(--obsidian)", fontSize: 14 }}>{event.contact_name || event.contact_number || event.from_number || "Unknown contact"}</strong>
-                          <p style={{ color: "var(--muted)", fontSize: 12, marginTop: 3 }}>{event.contact_number || event.from_number || "No phone"} · {formatDate(event.created_at)}</p>
+                          <strong style={{ color: "var(--obsidian)", fontSize: 14 }}>{thread.title}</strong>
+                          <p style={{ color: "var(--muted)", fontSize: 12, marginTop: 3 }}>
+                            {thread.phone || "No phone"} · {formatDate(thread.latestAt)}
+                            {thread.events.length > 1 ? ` · ${thread.events.length} messages` : ""}
+                          </p>
                         </div>
                         <span style={hotPill}>Needs matching</span>
                       </div>
-                      <p style={{ color: "var(--ink)", fontSize: 12, lineHeight: 1.45, marginTop: 8 }}>{event.body || event.status || "Inbound message"}</p>
+                      <p style={{ color: "var(--ink)", fontSize: 12, lineHeight: 1.45, marginTop: 8 }}>{thread.preview}</p>
                     </button>
                   ))}
-                  {((contactQueueMode === "inbox" && inboxEventRows.length === 0) || (contactQueueMode !== "inbox" && contactQueueMode !== "unmatched")) && contactQueueRows.map(lead => {
+                  {((contactQueueMode === "inbox" && inboxThreadRows.length === 0) || (contactQueueMode !== "inbox" && contactQueueMode !== "unmatched")) && contactQueueRows.map(lead => {
                     const active = selectedImportedLeadId === lead.id;
                     const action = sellerActionState(lead);
                     const reason = contactQueueMode === "callbacks"
@@ -4008,8 +4069,8 @@ export default function VaPage() {
                       </button>
                     );
                   })}
-                  {contactQueueMode === "inbox" && inboxEventRows.length === 0 && contactQueueRows.length === 0 && <p style={{ color: "var(--muted)", fontSize: 13 }}>No replies, missed calls, voicemails, or contacts are waiting.</p>}
-                  {contactQueueMode === "unmatched" && unmatchedSms.length === 0 && <p style={{ color: "var(--muted)", fontSize: 13 }}>No unmatched contacts are waiting.</p>}
+                  {contactQueueMode === "inbox" && inboxThreadRows.length === 0 && contactQueueRows.length === 0 && <p style={{ color: "var(--muted)", fontSize: 13 }}>No replies, missed calls, voicemails, or contacts are waiting.</p>}
+                  {contactQueueMode === "unmatched" && unmatchedThreadRows.length === 0 && <p style={{ color: "var(--muted)", fontSize: 13 }}>No unmatched contacts are waiting.</p>}
                   {contactQueueMode !== "inbox" && contactQueueMode !== "unmatched" && contactQueueRows.length === 0 && <p style={{ color: "var(--muted)", fontSize: 13 }}>No contacts in this queue yet.</p>}
                 </div>
               </section>

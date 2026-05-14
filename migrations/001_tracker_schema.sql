@@ -42,8 +42,8 @@ create table if not exists tracker_member_profiles (
 insert into tracker_member_profiles (member_name, llc_name, is_admin) values
   ('Courtney Mosely',     'Mosely Legacy Partners LLC',   true),
   ('Aaliyah Thomas',      'ALT Management LLC',           true),
-  ('Raquel Twine',        'Wincrest LLC',                 true),
-  ('Odessa Patterson',    'Olmdrsv LLC',                  false),
+  ('Raquel Twine',        'Wincrest LLC',                 false),
+  ('Odessa Patterson',    'Olmdrsv LLC',                  true),
   ('Tiffany Stallworth',  'Hybrid Haven Group LLC',       false),
   ('Peggee',              'Liberus King Enterprise LLC',  false)
 on conflict (member_name) do nothing;
@@ -58,6 +58,12 @@ update tracker_member_profiles set llc_name = 'Wincrest LLC'
 update tracker_member_profiles set llc_name = 'Hybrid Haven Group LLC'
   where member_name = 'Tiffany Stallworth'
     and llc_name in ('Undecided', 'Wincrest LLC', 'TBD', 'Tiffany Stallworth');
+
+-- Admin role handoff: Raquel is no longer an admin; Odessa is now an admin.
+update tracker_member_profiles set is_admin = false
+  where member_name = 'Raquel Twine';
+update tracker_member_profiles set is_admin = true
+  where member_name = 'Odessa Patterson';
 
 -- ---------- tracker_capital_calls -------------------------------------------
 create table if not exists tracker_capital_calls (
