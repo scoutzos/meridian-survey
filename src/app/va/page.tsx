@@ -1370,8 +1370,9 @@ export default function VaPage() {
   const activeFilterCount = [
     leadSearch.trim(),
     leadFilter !== "all" ? leadFilter : "",
-    minAcreage.trim(),
-    maxAcreage.trim(),
+    acresBucket !== "any" ? acresBucket : "",
+    scoreBucket !== "any" ? scoreBucket : "",
+    flagFilter !== "all" ? flagFilter : "",
     contactThreadFilter !== "all" ? contactThreadFilter : "",
   ].filter(Boolean).length;
   const contactQueueModeCounts = useMemo<Record<ContactQueueMode, number>>(() => ({
@@ -4255,22 +4256,41 @@ export default function VaPage() {
                       </label>
                       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
                         <label style={{ display: "grid", gap: 5, color: "var(--muted)", fontSize: 11, fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase" }}>
-                          Min Acres
-                          <input value={minAcreage} onChange={e => setMinAcreage(e.target.value)} style={{ fontSize: 13 }} />
+                          Acres
+                          <select value={acresBucket} onChange={e => setAcresBucket(e.target.value)} style={{ fontSize: 13 }}>
+                            <option value="any">Any</option>
+                            <option value="lt-1">&lt; 1</option>
+                            <option value="1-5">1 - 5</option>
+                            <option value="5-25">5 - 25</option>
+                            <option value="25-plus">25+</option>
+                          </select>
                         </label>
                         <label style={{ display: "grid", gap: 5, color: "var(--muted)", fontSize: 11, fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase" }}>
-                          Max Acres
-                          <input value={maxAcreage} onChange={e => setMaxAcreage(e.target.value)} style={{ fontSize: 13 }} />
+                          Score
+                          <select value={scoreBucket} onChange={e => setScoreBucket(e.target.value)} style={{ fontSize: 13 }}>
+                            <option value="any">Any</option>
+                            <option value="80">80+</option>
+                            <option value="60">60+</option>
+                            <option value="40">40+</option>
+                          </select>
                         </label>
                       </div>
+                      <label style={{ display: "grid", gap: 5, color: "var(--muted)", fontSize: 11, fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase" }}>
+                        Flags
+                        <select value={flagFilter} onChange={e => setFlagFilter(e.target.value)} style={{ fontSize: 13 }}>
+                          <option value="all">All</option>
+                          {flagOptions.map(flag => <option key={flag} value={flag}>{flag}</option>)}
+                        </select>
+                      </label>
                       <div style={{ display: "flex", gap: 8, justifyContent: "space-between" }}>
                         <button
                           type="button"
                           onClick={() => {
                             setLeadSearch("");
                             setLeadFilter("all");
-                            setMinAcreage("");
-                            setMaxAcreage("");
+                            setAcresBucket("any");
+                            setScoreBucket("any");
+                            setFlagFilter("all");
                             setContactThreadFilter("all");
                           }}
                           style={compactButton}
