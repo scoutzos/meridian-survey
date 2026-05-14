@@ -162,6 +162,7 @@ const DISPOSITION_STATUSES: Array<{ value: DispositionStatus; label: string }> =
 
 type VaTab = "today" | "outreach" | "lists" | "packet" | "brief";
 type ContactQueueMode = "inbox" | "callbacks" | "campaigns" | "unmatched" | "relationships" | "recommended";
+type ContactThreadFilter = "all" | "needs-matching" | "linked";
 type ListsView = "batches" | "properties" | "contacts" | "segments" | "campaigns";
 
 const TABS: Array<{ value: VaTab; label: string }> = [
@@ -914,6 +915,8 @@ export default function VaPage() {
   const [bulkTextModalOpen, setBulkTextModalOpen] = useState(false);
   const [bulkTextStep, setBulkTextStep] = useState<BulkTextStep>("audience");
   const [contactQueueMode, setContactQueueMode] = useState<ContactQueueMode>("inbox");
+  const [contactFiltersOpen, setContactFiltersOpen] = useState(false);
+  const [contactThreadFilter, setContactThreadFilter] = useState<ContactThreadFilter>("all");
   const [contactActionMenuOpen, setContactActionMenuOpen] = useState(false);
   const [savedLeadSegments, setSavedLeadSegments] = useState<SavedLeadSegment[]>([]);
   const [activeLeadSegmentId, setActiveLeadSegmentId] = useState<string | null>(null);
@@ -1327,8 +1330,24 @@ export default function VaPage() {
       return true;
     }).slice(0, 35);
   }, [recentInboundSms, unmatchedSms]);
-  const inboxThreadRows = useMemo(() => buildContactThreads(inboxEventRows), [inboxEventRows]);
-  const unmatchedThreadRows = useMemo(() => buildContactThreads(unmatchedSms).slice(0, 25), [unmatchedSms]);
+  const filterThreadRows = useCallback((threads: ContactThread[]) => threads.filter(thread => {
+    if (contactThreadFilter === "needs-matching" && thread.statusLabel !== "Needs matching") return false;
+    if (contactThreadFilter === "linked" && thread.statusLabel === "Needs matching") return false;
+    const query = leadSearch.trim().toLowerCase();
+    if (!query) return true;
+    return [thread.title, thread.phone, thread.preview, thread.statusLabel]
+      .filter(Boolean)
+      .some(value => String(value).toLowerCase().includes(query));
+  }), [contactThreadFilter, leadSearch]);
+  const inboxThreadRows = useMemo(() => filterThreadRows(buildContactThreads(inboxEventRows)), [filterThreadRows, inboxEventRows]);
+  const unmatchedThreadRows = useMemo(() => filterThreadRows(buildContactThreads(unmatchedSms)).slice(0, 25), [filterThreadRows, unmatchedSms]);
+  const activeFilterCount = [
+    leadSearch.trim(),
+    leadFilter !== "all" ? leadFilter : "",
+    minAcreage.trim(),
+    maxAcreage.trim(),
+    contactThreadFilter !== "all" ? contactThreadFilter : "",
+  ].filter(Boolean).length;
   const contactQueueModeCounts = useMemo<Record<ContactQueueMode, number>>(() => ({
     inbox: inboxThreadRows.length || contactQueueRows.length,
     callbacks: leadFollowUpsDue.length,
@@ -3978,11 +3997,79 @@ export default function VaPage() {
 
             <div style={{ display: "grid", gridTemplateColumns: "minmax(300px, 0.76fr) minmax(500px, 1.36fr) minmax(300px, 0.88fr)", gap: 12 }} className="lead-inbox-grid">
               <section style={contactQueueColumnPanel}>
-                <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", marginBottom: 10 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", marginBottom: 10, position: "relative" }}>
                   <div>
                     <p style={{ color: "var(--muted)", fontSize: 12, margin: 0 }}>Sort: Newest</p>
                   </div>
-                  <button type="button" onClick={() => setLeadSearch("")} style={compactButton}>Filters</button>
+                  <button
+                    type="button"
+                    onClick={() => setContactFiltersOpen(open => !open)}
+                    style={{
+                      ...compactButton,
+                      background: contactFiltersOpen || activeFilterCount ? "var(--obsidian)" : compactButton.background,
+                      borderColor: contactFiltersOpen || activeFilterCount ? "var(--obsidian)" : compactButton.borderColor,
+                      color: contactFiltersOpen || activeFilterCount ? "var(--bone)" : compactButton.color,
+                    }}
+                  >
+                    Filters{activeFilterCount ? ` ${activeFilterCount}` : ""}
+                  </button>
+                  {contactFiltersOpen && (
+                    <div style={{
+                      position: "absolute",
+                      right: 0,
+                      top: 42,
+                      zIndex: 20,
+                      width: 286,
+                      border: "1px solid var(--fog)",
+                      borderRadius: 8,
+                      background: "var(--surface)",
+                      boxShadow: "0 18px 40px rgba(31,26,22,0.18)",
+                      padding: 12,
+                      display: "grid",
+                      gap: 10,
+                    }}>
+                      <label style={{ display: "grid", gap: 5, color: "var(--muted)", fontSize: 11, fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase" }}>
+                        Thread Status
+                        <select value={contactThreadFilter} onChange={e => setContactThreadFilter(e.target.value as ContactThreadFilter)} style={{ fontSize: 13 }}>
+                          <option value="all">All threads</option>
+                          <option value="needs-matching">Needs matching</option>
+                          <option value="linked">Linked</option>
+                        </select>
+                      </label>
+                      <label style={{ display: "grid", gap: 5, color: "var(--muted)", fontSize: 11, fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase" }}>
+                        Lead Status
+                        <select value={leadFilter} onChange={e => setLeadFilter(e.target.value as ImportStatusFilter)} style={{ fontSize: 13 }}>
+                          {IMPORT_STATUS_FILTERS.map(filter => <option key={filter.value} value={filter.value}>{filter.label}</option>)}
+                        </select>
+                      </label>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                        <label style={{ display: "grid", gap: 5, color: "var(--muted)", fontSize: 11, fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase" }}>
+                          Min Acres
+                          <input value={minAcreage} onChange={e => setMinAcreage(e.target.value)} style={{ fontSize: 13 }} />
+                        </label>
+                        <label style={{ display: "grid", gap: 5, color: "var(--muted)", fontSize: 11, fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase" }}>
+                          Max Acres
+                          <input value={maxAcreage} onChange={e => setMaxAcreage(e.target.value)} style={{ fontSize: 13 }} />
+                        </label>
+                      </div>
+                      <div style={{ display: "flex", gap: 8, justifyContent: "space-between" }}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setLeadSearch("");
+                            setLeadFilter("all");
+                            setMinAcreage("");
+                            setMaxAcreage("");
+                            setContactThreadFilter("all");
+                          }}
+                          style={compactButton}
+                        >
+                          Clear
+                        </button>
+                        <button type="button" onClick={() => setContactFiltersOpen(false)} style={compactPrimaryButton}>Apply</button>
+                      </div>
+                    </div>
+                  )}
                 </div>
                 <div style={{ display: "grid", gap: 7, maxHeight: 720, overflow: "auto", paddingRight: 2 }}>
                   {contactQueueMode === "inbox" && inboxThreadRows.map(thread => (
