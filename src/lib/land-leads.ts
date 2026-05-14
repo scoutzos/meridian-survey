@@ -1,5 +1,7 @@
 import { supabase } from "./supabase";
 import type { DealInput } from "./deals";
+import { buildSourceFieldValues, type SourceFieldCategory, type SourceFieldType } from "./land-insights-fields";
+import { calculateLandUnderwriting, type LandExitType, type LandUnderwritingStatus } from "./land-underwriting";
 
 export interface LandLeadBatch {
   id: string;
@@ -204,6 +206,9 @@ export interface LeadImportResult {
 export interface LandLeadImportPreview {
   filename: string;
   rowsFound: number;
+  sourceColumnCount: number;
+  sourceColumnsMapped: number;
+  calculatorReadyColumnCount: number;
   usableLeads: number;
   safeToImport: number;
   missingPhone: number;
@@ -260,8 +265,51 @@ export interface ImportedLandLeadActivity {
   created_at: string;
 }
 
+export interface ImportedLandLeadFieldValue {
+  id: string;
+  lead_id: string;
+  source_header: string;
+  field_key: string;
+  category: SourceFieldCategory;
+  data_type: SourceFieldType;
+  value_text: string | null;
+  value_number: number | null;
+  value_boolean: boolean | null;
+  value_date: string | null;
+  value_json: unknown;
+  searchable: boolean;
+  filterable: boolean;
+  calculator_ready: boolean;
+  source_order: number;
+  created_at: string;
+}
+
+export interface LandUnderwritingResultRow {
+  id: string;
+  lead_id: string;
+  exit_type: LandExitType;
+  label: string;
+  status: LandUnderwritingStatus;
+  max_offer: number | null;
+  required_ppa: number | null;
+  required_resale_value: number | null;
+  projected_spread: number | null;
+  land_insights_ppa: number | null;
+  land_insights_value: number | null;
+  key_assumption: string | null;
+  blocker: string | null;
+  next_step: string | null;
+  rank: number;
+  assumptions: Record<string, unknown>;
+  input_snapshot: Record<string, unknown>;
+  calculated_at: string;
+  created_at: string;
+}
+
 const LOCAL_BATCHES = "meridian_land_lead_batches_local";
 const LOCAL_LEADS = "meridian_imported_land_leads_local";
+const LOCAL_FIELD_VALUES = "meridian_imported_land_lead_field_values_local";
+const LOCAL_UNDERWRITING_RESULTS = "meridian_land_underwriting_results_local";
 const LOCAL_ACTIVITIES = "meridian_imported_land_lead_activities_local";
 
 function localGet<T>(key: string, fallback: T): T {
@@ -854,17 +902,125 @@ function legacyLeadInsert(lead: Omit<ImportedLandLead, "id" | "created_at" | "up
 async function insertLeadRowsInChunks(
   leads: Array<Omit<ImportedLandLead, "id" | "created_at" | "updated_at">>,
   useLegacyShape = false,
-): Promise<{ count: number; error: { message?: string; code?: string } | null }> {
-  if (!supabase) return { count: 0, error: null };
+): Promise<{ count: number; rows: ImportedLandLead[]; error: { message?: string; code?: string } | null }> {
+  if (!supabase) return { count: 0, rows: [], error: null };
   let count = 0;
+  const rows: ImportedLandLead[] = [];
   const chunkSize = 100;
   for (let index = 0; index < leads.length; index += chunkSize) {
     const chunk = leads.slice(index, index + chunkSize);
     const payload = useLegacyShape ? chunk.map(legacyLeadInsert) : chunk;
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from("meridian_imported_land_leads")
-      .insert(payload);
+      .insert(payload)
+      .select("*");
+    if (error) return { count, rows, error };
+    rows.push(...((data ?? []) as ImportedLandLead[]));
+    count += chunk.length;
+  }
+  return { count, rows, error: null };
+}
+
+function fieldRowsForLead(leadId: string, rawData: Record<string, unknown>) {
+  return buildSourceFieldValues(rawData).map(field => ({
+    lead_id: leadId,
+    source_header: field.source_header,
+    field_key: field.field_key,
+    category: field.category,
+    data_type: field.data_type,
+    value_text: field.value_text,
+    value_number: field.value_number,
+    value_boolean: field.value_boolean,
+    value_date: field.value_date,
+    value_json: field.value_json,
+    searchable: field.searchable,
+    filterable: field.filterable,
+    calculator_ready: field.calculator_ready,
+    source_order: field.source_order,
+  }));
+}
+
+async function insertFieldValueRowsInChunks(
+  insertedRows: ImportedLandLead[],
+  sourceLeads: Array<Omit<ImportedLandLead, "id" | "created_at" | "updated_at">>,
+): Promise<{ count: number; error: { message?: string; code?: string } | null }> {
+  const payload = insertedRows.flatMap((row, index) =>
+    fieldRowsForLead(row.id, sourceLeads[index]?.raw_data ?? row.raw_data ?? {}),
+  );
+  if (!payload.length) return { count: 0, error: null };
+  if (!supabase) {
+    const now = new Date().toISOString();
+    const localRows = payload.map((row, index): ImportedLandLeadFieldValue => ({
+      ...row,
+      id: `field-${Date.now()}-${index}`,
+      category: row.category as SourceFieldCategory,
+      data_type: row.data_type as SourceFieldType,
+      created_at: now,
+    }));
+    localSet(LOCAL_FIELD_VALUES, [...localRows, ...localGet<ImportedLandLeadFieldValue[]>(LOCAL_FIELD_VALUES, [])]);
+    return { count: localRows.length, error: null };
+  }
+  let count = 0;
+  const chunkSize = 500;
+  for (let index = 0; index < payload.length; index += chunkSize) {
+    const chunk = payload.slice(index, index + chunkSize);
+    const { error } = await supabase
+      .from("meridian_imported_land_lead_field_values")
+      .upsert(chunk, { onConflict: "lead_id,field_key,source_order" });
     if (error) return { count, error };
+    count += chunk.length;
+  }
+  return { count, error: null };
+}
+
+function underwritingRowsForLead(lead: ImportedLandLead) {
+  const summary = calculateLandUnderwriting(lead);
+  return summary.results.map(item => ({
+    lead_id: lead.id,
+    exit_type: item.exitType,
+    label: item.label,
+    status: item.status,
+    max_offer: item.maxOffer,
+    required_ppa: item.requiredPpa,
+    required_resale_value: item.requiredResaleValue,
+    projected_spread: item.projectedSpread,
+    land_insights_ppa: item.landInsightsPpa,
+    land_insights_value: item.landInsightsValue,
+    key_assumption: item.keyAssumption,
+    blocker: item.blocker,
+    next_step: item.nextStep,
+    rank: item.rank,
+    assumptions: summary.assumptions as unknown as Record<string, unknown>,
+    input_snapshot: summary.inputSnapshot,
+    calculated_at: new Date().toISOString(),
+  }));
+}
+
+export async function upsertLandUnderwritingForLeads(leads: ImportedLandLead[]): Promise<{ count: number; error: string | null }> {
+  const payload = leads.flatMap(underwritingRowsForLead);
+  if (!payload.length) return { count: 0, error: null };
+  if (!supabase) {
+    const now = new Date().toISOString();
+    const rows = payload.map((row, index): LandUnderwritingResultRow => ({
+      ...row,
+      id: `underwriting-${Date.now()}-${index}`,
+      exit_type: row.exit_type as LandExitType,
+      status: row.status as LandUnderwritingStatus,
+      created_at: now,
+    }));
+    const existing = localGet<LandUnderwritingResultRow[]>(LOCAL_UNDERWRITING_RESULTS, []);
+    const keys = new Set(rows.map(row => `${row.lead_id}|${row.exit_type}`));
+    localSet(LOCAL_UNDERWRITING_RESULTS, [...rows, ...existing.filter(row => !keys.has(`${row.lead_id}|${row.exit_type}`))]);
+    return { count: rows.length, error: null };
+  }
+  let count = 0;
+  const chunkSize = 300;
+  for (let index = 0; index < payload.length; index += chunkSize) {
+    const chunk = payload.slice(index, index + chunkSize);
+    const { error } = await supabase
+      .from("meridian_land_underwriting_results")
+      .upsert(chunk, { onConflict: "lead_id,exit_type" });
+    if (error) return { count, error: error.message };
     count += chunk.length;
   }
   return { count, error: null };
@@ -879,8 +1035,9 @@ export async function previewLandLeadsCsv(args: {
 }): Promise<LandLeadImportPreview> {
   const rows = parseCsv(args.csvText);
   if (rows.length === 0) {
-    return { filename: args.filename, rowsFound: 0, usableLeads: 0, safeToImport: 0, missingPhone: 0, missingOwner: 0, exactDuplicates: 0, possibleDuplicates: 0, alreadyConverted: 0, skippedDuplicates: 0, propertyRows: 0, uniqueLeadCount: 0, textableLeadCount: 0, multiPropertyLeadCount: 0, averageScore: 0, detectedFields: detectMappedFields(undefined), groupedLeadSamples: [], sampleLeads: [], duplicateKeys: [], duplicateMatches: [], csvText: args.csvText, error: "No lead rows found. Upload a CSV with a header row." };
+    return { filename: args.filename, rowsFound: 0, sourceColumnCount: 0, sourceColumnsMapped: 0, calculatorReadyColumnCount: 0, usableLeads: 0, safeToImport: 0, missingPhone: 0, missingOwner: 0, exactDuplicates: 0, possibleDuplicates: 0, alreadyConverted: 0, skippedDuplicates: 0, propertyRows: 0, uniqueLeadCount: 0, textableLeadCount: 0, multiPropertyLeadCount: 0, averageScore: 0, detectedFields: detectMappedFields(undefined), groupedLeadSamples: [], sampleLeads: [], duplicateKeys: [], duplicateMatches: [], csvText: args.csvText, error: "No lead rows found. Upload a CSV with a header row." };
   }
+  const sourceFields = buildSourceFieldValues(rows[0] ?? {});
   const existing = await fetchImportedLandLeads(5000);
   const normalized = applyDuplicateMetadata(rows.map(row => normalizeLead(row, args.sourceSystem, args.campaignSource?.trim() || null, args.actor, null)), existing);
   const usable = normalized.filter(lead => lead.owner_name || lead.phone || lead.phone_2 || lead.parcel_id || lead.property_address);
@@ -894,6 +1051,9 @@ export async function previewLandLeadsCsv(args: {
   return {
     filename: args.filename,
     rowsFound: rows.length,
+    sourceColumnCount: sourceFields.length,
+    sourceColumnsMapped: sourceFields.length,
+    calculatorReadyColumnCount: sourceFields.filter(field => field.calculator_ready).length,
     usableLeads: usable.length,
     safeToImport: usable.filter(lead => lead.duplicate_status === "new").length,
     missingPhone: usable.filter(lead => !lead.phone && !lead.phone_2).length,
@@ -956,6 +1116,8 @@ export async function importLandLeadsFromCsv(args: {
     }));
     localSet(LOCAL_BATCHES, [batch, ...localGet<LandLeadBatch[]>(LOCAL_BATCHES, [])]);
     localSet(LOCAL_LEADS, [...leads, ...existing]);
+    await insertFieldValueRowsInChunks(leads, safeInserts);
+    await upsertLandUnderwritingForLeads(leads);
     return { batch, leads, error: null };
   }
 
@@ -1009,16 +1171,31 @@ export async function importLandLeadsFromCsv(args: {
     };
   }
   if (enhanced.error) return { batch, leads: [], error: enhanced.error?.message ?? "Could not import lead rows." };
+  const savedLeads = enhanced.rows.length ? enhanced.rows : inserts.slice(0, enhanced.count).map((lead, index) => ({
+    ...lead,
+    id: `${batch.id}-imported-${index}`,
+    created_at: now,
+    updated_at: now,
+  })) as ImportedLandLead[];
+  const fieldValues = await insertFieldValueRowsInChunks(savedLeads, inserts);
+  const underwriting = await upsertLandUnderwritingForLeads(savedLeads);
+  const extraWarnings = [
+    fieldValues.error
+      ? isSchemaMismatch(fieldValues.error)
+        ? "Run migration 042 to enable full source-field mapping for imported Land Insights columns."
+        : `Source-field mapping warning: ${fieldValues.error.message ?? "Could not save mapped field values."}`
+      : null,
+    underwriting.error
+      ? underwriting.error.toLowerCase().includes("column") || underwriting.error.toLowerCase().includes("schema")
+        ? "Run migration 043 to enable automatic land underwriting results."
+        : `Underwriting warning: ${underwriting.error}`
+      : null,
+  ].filter(Boolean);
   return {
     batch,
-    leads: inserts.slice(0, enhanced.count).map((lead, index) => ({
-      ...lead,
-      id: `${batch.id}-imported-${index}`,
-      created_at: now,
-      updated_at: now,
-    })),
+    leads: savedLeads,
     error: null,
-    warning,
+    warning: [warning, ...extraWarnings].filter(Boolean).join(" ") || null,
   };
 }
 
@@ -1050,6 +1227,38 @@ export async function fetchImportedLandLeads(limit = 250): Promise<ImportedLandL
     .limit(limit);
   if (error || !data) return [];
   return data as ImportedLandLead[];
+}
+
+export async function fetchImportedLandLeadFieldValues(leadId: string): Promise<ImportedLandLeadFieldValue[]> {
+  if (!supabase) {
+    return localGet<ImportedLandLeadFieldValue[]>(LOCAL_FIELD_VALUES, [])
+      .filter(row => row.lead_id === leadId)
+      .sort((a, b) => a.source_order - b.source_order);
+  }
+  const { data, error } = await supabase
+    .from("meridian_imported_land_lead_field_values")
+    .select("*")
+    .eq("lead_id", leadId)
+    .order("source_order");
+  if (error || !data) return [];
+  return data as ImportedLandLeadFieldValue[];
+}
+
+export async function fetchLandUnderwritingResults(leadIds: string | string[]): Promise<LandUnderwritingResultRow[]> {
+  const ids = Array.isArray(leadIds) ? leadIds : [leadIds];
+  if (!ids.length) return [];
+  if (!supabase) {
+    return localGet<LandUnderwritingResultRow[]>(LOCAL_UNDERWRITING_RESULTS, [])
+      .filter(row => ids.includes(row.lead_id))
+      .sort((a, b) => b.rank - a.rank);
+  }
+  const { data, error } = await supabase
+    .from("meridian_land_underwriting_results")
+    .select("*")
+    .in("lead_id", ids)
+    .order("rank", { ascending: false });
+  if (error || !data) return [];
+  return data as LandUnderwritingResultRow[];
 }
 
 export async function updateImportedLandLeadStatus(id: string, status: ImportedLandLead["status"], dealId?: string | null): Promise<{ error: string | null }> {

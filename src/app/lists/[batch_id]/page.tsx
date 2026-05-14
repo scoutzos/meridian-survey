@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import OperatingHeader from "@/components/OperatingHeader";
 import BulkSmsDrawer from "@/components/BulkSmsDrawer";
+import LandUnderwritingPanel from "@/components/LandUnderwritingPanel";
 import { categorizeForBulkSms } from "@/lib/bulk-sms";
 import {
   fetchImportedLandLeads,
@@ -329,6 +330,7 @@ export default function ListDetailPage() {
                 <th style={tableHead}>Phone</th>
                 <th style={tableHead}>County</th>
                 <th style={tableHead}>Acres</th>
+                <th style={tableHead}>Calculator</th>
                 <th style={tableHead}>Status</th>
                 <th style={tableHead}>Signals</th>
                 <th style={tableHead}>Last touch</th>
@@ -336,10 +338,10 @@ export default function ListDetailPage() {
             </thead>
             <tbody>
               {loading && (
-                <tr><td colSpan={selectMode ? 8 : 7} style={{ ...tableCell, textAlign: "center", color: "var(--muted)" }}>Loading…</td></tr>
+                <tr><td colSpan={selectMode ? 9 : 8} style={{ ...tableCell, textAlign: "center", color: "var(--muted)" }}>Loading…</td></tr>
               )}
               {!loading && filteredLeads.length === 0 && (
-                <tr><td colSpan={selectMode ? 8 : 7} style={{ ...tableCell, textAlign: "center", color: "var(--muted)" }}>No leads match this filter.</td></tr>
+                <tr><td colSpan={selectMode ? 9 : 8} style={{ ...tableCell, textAlign: "center", color: "var(--muted)" }}>No leads match this filter.</td></tr>
               )}
               {!loading && filteredLeads.map(lead => {
                 const ownerHasMany = multiPropertyOwners.has(ownerKey(lead));
@@ -363,6 +365,9 @@ export default function ListDetailPage() {
                     <td style={tableCell}>{phone}</td>
                     <td style={tableCell}>{lead.county || "—"}</td>
                     <td style={tableCell}>{lead.acreage ?? "—"}</td>
+                    <td style={{ ...tableCell, minWidth: 260 }}>
+                      <LandUnderwritingPanel lead={lead} compact />
+                    </td>
                     <td style={tableCell}>
                       <span style={lead.status === "interested" ? hotPill : pill}>{labelForStatus(lead.status)}</span>
                     </td>

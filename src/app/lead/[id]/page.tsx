@@ -4,6 +4,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import OperatingHeader from "@/components/OperatingHeader";
 import ConversationPanel from "@/components/ConversationPanel";
+import LandUnderwritingMatrix from "@/components/LandUnderwritingMatrix";
+import LandUnderwritingPanel from "@/components/LandUnderwritingPanel";
 import { checkLeadSmsCompliance, renderMessageForRecipient } from "@/lib/bulk-sms";
 import {
   createImportedLandLeadActivity,
@@ -371,6 +373,9 @@ export default function LeadPage() {
                           {prop.acreage ? `${prop.acreage} ac` : "Acres ?"} · {prop.county || "County ?"} · {labelForStatus(prop.status)}
                         </p>
                       </div>
+                      <div style={{ flex: "1 1 320px", minWidth: 260 }}>
+                        <LandUnderwritingPanel lead={prop} compact />
+                      </div>
                       <button onClick={() => router.push(`/lead/${prop.id}`)} style={{ ...secondaryButton, padding: "8px 10px", fontSize: 10, minHeight: 32 }}>
                         Open Record →
                       </button>
@@ -555,6 +560,14 @@ export default function LeadPage() {
                       <Detail label="HOA" value={prop.hoa_status || (prop.in_hoa ? "Yes" : "No")} />
                       <Detail label="Mortgage" value={prop.mortgage_amount ? `$${prop.mortgage_amount.toLocaleString()}` : "None"} />
                     </dl>
+                    <div style={subPanel}>
+                      <p style={{ ...eyebrowSmall, marginBottom: 8 }}>Calculator Summary</p>
+                      <LandUnderwritingPanel lead={prop} />
+                    </div>
+                    <div style={subPanel}>
+                      <p style={{ ...eyebrowSmall, marginBottom: 8 }}>Exit Matrix</p>
+                      <LandUnderwritingMatrix lead={prop} />
+                    </div>
                     {prop.notes && (
                       <div style={subPanel}>
                         <p style={{ ...eyebrowSmall, marginBottom: 4 }}>Notes</p>

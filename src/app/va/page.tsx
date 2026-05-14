@@ -46,7 +46,7 @@ import {
   type LandLeadBatch,
   type LandLeadImportPreview,
 } from "@/lib/land-leads";
-import { attachCommunicationEventToDeal, fetchCommunicationEvents, type CommunicationEvent } from "@/lib/communications";
+import { attachCommunicationEventToDeal, fetchCommunicationEvents, markCommunicationEventsRead, type CommunicationEvent } from "@/lib/communications";
 import {
   createVaDailyBrief,
   fetchVaDailyBriefs,
@@ -72,6 +72,7 @@ import {
   type VaTimeChangeRequestType,
 } from "@/lib/va-time";
 import ConversationPanel, { type ConversationActivity } from "@/components/ConversationPanel";
+import LandUnderwritingPanel from "@/components/LandUnderwritingPanel";
 import { labelForStatus } from "@/lib/status-map";
 import { getLeadNextAction, type WorkflowTone } from "@/lib/workflow-actions";
 import OperatingHeader from "@/components/OperatingHeader";
@@ -162,7 +163,7 @@ const DISPOSITION_STATUSES: Array<{ value: DispositionStatus; label: string }> =
 
 type VaTab = "today" | "outreach" | "lists" | "packet" | "brief";
 type ContactQueueMode = "inbox" | "callbacks" | "campaigns" | "unmatched" | "relationships" | "recommended";
-type ContactThreadFilter = "all" | "needs-matching" | "linked";
+type ContactThreadFilter = "all" | "unread" | "read" | "needs-matching" | "linked";
 type ListsView = "batches" | "properties" | "contacts" | "segments" | "campaigns";
 
 const TABS: Array<{ value: VaTab; label: string }> = [
@@ -610,6 +611,7 @@ type ContactThread = {
   statusLabel: "Deal linked" | "Lead linked" | "Needs matching";
   latestEvent: CommunicationEvent;
   events: CommunicationEvent[];
+  unreadCount: number;
   latestAt: string;
   preview: string;
 };
@@ -641,6 +643,7 @@ function buildContactThreads(events: CommunicationEvent[]): ContactThread[] {
     const latestEvent = sorted[0];
     const phone = phoneForCommunicationEvent(latestEvent);
     const statusLabel: ContactThread["statusLabel"] = latestEvent.matched_deal_id ? "Deal linked" : latestEvent.matched_lead_id ? "Lead linked" : "Needs matching";
+    const unreadCount = sorted.filter(event => event.direction === "inbound" && !event.read_at).length;
     return {
       key,
       phone,
@@ -648,6 +651,7 @@ function buildContactThreads(events: CommunicationEvent[]): ContactThread[] {
       statusLabel,
       latestEvent,
       events: sorted,
+      unreadCount,
       latestAt: communicationEventDate(latestEvent),
       preview: latestEvent.body || latestEvent.status || latestEvent.provider_event_type || "Conversation update",
     };
@@ -1331,6 +1335,8 @@ export default function VaPage() {
     }).slice(0, 35);
   }, [recentInboundSms, unmatchedSms]);
   const filterThreadRows = useCallback((threads: ContactThread[]) => threads.filter(thread => {
+    if (contactThreadFilter === "unread" && thread.unreadCount === 0) return false;
+    if (contactThreadFilter === "read" && thread.unreadCount > 0) return false;
     if (contactThreadFilter === "needs-matching" && thread.statusLabel !== "Needs matching") return false;
     if (contactThreadFilter === "linked" && thread.statusLabel === "Needs matching") return false;
     const query = leadSearch.trim().toLowerCase();
@@ -1341,6 +1347,10 @@ export default function VaPage() {
   }), [contactThreadFilter, leadSearch]);
   const inboxThreadRows = useMemo(() => filterThreadRows(buildContactThreads(inboxEventRows)), [filterThreadRows, inboxEventRows]);
   const unmatchedThreadRows = useMemo(() => filterThreadRows(buildContactThreads(unmatchedSms)).slice(0, 25), [filterThreadRows, unmatchedSms]);
+  const activeCommunicationThread = useMemo(() => {
+    if (!activeCommunicationThreadKey) return null;
+    return [...buildContactThreads(inboxEventRows), ...buildContactThreads(unmatchedSms)].find(thread => thread.key === activeCommunicationThreadKey) ?? null;
+  }, [activeCommunicationThreadKey, inboxEventRows, unmatchedSms]);
   const activeFilterCount = [
     leadSearch.trim(),
     leadFilter !== "all" ? leadFilter : "",
@@ -1593,6 +1603,26 @@ export default function VaPage() {
   };
   const openIncomingThread = (thread: ContactThread) => {
     openIncomingSms(thread.latestEvent);
+  };
+  const markContactThreadReadState = async (thread: ContactThread, read: boolean) => {
+    const eventIds = thread.events
+      .filter(event => event.direction === "inbound")
+      .map(event => event.id);
+    const { error } = await markCommunicationEventsRead(eventIds, user, read);
+    if (error) {
+      setMessage(error);
+      return;
+    }
+    const [unmatchedRows, recentRows] = await Promise.all([
+      fetchCommunicationEvents({ unmatched: true, limit: 25 }),
+      fetchCommunicationEvents({ limit: 120 }),
+    ]);
+    setUnmatchedSms(unmatchedRows);
+    setRecentInboundSms(recentRows.filter(event => event.direction === "inbound").slice(0, 40));
+    if (activeCommunicationEvent && thread.key === threadKeyForCommunicationEvent(activeCommunicationEvent)) {
+      await refreshSelectedEventMessages(activeCommunicationEvent);
+    }
+    setMessage(read ? "Thread marked read." : "Thread marked unread.");
   };
 
   const setUnlinkedActionMessage = (action: string) => {
@@ -3826,13 +3856,15 @@ export default function VaPage() {
                 </div>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 8 }} className="number-grid">
                   <MiniStat label="CSV rows" value={String(importPreview.rowsFound)} />
+                  <MiniStat label="Columns mapped" value={`${importPreview.sourceColumnsMapped}/${importPreview.sourceColumnCount}`} />
+                  <MiniStat label="Calc fields" value={String(importPreview.calculatorReadyColumnCount)} />
                   <MiniStat label="Properties" value={String(importPreview.propertyRows)} />
                   <MiniStat label="Unique leads" value={String(importPreview.uniqueLeadCount)} />
                   <MiniStat label="Textable leads" value={String(importPreview.textableLeadCount)} />
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 8, marginTop: 8 }} className="number-grid">
                   <MiniStat label="Multi-property" value={String(importPreview.multiPropertyLeadCount)} />
                   <MiniStat label="New properties" value={String(importPreview.safeToImport)} />
-                </div>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8, marginTop: 8 }} className="number-grid">
                   <MiniStat label="Exact match" value={String(importPreview.exactDuplicates)} />
                   <MiniStat label="Possible match" value={String(Math.max(0, importPreview.possibleDuplicates - importPreview.exactDuplicates))} />
                   <MiniStat label="No phone" value={String(importPreview.missingPhone)} />
@@ -4032,6 +4064,8 @@ export default function VaPage() {
                         Thread Status
                         <select value={contactThreadFilter} onChange={e => setContactThreadFilter(e.target.value as ContactThreadFilter)} style={{ fontSize: 13 }}>
                           <option value="all">All threads</option>
+                          <option value="unread">Unread</option>
+                          <option value="read">Read</option>
                           <option value="needs-matching">Needs matching</option>
                           <option value="linked">Linked</option>
                         </select>
@@ -4097,6 +4131,11 @@ export default function VaPage() {
                           {thread.statusLabel}
                         </span>
                       </div>
+                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 6 }}>
+                        <span style={thread.unreadCount ? hotPill : pill}>
+                          {thread.unreadCount ? `${thread.unreadCount} unread` : "Read"}
+                        </span>
+                      </div>
                       <p style={{ color: "var(--ink)", fontSize: 12, lineHeight: 1.35, marginTop: 6 }}>
                         {thread.preview}
                       </p>
@@ -4113,6 +4152,11 @@ export default function VaPage() {
                           </p>
                         </div>
                         <span style={hotPill}>Needs matching</span>
+                      </div>
+                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 6 }}>
+                        <span style={thread.unreadCount ? hotPill : pill}>
+                          {thread.unreadCount ? `${thread.unreadCount} unread` : "Read"}
+                        </span>
                       </div>
                       <p style={{ color: "var(--ink)", fontSize: 12, lineHeight: 1.45, marginTop: 8 }}>{thread.preview}</p>
                     </button>
@@ -4226,6 +4270,15 @@ export default function VaPage() {
                         </p>
                       </div>
                       <div style={{ display: "flex", gap: 8, alignItems: "center", position: "relative" }}>
+                        {activeCommunicationThread && (
+                          <button
+                            type="button"
+                            onClick={() => void markContactThreadReadState(activeCommunicationThread, activeCommunicationThread.unreadCount > 0)}
+                            style={compactButton}
+                          >
+                            {activeCommunicationThread.unreadCount > 0 ? "Mark Read" : "Mark Unread"}
+                          </button>
+                        )}
                         <TwilioCallButton
                           toNumber={activeCommunicationEvent.contact_number || activeCommunicationEvent.from_number || activeCommunicationEvent.to_number}
                           dealId={activeCommunicationEvent.matched_deal_id}
@@ -5382,6 +5435,10 @@ function SellerCommandCenter({
               <p>Parcel: {lead.parcel_id || "Missing"}</p>
               <p>{lead.county || "County pending"} · {lead.acreage ? `${lead.acreage} acres` : "Acres pending"}</p>
             </InfoStack>
+          </div>
+
+          <div style={{ marginBottom: 12 }}>
+            <LandUnderwritingPanel lead={lead} compact />
           </div>
 
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
