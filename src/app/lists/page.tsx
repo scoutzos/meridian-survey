@@ -169,8 +169,8 @@ export default function ListsPage() {
   // Get unique filter options
   const filterOptions = useMemo(() => {
     return {
-      counties: Array.from(new Set(importedLeads.map(lead => lead.county).filter(Boolean))).sort(),
-      states: Array.from(new Set(importedLeads.map(lead => lead.state).filter(Boolean))).sort(),
+      counties: Array.from(new Set(importedLeads.map(lead => lead.county).filter((c): c is string => !!c))).sort(),
+      states: Array.from(new Set(importedLeads.map(lead => lead.state).filter((s): s is string => !!s))).sort(),
     };
   }, [importedLeads]);
 
@@ -881,7 +881,7 @@ function BatchesView({ batches, loading }: { batches: LandLeadBatch[]; loading: 
               </div>
               <div style={{ display: "flex", gap: 16, marginTop: 12, fontSize: 12, color: "var(--muted)" }}>
                 <span><strong>{batch.row_count || 0}</strong> rows</span>
-                <span><strong>{batch.lead_count || 0}</strong> leads</span>
+                <span><strong>0</strong> leads</span>
                 <span><strong>0</strong> textable</span>
               </div>
             </div>
