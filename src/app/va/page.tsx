@@ -42,6 +42,7 @@ import {
   fetchImportedLandLeads,
   fetchImportedLandLeadListMetrics,
   inferLandLeadSourceFromUrl,
+  importedLeadContactIdentityKey,
   leadToDealDraft,
   listingTextHints,
   previewLandLeadsCsv,
@@ -750,12 +751,7 @@ function normalizedPhone(value: string | null | undefined): string | null {
 }
 
 function listOwnerGroupKey(lead: ImportedLandLead): string {
-  const phone = normalizedPhone(lead.phone || lead.phone_2);
-  if (phone) return `phone:${phone}`;
-  const owner = (lead.owner_name || "unknown").trim().toLowerCase();
-  const mailing = (lead.mailing_address || lead.mail_address || "").trim().toLowerCase();
-  const location = (lead.county || lead.state || "").trim().toLowerCase();
-  return `owner:${owner}|${mailing || location}`;
+  return importedLeadContactIdentityKey(lead);
 }
 
 function communicationPhoneCandidates(event: CommunicationEvent): Array<string | null | undefined> {
@@ -1563,8 +1559,7 @@ export default function VaPage() {
     const groups = new Map<string, ImportedLandLead[]>();
     importedLeads.forEach(lead => {
       if (lead.status === "converted") return;
-      const phone = normalizedPhone(lead.phone || lead.phone_2) || "";
-      const key = phone || `${(lead.owner_name || "Unknown contact").toLowerCase()}|${(lead.mailing_address || lead.county || "").toLowerCase()}`;
+      const key = importedLeadContactIdentityKey(lead);
       groups.set(key, [...(groups.get(key) ?? []), lead]);
     });
     return Array.from(groups.entries()).map(([key, leads]) => {
@@ -4445,7 +4440,7 @@ export default function VaPage() {
                       <button key={row.key} onClick={() => selectImportedLead(row.primary, "lists")} style={{ ...contactQueueCard, width: "100%", textAlign: "left", background: selectedContactProperties.some(lead => lead.id === row.primary.id) ? "rgba(176,137,84,0.12)" : "var(--surface)" }}>
                         <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "start" }}>
                           <div>
-                            <strong style={{ color: "var(--obsidian)", fontSize: 14 }}>{row.primary.owner_name || row.primary.phone || row.primary.phone_2 || "Unknown contact"}</strong>
+                            <strong style={{ color: "var(--obsidian)", fontSize: 14 }}>{row.primary.owner_name || row.primary.phone || row.primary.phone_2 || row.primary.property_address || row.primary.parcel_id || "No owner record"}</strong>
                             <p style={{ color: "var(--muted)", fontSize: 12, marginTop: 3 }}>{row.primary.phone || row.primary.phone_2 || "No phone"} · {row.propertyCount} propert{row.propertyCount === 1 ? "y" : "ies"}</p>
                           </div>
                           <span style={row.textable ? hotPill : pill}>{row.textable ? "Textable" : "Needs cleanup"}</span>
@@ -4460,7 +4455,7 @@ export default function VaPage() {
                     ) : (
                       <div style={{ display: "grid", gap: 10 }}>
                         <p style={eyebrowSmall}>Selected Relationship</p>
-                        <h3 style={{ ...sectionTitle, fontSize: 22 }}>{selectedImportedLead.owner_name || "Unknown contact"}</h3>
+                        <h3 style={{ ...sectionTitle, fontSize: 22 }}>{selectedImportedLead.owner_name || selectedImportedLead.property_address || selectedImportedLead.parcel_id || "No owner record"}</h3>
                         <InfoStack title="Contact">
                           <p>{[selectedImportedLead.phone, selectedImportedLead.phone_2].filter(Boolean).join(" / ") || "Phone missing"}</p>
                           <p>{selectedImportedLead.email || "Email missing"}</p>

@@ -196,7 +196,20 @@ export interface ImportedLandLead {
   updated_at: string;
 }
 
-type ImportedLandLeadMetricsRow = Pick<ImportedLandLead, "status" | "phone" | "phone_2" | "owner_name" | "mailing_address" | "county">;
+export type ImportedLandLeadIdentityFields = {
+  id?: string | null;
+  phone?: string | null;
+  phone_2?: string | null;
+  owner_name?: string | null;
+  mailing_address?: string | null;
+  mail_address?: string | null;
+  county?: string | null;
+  state?: string | null;
+  parcel_id?: string | null;
+  property_address?: string | null;
+};
+
+type ImportedLandLeadMetricsRow = Pick<ImportedLandLead, "status"> & ImportedLandLeadIdentityFields;
 
 export interface ImportedLandLeadListMetrics {
   properties: number;
@@ -536,6 +549,39 @@ function clean(value: unknown): string | null {
   if (value === null || value === undefined) return null;
   const text = String(value).trim();
   return text || null;
+}
+
+function normalizeIdentityText(value: string | null | undefined): string {
+  return (value || "").replace(/\s+/g, " ").trim().toLowerCase();
+}
+
+function normalizeImportedLeadContactPhone(value: string | null | undefined): string | null {
+  if (String(value || "").toLowerCase().startsWith("client:")) return null;
+  const digits = String(value || "").replace(/\D/g, "");
+  if (!digits) return null;
+  if (digits.length === 10) return `+1${digits}`;
+  if (digits.length === 11 && digits.startsWith("1")) return `+${digits}`;
+  return value?.startsWith("+") ? value : null;
+}
+
+export function hasImportedLeadOwnerIdentity(ownerName: string | null | undefined): boolean {
+  const owner = normalizeIdentityText(ownerName);
+  return !!owner && !["unknown", "owner unknown", "unknown owner", "unknown contact", "no owner", "n/a", "na", "none", "-", "--"].includes(owner);
+}
+
+export function importedLeadContactIdentityKey(lead: ImportedLandLeadIdentityFields): string {
+  const phone = normalizeImportedLeadContactPhone(lead.phone || lead.phone_2);
+  if (phone) return `phone:${phone}`;
+
+  const owner = normalizeIdentityText(lead.owner_name);
+  if (hasImportedLeadOwnerIdentity(owner)) {
+    const mailing = normalizeIdentityText(lead.mailing_address || lead.mail_address);
+    const location = normalizeIdentityText(lead.county || lead.state);
+    return `owner:${owner}|${mailing || location}`;
+  }
+
+  const property = normalizeIdentityText(lead.id || lead.parcel_id || lead.property_address || "");
+  return `property:${property || "unidentified"}`;
 }
 
 function normalizeHeader(header: string): string {
@@ -1756,26 +1802,11 @@ export async function fetchImportedLandLeads(limit = 250): Promise<ImportedLandL
   return data as ImportedLandLead[];
 }
 
-function normalizedImportedLeadMetricsPhone(value: string | null | undefined): string | null {
-  if (String(value || "").toLowerCase().startsWith("client:")) return null;
-  const digits = String(value || "").replace(/\D/g, "");
-  if (!digits) return null;
-  if (digits.length === 10) return `+1${digits}`;
-  if (digits.length === 11 && digits.startsWith("1")) return `+${digits}`;
-  return value?.startsWith("+") ? value : null;
-}
-
-function importedLeadContactMetricsKey(lead: ImportedLandLeadMetricsRow): string {
-  const phone = normalizedImportedLeadMetricsPhone(lead.phone || lead.phone_2) || "";
-  if (phone) return phone;
-  return `${(lead.owner_name || "Unknown contact").toLowerCase()}|${(lead.mailing_address || lead.county || "").toLowerCase()}`;
-}
-
 function countImportedLeadContactMetrics(rows: ImportedLandLeadMetricsRow[]): number {
   const groups = new Set<string>();
   rows.forEach(row => {
     if (row.status === "converted") return;
-    groups.add(importedLeadContactMetricsKey(row));
+    groups.add(importedLeadContactIdentityKey(row));
   });
   return groups.size;
 }
@@ -1798,7 +1829,7 @@ export async function fetchImportedLandLeadListMetrics(): Promise<ImportedLandLe
   for (let from = 0; ; from += pageSize) {
     const { data, error } = await supabase
       .from("meridian_imported_land_leads")
-      .select("status,phone,phone_2,owner_name,mailing_address,county")
+      .select("id,status,phone,phone_2,owner_name,mailing_address,mail_address,county,state,parcel_id,property_address")
       .order("created_at", { ascending: false })
       .range(from, from + pageSize - 1);
     if (error || !data) return null;

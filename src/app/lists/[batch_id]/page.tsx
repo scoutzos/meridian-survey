@@ -9,6 +9,7 @@ import { categorizeForBulkSms } from "@/lib/bulk-sms";
 import {
   fetchImportedLandLeads,
   fetchLandLeadBatches,
+  importedLeadContactIdentityKey,
   type ImportedLandLead,
   type LandLeadBatch,
 } from "@/lib/land-leads";
@@ -68,9 +69,7 @@ interface FilterCtx {
 }
 
 function ownerKey(lead: ImportedLandLead): string {
-  const phone = (lead.phone || lead.phone_2 || "").replace(/\D/g, "");
-  const owner = (lead.owner_name || "").toLowerCase().trim();
-  return `${phone}|${owner}`;
+  return importedLeadContactIdentityKey(lead);
 }
 
 function hasMobile(lead: ImportedLandLead): boolean {

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import {
   fetchImportedLandLeads,
   fetchLandLeadBatches,
+  importedLeadContactIdentityKey,
   type ImportedLandLead,
   type LandLeadBatch,
 } from "@/lib/land-leads";
@@ -108,9 +109,7 @@ export default function ListsPage() {
   // Calculate stats
   const stats = useMemo(() => {
     const totalRecords = importedLeads.length;
-    const uniqueContacts = new Set(importedLeads.map(lead => 
-      `${lead.phone || lead.phone_2 || ""}|${lead.owner_name || ""}`.toLowerCase()
-    )).size;
+    const uniqueContacts = new Set(importedLeads.map(lead => importedLeadContactIdentityKey(lead))).size;
     const withPhone = importedLeads.filter(lead => lead.phone || lead.phone_2).length;
     const callBacks = importedLeads.filter(lead => 
       lead.next_follow_up_date && lead.next_follow_up_date <= new Date().toISOString().split('T')[0]

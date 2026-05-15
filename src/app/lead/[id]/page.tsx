@@ -16,6 +16,7 @@ import {
   fetchImportedLandLeadActivities,
   getCountyResearchSources,
   inferLandLeadSourceFromUrl,
+  importedLeadContactIdentityKey,
   listingUrlHints,
   runAutomatedLandResearch,
   saveLandDueDiligenceItem,
@@ -111,9 +112,7 @@ function parseCompListingText(text: string, sourceUrl: string) {
 }
 
 function ownerKey(lead: ImportedLandLead): string {
-  const phone = (lead.phone || lead.phone_2 || "").replace(/\D/g, "");
-  const owner = (lead.owner_name || "").toLowerCase().trim();
-  return `${phone}|${owner}`;
+  return importedLeadContactIdentityKey(lead);
 }
 
 function describePhoneType(rawType: string | null | undefined): "Mobile" | "Landline" | "VOIP" | "Unknown" {
