@@ -119,7 +119,13 @@ function recordingUrl(event: CommunicationEvent): string | null {
   ) as Record<string, unknown> | undefined;
   const mp3Url = typeof recording?.mp3Url === "string" ? recording.mp3Url : null;
   const url = typeof recording?.url === "string" ? recording.url : null;
-  return mp3Url || url;
+  const rawUrl = mp3Url || url;
+  if (!rawUrl) return null;
+  const recordingSid = typeof recording?.recordingSid === "string" ? recording.recordingSid : rawUrl.match(/\/Recordings\/(RE[a-zA-Z0-9]+)/)?.[1];
+  if (recordingSid && (recording?.provider === "twilio" || rawUrl.includes("api.twilio.com"))) {
+    return `/api/twilio/voice/recording-audio?sid=${encodeURIComponent(recordingSid)}`;
+  }
+  return rawUrl;
 }
 
 type ReadState = Record<string, string>;
@@ -918,7 +924,7 @@ export default function FloatingSmsWindow({
                       <div key={event.id} style={{ ...bubble, ...(event.direction === "outbound" ? outgoing : event.channel === "voice" ? callBubble : incoming) }}>
                         <strong style={messageLabel}>{eventLabel(event)}</strong>
                         <p style={{ margin: "4px 0 0" }}>{eventBody(event)}</p>
-                        {audioUrl && <a href={audioUrl} target="_blank" rel="noreferrer" style={recordingLink}>Open recording</a>}
+                        {audioUrl && <audio controls preload="none" src={audioUrl} style={recordingPlayer} />}
                         <span style={bubbleTime}>
                           {formatTime(eventTime(event))}
                           {sentByLabel(event) ? ` · Sent by ${sentByLabel(event)}` : event.direction === "outbound" ? " · Sent from Meridian" : ""}
@@ -1398,13 +1404,11 @@ const messageLabel: CSSProperties = {
   textTransform: "uppercase",
 };
 
-const recordingLink: CSSProperties = {
-  color: "var(--obsidian)",
-  display: "inline-block",
-  fontSize: 12,
-  fontWeight: 800,
+const recordingPlayer: CSSProperties = {
+  display: "block",
   marginTop: 7,
-  textDecoration: "underline",
+  maxWidth: "100%",
+  width: "100%",
 };
 
 const bubbleTime: CSSProperties = {
