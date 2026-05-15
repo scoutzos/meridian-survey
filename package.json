@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "backfill:land-imports": "node scripts/backfill-land-imports.mjs",
     "start": "next start",
     "lint": "next lint"
   },

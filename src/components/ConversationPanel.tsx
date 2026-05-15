@@ -30,12 +30,39 @@ function formatDate(iso: string | null | undefined): string {
   return d.toLocaleDateString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 }
 
+function normalizedStatus(event: CommunicationEvent): string {
+  return (event.status || event.raw_payload?.CallStatus || event.raw_payload?.DialCallStatus || event.provider_event_type || "")
+    .toString()
+    .toLowerCase();
+}
+
+function voiceLabel(event: CommunicationEvent): string {
+  const status = normalizedStatus(event);
+  if (event.provider_event_type === "call-recording") return "Recording";
+  if (event.direction === "inbound" && ["no-answer", "busy", "failed", "canceled", "cancelled", "missed"].includes(status)) return "Missed call";
+  if (event.direction === "inbound") return "Inbound call";
+  if (event.direction === "outbound") return "Outbound call";
+  if (status === "no-answer") return "No answer";
+  if (status === "busy") return "Busy call";
+  if (status === "failed") return "Failed call";
+  return "Call update";
+}
+
+function voiceBody(event: CommunicationEvent): string {
+  const status = normalizedStatus(event);
+  const duration = event.raw_payload?.CallDuration || event.raw_payload?.DialCallDuration;
+  const seconds = typeof duration === "string" && duration.trim() ? duration.trim() : event.body?.match(/·\s*(\d+)s/)?.[1];
+  const suffix = seconds ? ` · ${seconds}s` : "";
+  if (event.provider_event_type === "call-recording") return event.body || `Recording ${event.status || "saved"}`;
+  if (event.direction === "inbound" && ["no-answer", "busy", "failed", "canceled", "cancelled", "missed"].includes(status)) return `Missed inbound call${suffix}`;
+  if (event.direction === "inbound") return `Inbound call ${event.status || "updated"}${suffix}`;
+  if (event.direction === "outbound") return `Outbound call ${event.status || "updated"}${suffix}`;
+  return event.body || event.status || "Call update";
+}
+
 function labelForEvent(event: CommunicationEvent): string {
   if (event.channel === "voice") {
-    if (event.direction === "inbound") return "Inbound call";
-    if (event.direction === "outbound") return "Outbound call";
-    if (event.direction === "status") return "Call status";
-    return "Call update";
+    return voiceLabel(event);
   }
   if (event.direction === "inbound") return "Seller SMS";
   if (event.direction === "outbound") return "Meridian SMS";
@@ -49,7 +76,13 @@ function recordingUrl(event: CommunicationEvent): string | null {
   ) as Record<string, unknown> | undefined;
   const mp3Url = typeof recording?.mp3Url === "string" ? recording.mp3Url : null;
   const url = typeof recording?.url === "string" ? recording.url : null;
-  return mp3Url || url;
+  const rawUrl = mp3Url || url;
+  if (!rawUrl) return null;
+  const recordingSid = typeof recording?.recordingSid === "string" ? recording.recordingSid : rawUrl.match(/\/Recordings\/(RE[a-zA-Z0-9]+)/)?.[1];
+  if (recordingSid && (recording?.provider === "twilio" || rawUrl.includes("api.twilio.com"))) {
+    return `/api/twilio/voice/recording-audio?sid=${encodeURIComponent(recordingSid)}`;
+  }
+  return rawUrl;
 }
 
 export default function ConversationPanel({
@@ -69,7 +102,7 @@ export default function ConversationPanel({
       kind: event.direction === "inbound" ? "inbound" as const : event.direction === "outbound" ? "outbound" as const : "system" as const,
       title: labelForEvent(event),
       date: event.provider_created_at || event.created_at,
-      body: event.body || event.status || event.provider_event_type,
+      body: event.channel === "voice" ? voiceBody(event) : event.body || event.status || event.provider_event_type,
       meta: event.status || event.provider_event_type,
       recording: recordingUrl(event),
     })),
@@ -112,9 +145,7 @@ export default function ConversationPanel({
             </div>
             <p style={bubbleBody}>{item.body}</p>
             {item.recording && (
-              <a href={item.recording} target="_blank" rel="noreferrer" style={recordingLink}>
-                Open recording
-              </a>
+              <audio controls preload="none" src={item.recording} style={recordingPlayer} />
             )}
             {item.meta && <p style={bubbleMeta}>{item.meta}</p>}
           </div>
@@ -236,13 +267,11 @@ const bubbleMeta: CSSProperties = {
   marginTop: 6,
 };
 
-const recordingLink: CSSProperties = {
-  color: "var(--obsidian)",
-  display: "inline-block",
-  fontSize: 12,
-  fontWeight: 800,
+const recordingPlayer: CSSProperties = {
+  display: "block",
   marginTop: 8,
-  textDecoration: "underline",
+  maxWidth: "100%",
+  width: "100%",
 };
 
 const emptyStyle: CSSProperties = {

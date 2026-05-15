@@ -4,14 +4,29 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import OperatingHeader from "@/components/OperatingHeader";
 import ConversationPanel from "@/components/ConversationPanel";
+import LandUnderwritingMatrix from "@/components/LandUnderwritingMatrix";
+import LandUnderwritingPanel from "@/components/LandUnderwritingPanel";
 import { checkLeadSmsCompliance, renderMessageForRecipient } from "@/lib/bulk-sms";
 import {
+  createLandCompRecord,
   createImportedLandLeadActivity,
+  fetchLandCompRecords,
+  fetchLandDueDiligenceItems,
   fetchImportedLandLeads,
   fetchImportedLandLeadActivities,
+  getCountyResearchSources,
+  runAutomatedLandResearch,
+  saveLandDueDiligenceItem,
+  summarizeLandComps,
   updateImportedLandLeadStatus,
   type ImportedLandLead,
   type ImportedLandLeadActivity,
+  type LandCompConfidence,
+  type LandCompRecord,
+  type LandCompType,
+  type AutomatedLandResearchResult,
+  type LandDueDiligenceItem,
+  type LandDueDiligenceStatus,
 } from "@/lib/land-leads";
 import {
   fetchCommunicationEvents,
@@ -19,13 +34,28 @@ import {
 } from "@/lib/communications";
 import { labelForStatus } from "@/lib/status-map";
 
-type Tab = "overview" | "conversation" | "properties";
+type Tab = "overview" | "conversation" | "properties" | "research";
 
 const TABS: Array<{ value: Tab; label: string }> = [
   { value: "overview", label: "Overview" },
   { value: "conversation", label: "Conversation" },
   { value: "properties", label: "Properties" },
+  { value: "research", label: "Research" },
 ];
+
+const EMPTY_COMP_DRAFT = {
+  compType: "sold" as LandCompType,
+  address: "",
+  parcelId: "",
+  price: "",
+  acreage: "",
+  saleOrListDate: "",
+  distanceMiles: "",
+  sourceSystem: "",
+  sourceUrl: "",
+  similarityNotes: "",
+  confidence: "needs-review" as LandCompConfidence,
+};
 
 function ownerKey(lead: ImportedLandLead): string {
   const phone = (lead.phone || lead.phone_2 || "").replace(/\D/g, "");
@@ -86,6 +116,17 @@ export default function LeadPage() {
   const [message, setMessage] = useState("");
   const [expandedPropertyId, setExpandedPropertyId] = useState<string | null>(null);
   const [noteDraft, setNoteDraft] = useState("");
+  const [researchItems, setResearchItems] = useState<LandDueDiligenceItem[]>([]);
+  const [compRecords, setCompRecords] = useState<LandCompRecord[]>([]);
+  const [compDraft, setCompDraft] = useState(EMPTY_COMP_DRAFT);
+  const [savingResearch, setSavingResearch] = useState(false);
+  const [autoResearchRunning, setAutoResearchRunning] = useState(false);
+  const [autoResearchResult, setAutoResearchResult] = useState<AutomatedLandResearchResult | null>(null);
+
+  useEffect(() => {
+    const requested = searchParams.get("tab") as Tab | null;
+    if (requested && TABS.some(t => t.value === requested)) setTab(requested);
+  }, [searchParams]);
 
   useEffect(() => {
     const u = typeof window !== "undefined" ? localStorage.getItem("meridian_user") : null;
@@ -106,8 +147,14 @@ export default function LeadPage() {
         fetchCommunicationEvents({ leadId: me.id, limit: 100 }),
         fetchImportedLandLeadActivities(me.id, 80),
       ]);
+      const [ddItems, comps] = await Promise.all([
+        fetchLandDueDiligenceItems(me),
+        fetchLandCompRecords(me.id),
+      ]);
       setCommunications(comms);
       setActivities(acts);
+      setResearchItems(ddItems);
+      setCompRecords(comps);
       if (!expandedPropertyId) setExpandedPropertyId(me.id);
     }
     setLoading(false);
@@ -158,6 +205,9 @@ export default function LeadPage() {
     if (lead.status === "interested") signals.push({ label: "Interested", tone: "good" });
     return signals;
   }, [lead]);
+  const researchSources = useMemo(() => lead ? getCountyResearchSources(lead) : [], [lead]);
+  const compSummary = useMemo(() => summarizeLandComps(compRecords), [compRecords]);
+  const researchCompleteCount = useMemo(() => researchItems.filter(item => ["verified", "blocked", "not-applicable"].includes(item.status)).length, [researchItems]);
 
   const nextActionText = useMemo(() => {
     if (!lead) return "";
@@ -235,6 +285,85 @@ export default function LeadPage() {
     setNoteDraft("");
     setMessage("Note saved.");
     await loadAll();
+  };
+
+  const updateResearchStatus = async (item: LandDueDiligenceItem, status: LandDueDiligenceStatus) => {
+    if (!lead) return;
+    setSavingResearch(true);
+    setMessage("");
+    try {
+      const { item: saved, error } = await saveLandDueDiligenceItem(lead, item, { status }, user);
+      if (error) { setMessage(error); return; }
+      if (saved) {
+        setResearchItems(rows => rows.map(row => row.id === item.id ? saved : row).sort((a, b) => a.sort_order - b.sort_order));
+      }
+    } finally {
+      setSavingResearch(false);
+    }
+  };
+
+  const addCompRecord = async () => {
+    if (!lead || !user) return;
+    if (!compDraft.address.trim() && !compDraft.parcelId.trim() && !compDraft.sourceUrl.trim()) {
+      setMessage("Add a comp address, parcel ID, or source link first.");
+      return;
+    }
+    setSavingResearch(true);
+    setMessage("");
+    try {
+      const { comp, error } = await createLandCompRecord({
+        leadId: lead.id,
+        compType: compDraft.compType,
+        address: compDraft.address,
+        parcelId: compDraft.parcelId,
+        county: lead.county,
+        state: lead.state || "GA",
+        price: compDraft.price ? Number(compDraft.price) : null,
+        acreage: compDraft.acreage ? Number(compDraft.acreage) : null,
+        saleOrListDate: compDraft.saleOrListDate || null,
+        distanceMiles: compDraft.distanceMiles ? Number(compDraft.distanceMiles) : null,
+        sourceSystem: compDraft.sourceSystem,
+        sourceUrl: compDraft.sourceUrl,
+        similarityNotes: compDraft.similarityNotes,
+        confidence: compDraft.confidence,
+        actor: user,
+      });
+      if (error) { setMessage(error); return; }
+      if (comp) setCompRecords(rows => [comp, ...rows]);
+      setCompDraft(EMPTY_COMP_DRAFT);
+      setMessage("Comp saved to this property record.");
+    } finally {
+      setSavingResearch(false);
+    }
+  };
+
+  const runAutoResearch = async () => {
+    if (!lead) return;
+    setAutoResearchRunning(true);
+    setMessage("");
+    try {
+      const { result, items, lead: updatedLead, error } = await runAutomatedLandResearch(lead, researchItems, user);
+      if (result) setAutoResearchResult(result);
+      setResearchItems(items);
+      if (updatedLead) setLead(updatedLead);
+      if (error) {
+        setMessage(error);
+        return;
+      }
+      const blocked = result?.findings.filter(finding => finding.status === "blocked").length ?? 0;
+      const reviewed = result?.findings.length ?? 0;
+      setMessage(`Auto research finished. ${reviewed} findings saved${blocked ? `, ${blocked} blocker${blocked === 1 ? "" : "s"} flagged` : ""}.`);
+    } finally {
+      setAutoResearchRunning(false);
+    }
+  };
+
+  const openPropertyRecord = (propertyId: string) => {
+    if (propertyId === lead?.id) {
+      setTab("research");
+      return;
+    }
+    router.push(`/lead/${propertyId}?tab=research`);
   };
 
   if (!user) return null;
@@ -371,7 +500,10 @@ export default function LeadPage() {
                           {prop.acreage ? `${prop.acreage} ac` : "Acres ?"} · {prop.county || "County ?"} · {labelForStatus(prop.status)}
                         </p>
                       </div>
-                      <button onClick={() => router.push(`/lead/${prop.id}`)} style={{ ...secondaryButton, padding: "8px 10px", fontSize: 10, minHeight: 32 }}>
+                      <div style={{ flex: "1 1 320px", minWidth: 260 }}>
+                        <LandUnderwritingPanel lead={prop} compact />
+                      </div>
+                      <button onClick={() => openPropertyRecord(prop.id)} style={{ ...secondaryButton, padding: "8px 10px", fontSize: 10, minHeight: 32 }}>
                         Open Record →
                       </button>
                     </div>
@@ -555,6 +687,14 @@ export default function LeadPage() {
                       <Detail label="HOA" value={prop.hoa_status || (prop.in_hoa ? "Yes" : "No")} />
                       <Detail label="Mortgage" value={prop.mortgage_amount ? `$${prop.mortgage_amount.toLocaleString()}` : "None"} />
                     </dl>
+                    <div style={subPanel}>
+                      <p style={{ ...eyebrowSmall, marginBottom: 8 }}>Calculator Summary</p>
+                      <LandUnderwritingPanel lead={prop} />
+                    </div>
+                    <div style={subPanel}>
+                      <p style={{ ...eyebrowSmall, marginBottom: 8 }}>Exit Matrix</p>
+                      <LandUnderwritingMatrix lead={prop} />
+                    </div>
                     {prop.notes && (
                       <div style={subPanel}>
                         <p style={{ ...eyebrowSmall, marginBottom: 4 }}>Notes</p>
@@ -562,7 +702,7 @@ export default function LeadPage() {
                       </div>
                     )}
                     <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                      <button onClick={() => router.push(`/lead/${prop.id}`)} style={primaryButton}>Open Record →</button>
+                      <button onClick={() => openPropertyRecord(prop.id)} style={primaryButton}>Open Record →</button>
                       {prop.status !== "passed" && (
                         <button onClick={async () => {
                           await updateImportedLandLeadStatus(prop.id, "passed", prop.deal_id);
@@ -579,14 +719,190 @@ export default function LeadPage() {
         </section>
       )}
 
+      {tab === "research" && (
+        <section style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 360px", gap: 16 }} className="lead-research-grid">
+          <div style={{ display: "grid", gap: 16 }}>
+            <section style={panel}>
+              <header style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "baseline", marginBottom: 12, flexWrap: "wrap" }}>
+                <div>
+                  <p style={eyebrowSmall}>Due diligence</p>
+                  <h3 style={{ ...sectionTitle, fontSize: 20 }}>{researchCompleteCount} of {researchItems.length} checks resolved</h3>
+                </div>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                  <span style={compSummary.trusted ? goodChip : warnChip}>
+                    {compSummary.trusted ? "Comp support ready" : "Needs 3 sold comps"}
+                  </span>
+                  <button onClick={runAutoResearch} disabled={autoResearchRunning} style={{ ...primaryButton, opacity: autoResearchRunning ? 0.55 : 1 }}>
+                    {autoResearchRunning ? "Running..." : "Run Auto Research"}
+                  </button>
+                </div>
+              </header>
+              {autoResearchResult && (
+                <div style={{ ...subPanel, marginBottom: 12 }}>
+                  <p style={eyebrowSmall}>Automatic research result</p>
+                  <dl style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 10 }}>
+                    <Detail label="Geocoder" value={autoResearchResult.location.geocoder || "—"} />
+                    <Detail label="Matched address" value={autoResearchResult.location.matched_address || "—"} />
+                    <Detail label="Coordinates" value={autoResearchResult.location.latitude && autoResearchResult.location.longitude ? `${autoResearchResult.location.latitude.toFixed(5)}, ${autoResearchResult.location.longitude.toFixed(5)}` : "Missing"} />
+                    <Detail label="Warnings" value={String(autoResearchResult.warnings.length)} />
+                  </dl>
+                  {autoResearchResult.warnings.length > 0 && (
+                    <p style={{ color: "var(--muted)", fontSize: 12, marginTop: 8, lineHeight: 1.45 }}>
+                      {autoResearchResult.warnings.slice(0, 2).join(" ")}
+                    </p>
+                  )}
+                </div>
+              )}
+              <div style={{ display: "grid", gap: 8 }}>
+                {researchItems.map(item => (
+                  <div key={item.id} style={{ ...subPanel, display: "grid", gap: 8 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start", flexWrap: "wrap" }}>
+                      <div style={{ flex: "1 1 260px" }}>
+                        <p style={{ ...eyebrowSmall, marginBottom: 3 }}>{labelForStatus(item.category)}</p>
+                        <strong style={{ color: "var(--obsidian)", fontSize: 14 }}>{item.title}</strong>
+                        {(item.evidence_value || item.result_summary) && (
+                          <p style={{ color: "var(--ink)", fontSize: 12, marginTop: 5, lineHeight: 1.45 }}>
+                            {[item.evidence_value, item.result_summary].filter(Boolean).join(" · ")}
+                          </p>
+                        )}
+                        {item.notes && <p style={{ color: "var(--muted)", fontSize: 12, marginTop: 5, lineHeight: 1.45 }}>{item.notes}</p>}
+                      </div>
+                      <select
+                        value={item.status}
+                        disabled={savingResearch}
+                        onChange={e => updateResearchStatus(item, e.target.value as LandDueDiligenceStatus)}
+                        style={{ ...inputStyle, width: 150 }}
+                      >
+                        <option value="todo">To do</option>
+                        <option value="in-progress">In progress</option>
+                        <option value="verified">Verified</option>
+                        <option value="blocked">Blocked</option>
+                        <option value="not-applicable">N/A</option>
+                      </select>
+                    </div>
+                    {item.source_url && (
+                      <a href={item.source_url} target="_blank" rel="noreferrer" style={{ ...inlineLinkButton, width: "fit-content" }}>
+                        Open {item.source_name || "source"} →
+                      </a>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </section>
+
+            <section style={panel}>
+              <header style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "baseline", marginBottom: 12, flexWrap: "wrap" }}>
+                <div>
+                  <p style={eyebrowSmall}>Comps</p>
+                  <h3 style={{ ...sectionTitle, fontSize: 20 }}>{compRecords.length} saved comps</h3>
+                </div>
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                  <span style={mutedChip}>{compSummary.soldCount} sold</span>
+                  <span style={mutedChip}>{compSummary.activeCount} active</span>
+                  <span style={compSummary.trusted ? goodChip : warnChip}>{compSummary.medianPpa ? `${money(compSummary.medianPpa)}/ac median` : "No PPA yet"}</span>
+                </div>
+              </header>
+
+              <div style={{ ...subPanel, display: "grid", gap: 10, marginBottom: 12 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "120px minmax(0, 1fr) 120px 100px", gap: 8 }} className="lead-comp-form">
+                  <select value={compDraft.compType} onChange={e => setCompDraft({ ...compDraft, compType: e.target.value as LandCompType })} style={inputStyle}>
+                    <option value="sold">Sold</option>
+                    <option value="active">Active</option>
+                    <option value="pending">Pending</option>
+                    <option value="expired">Expired</option>
+                    <option value="manual-note">Note</option>
+                  </select>
+                  <input value={compDraft.address} onChange={e => setCompDraft({ ...compDraft, address: e.target.value })} placeholder="Comp address" style={inputStyle} />
+                  <input value={compDraft.price} onChange={e => setCompDraft({ ...compDraft, price: e.target.value })} placeholder="Price" style={inputStyle} />
+                  <input value={compDraft.acreage} onChange={e => setCompDraft({ ...compDraft, acreage: e.target.value })} placeholder="Acres" style={inputStyle} />
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "130px 100px minmax(0, 1fr)", gap: 8 }} className="lead-comp-form">
+                  <input value={compDraft.saleOrListDate} onChange={e => setCompDraft({ ...compDraft, saleOrListDate: e.target.value })} type="date" style={inputStyle} />
+                  <input value={compDraft.distanceMiles} onChange={e => setCompDraft({ ...compDraft, distanceMiles: e.target.value })} placeholder="Miles" style={inputStyle} />
+                  <input value={compDraft.sourceUrl} onChange={e => setCompDraft({ ...compDraft, sourceUrl: e.target.value })} placeholder="Source link" style={inputStyle} />
+                </div>
+                <textarea
+                  value={compDraft.similarityNotes}
+                  onChange={e => setCompDraft({ ...compDraft, similarityNotes: e.target.value })}
+                  rows={2}
+                  placeholder="Similarity notes: acreage range, county, road access, land only, usable shape..."
+                  style={textareaStyle}
+                />
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                  <select value={compDraft.confidence} onChange={e => setCompDraft({ ...compDraft, confidence: e.target.value as LandCompConfidence })} style={{ ...inputStyle, width: 170 }}>
+                    <option value="needs-review">Needs review</option>
+                    <option value="low">Low confidence</option>
+                    <option value="medium">Medium confidence</option>
+                    <option value="high">High confidence</option>
+                  </select>
+                  <button onClick={addCompRecord} disabled={savingResearch} style={{ ...primaryButton, opacity: savingResearch ? 0.55 : 1 }}>
+                    Save Comp
+                  </button>
+                </div>
+              </div>
+
+              {compRecords.length === 0 ? (
+                <p style={{ color: "var(--muted)", fontSize: 13 }}>No comps saved yet. Start with sold land comps, then add active listings to check market support.</p>
+              ) : (
+                <div style={{ display: "grid", gap: 8 }}>
+                  {compRecords.map(comp => (
+                    <div key={comp.id} style={{ ...subPanel, display: "grid", gridTemplateColumns: "minmax(0, 1fr) 120px 120px", gap: 10, alignItems: "center" }} className="lead-comp-row">
+                      <div>
+                        <strong style={{ color: "var(--obsidian)", fontSize: 13 }}>{comp.address || comp.parcel_id || comp.source_url || "Saved comp"}</strong>
+                        <p style={{ color: "var(--muted)", fontSize: 11, marginTop: 3 }}>
+                          {labelForStatus(comp.comp_type)} · {comp.sale_or_list_date || "Date ?"} · {comp.distance_miles != null ? `${comp.distance_miles} mi` : "Distance ?"} · {labelForStatus(comp.confidence)}
+                        </p>
+                        {comp.similarity_notes && <p style={{ color: "var(--ink)", fontSize: 12, marginTop: 5 }}>{comp.similarity_notes}</p>}
+                      </div>
+                      <span style={{ color: "var(--obsidian)", fontWeight: 800, fontSize: 13 }}>{money(comp.price)}</span>
+                      <span style={{ color: "var(--brass)", fontWeight: 800, fontSize: 13 }}>{comp.price_per_acre ? `${money(comp.price_per_acre)}/ac` : "PPA ?"}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+          </div>
+
+          <aside style={{ display: "grid", gap: 16, alignContent: "start" }}>
+            <section style={panel}>
+              <p style={eyebrowSmall}>Research sources</p>
+              <h3 style={{ ...sectionTitle, fontSize: 18 }}>{lead.county || "County"} source list</h3>
+              <div style={{ display: "grid", gap: 8, marginTop: 10 }}>
+                {researchSources.map(source => (
+                  <a key={`${source.category}-${source.source_name}`} href={source.source_url} target="_blank" rel="noreferrer" style={{ ...subPanel, textDecoration: "none" }}>
+                    <strong style={{ display: "block", color: "var(--obsidian)", fontSize: 13 }}>{source.source_name}</strong>
+                    <span style={{ display: "block", color: "var(--muted)", fontSize: 11, marginTop: 3 }}>{source.instructions}</span>
+                  </a>
+                ))}
+              </div>
+            </section>
+
+            <section style={panel}>
+              <p style={eyebrowSmall}>Decision rule</p>
+              <div style={{ display: "grid", gap: 8, marginTop: 8 }}>
+                <Detail label="Sold comp trust" value={compSummary.trusted ? "Ready" : "Need 3 sold comps"} />
+                <Detail label="Median PPA" value={compSummary.medianPpa ? `${money(compSummary.medianPpa)}/ac` : "Missing"} />
+                <Detail label="Average PPA" value={compSummary.averagePpa ? `${money(compSummary.averagePpa)}/ac` : "Missing"} />
+                <Detail label="Blockers" value={researchItems.filter(item => item.status === "blocked").map(item => labelForStatus(item.category)).join(", ") || "None marked"} />
+              </div>
+            </section>
+          </aside>
+        </section>
+      )}
+
       <style jsx>{`
         @media (max-width: 880px) {
           .lead-root { padding-top: 28px !important; }
-          .lead-overview-grid, .lead-conv-grid { grid-template-columns: 1fr !important; }
+          .lead-overview-grid, .lead-conv-grid, .lead-research-grid, .lead-comp-form, .lead-comp-row { grid-template-columns: 1fr !important; }
         }
       `}</style>
     </div>
   );
+}
+
+function money(value: number | null | undefined): string {
+  if (typeof value !== "number" || !Number.isFinite(value)) return "—";
+  return value.toLocaleString(undefined, { style: "currency", currency: "USD", maximumFractionDigits: 0 });
 }
 
 function Detail({ label, value }: { label: string; value: string }) {
@@ -696,6 +1012,18 @@ const textareaStyle: React.CSSProperties = {
   fontSize: 13,
   lineHeight: 1.45,
   resize: "vertical",
+};
+
+const inputStyle: React.CSSProperties = {
+  width: "100%",
+  border: "1px solid var(--fog)",
+  borderRadius: 6,
+  padding: "10px 11px",
+  background: "var(--surface)",
+  color: "var(--ink)",
+  fontFamily: "var(--font-body)",
+  fontSize: 13,
+  minHeight: 40,
 };
 
 const warnChip: React.CSSProperties = {

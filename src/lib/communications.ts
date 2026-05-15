@@ -23,6 +23,8 @@ export interface CommunicationEvent {
   matched_deal_id: string | null;
   created_at: string;
   provider_created_at: string | null;
+  read_at: string | null;
+  read_by: string | null;
 }
 
 interface SakariWebhookBody {
@@ -105,6 +107,8 @@ function normalizeSakari(body: SakariWebhookBody): Omit<CommunicationEvent, "id"
     media: Array.isArray(payload.media) ? payload.media : [],
     raw_payload: body as unknown as Record<string, unknown>,
     provider_created_at: text(nested(payload, ["created", "at"])),
+    read_at: null,
+    read_by: null,
   };
 }
 
@@ -161,7 +165,7 @@ export async function handleSakariWebhook(body: SakariWebhookBody): Promise<{ ev
 
   if (!supabase) {
     const now = new Date().toISOString();
-    const event: CommunicationEvent = { ...row, id: `comm-${Date.now()}`, created_at: now };
+    const event: CommunicationEvent = { ...row, id: `comm-${Date.now()}`, created_at: now, read_at: null, read_by: null };
     localSet(LOCAL_COMMS, [event, ...localGet<CommunicationEvent[]>(LOCAL_COMMS, [])]);
     return { event, error: null };
   }
@@ -230,6 +234,28 @@ export async function fetchCommunicationEvents(args: { leadId?: string | null; d
   return phone
     ? rows.filter(event => [event.contact_number, event.from_number, event.to_number].some(value => last10(value) === phone))
     : rows;
+}
+
+export async function markCommunicationEventsRead(eventIds: string[], actor: string | null, read: boolean): Promise<{ error: string | null }> {
+  const ids = Array.from(new Set(eventIds.filter(Boolean)));
+  if (ids.length === 0) return { error: null };
+  if (!supabase) {
+    const rows = localGet<CommunicationEvent[]>(LOCAL_COMMS, []);
+    const readAt = read ? new Date().toISOString() : null;
+    localSet(LOCAL_COMMS, rows.map(row => ids.includes(row.id)
+      ? { ...row, read_at: readAt, read_by: read ? actor || "Meridian" : null }
+      : row
+    ));
+    return { error: null };
+  }
+  const { error } = await supabase
+    .from("meridian_communication_events")
+    .update({
+      read_at: read ? new Date().toISOString() : null,
+      read_by: read ? actor || "Meridian" : null,
+    })
+    .in("id", ids);
+  return { error: error?.message ?? null };
 }
 
 export async function attachCommunicationEventToLead(eventId: string, leadId: string, actor: string): Promise<{ error: string | null }> {
@@ -382,7 +408,7 @@ export async function sendSakariSms(args: {
 
   if (!supabase) {
     const now = new Date().toISOString();
-    const event: CommunicationEvent = { ...eventRow, id: `comm-${Date.now()}`, created_at: now };
+    const event: CommunicationEvent = { ...eventRow, id: `comm-${Date.now()}`, created_at: now, read_at: now, read_by: args.actor };
     localSet(LOCAL_COMMS, [event, ...localGet<CommunicationEvent[]>(LOCAL_COMMS, [])]);
     return { event, error: null };
   }
@@ -493,7 +519,7 @@ export async function sendSakariBulkSms(args: {
   });
 
   if (!supabase) {
-    const events = rows.map((row, index) => ({ ...row, id: `comm-${Date.now()}-${index}`, created_at: now }));
+    const events: CommunicationEvent[] = rows.map((row, index) => ({ ...row, id: `comm-${Date.now()}-${index}`, created_at: now, read_at: now, read_by: args.actor }));
     localSet(LOCAL_COMMS, [...events, ...localGet<CommunicationEvent[]>(LOCAL_COMMS, [])]);
     return { sent: events.length, events, error: null };
   }

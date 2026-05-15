@@ -9,6 +9,8 @@ export async function POST(req: NextRequest) {
   for (const [key, value] of Array.from(req.nextUrl.searchParams.entries())) {
     if (!formData.has(key)) formData.set(key, value);
   }
-  await saveTwilioRecordingEvent(formData);
+  await saveTwilioRecordingEvent(formData).catch(error => {
+    console.error("Could not save Twilio recording event.", error);
+  });
   return NextResponse.json({ ok: true });
 }

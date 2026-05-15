@@ -35,9 +35,11 @@ import {
 import { createNotification } from "@/lib/operations";
 import {
   createImportedLandLeadActivity,
+  createSingleLinkLandLead,
   fetchImportedLandLeadActivities,
   fetchLandLeadBatches,
   fetchImportedLandLeads,
+  inferLandLeadSourceFromUrl,
   leadToDealDraft,
   previewLandLeadsCsv,
   updateImportedLandLeadStatus,
@@ -46,7 +48,7 @@ import {
   type LandLeadBatch,
   type LandLeadImportPreview,
 } from "@/lib/land-leads";
-import { attachCommunicationEventToDeal, fetchCommunicationEvents, type CommunicationEvent } from "@/lib/communications";
+import { attachCommunicationEventToDeal, fetchCommunicationEvents, markCommunicationEventsRead, type CommunicationEvent } from "@/lib/communications";
 import {
   createVaDailyBrief,
   fetchVaDailyBriefs,
@@ -72,8 +74,10 @@ import {
   type VaTimeChangeRequestType,
 } from "@/lib/va-time";
 import ConversationPanel, { type ConversationActivity } from "@/components/ConversationPanel";
+import LandUnderwritingPanel from "@/components/LandUnderwritingPanel";
 import { labelForStatus } from "@/lib/status-map";
 import { getLeadNextAction, type WorkflowTone } from "@/lib/workflow-actions";
+import { calculateLandUnderwriting, type LandExitType, type LandUnderwritingResult } from "@/lib/land-underwriting";
 import OperatingHeader from "@/components/OperatingHeader";
 import TwilioCallButton from "@/components/TwilioCallButton";
 import {
@@ -162,7 +166,7 @@ const DISPOSITION_STATUSES: Array<{ value: DispositionStatus; label: string }> =
 
 type VaTab = "today" | "outreach" | "lists" | "packet" | "brief";
 type ContactQueueMode = "inbox" | "callbacks" | "campaigns" | "unmatched" | "relationships" | "recommended";
-type ContactThreadFilter = "all" | "needs-matching" | "linked";
+type ContactThreadFilter = "all" | "unread" | "read" | "needs-matching" | "linked";
 type ListsView = "batches" | "properties" | "contacts" | "segments" | "campaigns";
 
 const TABS: Array<{ value: VaTab; label: string }> = [
@@ -194,11 +198,51 @@ const IMPORT_STATUS_FILTERS = [
   { value: "flood", label: "Flood" },
   { value: "wetlands", label: "Wetlands" },
   { value: "score-60", label: "Score 60+" },
+  { value: "underwriting-strong", label: "Strong deals" },
+  { value: "underwriting-possible", label: "Possible deals" },
+  { value: "underwriting-pass", label: "Pass / blockers" },
+  { value: "best-retail-resale", label: "Best: retail" },
+  { value: "best-neighbor-sale", label: "Best: neighbor" },
+  { value: "best-land-flip", label: "Best: flip" },
+  { value: "best-assignment", label: "Best: assignment" },
+  { value: "best-subdivide", label: "Subdivision candidates" },
+  { value: "max-offer-50k", label: "Max offer $50k+" },
+  { value: "ppa-works", label: "PPA works" },
+  { value: "needs-comp-check", label: "Needs comp check" },
+  { value: "physical-blockers", label: "Landlocked / flood / wetlands" },
 ] as const;
 
+const IMPORT_LEAD_SORTS: Array<{ value: ImportedLeadSort; label: string }> = [
+  { value: "score", label: "Score" },
+  { value: "max-offer", label: "Max offer" },
+  { value: "required-ppa", label: "Required PPA" },
+  { value: "projected-spread", label: "Spread" },
+  { value: "best-exit", label: "Best exit" },
+  { value: "acreage", label: "Acres" },
+];
+
 type ImportStatusFilter = typeof IMPORT_STATUS_FILTERS[number]["value"];
+type ImportedLeadSort = "score" | "max-offer" | "required-ppa" | "projected-spread" | "best-exit" | "acreage";
 type ImportStep = "upload" | "preview" | "importing" | "work";
 type ImportStage = "idle" | "previewing" | "creating-batch" | "saving-leads" | "refreshing" | "done";
+type LinkIntakeDraft = {
+  sourceUrl: string;
+  sourceSystem: string;
+  propertyAddress: string;
+  parcelId: string;
+  ownerName: string;
+  phone: string;
+  email: string;
+  askingPrice: string;
+  acreage: string;
+  marketValue: string;
+  county: string;
+  city: string;
+  state: string;
+  zip: string;
+  zoning: string;
+  notes: string;
+};
 type BulkTextStep = "audience" | "compliance" | "message";
 type SegmentBooleanFilter = "any" | "yes" | "no";
 type SavedLeadSegment = {
@@ -517,6 +561,72 @@ function toNumber(value: string): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+function bestUnderwriting(lead: ImportedLandLead): LandUnderwritingResult {
+  return calculateLandUnderwriting(lead).best;
+}
+
+function bestExit(lead: ImportedLandLead, exitType: LandExitType): boolean {
+  return bestUnderwriting(lead).exitType === exitType;
+}
+
+function hasPhysicalBlocker(lead: ImportedLandLead): boolean {
+  return !!lead.is_land_locked || (lead.wetlands_percent ?? 0) > 25 || (lead.flood_zone_percent ?? 0) > 25 || !!lead.bad_topography;
+}
+
+function leadMatchesUnderwritingFilter(lead: ImportedLandLead, filter: ImportStatusFilter): boolean {
+  const best = bestUnderwriting(lead);
+  if (filter === "underwriting-strong") return best.status === "strong";
+  if (filter === "underwriting-possible") return best.status === "possible";
+  if (filter === "underwriting-pass") return best.status === "pass" || hasPhysicalBlocker(lead);
+  if (filter === "best-retail-resale") return bestExit(lead, "retail-resale");
+  if (filter === "best-neighbor-sale") return bestExit(lead, "neighbor-sale");
+  if (filter === "best-land-flip") return bestExit(lead, "land-flip");
+  if (filter === "best-assignment") return bestExit(lead, "assignment");
+  if (filter === "best-subdivide") return bestExit(lead, "subdivide") || !!lead.tag_subdivide || !!lead.tag_entitlement;
+  if (filter === "max-offer-50k") return (best.maxOffer ?? 0) >= 50000;
+  if (filter === "ppa-works") return best.requiredPpa !== null && best.landInsightsPpa !== null && best.landInsightsPpa >= best.requiredPpa;
+  if (filter === "needs-comp-check") {
+    const compCount = Number(lead.market_value_estimate_comp_count ?? 0);
+    return compCount < 3 || best.requiredPpa === null || best.landInsightsPpa === null || best.landInsightsPpa < best.requiredPpa;
+  }
+  if (filter === "physical-blockers") return hasPhysicalBlocker(lead);
+  return true;
+}
+
+function sortImportedLeadRows(leads: ImportedLandLead[], sort: ImportedLeadSort): ImportedLandLead[] {
+  return leads.slice().sort((a, b) => {
+    const aBest = bestUnderwriting(a);
+    const bBest = bestUnderwriting(b);
+    if (sort === "max-offer") return (bBest.maxOffer ?? -1) - (aBest.maxOffer ?? -1);
+    if (sort === "required-ppa") return (aBest.requiredPpa ?? Number.MAX_SAFE_INTEGER) - (bBest.requiredPpa ?? Number.MAX_SAFE_INTEGER);
+    if (sort === "projected-spread") return (bBest.projectedSpread ?? -1) - (aBest.projectedSpread ?? -1);
+    if (sort === "best-exit") return aBest.label.localeCompare(bBest.label);
+    if (sort === "acreage") return (b.acreage ?? 0) - (a.acreage ?? 0);
+    return (b.lead_score ?? 0) - (a.lead_score ?? 0);
+  });
+}
+
+function emptyLinkIntakeDraft(): LinkIntakeDraft {
+  return {
+    sourceUrl: "",
+    sourceSystem: "Manual Link",
+    propertyAddress: "",
+    parcelId: "",
+    ownerName: "",
+    phone: "",
+    email: "",
+    askingPrice: "",
+    acreage: "",
+    marketValue: "",
+    county: "",
+    city: "",
+    state: "",
+    zip: "",
+    zoning: "",
+    notes: "",
+  };
+}
+
 function statusLabel(value: string): string {
   return labelForStatus(value);
 }
@@ -582,16 +692,30 @@ function formatCallSeconds(seconds: number): string {
 }
 
 function normalizedPhone(value: string | null | undefined): string | null {
+  if (String(value || "").toLowerCase().startsWith("client:")) return null;
   const digits = String(value || "").replace(/\D/g, "");
   if (!digits) return null;
   if (digits.length === 10) return `+1${digits}`;
   if (digits.length === 11 && digits.startsWith("1")) return `+${digits}`;
-  return value || null;
+  return value?.startsWith("+") ? value : null;
+}
+
+function communicationPhoneCandidates(event: CommunicationEvent): Array<string | null | undefined> {
+  if (event.channel === "voice") {
+    return event.direction === "inbound"
+      ? [event.contact_number, event.from_number, event.to_number]
+      : [event.contact_number, event.to_number, event.from_number];
+  }
+  return [event.contact_number, event.direction === "inbound" ? event.from_number : event.to_number, event.from_number, event.to_number];
 }
 
 function phoneForCommunicationEvent(event: CommunicationEvent | null): string | null {
   if (!event) return null;
-  return normalizedPhone(event.contact_number || event.from_number || event.to_number);
+  for (const value of communicationPhoneCandidates(event)) {
+    const phone = normalizedPhone(value);
+    if (phone) return phone;
+  }
+  return null;
 }
 
 type ConversationItem = {
@@ -610,6 +734,7 @@ type ContactThread = {
   statusLabel: "Deal linked" | "Lead linked" | "Needs matching";
   latestEvent: CommunicationEvent;
   events: CommunicationEvent[];
+  unreadCount: number;
   latestAt: string;
   preview: string;
 };
@@ -624,8 +749,8 @@ function threadKeyForCommunicationEvent(event: CommunicationEvent): string {
   const phoneKey = phoneDigits.length > 10 ? phoneDigits.slice(-10) : phoneDigits;
   if (event.matched_deal_id) return `deal:${event.matched_deal_id}`;
   if (event.matched_lead_id) return `lead:${event.matched_lead_id}`;
-  if (event.provider_conversation_id) return `conversation:${event.provider_conversation_id}`;
   if (phoneKey) return `phone:${phoneKey}`;
+  if (event.provider_conversation_id) return `conversation:${event.provider_conversation_id}`;
   return `event:${event.id}`;
 }
 
@@ -641,13 +766,15 @@ function buildContactThreads(events: CommunicationEvent[]): ContactThread[] {
     const latestEvent = sorted[0];
     const phone = phoneForCommunicationEvent(latestEvent);
     const statusLabel: ContactThread["statusLabel"] = latestEvent.matched_deal_id ? "Deal linked" : latestEvent.matched_lead_id ? "Lead linked" : "Needs matching";
+    const unreadCount = sorted.filter(event => event.direction === "inbound" && !event.read_at).length;
     return {
       key,
       phone,
-      title: latestEvent.contact_name || latestEvent.contact_number || latestEvent.from_number || latestEvent.to_number || "Unknown contact",
+      title: latestEvent.contact_name || phone || "Unknown contact",
       statusLabel,
       latestEvent,
       events: sorted,
+      unreadCount,
       latestAt: communicationEventDate(latestEvent),
       preview: latestEvent.body || latestEvent.status || latestEvent.provider_event_type || "Conversation update",
     };
@@ -903,6 +1030,7 @@ export default function VaPage() {
   const [importStage, setImportStage] = useState<ImportStage>("idle");
   const [leadSearch, setLeadSearch] = useState("");
   const [leadFilter, setLeadFilter] = useState<ImportStatusFilter>("all");
+  const [leadSort, setLeadSort] = useState<ImportedLeadSort>("score");
   const [listsView, setListsView] = useState<ListsView>("properties");
   const [countyFilter, setCountyFilter] = useState("all");
   const [stateFilter, setStateFilter] = useState("all");
@@ -913,6 +1041,8 @@ export default function VaPage() {
   const [propertiesPerPage, setPropertiesPerPage] = useState(25);
   const [uploadSource, setUploadSource] = useState("Land Portal");
   const [uploadCampaign, setUploadCampaign] = useState("");
+  const [linkIntakeDraft, setLinkIntakeDraft] = useState<LinkIntakeDraft>(() => emptyLinkIntakeDraft());
+  const [linkIntakeSaving, setLinkIntakeSaving] = useState(false);
   const [activityDraft, setActivityDraft] = useState<{ activityType: ImportedLandLeadActivity["activity_type"]; summary: string; nextFollowUpDate: string }>({ activityType: "called", summary: "", nextFollowUpDate: "" });
   const [dispositionDraft, setDispositionDraft] = useState<{ disposition: LeadDisposition; note: string; nextFollowUpDate: string }>({ disposition: "no-answer", note: "", nextFollowUpDate: "" });
   const [smsDraft, setSmsDraft] = useState("");
@@ -1171,6 +1301,7 @@ export default function VaPage() {
       if (leadFilter === "landlocked" && !String(lead.raw_data?.["Land Locked"] ?? lead.raw_data?.["Tag:Land Locked"] ?? "").toLowerCase().startsWith("y")) return false;
       if (leadFilter === "flood" && !(toNumber(String(lead.raw_data?.["Flood Zone Percent"] ?? "")) ?? 0)) return false;
       if (leadFilter === "wetlands" && !(toNumber(String(lead.raw_data?.["Wetlands Percent"] ?? "")) ?? 0)) return false;
+      if (!leadMatchesUnderwritingFilter(lead, leadFilter)) return false;
       if (["new", "contacted", "interested", "passed"].includes(leadFilter) && lead.status !== leadFilter) return false;
       if (countyFilter !== "all" && (lead.county || "") !== countyFilter) return false;
       if (stateFilter !== "all" && (lead.state || "") !== stateFilter) return false;
@@ -1180,8 +1311,8 @@ export default function VaPage() {
       if (flagFilter !== "all" && !leadFlagLabels(lead).map(f => f.toLowerCase()).includes(flagFilter.toLowerCase())) return false;
       return importedLeadMatchesQuery(lead, query);
     });
-    return rows.sort((a, b) => (b.lead_score ?? 0) - (a.lead_score ?? 0));
-  }, [acresBucket, countyFilter, flagFilter, importedLeads, leadFilter, leadSearch, scoreBucket, selectedBatchId, stateFilter]);
+    return sortImportedLeadRows(rows, leadSort);
+  }, [acresBucket, countyFilter, flagFilter, importedLeads, leadFilter, leadSearch, leadSort, scoreBucket, selectedBatchId, stateFilter]);
 
   const countyOptions = useMemo(() => Array.from(new Set(importedLeads.map(l => l.county).filter((v): v is string => !!v))).sort(), [importedLeads]);
   const stateOptions = useMemo(() => Array.from(new Set(importedLeads.map(l => l.state).filter((v): v is string => !!v))).sort(), [importedLeads]);
@@ -1357,6 +1488,8 @@ export default function VaPage() {
     }).slice(0, 35);
   }, [recentInboundSms, unmatchedSms]);
   const filterThreadRows = useCallback((threads: ContactThread[]) => threads.filter(thread => {
+    if (contactThreadFilter === "unread" && thread.unreadCount === 0) return false;
+    if (contactThreadFilter === "read" && thread.unreadCount > 0) return false;
     if (contactThreadFilter === "needs-matching" && thread.statusLabel !== "Needs matching") return false;
     if (contactThreadFilter === "linked" && thread.statusLabel === "Needs matching") return false;
     const query = leadSearch.trim().toLowerCase();
@@ -1367,6 +1500,10 @@ export default function VaPage() {
   }), [contactThreadFilter, leadSearch]);
   const inboxThreadRows = useMemo(() => filterThreadRows(buildContactThreads(inboxEventRows)), [filterThreadRows, inboxEventRows]);
   const unmatchedThreadRows = useMemo(() => filterThreadRows(buildContactThreads(unmatchedSms)).slice(0, 25), [filterThreadRows, unmatchedSms]);
+  const activeCommunicationThread = useMemo(() => {
+    if (!activeCommunicationThreadKey) return null;
+    return [...buildContactThreads(inboxEventRows), ...buildContactThreads(unmatchedSms)].find(thread => thread.key === activeCommunicationThreadKey) ?? null;
+  }, [activeCommunicationThreadKey, inboxEventRows, unmatchedSms]);
   const activeFilterCount = [
     leadSearch.trim(),
     leadFilter !== "all" ? leadFilter : "",
@@ -1629,9 +1766,44 @@ export default function VaPage() {
   const openIncomingThread = (thread: ContactThread) => {
     openIncomingSms(thread.latestEvent);
   };
+  const markContactThreadReadState = async (thread: ContactThread, read: boolean) => {
+    const eventIds = thread.events
+      .filter(event => event.direction === "inbound")
+      .map(event => event.id);
+    const { error } = await markCommunicationEventsRead(eventIds, user, read);
+    if (error) {
+      setMessage(error);
+      return;
+    }
+    const [unmatchedRows, recentRows] = await Promise.all([
+      fetchCommunicationEvents({ unmatched: true, limit: 25 }),
+      fetchCommunicationEvents({ limit: 120 }),
+    ]);
+    setUnmatchedSms(unmatchedRows);
+    setRecentInboundSms(recentRows.filter(event => event.direction === "inbound").slice(0, 40));
+    if (activeCommunicationEvent && thread.key === threadKeyForCommunicationEvent(activeCommunicationEvent)) {
+      await refreshSelectedEventMessages(activeCommunicationEvent);
+    }
+    setMessage(read ? "Thread marked read." : "Thread marked unread.");
+  };
 
   const setUnlinkedActionMessage = (action: string) => {
     setMessage(`${action} needs a linked relationship first. Use Find Match or the selected record card to connect this contact.`);
+  };
+
+  const stageContactLogAction = (
+    activityType: ImportedLandLeadActivity["activity_type"],
+    summary: string,
+    nextFollowUpDate = "",
+  ) => {
+    setContactComposerMode("log");
+    setActivityDraft({ activityType, summary, nextFollowUpDate });
+    window.setTimeout(() => document.getElementById("va-contact-queue-log")?.focus(), 80);
+    if (selectedImportedLead || activeCommunicationEvent?.matched_deal_id) {
+      setMessage("Review the prefilled outcome and hit Save Log.");
+      return;
+    }
+    setUnlinkedActionMessage(summary || "This action");
   };
 
   const addToDailyBrief = (line: string, patch: Partial<VaDailyBriefInput> = {}) => {
@@ -1901,6 +2073,58 @@ export default function VaPage() {
     } finally {
       setImporting(false);
     }
+  };
+
+  const saveLinkIntake = async () => {
+    const sourceUrl = linkIntakeDraft.sourceUrl.trim();
+    if (!sourceUrl) {
+      setMessage("Paste the Zillow, listing, county, or property link first.");
+      return;
+    }
+    if (!linkIntakeDraft.propertyAddress.trim() && !linkIntakeDraft.parcelId.trim()) {
+      setMessage("Add at least a property address or parcel/APN before saving the link.");
+      return;
+    }
+    setLinkIntakeSaving(true);
+    setMessage("Saving the link as a property record and running underwriting.");
+    const sourceSystem = linkIntakeDraft.sourceSystem.trim() || inferLandLeadSourceFromUrl(sourceUrl);
+    const result = await createSingleLinkLandLead({
+      sourceUrl,
+      sourceSystem,
+      campaignSource: "Single Link Intake",
+      ownerName: linkIntakeDraft.ownerName,
+      phone: linkIntakeDraft.phone,
+      email: linkIntakeDraft.email,
+      propertyAddress: linkIntakeDraft.propertyAddress,
+      parcelId: linkIntakeDraft.parcelId,
+      county: linkIntakeDraft.county,
+      city: linkIntakeDraft.city,
+      state: linkIntakeDraft.state,
+      zip: linkIntakeDraft.zip,
+      acreage: toNumber(linkIntakeDraft.acreage),
+      askingPrice: toNumber(linkIntakeDraft.askingPrice),
+      marketValue: toNumber(linkIntakeDraft.marketValue),
+      zoning: linkIntakeDraft.zoning,
+      notes: linkIntakeDraft.notes,
+      actor: user || "VA",
+    });
+    if (result.error) {
+      setMessage(`Link intake failed: ${result.error}`);
+      setLinkIntakeSaving(false);
+      return;
+    }
+    const [leadRows, batchRows] = await Promise.all([fetchImportedLandLeads(1500), fetchLandLeadBatches()]);
+    const savedLead = result.leads[0];
+    setImportedLeads(leadRows);
+    setLeadBatches(batchRows);
+    setSelectedBatchId(savedLead?.batch_id ?? result.batch?.id ?? null);
+    setSelectedImportedLeadId(savedLead?.id ?? null);
+    setListsView("properties");
+    setLeadSearch("");
+    setLeadFilter("all");
+    setLinkIntakeDraft(emptyLinkIntakeDraft());
+    setMessage("Saved the link as a searchable property record. Underwriting is ready for review.");
+    setLinkIntakeSaving(false);
   };
 
   const loadImportedLead = async (lead: ImportedLandLead, markInterested = true) => {
@@ -2815,6 +3039,7 @@ export default function VaPage() {
             </select>
             <input value={activityDraft.nextFollowUpDate} onChange={event => setActivityDraft({ ...activityDraft, nextFollowUpDate: event.target.value })} type="date" />
             <textarea
+              id="va-contact-queue-log"
               rows={3}
               value={activityDraft.summary}
               onChange={event => setActivityDraft({ ...activityDraft, summary: event.target.value })}
@@ -3476,6 +3701,68 @@ export default function VaPage() {
               <MiniStat label="Deal Packets" value={String(listKpis.packets)} sub="Created" icon="package" />
             </div>
 
+            <div style={{ ...subPanel, marginBottom: 12, borderColor: "rgba(176,137,84,0.45)", background: "rgba(255,252,245,0.72)" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12, flexWrap: "wrap", marginBottom: 10 }}>
+                <div>
+                  <p style={eyebrowSmall}>Single link intake</p>
+                  <h3 style={{ ...sectionTitle, fontSize: 22 }}>Start a property from Zillow, Land.com, county GIS, or any listing link.</h3>
+                </div>
+                <button onClick={saveLinkIntake} disabled={linkIntakeSaving} style={{ ...primaryButton, opacity: linkIntakeSaving ? 0.58 : 1 }}>
+                  {linkIntakeSaving ? "Saving..." : "Save Link Property"}
+                </button>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "minmax(240px, 1.4fr) minmax(160px, 0.6fr)", gap: 10, marginBottom: 10 }} className="two-col">
+                <div>
+                  <label style={label}>Property / listing URL</label>
+                  <input
+                    value={linkIntakeDraft.sourceUrl}
+                    onChange={e => {
+                      const sourceUrl = e.target.value;
+                      setLinkIntakeDraft(prev => ({
+                        ...prev,
+                        sourceUrl,
+                        sourceSystem: prev.sourceSystem === "Manual Link" || !prev.sourceSystem ? inferLandLeadSourceFromUrl(sourceUrl) : prev.sourceSystem,
+                      }));
+                    }}
+                    placeholder="Paste Zillow, Land.com, Realtor, county GIS, map, or listing URL"
+                  />
+                </div>
+                <div>
+                  <label style={label}>Source</label>
+                  <select value={linkIntakeDraft.sourceSystem} onChange={e => setLinkIntakeDraft({ ...linkIntakeDraft, sourceSystem: e.target.value })}>
+                    {["Manual Link", "Zillow", "Land.com", "Realtor", "County GIS", "Google Maps", "Crexi", "LoopNet", "Other Listing"].map(source => (
+                      <option key={source} value={source}>{source}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1.35fr 0.65fr 0.65fr 0.65fr", gap: 10 }} className="va-form-grid">
+                <input value={linkIntakeDraft.propertyAddress} onChange={e => setLinkIntakeDraft({ ...linkIntakeDraft, propertyAddress: e.target.value })} placeholder="Property address" />
+                <input value={linkIntakeDraft.parcelId} onChange={e => setLinkIntakeDraft({ ...linkIntakeDraft, parcelId: e.target.value })} placeholder="APN / parcel" />
+                <input value={linkIntakeDraft.county} onChange={e => setLinkIntakeDraft({ ...linkIntakeDraft, county: e.target.value })} placeholder="County" />
+                <input value={linkIntakeDraft.state} onChange={e => setLinkIntakeDraft({ ...linkIntakeDraft, state: e.target.value })} placeholder="State" />
+                <input value={linkIntakeDraft.askingPrice} onChange={e => setLinkIntakeDraft({ ...linkIntakeDraft, askingPrice: e.target.value })} placeholder="Asking price" />
+                <input value={linkIntakeDraft.acreage} onChange={e => setLinkIntakeDraft({ ...linkIntakeDraft, acreage: e.target.value })} placeholder="Acres" />
+                <input value={linkIntakeDraft.marketValue} onChange={e => setLinkIntakeDraft({ ...linkIntakeDraft, marketValue: e.target.value })} placeholder="Estimated value" />
+                <input value={linkIntakeDraft.zoning} onChange={e => setLinkIntakeDraft({ ...linkIntakeDraft, zoning: e.target.value })} placeholder="Zoning" />
+                <input value={linkIntakeDraft.ownerName} onChange={e => setLinkIntakeDraft({ ...linkIntakeDraft, ownerName: e.target.value })} placeholder="Owner / seller" />
+                <input value={linkIntakeDraft.phone} onChange={e => setLinkIntakeDraft({ ...linkIntakeDraft, phone: e.target.value })} placeholder="Phone" />
+                <input value={linkIntakeDraft.email} onChange={e => setLinkIntakeDraft({ ...linkIntakeDraft, email: e.target.value })} placeholder="Email" />
+                <input value={linkIntakeDraft.city} onChange={e => setLinkIntakeDraft({ ...linkIntakeDraft, city: e.target.value })} placeholder="City" />
+                <input value={linkIntakeDraft.zip} onChange={e => setLinkIntakeDraft({ ...linkIntakeDraft, zip: e.target.value })} placeholder="ZIP" />
+              </div>
+              <textarea
+                rows={2}
+                value={linkIntakeDraft.notes}
+                onChange={e => setLinkIntakeDraft({ ...linkIntakeDraft, notes: e.target.value })}
+                placeholder="Listing notes, visible description, seller context, or what still needs to be confirmed."
+                style={{ marginTop: 10 }}
+              />
+              <p style={{ color: "var(--muted)", fontSize: 12, lineHeight: 1.45, marginTop: 8 }}>
+                This saves as a normal property record with the original URL in source fields, so it appears in search, calculator filters, property detail, and packet creation.
+              </p>
+            </div>
+
             {((importStep === "upload" && !importPreview) || (!importPreview && importedLeads.length === 0)) && (
               <div id="va-list-upload" style={{ ...subPanel, marginBottom: 12, borderColor: "var(--brass)", background: "rgba(176,137,84,0.08)" }}>
                 <div style={{ display: "grid", gridTemplateColumns: "240px minmax(0, 1fr)", gap: 14, alignItems: "stretch" }} className="two-col">
@@ -3608,7 +3895,19 @@ export default function VaPage() {
                   </div>
                   {selectedBatch && <span style={hotPill}>{batchLeads.length} in selected batch</span>}
                 </div>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(5, minmax(96px, 1fr)) minmax(240px, 2.4fr)", gap: 8, marginBottom: 12 }} className="va-form-grid">
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(7, minmax(96px, 1fr)) minmax(240px, 2.4fr)", gap: 8, marginBottom: 12 }} className="va-form-grid">
+                  <div>
+                    <label style={{ color: "var(--muted)", display: "block", fontSize: 11, fontWeight: 600, marginBottom: 4 }}>Filter</label>
+                    <select value={leadFilter} onChange={e => { setLeadFilter(e.target.value as ImportStatusFilter); setPropertiesPage(1); }}>
+                      {IMPORT_STATUS_FILTERS.map(filter => <option key={filter.value} value={filter.value}>{filter.label}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label style={{ color: "var(--muted)", display: "block", fontSize: 11, fontWeight: 600, marginBottom: 4 }}>Sort</label>
+                    <select value={leadSort} onChange={e => { setLeadSort(e.target.value as ImportedLeadSort); setPropertiesPage(1); }}>
+                      {IMPORT_LEAD_SORTS.map(sort => <option key={sort.value} value={sort.value}>{sort.label}</option>)}
+                    </select>
+                  </div>
                   <div>
                     <label style={{ color: "var(--muted)", display: "block", fontSize: 11, fontWeight: 600, marginBottom: 4 }}>County</label>
                     <select value={countyFilter} onChange={e => { setCountyFilter(e.target.value); setPropertiesPage(1); }}>
@@ -3655,7 +3954,7 @@ export default function VaPage() {
                   </div>
                 </div>
                 <div style={{ overflow: "auto", border: "1px solid var(--fog)", borderRadius: 8, background: "var(--surface)", maxHeight: 548 }}>
-                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, minWidth: 860 }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, minWidth: 1080 }}>
                     <thead>
                       <tr style={{ borderBottom: "1px solid var(--fog)", color: "var(--muted)", textAlign: "left" }}>
                         <th style={{ ...th, width: 28 }}></th>
@@ -3664,6 +3963,7 @@ export default function VaPage() {
                         <th style={th}>County</th>
                         <th style={th}>Acres</th>
                         <th style={th}>Score</th>
+                        <th style={th}>Calculator</th>
                         <th style={th}>Owner / Contact</th>
                         <th style={th}>Status</th>
                         <th style={{ ...th, whiteSpace: "nowrap" }}>Linked Deal</th>
@@ -3693,6 +3993,7 @@ export default function VaPage() {
                             <td style={td}>{lead.county || "N/A"}</td>
                             <td style={td}>{lead.acreage ?? "N/A"}</td>
                             <td style={{ ...td, color: scoreColor, fontWeight: 800 }}>{lead.lead_score ?? 0}</td>
+                            <td style={{ ...td, minWidth: 220 }}><LandUnderwritingPanel lead={lead} compact /></td>
                             <td style={td}>{lead.owner_name || "Owner unknown"}<br /><span style={{ color: "var(--muted)" }}>{lead.phone || lead.phone_2 || "No phone"}</span></td>
                             <td style={td}><span style={statusPillStyle(lead.status)}>{statusLabel(lead.status)}</span></td>
                             <td style={td}>{lead.deal_id ? (
@@ -3788,6 +4089,7 @@ export default function VaPage() {
                         {fieldCell("HOA", hoaLabel)}
                         {fieldCell("Last Sale", lastSale)}
                       </div>
+                      <LandUnderwritingPanel lead={lead} compact />
                       <div>
                         <p style={{ ...miniLabel, color: "var(--muted)", marginBottom: 6 }}>Flags</p>
                         <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
@@ -3834,7 +4136,7 @@ export default function VaPage() {
                       <div>
                         <p style={{ ...miniLabel, color: "var(--muted)", marginBottom: 6 }}>Quick Actions</p>
                         <div style={{ display: "grid", gap: 8, gridTemplateColumns: "1fr 1fr" }}>
-                          <button onClick={() => router.push(`/lead/${lead.id}`)} style={{ ...compactButton, alignItems: "center", display: "inline-flex", gap: 7, justifyContent: "center" }}>
+                          <button onClick={() => router.push(`/lead/${lead.id}?tab=research`)} style={{ ...compactButton, alignItems: "center", display: "inline-flex", gap: 7, justifyContent: "center" }}>
                             <Icon name="document" size={13} /> Open Property Record
                           </button>
                           <button onClick={() => setListsView("contacts")} style={{ ...compactButton, alignItems: "center", display: "inline-flex", gap: 7, justifyContent: "center" }}>
@@ -4038,13 +4340,15 @@ export default function VaPage() {
                 </div>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 8 }} className="number-grid">
                   <MiniStat label="CSV rows" value={String(importPreview.rowsFound)} />
+                  <MiniStat label="Columns mapped" value={`${importPreview.sourceColumnsMapped}/${importPreview.sourceColumnCount}`} />
+                  <MiniStat label="Calc fields" value={String(importPreview.calculatorReadyColumnCount)} />
                   <MiniStat label="Properties" value={String(importPreview.propertyRows)} />
                   <MiniStat label="Unique leads" value={String(importPreview.uniqueLeadCount)} />
                   <MiniStat label="Textable leads" value={String(importPreview.textableLeadCount)} />
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 8, marginTop: 8 }} className="number-grid">
                   <MiniStat label="Multi-property" value={String(importPreview.multiPropertyLeadCount)} />
                   <MiniStat label="New properties" value={String(importPreview.safeToImport)} />
-                </div>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8, marginTop: 8 }} className="number-grid">
                   <MiniStat label="Exact match" value={String(importPreview.exactDuplicates)} />
                   <MiniStat label="Possible match" value={String(Math.max(0, importPreview.possibleDuplicates - importPreview.exactDuplicates))} />
                   <MiniStat label="No phone" value={String(importPreview.missingPhone)} />
@@ -4244,6 +4548,8 @@ export default function VaPage() {
                         Thread Status
                         <select value={contactThreadFilter} onChange={e => setContactThreadFilter(e.target.value as ContactThreadFilter)} style={{ fontSize: 13 }}>
                           <option value="all">All threads</option>
+                          <option value="unread">Unread</option>
+                          <option value="read">Read</option>
                           <option value="needs-matching">Needs matching</option>
                           <option value="linked">Linked</option>
                         </select>
@@ -4252,6 +4558,12 @@ export default function VaPage() {
                         Lead Status
                         <select value={leadFilter} onChange={e => setLeadFilter(e.target.value as ImportStatusFilter)} style={{ fontSize: 13 }}>
                           {IMPORT_STATUS_FILTERS.map(filter => <option key={filter.value} value={filter.value}>{filter.label}</option>)}
+                        </select>
+                      </label>
+                      <label style={{ display: "grid", gap: 5, color: "var(--muted)", fontSize: 11, fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase" }}>
+                        Sort
+                        <select value={leadSort} onChange={e => setLeadSort(e.target.value as ImportedLeadSort)} style={{ fontSize: 13 }}>
+                          {IMPORT_LEAD_SORTS.map(sort => <option key={sort.value} value={sort.value}>{sort.label}</option>)}
                         </select>
                       </label>
                       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
@@ -4288,6 +4600,7 @@ export default function VaPage() {
                           onClick={() => {
                             setLeadSearch("");
                             setLeadFilter("all");
+                            setLeadSort("score");
                             setAcresBucket("any");
                             setScoreBucket("any");
                             setFlagFilter("all");
@@ -4328,6 +4641,11 @@ export default function VaPage() {
                           {thread.statusLabel}
                         </span>
                       </div>
+                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 6 }}>
+                        <span style={thread.unreadCount ? hotPill : pill}>
+                          {thread.unreadCount ? `${thread.unreadCount} unread` : "Read"}
+                        </span>
+                      </div>
                       <p style={{ color: "var(--ink)", fontSize: 12, lineHeight: 1.35, marginTop: 6 }}>
                         {thread.preview}
                       </p>
@@ -4344,6 +4662,11 @@ export default function VaPage() {
                           </p>
                         </div>
                         <span style={hotPill}>Needs matching</span>
+                      </div>
+                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 6 }}>
+                        <span style={thread.unreadCount ? hotPill : pill}>
+                          {thread.unreadCount ? `${thread.unreadCount} unread` : "Read"}
+                        </span>
                       </div>
                       <p style={{ color: "var(--ink)", fontSize: 12, lineHeight: 1.45, marginTop: 8 }}>{thread.preview}</p>
                     </button>
@@ -4457,6 +4780,15 @@ export default function VaPage() {
                         </p>
                       </div>
                       <div style={{ display: "flex", gap: 8, alignItems: "center", position: "relative" }}>
+                        {activeCommunicationThread && (
+                          <button
+                            type="button"
+                            onClick={() => void markContactThreadReadState(activeCommunicationThread, activeCommunicationThread.unreadCount > 0)}
+                            style={compactButton}
+                          >
+                            {activeCommunicationThread.unreadCount > 0 ? "Mark Read" : "Mark Unread"}
+                          </button>
+                        )}
                         <TwilioCallButton
                           toNumber={activeCommunicationEvent.contact_number || activeCommunicationEvent.from_number || activeCommunicationEvent.to_number}
                           dealId={activeCommunicationEvent.matched_deal_id}
@@ -4613,9 +4945,9 @@ export default function VaPage() {
                           dealId={activeCommunicationEvent.matched_deal_id}
                         />
                         <button onClick={() => openCommsThreadForEvent(activeCommunicationEvent)} style={compactButton}>Text</button>
-                        <button onClick={() => setUnlinkedActionMessage("Voicemail drop")} style={compactButton}>Voicemail Drop</button>
-                        <button onClick={() => setUnlinkedActionMessage("Callback")} style={compactButton}>Set Callback</button>
-                        <button onClick={() => setUnlinkedActionMessage("Log outcome")} style={compactButton}>Log Outcome</button>
+                        <button onClick={() => stageContactLogAction("left-voicemail", "Left voicemail")} style={compactButton}>Voicemail Drop</button>
+                        <button onClick={() => stageContactLogAction("follow-up-set", "Callback set", addDays(2))} style={compactButton}>Set Callback</button>
+                        <button onClick={() => stageContactLogAction("called", "")} style={compactButton}>Log Outcome</button>
                       </div>
                     </section>
                     <section style={contactQueueSidePanel}>
@@ -5613,6 +5945,10 @@ function SellerCommandCenter({
               <p>Parcel: {lead.parcel_id || "Missing"}</p>
               <p>{lead.county || "County pending"} · {lead.acreage ? `${lead.acreage} acres` : "Acres pending"}</p>
             </InfoStack>
+          </div>
+
+          <div style={{ marginBottom: 12 }}>
+            <LandUnderwritingPanel lead={lead} compact />
           </div>
 
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>

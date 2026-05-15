@@ -44,6 +44,18 @@ function last10(value: string | null | undefined): string {
   return d.length > 10 ? d.slice(-10) : d;
 }
 
+function isClientAddress(value: string | null | undefined): boolean {
+  return String(value || "").toLowerCase().startsWith("client:");
+}
+
+function firstCallableNumber(values: Array<string | null | undefined>): string | null {
+  for (const value of values) {
+    if (isClientAddress(value)) continue;
+    if (normalizeUsPhone(value)) return value ?? null;
+  }
+  return null;
+}
+
 function escapeXml(value: string): string {
   return value
     .replace(/&/g, "&amp;")
@@ -183,7 +195,9 @@ export async function twilioFormToVoiceEvent(formData: FormData, directionHint: 
   const leadId = text(formData.get("leadId"));
   const dealId = text(formData.get("dealId"));
   const direction = text(formData.get("Direction"))?.includes("inbound") ? "inbound" : directionHint;
-  const contactNumber = direction === "inbound" ? from : to;
+  const contactNumber = direction === "inbound"
+    ? firstCallableNumber([from, to])
+    : firstCallableNumber([to, from]);
   const phone = last10(contactNumber);
 
   return {

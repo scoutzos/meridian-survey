@@ -57,6 +57,19 @@ function displayPhone(value: string | null | undefined): string {
   return `(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}`;
 }
 
+function isClientAddress(value: string | null | undefined): boolean {
+  return String(value || "").toLowerCase().startsWith("client:");
+}
+
+function firstPhoneCandidate(values: Array<string | null | undefined>): string {
+  for (const value of values) {
+    if (isClientAddress(value)) continue;
+    const phone = last10(value);
+    if (phone) return phone;
+  }
+  return "";
+}
+
 function callablePhone(value: string | null | undefined): string {
   const d = digits(value);
   if (d.length === 10) return `+1${d}`;
@@ -88,7 +101,12 @@ function eventTime(event: CommunicationEvent): string {
 }
 
 function contactPhoneFor(event: CommunicationEvent): string {
-  return last10(event.contact_number || (event.direction === "inbound" ? event.from_number : event.to_number));
+  if (event.channel === "voice") {
+    return event.direction === "inbound"
+      ? firstPhoneCandidate([event.contact_number, event.from_number, event.to_number])
+      : firstPhoneCandidate([event.contact_number, event.to_number, event.from_number]);
+  }
+  return firstPhoneCandidate([event.contact_number, event.direction === "inbound" ? event.from_number : event.to_number, event.from_number, event.to_number]);
 }
 
 function sentByLabel(event: CommunicationEvent): string | null {
@@ -98,18 +116,39 @@ function sentByLabel(event: CommunicationEvent): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
+function normalizedStatus(event: CommunicationEvent): string {
+  return (event.status || event.raw_payload?.CallStatus || event.raw_payload?.DialCallStatus || event.provider_event_type || "")
+    .toString()
+    .toLowerCase();
+}
+
 function eventLabel(event: CommunicationEvent): string {
   if (event.channel === "voice") {
+    const status = normalizedStatus(event);
     if (event.provider_event_type === "call-recording") return "Recording";
+    if (event.direction === "inbound" && ["no-answer", "busy", "failed", "canceled", "cancelled", "missed"].includes(status)) return "Missed call";
     if (event.direction === "inbound") return "Inbound call";
     if (event.direction === "outbound") return "Outbound call";
+    if (status === "no-answer") return "No answer";
+    if (status === "busy") return "Busy call";
+    if (status === "failed") return "Failed call";
     return "Call update";
   }
   return event.direction === "inbound" ? "Seller" : "Meridian";
 }
 
 function eventBody(event: CommunicationEvent): string {
-  if (event.channel === "voice") return event.body || event.status || "Call update";
+  if (event.channel === "voice") {
+    const status = normalizedStatus(event);
+    const duration = event.raw_payload?.CallDuration || event.raw_payload?.DialCallDuration;
+    const seconds = typeof duration === "string" && duration.trim() ? duration.trim() : event.body?.match(/·\s*(\d+)s/)?.[1];
+    const suffix = seconds ? ` · ${seconds}s` : "";
+    if (event.provider_event_type === "call-recording") return event.body || `Recording ${event.status || "saved"}`;
+    if (event.direction === "inbound" && ["no-answer", "busy", "failed", "canceled", "cancelled", "missed"].includes(status)) return `Missed inbound call${suffix}`;
+    if (event.direction === "inbound") return `Inbound call ${event.status || "updated"}${suffix}`;
+    if (event.direction === "outbound") return `Outbound call ${event.status || "updated"}${suffix}`;
+    return event.body || event.status || "Call update";
+  }
   return event.body || event.status || "SMS update";
 }
 
@@ -119,7 +158,13 @@ function recordingUrl(event: CommunicationEvent): string | null {
   ) as Record<string, unknown> | undefined;
   const mp3Url = typeof recording?.mp3Url === "string" ? recording.mp3Url : null;
   const url = typeof recording?.url === "string" ? recording.url : null;
-  return mp3Url || url;
+  const rawUrl = mp3Url || url;
+  if (!rawUrl) return null;
+  const recordingSid = typeof recording?.recordingSid === "string" ? recording.recordingSid : rawUrl.match(/\/Recordings\/(RE[a-zA-Z0-9]+)/)?.[1];
+  if (recordingSid && (recording?.provider === "twilio" || rawUrl.includes("api.twilio.com"))) {
+    return `/api/twilio/voice/recording-audio?sid=${encodeURIComponent(recordingSid)}`;
+  }
+  return rawUrl;
 }
 
 type ReadState = Record<string, string>;
@@ -436,6 +481,14 @@ export default function FloatingSmsWindow({
     setPhoneState("offline");
     setPhoneMessage("Phone is offline.");
   }, [user]);
+
+  const endActiveCall = useCallback(() => {
+    callRef.current?.disconnect();
+    callRef.current = null;
+    setActiveCallStartedAt(null);
+    setPhoneState(deviceRef.current ? "online" : "offline");
+    setPhoneMessage(deviceRef.current ? "Call ended. Online for calls." : "Call ended.");
+  }, []);
 
   const startCall = useCallback(async (toNumber: string, leadId?: string | null, dealId?: string | null) => {
     const normalized = last10(toNumber);
@@ -762,8 +815,8 @@ export default function FloatingSmsWindow({
                     <button type="button" onClick={() => callRef.current?.accept()} style={phonePrimary}>Accept</button>
                     <button type="button" onClick={() => callRef.current?.reject()} style={phoneSecondary}>Decline</button>
                   </>
-                ) : phoneState === "in-call" ? (
-                  <button type="button" onClick={() => callRef.current?.disconnect()} style={phonePrimary}>Hang Up</button>
+                ) : phoneState === "connecting" || phoneState === "in-call" ? (
+                  <button type="button" onClick={endActiveCall} style={phonePrimary}>Hang Up</button>
                 ) : (
                   <button type="button" onClick={goOffline} style={phoneSecondary}>Go Offline</button>
                 )}
@@ -910,7 +963,7 @@ export default function FloatingSmsWindow({
                       <div key={event.id} style={{ ...bubble, ...(event.direction === "outbound" ? outgoing : event.channel === "voice" ? callBubble : incoming) }}>
                         <strong style={messageLabel}>{eventLabel(event)}</strong>
                         <p style={{ margin: "4px 0 0" }}>{eventBody(event)}</p>
-                        {audioUrl && <a href={audioUrl} target="_blank" rel="noreferrer" style={recordingLink}>Open recording</a>}
+                        {audioUrl && <audio controls preload="none" src={audioUrl} style={recordingPlayer} />}
                         <span style={bubbleTime}>
                           {formatTime(eventTime(event))}
                           {sentByLabel(event) ? ` · Sent by ${sentByLabel(event)}` : event.direction === "outbound" ? " · Sent from Meridian" : ""}
@@ -1390,13 +1443,11 @@ const messageLabel: CSSProperties = {
   textTransform: "uppercase",
 };
 
-const recordingLink: CSSProperties = {
-  color: "var(--obsidian)",
-  display: "inline-block",
-  fontSize: 12,
-  fontWeight: 800,
+const recordingPlayer: CSSProperties = {
+  display: "block",
   marginTop: 7,
-  textDecoration: "underline",
+  maxWidth: "100%",
+  width: "100%",
 };
 
 const bubbleTime: CSSProperties = {
