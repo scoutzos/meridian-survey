@@ -2081,12 +2081,8 @@ export default function VaPage() {
       setMessage("Paste the Zillow, listing, county, or property link first.");
       return;
     }
-    if (!linkIntakeDraft.propertyAddress.trim() && !linkIntakeDraft.parcelId.trim()) {
-      setMessage("Add at least a property address or parcel/APN before saving the link.");
-      return;
-    }
     setLinkIntakeSaving(true);
-    setMessage("Saving the link as a property record and running underwriting.");
+    setMessage("Saving the link as a property record and checking for address details.");
     const sourceSystem = linkIntakeDraft.sourceSystem.trim() || inferLandLeadSourceFromUrl(sourceUrl);
     const result = await createSingleLinkLandLead({
       sourceUrl,

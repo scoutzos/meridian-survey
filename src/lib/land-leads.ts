@@ -1109,6 +1109,47 @@ function singleLinkRawData(input: SingleLinkLandLeadInput): Record<string, strin
   };
 }
 
+function titleCaseAddressPart(value: string): string {
+  const keepUpper = new Set(["NE", "NW", "SE", "SW", "N", "S", "E", "W", "GA", "RD", "DR", "ST", "CT", "LN", "CIR", "AVE", "HWY", "PKWY"]);
+  return value
+    .split(/\s+/)
+    .filter(Boolean)
+    .map(part => {
+      const upper = part.toUpperCase();
+      if (keepUpper.has(upper)) return upper;
+      return part.charAt(0).toUpperCase() + part.slice(1).toLowerCase();
+    })
+    .join(" ");
+}
+
+function listingUrlHints(sourceUrl: string): Partial<SingleLinkLandLeadInput> {
+  try {
+    const url = new URL(sourceUrl);
+    const parts = url.pathname.split("/").filter(Boolean).map(part => decodeURIComponent(part));
+    const homeDetailsIndex = parts.findIndex(part => part.toLowerCase() === "homedetails");
+    const slug = homeDetailsIndex >= 0 ? parts[homeDetailsIndex + 1] : null;
+    if (!slug) return {};
+    const cleanedSlug = slug
+      .replace(/_\d+_zpid$/i, "")
+      .replace(/_zpid$/i, "")
+      .replace(/\.(html?)$/i, "");
+    const tokens = cleanedSlug.split("-").filter(Boolean);
+    const zip = tokens.at(-1);
+    const state = tokens.at(-2);
+    if (!zip || !/^\d{5}$/.test(zip) || !state || !/^[A-Za-z]{2}$/.test(state)) return {};
+    const cityToken = tokens.at(-3);
+    const streetTokens = tokens.slice(0, -3);
+    return {
+      propertyAddress: streetTokens.length ? titleCaseAddressPart(streetTokens.join(" ")) : null,
+      city: cityToken ? titleCaseAddressPart(cityToken) : null,
+      state: state.toUpperCase(),
+      zip,
+    };
+  } catch {
+    return {};
+  }
+}
+
 export async function createSingleLinkLandLead(input: SingleLinkLandLeadInput): Promise<LeadImportResult> {
   const url = input.sourceUrl.trim();
   if (!url) return { batch: null, leads: [], error: "Paste a property or listing link first." };
@@ -1116,7 +1157,17 @@ export async function createSingleLinkLandLead(input: SingleLinkLandLeadInput): 
   const now = new Date().toISOString();
   const sourceSystem = input.sourceSystem?.trim() || inferLandLeadSourceFromUrl(url);
   const campaignSource = input.campaignSource?.trim() || "Single Link Intake";
-  const rawData = singleLinkRawData({ ...input, sourceSystem, campaignSource });
+  const hints = listingUrlHints(url);
+  const enrichedInput = {
+    ...input,
+    propertyAddress: input.propertyAddress?.trim() || hints.propertyAddress || null,
+    city: input.city?.trim() || hints.city || null,
+    state: input.state?.trim() || hints.state || null,
+    zip: input.zip?.trim() || hints.zip || null,
+    sourceSystem,
+    campaignSource,
+  };
+  const rawData = singleLinkRawData(enrichedInput);
 
   const batchSeed = {
     source_system: sourceSystem,
