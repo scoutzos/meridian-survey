@@ -4045,7 +4045,7 @@ export default function VaPage() {
             )}
 
             {listsView === "properties" && (
-            <div style={{ background: "rgba(255,252,245,0.42)", border: "1px solid var(--fog)", borderRadius: 8, display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(310px, 348px)", marginBottom: 12, overflow: "hidden" }} className="va-form-grid">
+            <div style={{ borderBottom: "1px solid var(--fog)", borderTop: "1px solid var(--fog)", display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(330px, 380px)", margin: "0 -8px 12px", minHeight: "calc(100vh - 285px)" }} className="va-form-grid">
               <section style={{ display: "flex", flexDirection: "column", minWidth: 0 }}>
                 <div style={{ alignItems: "center", borderBottom: "1px solid var(--fog)", display: "flex", gap: 12, justifyContent: "space-between", padding: "12px 14px" }}>
                   <div style={{ minWidth: 0 }}>
@@ -4135,7 +4135,7 @@ export default function VaPage() {
                   </div>
                 )}
                 </div>
-                <div style={{ background: "var(--surface)", maxHeight: "min(58vh, 560px)", overflow: "auto" }}>
+                <div style={{ background: "rgba(255,252,245,0.30)", flex: 1, maxHeight: "min(68vh, 720px)", overflow: "auto" }}>
                   <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, minWidth: 900 }}>
                     <thead>
                       <tr style={{ borderBottom: "1px solid var(--fog)", color: "var(--muted)", textAlign: "left" }}>
@@ -4213,7 +4213,7 @@ export default function VaPage() {
                 </div>
               </section>
 
-              <aside style={{ alignSelf: "stretch", background: "rgba(255,252,245,0.66)", borderLeft: "1px solid var(--fog)", maxHeight: "calc(100vh - 210px)", minWidth: 0, overflowY: "auto", position: "sticky", top: 16 }}>
+              <aside style={{ alignSelf: "stretch", background: "transparent", borderLeft: "1px solid var(--fog)", maxHeight: "calc(100vh - 180px)", minWidth: 0, overflowY: "auto", position: "sticky", top: 16 }}>
                 {!listPreviewLead ? (
                   <div>
                     <div style={{ padding: "14px 16px 16px" }}>
