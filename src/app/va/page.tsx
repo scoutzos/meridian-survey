@@ -41,6 +41,7 @@ import {
   fetchLandLeadBatches,
   fetchImportedLandLeads,
   fetchImportedLandLeadListMetrics,
+  hasImportedLeadOwnerIdentity,
   inferLandLeadSourceFromUrl,
   importedLeadContactIdentityKey,
   leadToDealDraft,
@@ -237,9 +238,30 @@ const LIST_RECORD_SORTS: Array<{ value: ListRecordSort; label: string }> = [
   { value: "status", label: "Record status" },
 ];
 
+const LIST_CONTACT_FILTERS: Array<{ value: ListRelationshipFilter; label: string }> = [
+  { value: "all", label: "All contacts" },
+  { value: "textable", label: "Textable" },
+  { value: "missing-phone", label: "Missing phone" },
+  { value: "missing-email", label: "Missing email" },
+  { value: "multi-property", label: "Multi-property" },
+  { value: "linked", label: "Linked" },
+  { value: "unlinked", label: "Unlinked" },
+  { value: "needs-cleanup", label: "Needs cleanup" },
+];
+
+const LIST_CONTACT_SORTS: Array<{ value: ListRelationshipSort; label: string }> = [
+  { value: "last-touch", label: "Last touch" },
+  { value: "property-count", label: "Property count" },
+  { value: "owner", label: "Owner name" },
+  { value: "source-list", label: "Source list" },
+  { value: "textable", label: "Textable first" },
+];
+
 type ImportStatusFilter = typeof IMPORT_STATUS_FILTERS[number]["value"];
 type ImportedLeadSort = "score" | "max-offer" | "required-ppa" | "projected-spread" | "best-exit" | "acreage";
 type ListRecordSort = "newest" | "source-list" | "property" | "owner" | "county" | "acreage" | "status";
+type ListRelationshipFilter = "all" | "textable" | "missing-phone" | "missing-email" | "multi-property" | "linked" | "unlinked" | "needs-cleanup";
+type ListRelationshipSort = "last-touch" | "property-count" | "owner" | "source-list" | "textable";
 type ListOwnerLocationFilter = "all" | "out-of-state" | "out-of-county" | "local";
 type ListContactFilter = "all" | "phone" | "email" | "phone-or-email" | "mailing-address" | "no-contact";
 type ListOwnershipFilter = "all" | "multi-property" | "single-property";
@@ -1100,6 +1122,11 @@ export default function VaPage() {
   const [listRecordSort, setListRecordSort] = useState<ListRecordSort>("newest");
   const [propertiesPage, setPropertiesPage] = useState(1);
   const [propertiesPerPage, setPropertiesPerPage] = useState(25);
+  const [listContactSearch, setListContactSearch] = useState("");
+  const [listRelationshipFilter, setListRelationshipFilter] = useState<ListRelationshipFilter>("all");
+  const [listRelationshipSort, setListRelationshipSort] = useState<ListRelationshipSort>("last-touch");
+  const [contactsPage, setContactsPage] = useState(1);
+  const [contactsPerPage, setContactsPerPage] = useState(25);
   const [uploadSource, setUploadSource] = useState("Land Portal");
   const [uploadCampaign, setUploadCampaign] = useState("");
   const [linkIntakeDraft, setLinkIntakeDraft] = useState<LinkIntakeDraft>(() => emptyLinkIntakeDraft());
@@ -1345,6 +1372,13 @@ export default function VaPage() {
   }, [activeTab, recentInboundSms, selectedCommunicationEvent, selectedImportedLead, unmatchedSms]);
   const activeCommunicationThreadKey = activeCommunicationEvent ? threadKeyForCommunicationEvent(activeCommunicationEvent) : null;
   const selectedBatch = useMemo(() => leadBatches.find(batch => batch.id === selectedBatchId) ?? null, [leadBatches, selectedBatchId]);
+  const leadBatchLabelById = useMemo(() => new Map(leadBatches.map(batch => [
+    batch.id,
+    batch.campaign_source || batch.original_filename || batch.source_system || "",
+  ])), [leadBatches]);
+  const listSourceLabel = useCallback((lead: ImportedLandLead) => (
+    lead.campaign_source || (lead.batch_id ? leadBatchLabelById.get(lead.batch_id) : "") || lead.source_system || "Imported list"
+  ), [leadBatchLabelById]);
   const listOwnerCounts = useMemo(() => {
     const counts = new Map<string, number>();
     for (const lead of importedLeads) {
@@ -1584,7 +1618,6 @@ export default function VaPage() {
     const state = leads.find(lead => lead.state)?.state ?? null;
     return { batch, leads, textable, duplicates, county, state };
   }), [importedLeads, leadBatches]);
-  const selectedContactProperties = selectedImportedLead ? contactRelationshipRows.find(row => row.leads.some(lead => lead.id === selectedImportedLead.id))?.leads ?? [selectedImportedLead] : [];
   const listKpis = {
     batches: leadBatches.length,
     properties: importedLeadMetrics?.properties ?? importedLeads.length,
@@ -1592,6 +1625,55 @@ export default function VaPage() {
     textable: categorizeForBulkSms(importedLeads).eligible.length,
     packets: importedLeads.filter(lead => lead.deal_id || lead.status === "converted").length,
   };
+  const listFilteredContactRelationships = useMemo(() => {
+    const query = listContactSearch.trim().toLowerCase();
+    const rows = contactRelationshipRows.filter(row => {
+      const hasPhone = row.leads.some(lead => Boolean(lead.phone || lead.phone_2));
+      const hasEmail = row.leads.some(lead => Boolean(lead.email));
+      const hasLinkedPacket = row.leads.some(lead => Boolean(lead.deal_id));
+      const missingOwner = !hasImportedLeadOwnerIdentity(row.primary.owner_name);
+      const needsCleanup = missingOwner || !hasPhone || row.leads.some(lead => lead.duplicate_status && lead.duplicate_status !== "new");
+      if (listRelationshipFilter === "textable" && !row.textable) return false;
+      if (listRelationshipFilter === "missing-phone" && hasPhone) return false;
+      if (listRelationshipFilter === "missing-email" && hasEmail) return false;
+      if (listRelationshipFilter === "multi-property" && row.propertyCount < 2) return false;
+      if (listRelationshipFilter === "linked" && !hasLinkedPacket) return false;
+      if (listRelationshipFilter === "unlinked" && hasLinkedPacket) return false;
+      if (listRelationshipFilter === "needs-cleanup" && !needsCleanup) return false;
+      if (!query) return true;
+      const haystack = [
+        row.primary.owner_name,
+        row.primary.phone,
+        row.primary.phone_2,
+        row.primary.email,
+        listSourceLabel(row.primary),
+        ...row.leads.flatMap(lead => [
+          lead.property_address,
+          lead.parcel_id,
+          lead.county,
+          lead.city,
+          lead.state,
+          lead.zip,
+        ]),
+      ].filter(Boolean).join(" ").toLowerCase();
+      return haystack.includes(query);
+    });
+    return rows.slice().sort((a, b) => {
+      if (listRelationshipSort === "property-count") return b.propertyCount - a.propertyCount || (b.highestScore ?? 0) - (a.highestScore ?? 0);
+      if (listRelationshipSort === "owner") return (a.primary.owner_name || "").localeCompare(b.primary.owner_name || "", undefined, { sensitivity: "base" });
+      if (listRelationshipSort === "source-list") return listSourceLabel(a.primary).localeCompare(listSourceLabel(b.primary), undefined, { sensitivity: "base" });
+      if (listRelationshipSort === "textable") return Number(b.textable) - Number(a.textable) || b.propertyCount - a.propertyCount;
+      return (Date.parse(b.latestTouch || "") || 0) - (Date.parse(a.latestTouch || "") || 0);
+    });
+  }, [contactRelationshipRows, listContactSearch, listRelationshipFilter, listRelationshipSort, listSourceLabel]);
+  const contactsTotal = listFilteredContactRelationships.length;
+  const contactsPageCount = Math.max(1, Math.ceil(contactsTotal / contactsPerPage));
+  const contactsPageSafe = Math.min(contactsPage, contactsPageCount);
+  const contactsPageStart = (contactsPageSafe - 1) * contactsPerPage;
+  const contactsPageRows = listFilteredContactRelationships.slice(contactsPageStart, contactsPageStart + contactsPerPage);
+  const contactPreviewRelationship = selectedImportedLead
+    ? contactRelationshipRows.find(row => row.leads.some(lead => lead.id === selectedImportedLead.id)) ?? contactsPageRows[0] ?? null
+    : contactsPageRows[0] ?? null;
   const priorityImportedLeads = useMemo(() => filteredImportedLeads
     .filter(lead => lead.status === "new" || lead.status === "contacted")
     .sort((a, b) => {
@@ -4393,89 +4475,229 @@ export default function VaPage() {
             )}
 
             {listsView === "batches" && (
-              <div style={{ ...subPanel, marginBottom: 12 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "baseline", marginBottom: 10 }}>
+              <div style={{ borderBottom: "1px solid var(--fog)", borderTop: "1px solid var(--fog)", margin: "0 -8px 12px", minHeight: "calc(100vh - 285px)" }}>
+                <div style={{ alignItems: "center", borderBottom: "1px solid var(--fog)", display: "flex", gap: 12, justifyContent: "space-between", padding: "12px 14px" }}>
                   <div>
-                    <p style={eyebrowSmall}>List Batches</p>
-                    <h3 style={{ ...sectionTitle, fontSize: 22 }}>{leadBatches.length} uploaded source list{leadBatches.length === 1 ? "" : "s"}</h3>
-                  </div>
-                  <button onClick={startNewImport} style={primaryButton}>Upload List</button>
-                </div>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }} className="three-col">
-                  {listBatchRows.map(({ batch, leads, textable, duplicates }) => (
-                    <div key={batch.id} style={{ ...subPanel, background: selectedBatchId === batch.id ? "rgba(176,137,84,0.12)" : "var(--surface)", borderColor: selectedBatchId === batch.id ? "var(--brass)" : "var(--fog)" }}>
-                      <button onClick={() => { setSelectedBatchId(batch.id); setListsView("properties"); setImportStep("work"); }} style={{ background: "transparent", border: "none", padding: 0, textAlign: "left", cursor: "pointer", width: "100%" }}>
-                        <p style={eyebrowSmall}>{batch.source_system}</p>
-                        <strong style={{ display: "block", color: "var(--obsidian)", fontSize: 15 }}>{batch.campaign_source || batch.original_filename || "Imported list"}</strong>
-                        <p style={{ color: "var(--muted)", fontSize: 12, marginTop: 4 }}>{formatDate(batch.created_at)} · {statusLabel(batch.status || "not-started")}</p>
-                      </button>
-                      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 6, marginTop: 10 }}>
-                        <MiniStat label="Rows" value={String(leads.length || batch.row_count)} />
-                        <MiniStat label="Textable" value={String(textable)} />
-                        <MiniStat label="Dupes" value={String(duplicates)} />
-                      </div>
-                      <div style={{ display: "flex", gap: 6, marginTop: 10, flexWrap: "wrap" }}>
-                        <button onClick={() => { setSelectedBatchId(batch.id); setListsView("properties"); }} style={compactButton}>View Properties</button>
-                        <button onClick={() => router.push(`/lists/${batch.id}`)} style={compactButton}>Open Batch</button>
-                      </div>
+                    <div style={{ alignItems: "baseline", display: "flex", flexWrap: "wrap", gap: 10 }}>
+                      <h3 style={{ color: "var(--obsidian)", fontFamily: DISPLAY_FONT, fontSize: 21, fontWeight: 500 }}>List Batches</h3>
+                      <span style={{ color: "var(--muted)", fontSize: 12 }}>{leadBatches.length.toLocaleString()} uploaded</span>
                     </div>
-                  ))}
-                  {leadBatches.length === 0 && <p style={{ color: "var(--muted)", fontSize: 13 }}>No list batches yet. Upload a CSV to start.</p>}
+                    <p style={{ color: "var(--muted)", fontSize: 11, lineHeight: 1.45, marginTop: 4 }}>
+                      Import ledger for source lists, loaded properties, textable records, duplicates, and batch status.
+                    </p>
+                  </div>
+                  <button onClick={startNewImport} style={{ ...primaryButton, minHeight: 36, padding: "8px 12px" }}>Upload List</button>
+                </div>
+                <div style={{ background: "rgba(255,252,245,0.30)", maxHeight: "min(68vh, 720px)", overflow: "auto" }}>
+                  <table style={{ borderCollapse: "collapse", fontSize: 12, minWidth: 920, width: "100%" }}>
+                    <thead>
+                      <tr style={{ borderBottom: "1px solid var(--fog)", color: "var(--muted)", textAlign: "left" }}>
+                        {["Source list", "System", "Uploaded", "Rows", "Loaded", "Textable", "Duplicates", "Status", "Actions"].map(label => (
+                          <th key={label} style={{ background: "var(--bone)", fontSize: 10, fontWeight: 800, letterSpacing: "0.13em", padding: "10px 12px", position: "sticky", textTransform: "uppercase", top: 0, zIndex: 1 }}>{label}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {listBatchRows.map(({ batch, leads, textable, duplicates }) => {
+                        const selected = selectedBatchId === batch.id;
+                        return (
+                          <tr key={batch.id} onClick={() => { setSelectedBatchId(batch.id); setListsView("properties"); setImportStep("work"); }} style={{ background: selected ? "rgba(176,137,84,0.12)" : "transparent", borderBottom: "1px solid var(--fog)", cursor: "pointer" }}>
+                            <td style={{ padding: "11px 12px", verticalAlign: "top" }}>
+                              <strong style={{ color: "var(--obsidian)", display: "block", fontSize: 13 }}>{batch.campaign_source || batch.original_filename || "Imported list"}</strong>
+                              <span style={{ color: "var(--muted)", display: "block", fontSize: 11, marginTop: 3 }}>{batch.original_filename || "Manual / system batch"}</span>
+                            </td>
+                            <td style={{ color: "var(--ink)", padding: "11px 12px", verticalAlign: "top" }}>{batch.source_system}</td>
+                            <td style={{ color: "var(--muted)", padding: "11px 12px", verticalAlign: "top" }}>{formatDate(batch.created_at)}</td>
+                            <td style={{ color: "var(--obsidian)", padding: "11px 12px", verticalAlign: "top" }}>{batch.row_count.toLocaleString()}</td>
+                            <td style={{ color: "var(--obsidian)", padding: "11px 12px", verticalAlign: "top" }}>{leads.length.toLocaleString()}</td>
+                            <td style={{ color: "var(--obsidian)", padding: "11px 12px", verticalAlign: "top" }}>{textable.toLocaleString()}</td>
+                            <td style={{ color: duplicates ? "#b94a3b" : "var(--muted)", padding: "11px 12px", verticalAlign: "top" }}>{duplicates.toLocaleString()}</td>
+                            <td style={{ padding: "11px 12px", verticalAlign: "top" }}><span style={statusPillStyle(batch.status || "not-started")}>{statusLabel(batch.status || "not-started")}</span></td>
+                            <td style={{ padding: "9px 12px", verticalAlign: "top" }}>
+                              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                                <button onClick={event => { event.stopPropagation(); setSelectedBatchId(batch.id); setListsView("properties"); }} style={{ ...compactButton, minHeight: 28, padding: "5px 8px" }}>Properties</button>
+                                <button onClick={event => { event.stopPropagation(); router.push(`/lists/${batch.id}`); }} style={{ ...compactButton, minHeight: 28, padding: "5px 8px" }}>Open</button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                  {leadBatches.length === 0 && <p style={{ color: "var(--muted)", fontSize: 13, padding: 12 }}>No list batches yet. Upload a CSV to start.</p>}
                 </div>
               </div>
             )}
 
             {listsView === "contacts" && (
-              <div style={{ ...subPanel, marginBottom: 12 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "baseline", marginBottom: 10 }}>
-                  <div>
-                    <p style={eyebrowSmall}>Contacts / Relationships</p>
-                    <h3 style={{ ...sectionTitle, fontSize: 22 }}>{contactRelationshipRows.length} owner relationship{contactRelationshipRows.length === 1 ? "" : "s"}</h3>
+              <div style={{ borderBottom: "1px solid var(--fog)", borderTop: "1px solid var(--fog)", display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(330px, 380px)", margin: "0 -8px 12px", minHeight: "calc(100vh - 285px)" }} className="va-form-grid">
+                <section style={{ display: "flex", flexDirection: "column", minWidth: 0 }}>
+                  <div style={{ alignItems: "center", borderBottom: "1px solid var(--fog)", display: "flex", gap: 12, justifyContent: "space-between", padding: "12px 14px" }}>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ alignItems: "baseline", display: "flex", flexWrap: "wrap", gap: 10 }}>
+                        <h3 style={{ color: "var(--obsidian)", fontFamily: DISPLAY_FONT, fontSize: 21, fontWeight: 500 }}>Contacts</h3>
+                        <span style={{ color: "var(--muted)", fontSize: 12 }}>{contactsTotal.toLocaleString()} visible</span>
+                      </div>
+                      <p style={{ color: "var(--muted)", fontSize: 11, lineHeight: 1.45, marginTop: 4 }}>
+                        {listKpis.contacts.toLocaleString()} contacts · {contactRelationshipRows.length.toLocaleString()} loaded · {listKpis.textable.toLocaleString()} textable records
+                      </p>
+                    </div>
+                    <button onClick={() => setMessage("Contact export is next for this relationship table.")} style={{ ...compactButton, minHeight: 32, padding: "7px 10px", whiteSpace: "nowrap" }}>Export CSV</button>
                   </div>
-                  <span style={pill}>{listKpis.textable} textable contacts/properties</span>
-                </div>
-                <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(320px, 0.72fr)", gap: 12 }} className="va-form-grid">
-                  <div style={{ display: "grid", gap: 8, maxHeight: 720, overflow: "auto", paddingRight: 2 }}>
-                    {contactRelationshipRows.slice(0, 80).map(row => (
-                      <button key={row.key} onClick={() => selectImportedLead(row.primary, "lists")} style={{ ...contactQueueCard, width: "100%", textAlign: "left", background: selectedContactProperties.some(lead => lead.id === row.primary.id) ? "rgba(176,137,84,0.12)" : "var(--surface)" }}>
-                        <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "start" }}>
-                          <div>
-                            <strong style={{ color: "var(--obsidian)", fontSize: 14 }}>{row.primary.owner_name || row.primary.phone || row.primary.phone_2 || row.primary.property_address || row.primary.parcel_id || "No owner record"}</strong>
-                            <p style={{ color: "var(--muted)", fontSize: 12, marginTop: 3 }}>{row.primary.phone || row.primary.phone_2 || "No phone"} · {row.propertyCount} propert{row.propertyCount === 1 ? "y" : "ies"}</p>
-                          </div>
-                          <span style={row.textable ? hotPill : pill}>{row.textable ? "Textable" : "Needs cleanup"}</span>
-                        </div>
-                        <p style={{ color: "var(--muted)", fontSize: 12, marginTop: 8 }}>{row.primary.property_address || row.primary.parcel_id || "No selected property"}</p>
-                      </button>
-                    ))}
+                  <div style={{ borderBottom: "1px solid var(--fog)", display: "grid", gap: 8, padding: 12 }}>
+                    <div style={{ display: "grid", gridTemplateColumns: "minmax(240px, 1fr) minmax(150px, 0.36fr) minmax(150px, 0.36fr)", gap: 8 }} className="va-form-grid">
+                      <input style={listToolbarControl} value={listContactSearch} onChange={e => { setListContactSearch(e.target.value); setContactsPage(1); }} placeholder="Search owner, phone, email, property, source..." />
+                      <select style={listToolbarControl} value={listRelationshipFilter} onChange={e => { setListRelationshipFilter(e.target.value as ListRelationshipFilter); setContactsPage(1); }} aria-label="Contact filter">
+                        {LIST_CONTACT_FILTERS.map(filter => <option key={filter.value} value={filter.value}>{filter.label}</option>)}
+                      </select>
+                      <select style={listToolbarControl} value={listRelationshipSort} onChange={e => { setListRelationshipSort(e.target.value as ListRelationshipSort); setContactsPage(1); }} aria-label="Sort contacts">
+                        {LIST_CONTACT_SORTS.map(sort => <option key={sort.value} value={sort.value}>{sort.label}</option>)}
+                      </select>
+                    </div>
                   </div>
-                  <aside style={subPanel}>
-                    {!selectedImportedLead ? (
-                      <p style={{ color: "var(--muted)", fontSize: 13 }}>Select a contact to see linked properties and actions.</p>
-                    ) : (
-                      <div style={{ display: "grid", gap: 10 }}>
-                        <p style={eyebrowSmall}>Selected Relationship</p>
-                        <h3 style={{ ...sectionTitle, fontSize: 22 }}>{selectedImportedLead.owner_name || selectedImportedLead.property_address || selectedImportedLead.parcel_id || "No owner record"}</h3>
-                        <InfoStack title="Contact">
-                          <p>{[selectedImportedLead.phone, selectedImportedLead.phone_2].filter(Boolean).join(" / ") || "Phone missing"}</p>
-                          <p>{selectedImportedLead.email || "Email missing"}</p>
-                          <p>{checkLeadSmsCompliance(selectedImportedLead).allowed ? "SMS eligible" : checkLeadSmsCompliance(selectedImportedLead).blockLabel}</p>
-                        </InfoStack>
-                        <InfoStack title="Linked Properties">
-                          {selectedContactProperties.map(lead => (
-                            <button key={lead.id} onClick={() => selectImportedLead(lead, "lists")} style={{ background: "transparent", border: "none", padding: 0, color: "var(--ink)", cursor: "pointer", textAlign: "left" }}>
-                              {lead.property_address || lead.parcel_id || "Property record"} · {lead.county || "County pending"}
-                            </button>
+                  <div style={{ background: "rgba(255,252,245,0.30)", flex: 1, maxHeight: "min(68vh, 720px)", overflow: "auto" }}>
+                    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, minWidth: 880 }}>
+                      <thead>
+                        <tr style={{ borderBottom: "1px solid var(--fog)", color: "var(--muted)", textAlign: "left" }}>
+                          {["Contact", "Phone / email", "Properties", "Source lists", "Last touch", "Status"].map(label => (
+                            <th key={label} style={{ fontSize: 10, fontWeight: 800, letterSpacing: "0.13em", padding: "10px 12px", position: "sticky", textTransform: "uppercase", top: 0, background: "var(--bone)", zIndex: 1 }}>{label}</th>
                           ))}
-                        </InfoStack>
-                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                          <button onClick={() => setListsView("properties")} style={compactButton}>View Property</button>
-                          <button onClick={() => selectImportedLead(selectedImportedLead, "outreach")} style={compactButton}>Work In Queue</button>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {contactsPageRows.map(row => {
+                          const selected = contactPreviewRelationship?.key === row.key;
+                          const hasPhone = row.leads.some(lead => Boolean(lead.phone || lead.phone_2));
+                          const missingOwner = !hasImportedLeadOwnerIdentity(row.primary.owner_name);
+                          const cleanup = missingOwner || !hasPhone || row.leads.some(lead => lead.duplicate_status && lead.duplicate_status !== "new");
+                          const linked = row.leads.some(lead => Boolean(lead.deal_id));
+                          const sourceNames = Array.from(new Set(row.leads.map(lead => listSourceLabel(lead)).filter(Boolean)));
+                          const firstProperty = row.primary.property_address || row.primary.parcel_id || row.leads.find(lead => lead.property_address || lead.parcel_id)?.property_address || "No selected property";
+                          return (
+                            <tr key={row.key} onClick={() => selectImportedLead(row.primary, "lists")} style={{ background: selected ? "rgba(176,137,84,0.12)" : "transparent", borderBottom: "1px solid var(--fog)", cursor: "pointer" }}>
+                              <td style={{ padding: "11px 12px", verticalAlign: "top" }}>
+                                <strong style={{ color: "var(--obsidian)", display: "block", fontSize: 13 }}>{row.primary.owner_name || row.primary.phone || row.primary.phone_2 || "Owner unknown"}</strong>
+                                <span style={{ color: "var(--muted)", display: "block", fontSize: 11, marginTop: 3 }}>{firstProperty}</span>
+                              </td>
+                              <td style={{ color: "var(--ink)", padding: "11px 12px", verticalAlign: "top" }}>
+                                <span style={{ display: "block" }}>{row.primary.phone || row.primary.phone_2 || "Phone missing"}</span>
+                                <span style={{ color: "var(--muted)", display: "block", marginTop: 3 }}>{row.primary.email || "Email missing"}</span>
+                              </td>
+                              <td style={{ color: "var(--obsidian)", padding: "11px 12px", verticalAlign: "top" }}>{row.propertyCount}</td>
+                              <td style={{ color: "var(--ink)", padding: "11px 12px", verticalAlign: "top" }}>
+                                {sourceNames.slice(0, 2).join(", ") || "Imported list"}
+                                {sourceNames.length > 2 ? ` +${sourceNames.length - 2}` : ""}
+                              </td>
+                              <td style={{ color: "var(--muted)", padding: "11px 12px", verticalAlign: "top" }}>{formatDate(row.latestTouch || row.primary.updated_at || row.primary.created_at)}</td>
+                              <td style={{ padding: "11px 12px", verticalAlign: "top" }}>
+                                <span style={row.textable ? goodPill : cleanup ? mutedPill : pill}>{row.textable ? "Textable" : cleanup ? "Cleanup" : "Review"}</span>
+                                {linked && <span style={{ ...pill, marginLeft: 6 }}>Linked</span>}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                    {contactsPageRows.length === 0 && <p style={{ color: "var(--muted)", fontSize: 13, padding: 12 }}>No contacts match this search.</p>}
+                  </div>
+                  <div style={{ alignItems: "center", borderTop: "1px solid var(--fog)", display: "flex", gap: 8, justifyContent: "space-between", padding: "8px 12px" }}>
+                    <span style={{ color: "var(--muted)", fontSize: 11 }}>
+                      Showing {contactsTotal ? contactsPageStart + 1 : 0}-{Math.min(contactsPageStart + contactsPerPage, contactsTotal)} of {contactsTotal.toLocaleString()}
+                    </span>
+                    <div style={{ alignItems: "center", display: "flex", gap: 6 }}>
+                      <select value={contactsPerPage} onChange={e => { setContactsPerPage(Number(e.target.value)); setContactsPage(1); }} style={{ ...listToolbarControl, minHeight: 30, padding: "4px 7px" }} aria-label="Contacts per page">
+                        {[25, 50, 100].map(size => <option key={size} value={size}>{size} / page</option>)}
+                      </select>
+                      <button onClick={() => setContactsPage(page => Math.max(1, page - 1))} disabled={contactsPageSafe <= 1} style={{ ...compactButton, minHeight: 30, opacity: contactsPageSafe <= 1 ? 0.45 : 1, padding: "6px 9px" }} aria-label="Previous contacts page">‹</button>
+                      <span style={{ color: "var(--muted)", fontSize: 11 }}>Page {contactsPageSafe} / {contactsPageCount}</span>
+                      <button onClick={() => setContactsPage(page => Math.min(contactsPageCount, page + 1))} disabled={contactsPageSafe >= contactsPageCount} style={{ ...compactButton, minHeight: 30, opacity: contactsPageSafe >= contactsPageCount ? 0.45 : 1, padding: "6px 9px" }} aria-label="Next contacts page">›</button>
+                    </div>
+                  </div>
+                </section>
+
+                <aside style={{ alignSelf: "stretch", background: "transparent", borderLeft: "1px solid var(--fog)", maxHeight: "calc(100vh - 180px)", minWidth: 0, overflowY: "auto", position: "sticky", top: 16 }}>
+                  {!contactPreviewRelationship ? (
+                    <div>
+                      <div style={{ padding: "14px 16px 16px" }}>
+                        <h3 style={{ color: "var(--obsidian)", fontFamily: DISPLAY_FONT, fontSize: 16, fontWeight: 500 }}>Contact Preview</h3>
+                      </div>
+                      <p style={{ ...listDrawerSection, color: "var(--muted)", fontSize: 13, lineHeight: 1.5 }}>No contact is available for this filtered list yet.</p>
+                    </div>
+                  ) : (() => {
+                    const row = contactPreviewRelationship;
+                    const lead = row.primary;
+                    const sms = checkLeadSmsCompliance(lead);
+                    const hasPhone = row.leads.some(item => Boolean(item.phone || item.phone_2));
+                    const hasEmail = row.leads.some(item => Boolean(item.email));
+                    const missingOwner = !hasImportedLeadOwnerIdentity(lead.owner_name);
+                    const cleanup = missingOwner || !hasPhone || row.leads.some(item => item.duplicate_status && item.duplicate_status !== "new");
+                    const sourceNames = Array.from(new Set(row.leads.map(item => listSourceLabel(item)).filter(Boolean)));
+                    const sourceSummary = sourceNames.slice(0, 3).join(", ") || "Imported list";
+                    const linkedCount = row.leads.filter(item => item.deal_id).length;
+                    const contactName = lead.owner_name || lead.phone || lead.phone_2 || "Owner unknown";
+                    const drawerMetric: React.CSSProperties = { ...listDrawerSection, gridTemplateColumns: "repeat(3, 1fr)" };
+                    const metricCell = (label: string, value: React.ReactNode) => (
+                      <div>
+                        <p style={{ ...miniLabel, color: "var(--muted)" }}>{label}</p>
+                        <strong style={{ color: "var(--obsidian)", display: "block", fontSize: 13, fontWeight: 700, marginTop: 3 }}>{value}</strong>
+                      </div>
+                    );
+                    return (
+                      <div>
+                        <div style={{ padding: "14px 16px 16px" }}>
+                          <div style={{ alignItems: "center", display: "flex", justifyContent: "space-between", gap: 8, marginBottom: 12 }}>
+                            <h3 style={{ color: "var(--obsidian)", fontFamily: DISPLAY_FONT, fontSize: 16, fontWeight: 500 }}>Contact Preview</h3>
+                            <span style={sms.allowed ? goodPill : cleanup ? mutedPill : pill}>{sms.allowed ? "Textable" : cleanup ? "Cleanup" : "Review"}</span>
+                          </div>
+                          <strong style={{ color: "var(--obsidian)", display: "block", fontFamily: DISPLAY_FONT, fontSize: 22, fontWeight: 500 }}>{contactName}</strong>
+                          <p style={{ color: "var(--ink)", fontSize: 13, lineHeight: 1.45, marginTop: 8 }}>
+                            {lead.phone || lead.phone_2 || "Phone missing"}<br />
+                            {lead.email || "Email missing"}
+                          </p>
+                        </div>
+                        <div style={drawerMetric}>
+                          {metricCell("Properties", row.propertyCount)}
+                          {metricCell("Linked", linkedCount || "—")}
+                          {metricCell("Last Touch", formatDate(row.latestTouch || lead.updated_at || lead.created_at))}
+                        </div>
+                        <div style={listDrawerSection}>
+                          <p style={listDrawerLabel}>Source Lists</p>
+                          <strong style={{ color: "var(--obsidian)", fontSize: 13 }}>{sourceSummary}</strong>
+                          {sourceNames.length > 3 && <p style={{ color: "var(--muted)", fontSize: 11 }}>+{sourceNames.length - 3} more source list{sourceNames.length - 3 === 1 ? "" : "s"}</p>}
+                        </div>
+                        <div style={listDrawerSection}>
+                          <p style={listDrawerLabel}>Data Quality</p>
+                          <div style={{ display: "grid", gap: 7 }}>
+                            <span style={{ color: missingOwner ? "#b94a3b" : "var(--ink)", fontSize: 12 }}>{missingOwner ? "Owner name needs cleanup" : "Owner name present"}</span>
+                            <span style={{ color: hasPhone ? "var(--ink)" : "#b94a3b", fontSize: 12 }}>{hasPhone ? "Phone present" : "Phone missing"}</span>
+                            <span style={{ color: hasEmail ? "var(--ink)" : "var(--muted)", fontSize: 12 }}>{hasEmail ? "Email present" : "Email missing"}</span>
+                            <span style={{ color: sms.allowed ? "#2e5a48" : "var(--muted)", fontSize: 12 }}>{sms.allowed ? "SMS eligible" : sms.blockLabel}</span>
+                          </div>
+                        </div>
+                        <div style={listDrawerSection}>
+                          <p style={listDrawerLabel}>Linked Properties</p>
+                          <div style={{ display: "grid", gap: 8 }}>
+                            {row.leads.map(item => (
+                              <button key={item.id} onClick={() => selectImportedLead(item, "lists")} style={{ background: "transparent", border: "none", borderBottom: "1px solid var(--fog)", color: "var(--ink)", cursor: "pointer", padding: "0 0 8px", textAlign: "left" }}>
+                                <strong style={{ color: "var(--obsidian)", display: "block", fontSize: 12 }}>{item.property_address || item.parcel_id || "Property record"}</strong>
+                                <span style={{ color: "var(--muted)", display: "block", fontSize: 11, marginTop: 2 }}>{[item.city, item.state].filter(Boolean).join(", ") || item.county || "Location pending"} · {item.acreage ?? "—"} acres</span>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                        <div style={listDrawerSection}>
+                          <p style={listDrawerLabel}>Quick Actions</p>
+                          <div style={{ display: "grid", gap: 8, gridTemplateColumns: "1fr 1fr" }}>
+                            <button onClick={() => { setSelectedImportedLeadId(lead.id); setListsView("properties"); }} style={compactButton}>View Properties</button>
+                            <button onClick={() => selectImportedLead(lead, "outreach")} style={compactButton}>Work Queue</button>
+                            <button onClick={() => loadImportedLead(lead, true)} style={compactButton}>{lead.deal_id ? "Open Packet" : "Create Packet"}</button>
+                            <button onClick={() => openBulkTextWorkflow(true)} style={compactButton}>Bulk Text</button>
+                          </div>
                         </div>
                       </div>
-                    )}
-                  </aside>
-                </div>
+                    );
+                  })()}
+                </aside>
               </div>
             )}
 
