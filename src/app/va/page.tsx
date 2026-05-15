@@ -1097,6 +1097,7 @@ export default function VaPage() {
   const [acresBucket, setAcresBucket] = useState("any");
   const [scoreBucket, setScoreBucket] = useState("any");
   const [flagFilter, setFlagFilter] = useState("all");
+  const [listAdvancedFiltersOpen, setListAdvancedFiltersOpen] = useState(false);
   const [listRecordSort, setListRecordSort] = useState<ListRecordSort>("newest");
   const [propertiesPage, setPropertiesPage] = useState(1);
   const [propertiesPerPage, setPropertiesPerPage] = useState(25);
@@ -3892,12 +3893,20 @@ export default function VaPage() {
               })}
             </div>
 
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(5, minmax(0, 1fr))", gap: 10, marginBottom: 14 }} className="number-grid">
-              <MiniStat label="List Batches" value={String(listKpis.batches)} sub="Uploaded" icon="folder" />
-              <MiniStat label="Property Records" value={listKpis.properties.toLocaleString()} sub="Total imported" icon="home" />
-              <MiniStat label="Contacts" value={listKpis.contacts.toLocaleString()} sub="Unique owners" icon="users" />
-              <MiniStat label="Textable" value={listKpis.textable.toLocaleString()} sub="With phone" icon="phone" />
-              <MiniStat label="Deal Packets" value={String(listKpis.packets)} sub="Created" icon="package" />
+            <div style={{ background: "rgba(255,252,245,0.52)", border: "1px solid var(--fog)", borderRadius: 8, display: "grid", gridTemplateColumns: "repeat(5, minmax(0, 1fr))", marginBottom: 12, overflow: "hidden" }} className="number-grid">
+              {[
+                { label: "Batches", value: String(listKpis.batches), sub: "Uploaded" },
+                { label: "Records", value: listKpis.properties.toLocaleString(), sub: "Imported" },
+                { label: "Contacts", value: listKpis.contacts.toLocaleString(), sub: "Owners" },
+                { label: "Textable", value: listKpis.textable.toLocaleString(), sub: "With phone" },
+                { label: "Packets", value: String(listKpis.packets), sub: "Linked" },
+              ].map((item, index) => (
+                <div key={item.label} style={{ borderLeft: index === 0 ? "none" : "1px solid var(--fog)", minHeight: 62, padding: "10px 14px" }}>
+                  <strong style={{ color: "var(--obsidian)", display: "block", fontFamily: DISPLAY_FONT, fontSize: 22, fontWeight: 500, lineHeight: 1 }}>{item.value}</strong>
+                  <span style={{ color: "var(--obsidian)", display: "block", fontSize: 12, fontWeight: 800, marginTop: 4 }}>{item.label}</span>
+                  <span style={{ color: "var(--muted)", display: "block", fontSize: 11, marginTop: 1 }}>{item.sub}</span>
+                </div>
+              ))}
             </div>
 
             {linkIntakeOpen && (
@@ -4052,7 +4061,7 @@ export default function VaPage() {
             )}
 
             {listsView === "properties" && (
-            <div style={{ display: "grid", gridTemplateColumns: "minmax(680px, 1fr) minmax(340px, 0.42fr)", gap: 12, marginBottom: 12 }} className="va-form-grid">
+            <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(320px, 360px)", gap: 12, marginBottom: 12 }} className="va-form-grid">
               <section style={subPanel}>
                 <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "baseline", flexWrap: "wrap", marginBottom: 12 }}>
                   <div style={{ alignItems: "baseline", display: "flex", gap: 10 }}>
@@ -4061,7 +4070,7 @@ export default function VaPage() {
                   </div>
                   {selectedBatch && <span style={hotPill}>{batchLeads.length} in selected batch</span>}
                 </div>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(8, minmax(112px, 1fr))", gap: 8, marginBottom: 12 }} className="va-form-grid">
+                <div style={{ display: "grid", gridTemplateColumns: "minmax(220px, 0.8fr) repeat(3, minmax(132px, 0.45fr)) auto", gap: 8, marginBottom: 8, alignItems: "end" }} className="va-form-grid">
                   <div>
                     <label style={{ color: "var(--muted)", display: "block", fontSize: 11, fontWeight: 600, marginBottom: 4 }}>Source List</label>
                     <select value={selectedBatchId || "all"} onChange={e => { setSelectedBatchId(e.target.value === "all" ? null : e.target.value); setPropertiesPage(1); }}>
@@ -4084,32 +4093,6 @@ export default function VaPage() {
                     </select>
                   </div>
                   <div>
-                    <label style={{ color: "var(--muted)", display: "block", fontSize: 11, fontWeight: 600, marginBottom: 4 }}>Acres</label>
-                    <select value={acresBucket} onChange={e => { setAcresBucket(e.target.value); setPropertiesPage(1); }}>
-                      <option value="any">Any acreage</option>
-                      <option value="lt-1">&lt; 1</option>
-                      <option value="1-5">1 – 5</option>
-                      <option value="5-25">5 – 25</option>
-                      <option value="25-plus">25+</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label style={{ color: "var(--muted)", display: "block", fontSize: 11, fontWeight: 600, marginBottom: 4 }}>Owner Type</label>
-                    <select value={listOwnerType} onChange={e => { setListOwnerType(e.target.value); setPropertiesPage(1); }}>
-                      <option value="all">All owner types</option>
-                      {listFilterOptions.ownerTypes.map(ownerType => <option key={ownerType} value={ownerType}>{ownerType}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label style={{ color: "var(--muted)", display: "block", fontSize: 11, fontWeight: 600, marginBottom: 4 }}>Owner Location</label>
-                    <select value={listOwnerLocation} onChange={e => { setListOwnerLocation(e.target.value as ListOwnerLocationFilter); setPropertiesPage(1); }}>
-                      <option value="all">All locations</option>
-                      <option value="out-of-state">Out-of-state</option>
-                      <option value="out-of-county">Out-of-county</option>
-                      <option value="local">Local</option>
-                    </select>
-                  </div>
-                  <div>
                     <label style={{ color: "var(--muted)", display: "block", fontSize: 11, fontWeight: 600, marginBottom: 4 }}>Contact</label>
                     <select value={listContactFilter} onChange={e => { setListContactFilter(e.target.value as ListContactFilter); setPropertiesPage(1); }}>
                       <option value="all">All contact fields</option>
@@ -4120,16 +4103,49 @@ export default function VaPage() {
                       <option value="no-contact">No contact fields</option>
                     </select>
                   </div>
-                  <div>
-                    <label style={{ color: "var(--muted)", display: "block", fontSize: 11, fontWeight: 600, marginBottom: 4 }}>Ownership</label>
-                    <select value={listOwnershipFilter} onChange={e => { setListOwnershipFilter(e.target.value as ListOwnershipFilter); setPropertiesPage(1); }}>
-                      <option value="all">All ownership</option>
-                      <option value="multi-property">Multi-property</option>
-                      <option value="single-property">Single-property</option>
-                    </select>
-                  </div>
+                  <button type="button" onClick={() => setListAdvancedFiltersOpen(open => !open)} style={{ ...compactButton, minHeight: 42, whiteSpace: "nowrap" }}>
+                    {listAdvancedFiltersOpen ? "Hide Filters" : "More Filters"}
+                  </button>
                 </div>
-                <div style={{ display: "grid", gridTemplateColumns: "minmax(220px, 1.4fr) minmax(140px, 0.5fr)", gap: 8, marginBottom: 12 }} className="two-col">
+                {listAdvancedFiltersOpen && (
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(132px, 1fr))", gap: 8, marginBottom: 8 }} className="va-form-grid">
+                    <div>
+                      <label style={{ color: "var(--muted)", display: "block", fontSize: 11, fontWeight: 600, marginBottom: 4 }}>Acres</label>
+                      <select value={acresBucket} onChange={e => { setAcresBucket(e.target.value); setPropertiesPage(1); }}>
+                        <option value="any">Any acreage</option>
+                        <option value="lt-1">&lt; 1</option>
+                        <option value="1-5">1 – 5</option>
+                        <option value="5-25">5 – 25</option>
+                        <option value="25-plus">25+</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label style={{ color: "var(--muted)", display: "block", fontSize: 11, fontWeight: 600, marginBottom: 4 }}>Owner Type</label>
+                      <select value={listOwnerType} onChange={e => { setListOwnerType(e.target.value); setPropertiesPage(1); }}>
+                        <option value="all">All owner types</option>
+                        {listFilterOptions.ownerTypes.map(ownerType => <option key={ownerType} value={ownerType}>{ownerType}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label style={{ color: "var(--muted)", display: "block", fontSize: 11, fontWeight: 600, marginBottom: 4 }}>Owner Location</label>
+                      <select value={listOwnerLocation} onChange={e => { setListOwnerLocation(e.target.value as ListOwnerLocationFilter); setPropertiesPage(1); }}>
+                        <option value="all">All locations</option>
+                        <option value="out-of-state">Out-of-state</option>
+                        <option value="out-of-county">Out-of-county</option>
+                        <option value="local">Local</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label style={{ color: "var(--muted)", display: "block", fontSize: 11, fontWeight: 600, marginBottom: 4 }}>Ownership</label>
+                      <select value={listOwnershipFilter} onChange={e => { setListOwnershipFilter(e.target.value as ListOwnershipFilter); setPropertiesPage(1); }}>
+                        <option value="all">All ownership</option>
+                        <option value="multi-property">Multi-property</option>
+                        <option value="single-property">Single-property</option>
+                      </select>
+                    </div>
+                  </div>
+                )}
+                <div style={{ display: "grid", gridTemplateColumns: "minmax(220px, 1.4fr) minmax(160px, 0.45fr)", gap: 8, marginBottom: 12 }} className="two-col">
                   <div>
                     <label style={{ color: "var(--muted)", display: "block", fontSize: 11, fontWeight: 600, marginBottom: 4 }}>Search</label>
                     <input value={leadSearch} onChange={e => { setLeadSearch(e.target.value); setPropertiesPage(1); }} placeholder="Search APN, address, owner, phone..." />
@@ -4142,17 +4158,15 @@ export default function VaPage() {
                   </div>
                 </div>
                 <div style={{ overflow: "auto", border: "1px solid var(--fog)", borderRadius: 8, background: "var(--surface)", maxHeight: 548 }}>
-                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, minWidth: 1080 }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, minWidth: 900 }}>
                     <thead>
                       <tr style={{ borderBottom: "1px solid var(--fog)", color: "var(--muted)", textAlign: "left" }}>
                         <th style={{ ...th, width: 28 }}></th>
-                        <th style={{ ...th, minWidth: 96, whiteSpace: "nowrap" }}>APN</th>
+                        <th style={{ ...th, minWidth: 108, whiteSpace: "nowrap" }}>APN / Source</th>
                         <th style={th}>Property</th>
-                        <th style={th}>Owner / Contact</th>
-                        <th style={th}>County</th>
+                        <th style={th}>Owner</th>
+                        <th style={th}>Location</th>
                         <th style={th}>Acres</th>
-                        <th style={th}>Source</th>
-                        <th style={th}>Owner Type</th>
                         <th style={th}>Contact</th>
                         <th style={th}>Status</th>
                         <th style={{ ...th, whiteSpace: "nowrap" }}>Linked Packet</th>
@@ -4170,6 +4184,8 @@ export default function VaPage() {
                           lead.email ? "Email" : null,
                           lead.mailing_address || lead.mail_address ? "Mail" : null,
                         ].filter(Boolean).join(" / ") || "No contact";
+                        const rowSource = lead.campaign_source || lead.source_system || "Imported list";
+                        const rowLocation = [lead.county, lead.state].filter(Boolean).join(", ") || "N/A";
                         return (
                           <tr
                             key={lead.id}
@@ -4181,13 +4197,11 @@ export default function VaPage() {
                             }}
                           >
                             <td style={td}><input type="checkbox" checked={active} readOnly /></td>
-                            <td style={{ ...td, whiteSpace: "nowrap" }}>{lead.parcel_id || "N/A"}</td>
+                            <td style={{ ...td, whiteSpace: "nowrap" }}><strong style={{ color: "var(--obsidian)" }}>{lead.parcel_id || "N/A"}</strong><br /><span style={{ color: "var(--muted)" }}>{rowSource}</span></td>
                             <td style={td}><strong style={{ color: "var(--obsidian)" }}>{lead.property_address || "No address"}</strong><br /><span style={{ color: "var(--muted)" }}>{addressLine2 || "—"}</span></td>
-                            <td style={td}>{lead.owner_name || "Owner unknown"}<br /><span style={{ color: "var(--muted)" }}>{lead.phone || lead.phone_2 || lead.email || "No contact value"}</span></td>
-                            <td style={td}>{lead.county || "N/A"}</td>
+                            <td style={td}>{lead.owner_name || "Owner unknown"}<br /><span style={{ color: "var(--muted)" }}>{lead.owner_type || (lead.owner_occupied ? "Owner occupied" : "Type missing")}</span></td>
+                            <td style={td}>{rowLocation}</td>
                             <td style={td}>{lead.acreage ?? "N/A"}</td>
-                            <td style={td}>{lead.campaign_source || lead.source_system || "Imported list"}<br /><span style={{ color: "var(--muted)" }}>{lead.source_system || "Source pending"}</span></td>
-                            <td style={td}>{lead.owner_type || (lead.owner_occupied ? "Owner occupied" : "N/A")}</td>
                             <td style={td}>{contactFields}</td>
                             <td style={td}><span style={statusPillStyle(lead.status)}>{statusLabel(lead.status)}</span></td>
                             <td style={td}>{lead.deal_id ? (
