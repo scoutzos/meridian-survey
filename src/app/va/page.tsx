@@ -1756,6 +1756,21 @@ export default function VaPage() {
     setMessage(`${action} needs a linked relationship first. Use Find Match or the selected record card to connect this contact.`);
   };
 
+  const stageContactLogAction = (
+    activityType: ImportedLandLeadActivity["activity_type"],
+    summary: string,
+    nextFollowUpDate = "",
+  ) => {
+    setContactComposerMode("log");
+    setActivityDraft({ activityType, summary, nextFollowUpDate });
+    window.setTimeout(() => document.getElementById("va-contact-queue-log")?.focus(), 80);
+    if (selectedImportedLead || activeCommunicationEvent?.matched_deal_id) {
+      setMessage("Review the prefilled outcome and hit Save Log.");
+      return;
+    }
+    setUnlinkedActionMessage(summary || "This action");
+  };
+
   const addToDailyBrief = (line: string, patch: Partial<VaDailyBriefInput> = {}) => {
     setBriefDraft(prev => ({
       ...prev,
@@ -2989,6 +3004,7 @@ export default function VaPage() {
             </select>
             <input value={activityDraft.nextFollowUpDate} onChange={event => setActivityDraft({ ...activityDraft, nextFollowUpDate: event.target.value })} type="date" />
             <textarea
+              id="va-contact-queue-log"
               rows={3}
               value={activityDraft.summary}
               onChange={event => setActivityDraft({ ...activityDraft, summary: event.target.value })}
@@ -4689,9 +4705,9 @@ export default function VaPage() {
                           dealId={activeCommunicationEvent.matched_deal_id}
                         />
                         <button onClick={() => openCommsThreadForEvent(activeCommunicationEvent)} style={compactButton}>Text</button>
-                        <button onClick={() => setUnlinkedActionMessage("Voicemail drop")} style={compactButton}>Voicemail Drop</button>
-                        <button onClick={() => setUnlinkedActionMessage("Callback")} style={compactButton}>Set Callback</button>
-                        <button onClick={() => setUnlinkedActionMessage("Log outcome")} style={compactButton}>Log Outcome</button>
+                        <button onClick={() => stageContactLogAction("left-voicemail", "Left voicemail")} style={compactButton}>Voicemail Drop</button>
+                        <button onClick={() => stageContactLogAction("follow-up-set", "Callback set", addDays(2))} style={compactButton}>Set Callback</button>
+                        <button onClick={() => stageContactLogAction("called", "")} style={compactButton}>Log Outcome</button>
                       </div>
                     </section>
                     <section style={contactQueueSidePanel}>
