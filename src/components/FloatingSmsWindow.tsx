@@ -437,6 +437,14 @@ export default function FloatingSmsWindow({
     setPhoneMessage("Phone is offline.");
   }, [user]);
 
+  const endActiveCall = useCallback(() => {
+    callRef.current?.disconnect();
+    callRef.current = null;
+    setActiveCallStartedAt(null);
+    setPhoneState(deviceRef.current ? "online" : "offline");
+    setPhoneMessage(deviceRef.current ? "Call ended. Online for calls." : "Call ended.");
+  }, []);
+
   const startCall = useCallback(async (toNumber: string, leadId?: string | null, dealId?: string | null) => {
     const normalized = last10(toNumber);
     if (!normalized) {
@@ -762,8 +770,8 @@ export default function FloatingSmsWindow({
                     <button type="button" onClick={() => callRef.current?.accept()} style={phonePrimary}>Accept</button>
                     <button type="button" onClick={() => callRef.current?.reject()} style={phoneSecondary}>Decline</button>
                   </>
-                ) : phoneState === "in-call" ? (
-                  <button type="button" onClick={() => callRef.current?.disconnect()} style={phonePrimary}>Hang Up</button>
+                ) : phoneState === "connecting" || phoneState === "in-call" ? (
+                  <button type="button" onClick={endActiveCall} style={phonePrimary}>Hang Up</button>
                 ) : (
                   <button type="button" onClick={goOffline} style={phoneSecondary}>Go Offline</button>
                 )}
