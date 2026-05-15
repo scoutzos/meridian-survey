@@ -811,13 +811,17 @@ function CrmContent() {
             </div>
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }} className="two-col">
-            <CrmList title="Contacts" items={data.contacts} render={contact => (
-              <>
-                <strong>{contact.display_name}</strong>
-                <span>{statusLabel(contact.contact_type)} · {contact.phone || contact.email || "No phone/email"}</span>
-                <span>{opportunityCountByContact[contact.id] ?? 0} linked opportunit{(opportunityCountByContact[contact.id] ?? 0) === 1 ? "y" : "ies"} · SMS {statusLabel(contact.sms_opt_status)}</span>
-              </>
-            )} onSelect={contact => setSelectedContactId(contact.id)} selectedId={selectedContact?.id} />
+            <CrmList title="Contacts" items={data.contacts} render={contact => {
+              const linkedCount = opportunityCountByContact[contact.id] ?? 0;
+              const cleanup = (!contact.phone && !contact.phone_2 && !contact.email) || contact.sms_opt_status === "unknown" || linkedCount === 0;
+              return (
+                <>
+                  <strong>{contact.display_name}</strong>
+                  <span>{statusLabel(contact.contact_type)} · {contact.company_name || contact.mailing_address || contact.phone || contact.email || "Identity details pending"}</span>
+                  <span>{linkedCount} linked opportunit{linkedCount === 1 ? "y" : "ies"} · SMS {statusLabel(contact.sms_opt_status)} · {cleanup ? "Needs cleanup" : statusLabel(contact.relationship_status || "new")}</span>
+                </>
+              );
+            }} onSelect={contact => setSelectedContactId(contact.id)} selectedId={selectedContact?.id} />
             <CrmList title="Properties" items={data.properties} render={property => (
               <>
                 <strong>{property.address || property.parcel_id || "Property record"}</strong>
@@ -1355,9 +1359,11 @@ function ContactDetailCard({
   const [draft, setDraft] = useState({
     contact_type: contact.contact_type,
     display_name: contact.display_name,
+    company_name: contact.company_name || "",
     phone: contact.phone || "",
     phone_2: contact.phone_2 || "",
     email: contact.email || "",
+    mailing_address: contact.mailing_address || "",
     county: contact.county || "",
     state: contact.state || "",
     relationship_status: contact.relationship_status || "new",
@@ -1368,12 +1374,36 @@ function ContactDetailCard({
   const linkedDeals = links
     .map(link => ({ link, deal: deals.find(deal => deal.id === link.deal_id) ?? null }))
     .filter((item): item is { link: typeof item.link; deal: NonNullable<typeof item.deal> } => !!item.deal);
+  const phoneValues = [contact.phone, contact.phone_2].filter(Boolean) as string[];
+  const lastCommunication = communications
+    .slice()
+    .sort((a, b) => (Date.parse(b.provider_created_at || b.created_at) || 0) - (Date.parse(a.provider_created_at || a.created_at) || 0))[0];
+  const recordFlags = [
+    contact.relationship_status === "do-not-contact" ? "Do not contact" : null,
+    contact.sms_opt_status === "opted-out" ? "SMS opted out" : null,
+    !phoneValues.length ? "Missing phone" : null,
+    !contact.email ? "Missing email" : null,
+    !contact.mailing_address ? "Missing mailing" : null,
+    links.length === 0 ? "Unlinked" : null,
+  ].filter(Boolean) as string[];
+  const detailGrid = (title: string, items: Array<[string, React.ReactNode]>, columns = 2) => (
+    <DetailSection title={title}>
+      <div style={{ display: "grid", gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`, gap: 10 }}>
+        {items.map(([label, value]) => <DetailLine key={label} label={label} value={value} />)}
+      </div>
+    </DetailSection>
+  );
 
   return (
     <div style={panel}>
       <p style={eyebrowSmall}>Contact record</p>
       <h3 style={smallHeading}>{contact.display_name}</h3>
       <p style={{ ...bodyText, fontSize: 12, marginTop: 4 }}>{statusLabel(contact.contact_type)} · {statusLabel(contact.relationship_status || "new")} · SMS {statusLabel(contact.sms_opt_status)}</p>
+      {recordFlags.length > 0 && (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 10 }}>
+          {recordFlags.map(flag => <span key={flag} style={flag.includes("opted") || flag.includes("Do not") ? { ...pill, color: "#9b3b2f", borderColor: "rgba(155,59,47,0.26)", background: "rgba(155,59,47,0.08)" } : pill}>{flag}</span>)}
+        </div>
+      )}
       <button onClick={() => setEditing(open => !open)} style={{ ...secondaryButton, marginTop: 10 }}>{editing ? "Close Edit" : "Edit Contact"}</button>
       {editing && (
         <div style={{ ...subPanel, marginTop: 10 }}>
@@ -1383,9 +1413,11 @@ function ContactDetailCard({
               {["seller", "buyer", "agent", "broker", "builder", "neighbor", "title", "lender", "vendor", "member", "other"].map(type => <option key={type} value={type}>{statusLabel(type)}</option>)}
             </select>
             <input value={draft.display_name} onChange={e => setDraft({ ...draft, display_name: e.target.value })} placeholder="Display name" />
+            <input value={draft.company_name} onChange={e => setDraft({ ...draft, company_name: e.target.value })} placeholder="Company / organization" />
             <input value={draft.phone} onChange={e => setDraft({ ...draft, phone: e.target.value })} placeholder="Primary phone" />
             <input value={draft.phone_2} onChange={e => setDraft({ ...draft, phone_2: e.target.value })} placeholder="Alt phone" />
             <input value={draft.email} onChange={e => setDraft({ ...draft, email: e.target.value })} placeholder="Email" />
+            <input value={draft.mailing_address} onChange={e => setDraft({ ...draft, mailing_address: e.target.value })} placeholder="Mailing address" />
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
               <input value={draft.county} onChange={e => setDraft({ ...draft, county: e.target.value })} placeholder="County" />
               <input value={draft.state} onChange={e => setDraft({ ...draft, state: e.target.value })} placeholder="State" />
@@ -1402,18 +1434,44 @@ function ContactDetailCard({
           </div>
         </div>
       )}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 12 }}>
-        <DetailLine label="Phone" value={contact.phone || contact.phone_2} />
-        <DetailLine label="Email" value={contact.email} />
-        <DetailLine label="County" value={contact.county} />
-        <DetailLine label="Last touch" value={formatDate(contact.last_contacted_at)} />
-      </div>
-      {contact.tags.length > 0 && <p style={{ ...rowMeta, marginTop: 10 }}>Tags: {contact.tags.join(", ")}</p>}
-      {contact.notes && <p style={{ ...bodyText, fontSize: 12, marginTop: 10 }}>{contact.notes}</p>}
 
       <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
+        {detailGrid("Snapshot", [
+          ["Type", statusLabel(contact.contact_type)],
+          ["Relationship", statusLabel(contact.relationship_status || "new")],
+          ["Company", contact.company_name || "N/A"],
+          ["Source", contact.source_system || "Manual / CRM"],
+          ["Tags", contact.tags.length ? contact.tags.join(", ") : "N/A"],
+          ["Created", formatDate(contact.created_at)],
+          ["Updated", formatDate(contact.updated_at)],
+          ["Updated By", contact.updated_by || "N/A"],
+        ])}
+        {detailGrid("Reachability", [
+          ["Primary Phone", contact.phone || "N/A"],
+          ["Alt Phone", contact.phone_2 || "N/A"],
+          ["Email", contact.email || "N/A"],
+          ["Mailing Address", contact.mailing_address || "N/A"],
+          ["County", contact.county || "N/A"],
+          ["State", contact.state || "N/A"],
+          ["Last Contacted", formatDate(contact.last_contacted_at)],
+          ["Last Contacted By", contact.last_contacted_by || "N/A"],
+        ])}
+        {detailGrid("Compliance & Workflow", [
+          ["SMS Status", statusLabel(contact.sms_opt_status)],
+          ["Contact Permission", contact.relationship_status === "do-not-contact" ? "Do not contact" : "Contact allowed"],
+          ["Linked Opportunities", linkedDeals.length],
+          ["Primary Links", links.filter(link => link.is_primary).length],
+          ["Recent Messages", communications.length],
+          ["Last Message", lastCommunication ? formatDate(lastCommunication.provider_created_at || lastCommunication.created_at) : "N/A"],
+        ], 3)}
+        {contact.notes && (
+          <DetailSection title="Notes">
+            <p style={{ ...bodyText, fontSize: 12 }}>{contact.notes}</p>
+          </DetailSection>
+        )}
         <HygieneChecklist items={[
           { label: "Phone or email on file", ok: Boolean(contact.phone || contact.phone_2 || contact.email) },
+          { label: "Mailing address captured", ok: Boolean(contact.mailing_address) },
           { label: "SMS status known", ok: contact.sms_opt_status !== "unknown" },
           { label: "Linked to an opportunity", ok: links.length > 0 },
           { label: "Relationship status set", ok: Boolean(contact.relationship_status) },
@@ -1425,7 +1483,8 @@ function ContactDetailCard({
                 <strong style={rowTitle}>{deal.title}</strong>
                 <span style={pill}>{statusLabel(link.role)}</span>
               </span>
-              <span style={rowMeta}>{deal.address || deal.parcel_id || "Location pending"}</span>
+              <span style={rowMeta}>{deal.address || deal.parcel_id || "Location pending"} · {statusLabel(deal.status)}</span>
+              <span style={rowMeta}>{link.is_primary ? "Primary contact" : "Secondary contact"} · {link.source_system || "CRM"}{link.relationship_notes ? ` · ${link.relationship_notes}` : ""}</span>
             </button>
           ))}
           {linkedDeals.length === 0 && <EmptyText>No linked opportunities yet.</EmptyText>}

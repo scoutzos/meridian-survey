@@ -745,6 +745,66 @@ function formatDate(iso: string): string {
   }
 }
 
+function formatMoneyValue(value: number | null | undefined): string {
+  if (typeof value !== "number" || !Number.isFinite(value)) return "—";
+  return value.toLocaleString(undefined, { style: "currency", currency: "USD", maximumFractionDigits: 0 });
+}
+
+function formatNumberValue(value: number | null | undefined, suffix = ""): string {
+  if (typeof value !== "number" || !Number.isFinite(value)) return "—";
+  return `${value.toLocaleString(undefined, { maximumFractionDigits: 2 })}${suffix}`;
+}
+
+function formatPercentValue(value: number | null | undefined): string {
+  if (typeof value !== "number" || !Number.isFinite(value)) return "—";
+  return `${value.toLocaleString(undefined, { maximumFractionDigits: 1 })}%`;
+}
+
+function formatYesNo(value: boolean | null | undefined): string {
+  if (value === true) return "Yes";
+  if (value === false) return "No";
+  return "—";
+}
+
+function fieldValue(value: string | number | boolean | null | undefined): string {
+  if (typeof value === "boolean") return formatYesNo(value);
+  if (typeof value === "number") return Number.isFinite(value) ? value.toLocaleString(undefined, { maximumFractionDigits: 2 }) : "—";
+  if (typeof value === "string" && value.trim()) return value;
+  return "—";
+}
+
+function uniqueTextValues(values: Array<string | null | undefined>): string[] {
+  const seen = new Set<string>();
+  return values
+    .map(value => value?.trim())
+    .filter((value): value is string => Boolean(value))
+    .filter(value => {
+      const key = value.toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+}
+
+function importedLeadPhoneLabels(leads: ImportedLandLead[]): string[] {
+  return uniqueTextValues(leads.flatMap(lead => [
+    lead.phone ? [lead.phone, lead.phone_1_type].filter(Boolean).join(" ") : null,
+    lead.phone_2 ? [lead.phone_2, lead.phone_2_type].filter(Boolean).join(" ") : null,
+    lead.phone_3 ? [lead.phone_3, lead.phone_3_type].filter(Boolean).join(" ") : null,
+    lead.phone_4 ? [lead.phone_4, lead.phone_4_type].filter(Boolean).join(" ") : null,
+    lead.phone_5 ? [lead.phone_5, lead.phone_5_type].filter(Boolean).join(" ") : null,
+    lead.phone_6 ? [lead.phone_6, lead.phone_6_type].filter(Boolean).join(" ") : null,
+  ]));
+}
+
+function importedLeadMailingLabels(leads: ImportedLandLead[]): string[] {
+  return uniqueTextValues(leads.map(lead => [
+    lead.mailing_address || lead.mail_address,
+    [lead.mail_city, lead.mail_state].filter(Boolean).join(", "),
+    lead.mail_zip,
+  ].filter(Boolean).join(" ")));
+}
+
 function formatQueueDueReason(dueDate: string | null | undefined): string {
   if (!dueDate) return "Why: follow-up date is due.";
   const due = new Date(`${dueDate}T00:00:00`);
@@ -4261,6 +4321,7 @@ export default function VaPage() {
                         <th style={th}>Location</th>
                         <th style={th}>Acres</th>
                         <th style={th}>Contact</th>
+                        <th style={th}>Risk</th>
                         <th style={th}>Status</th>
                         <th style={{ ...th, whiteSpace: "nowrap" }}>Linked Packet</th>
                       </tr>
@@ -4277,6 +4338,15 @@ export default function VaPage() {
                           lead.email ? "Email" : null,
                           lead.mailing_address || lead.mail_address ? "Mail" : null,
                         ].filter(Boolean).join(" / ") || "No contact";
+                        const riskFlags = [
+                          lead.tax_delinquent ? "Tax" : null,
+                          lead.is_land_locked ? "Landlocked" : null,
+                          lead.flood_zone_percent && lead.flood_zone_percent > 0 ? `Flood ${formatPercentValue(lead.flood_zone_percent)}` : null,
+                          lead.wetlands_percent && lead.wetlands_percent > 0 ? `Wetlands ${formatPercentValue(lead.wetlands_percent)}` : null,
+                          lead.in_hoa || lead.hoa_status ? "HOA" : null,
+                          lead.tag_structure ? "Structure" : null,
+                          lead.tag_odd_shape ? "Odd shape" : null,
+                        ].filter(Boolean) as string[];
                         const rowSource = lead.campaign_source || lead.source_system || "Imported list";
                         const rowLocation = [lead.county, lead.state].filter(Boolean).join(", ") || "N/A";
                         return (
@@ -4296,6 +4366,13 @@ export default function VaPage() {
                             <td style={td}>{rowLocation}</td>
                             <td style={td}>{lead.acreage ?? "N/A"}</td>
                             <td style={td}>{contactFields}</td>
+                            <td style={td}>
+                              {riskFlags.length ? (
+                                <span style={lead.tax_delinquent || lead.is_land_locked ? mutedPill : pill}>
+                                  {riskFlags.slice(0, 2).join(" · ")}{riskFlags.length > 2 ? ` +${riskFlags.length - 2}` : ""}
+                                </span>
+                              ) : <span style={{ color: "var(--muted)" }}>—</span>}
+                            </td>
                             <td style={td}><span style={statusPillStyle(lead.status)}>{statusLabel(lead.status)}</span></td>
                             <td style={td}>{lead.deal_id ? (
                               <button onClick={event => { event.stopPropagation(); openLinkedDeal(lead.deal_id); }} style={{ background: "transparent", border: "none", color: "var(--brass)", cursor: "pointer", fontSize: 12, fontWeight: 700, padding: 0, textDecoration: "underline" }}>
@@ -4357,6 +4434,33 @@ export default function VaPage() {
                     lead.mail_zip,
                   ].filter(Boolean).join(" ") || "Mailing address missing";
                   const linkedPacketLabel = lead.deal_id ? `Deal-${(lead.deal_id || "").slice(-6).toUpperCase()}` : "Unlinked";
+                  const phoneRows = [
+                    [lead.phone, lead.phone_1_type],
+                    [lead.phone_2, lead.phone_2_type],
+                    [lead.phone_3, lead.phone_3_type],
+                    [lead.phone_4, lead.phone_4_type],
+                    [lead.phone_5, lead.phone_5_type],
+                    [lead.phone_6, lead.phone_6_type],
+                  ].filter(([number]) => Boolean(number));
+                  const coordinates = typeof lead.latitude === "number" && typeof lead.longitude === "number"
+                    ? `${lead.latitude.toFixed(5)}, ${lead.longitude.toFixed(5)}`
+                    : "—";
+                  const deedLine = [lead.deed_type, lead.deed_book ? `Book ${lead.deed_book}` : null, lead.deed_page ? `Page ${lead.deed_page}` : null].filter(Boolean).join(" · ") || "—";
+                  const mortgageLine = lead.mortgage_amount
+                    ? [formatMoneyValue(lead.mortgage_amount), lead.mortgage_lender, lead.mortgage_type || lead.mortgage_loan_type].filter(Boolean).join(" · ")
+                    : "—";
+                  const riskFlags = [
+                    lead.tax_delinquent ? "Tax delinquent" : null,
+                    lead.is_land_locked ? "Landlocked" : null,
+                    lead.flood_zone_percent && lead.flood_zone_percent > 0 ? `Flood ${formatPercentValue(lead.flood_zone_percent)}` : null,
+                    lead.wetlands_percent && lead.wetlands_percent > 0 ? `Wetlands ${formatPercentValue(lead.wetlands_percent)}` : null,
+                    lead.bad_topography ? "Bad topography" : null,
+                    lead.tag_odd_shape ? "Odd shape" : null,
+                    lead.tag_structure ? "Structure" : null,
+                    lead.tag_farmland ? "Farmland" : null,
+                    lead.tag_subdivide ? "Subdivide" : null,
+                    lead.tag_entitlement ? "Entitlement" : null,
+                  ].filter(Boolean) as string[];
                   const fieldRow: React.CSSProperties = { ...listDrawerSection, gridTemplateColumns: "repeat(3, 1fr)" };
                   const fieldCell = (label: string, value: React.ReactNode, valueStyle?: React.CSSProperties) => (
                     <div>
@@ -4368,6 +4472,19 @@ export default function VaPage() {
                     <div style={{ alignItems: "center", display: "flex", justifyContent: "space-between", gap: 8 }}>
                       <span style={{ color: "var(--muted)", fontSize: 11, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase" }}>{label}</span>
                       <span style={{ color: ok ? "#2e5a48" : "var(--obsidian)", fontSize: 12, fontWeight: 700, textAlign: "right" }}>{value}</span>
+                    </div>
+                  );
+                  const compactSection = (title: string, items: Array<[string, React.ReactNode]>, columns = 2) => (
+                    <div style={listDrawerSection}>
+                      <p style={listDrawerLabel}>{title}</p>
+                      <div style={{ display: "grid", gap: 9, gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}>
+                        {items.map(([label, value]) => (
+                          <div key={label} style={{ minWidth: 0 }}>
+                            <p style={{ ...miniLabel, color: "var(--muted)", marginBottom: 3 }}>{label}</p>
+                            <span style={{ color: "var(--obsidian)", display: "block", fontSize: 12, fontWeight: 700, lineHeight: 1.35, overflowWrap: "anywhere" }}>{value || "—"}</span>
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   );
                   return (
@@ -4385,6 +4502,12 @@ export default function VaPage() {
                           {lead.property_address || "No address"}<br />
                           {[lead.city, lead.state].filter(Boolean).join(", ")}{lead.zip ? ` ${lead.zip}` : ""}
                         </p>
+                        {riskFlags.length > 0 && (
+                          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 10 }}>
+                            {riskFlags.slice(0, 6).map(flag => <span key={flag} style={flag.includes("Tax") || flag.includes("Landlocked") ? mutedPill : pill}>{flag}</span>)}
+                            {riskFlags.length > 6 && <span style={mutedPill}>+{riskFlags.length - 6} more</span>}
+                          </div>
+                        )}
                       </div>
                       <div style={listDrawerSection}>
                         {detailRow("Source List", sourceName)}
@@ -4416,6 +4539,11 @@ export default function VaPage() {
                           <span style={{ color: "var(--ink)", fontSize: 13 }}>{phoneLine}</span>
                           {phoneType && <span style={mutedPill}>{phoneType}</span>}
                         </div>
+                        {phoneRows.length > 1 && (
+                          <p style={{ color: "var(--muted)", fontSize: 12, lineHeight: 1.45, marginTop: 4 }}>
+                            {phoneRows.map(([number, type]) => [number, type].filter(Boolean).join(" ")).join(" · ")}
+                          </p>
+                        )}
                         <p style={{ color: "var(--ink)", fontSize: 13, marginTop: 4 }}>{lead.email || "Email missing"}</p>
                         <p style={{ color: "var(--muted)", fontSize: 12, lineHeight: 1.45, marginTop: 4 }}>{mailingLine}</p>
                         <div style={{ alignItems: "center", display: "flex", gap: 8, justifyContent: "space-between", marginTop: 8 }}>
@@ -4428,6 +4556,69 @@ export default function VaPage() {
                         {detailRow("Email", lead.email || "Missing", Boolean(lead.email))}
                         {detailRow("HOA", hoaLabel)}
                       </div>
+                      {compactSection("Identity & Location", [
+                        ["APN", lead.parcel_id || "—"],
+                        ["Alt APN", lead.parcel_alt_apn || "—"],
+                        ["FIPS", lead.fips || "—"],
+                        ["Coordinates", coordinates],
+                        ["Parcel Sq Ft", formatNumberValue(lead.parcel_sq_ft)],
+                        ["Legal", lead.legal_description || "—"],
+                      ])}
+                      {compactSection("Valuation & Tax", [
+                        ["Asking", formatMoneyValue(lead.asking_price)],
+                        ["Market", formatMoneyValue(lead.market_value)],
+                        ["Assessed", formatMoneyValue(lead.assessed_value)],
+                        ["Land Value", formatMoneyValue(lead.land_value || lead.market_land_value)],
+                        ["Improvement", formatMoneyValue(lead.improvement_value || lead.market_improvement_value)],
+                        ["Total Parcel", formatMoneyValue(lead.total_parcel_value)],
+                        ["Tax Year", fieldValue(lead.tax_year)],
+                        ["Property Tax", formatMoneyValue(lead.property_tax)],
+                        ["Delinquent Since", lead.taxed_delinquent_since || fieldValue(lead.tax_delinquent_starting_year)],
+                        ["Delinquent Years", fieldValue(lead.tax_delinquent_years)],
+                      ])}
+                      {compactSection("Land & Development", [
+                        ["Road Frontage", formatNumberValue(lead.road_frontage_ft, " ft")],
+                        ["Landlocked", formatYesNo(lead.is_land_locked)],
+                        ["Flood", [formatPercentValue(lead.flood_zone_percent), lead.flood_zone_type].filter(value => value && value !== "—").join(" · ") || "—"],
+                        ["Wetlands", formatPercentValue(lead.wetlands_percent)],
+                        ["Topography", lead.topography || (lead.bad_topography ? "Bad topography flag" : "—")],
+                        ["Elevation", [formatNumberValue(lead.min_elevation), formatNumberValue(lead.avg_elevation), formatNumberValue(lead.max_elevation)].filter(value => value !== "—").join(" / ") || "—"],
+                        ["Slope", [formatNumberValue(lead.min_slope), formatNumberValue(lead.avg_slope), formatNumberValue(lead.max_slope)].filter(value => value !== "—").join(" / ") || "—"],
+                        ["Min Lot", formatNumberValue(lead.min_lot_size_acres, " ac")],
+                        ["Minerals", lead.mineral_rights_status || "—"],
+                        ["School", lead.school_district || "—"],
+                      ])}
+                      {compactSection("Ownership & Deed", [
+                        ["Owner 1", lead.owner_1_full_name || [lead.owner_1_first_name, lead.owner_1_middle_name, lead.owner_1_last_name, lead.owner_1_suffix].filter(Boolean).join(" ") || "—"],
+                        ["Owner 2", lead.owner_2_full_name || [lead.owner_2_first_name, lead.owner_2_middle_name, lead.owner_2_last_name, lead.owner_2_suffix].filter(Boolean).join(" ") || "—"],
+                        ["Previous Owners", lead.previous_owners || [lead.previous_owner_1, lead.previous_owner_2].filter(Boolean).join(" · ") || "—"],
+                        ["Deed", deedLine],
+                        ["Mortgage", mortgageLine],
+                        ["Owner Occupied", formatYesNo(lead.owner_occupied)],
+                        ["Do Not Mail", formatYesNo(lead.do_not_mail)],
+                        ["DNC / Litigator", [lead.dnc ? "DNC" : null, lead.state_dnc ? "State DNC" : null, lead.litigator ? "Litigator" : null].filter(Boolean).join(" · ") || "—"],
+                      ])}
+                      {compactSection("Enrichment", [
+                        ["Seller IQ", lead.seller_iq || "—"],
+                        ["Age", fieldValue(lead.age)],
+                        ["Gender", lead.gender || "—"],
+                        ["Ethnicity", lead.ethnic_group || "—"],
+                        ["Religion", lead.religion || "—"],
+                        ["Education", lead.education_level || "—"],
+                        ["Occupation", lead.occupation || "—"],
+                        ["Language", lead.language || "—"],
+                        ["Marital", lead.marital_status || "—"],
+                      ], 3)}
+                      {compactSection("Workflow Quality", [
+                        ["Score", fieldValue(lead.lead_score)],
+                        ["Reasons", lead.score_reasons?.join(" · ") || "—"],
+                        ["Duplicate", [lead.duplicate_status, lead.duplicate_of ? `of ${lead.duplicate_of}` : null].filter(Boolean).join(" · ") || "—"],
+                        ["Assigned", lead.assigned_to || "—"],
+                        ["Follow Up", lead.next_follow_up_date || "—"],
+                        ["Outreach", fieldValue(lead.outreach_count)],
+                        ["Last Activity", [lead.last_activity_type, lead.last_activity_at ? formatDate(lead.last_activity_at) : null].filter(Boolean).join(" · ") || "—"],
+                        ["SMS", [lead.sms_opt_status, lead.last_sms_direction, lead.last_sms_at ? formatDate(lead.last_sms_at) : null].filter(Boolean).join(" · ") || "—"],
+                      ])}
                       <div style={listDrawerSection}>
                         <p style={{ ...listDrawerLabel, color: "var(--brass)" }}>Linked Packet</p>
                         {lead.deal_id ? (
@@ -4573,10 +4764,10 @@ export default function VaPage() {
                     </div>
                   </div>
                   <div style={{ background: "rgba(255,252,245,0.30)", flex: 1, maxHeight: "min(68vh, 720px)", overflow: "auto" }}>
-                    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, minWidth: 880 }}>
+                    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, minWidth: 1040 }}>
                       <thead>
                         <tr style={{ borderBottom: "1px solid var(--fog)", color: "var(--muted)", textAlign: "left" }}>
-                          {["Contact", "Phone / email", "Properties", "Source lists", "Last touch", "Status"].map(label => (
+                          {["Contact", "Reachability", "Linked records", "Quality", "Source / last touch", "Status"].map(label => (
                             <th key={label} style={{ fontSize: 10, fontWeight: 800, letterSpacing: "0.13em", padding: "10px 12px", position: "sticky", textTransform: "uppercase", top: 0, background: "var(--bone)", zIndex: 1 }}>{label}</th>
                           ))}
                         </tr>
@@ -4584,12 +4775,24 @@ export default function VaPage() {
                       <tbody>
                         {contactsPageRows.map(row => {
                           const selected = contactPreviewRelationship?.key === row.key;
-                          const hasPhone = row.leads.some(lead => Boolean(lead.phone || lead.phone_2));
+                          const allPhones = importedLeadPhoneLabels(row.leads);
+                          const allEmails = uniqueTextValues(row.leads.map(lead => lead.email));
+                          const hasPhone = allPhones.length > 0;
+                          const hasEmail = allEmails.length > 0;
                           const missingOwner = !hasImportedLeadOwnerIdentity(row.primary.owner_name);
-                          const cleanup = missingOwner || !hasPhone || row.leads.some(lead => lead.duplicate_status && lead.duplicate_status !== "new");
-                          const linked = row.leads.some(lead => Boolean(lead.deal_id));
+                          const duplicateCount = row.leads.filter(lead => lead.duplicate_status && lead.duplicate_status !== "new").length;
+                          const suppressed = row.leads.some(lead => lead.dnc || lead.state_dnc || lead.litigator || lead.do_not_mail || lead.sms_opt_status === "opted-out");
+                          const cleanup = missingOwner || !hasPhone || duplicateCount > 0 || suppressed;
+                          const linkedCount = row.leads.filter(lead => Boolean(lead.deal_id)).length;
                           const sourceNames = Array.from(new Set(row.leads.map(lead => listSourceLabel(lead)).filter(Boolean)));
                           const firstProperty = row.primary.property_address || row.primary.parcel_id || row.leads.find(lead => lead.property_address || lead.parcel_id)?.property_address || "No selected property";
+                          const qualityFlags = [
+                            missingOwner ? "Missing owner" : null,
+                            !hasPhone ? "Missing phone" : null,
+                            !hasEmail ? "Missing email" : null,
+                            duplicateCount > 0 ? `${duplicateCount} duplicate${duplicateCount === 1 ? "" : "s"}` : null,
+                            suppressed ? "Suppressed" : null,
+                          ].filter(Boolean) as string[];
                           return (
                             <tr key={row.key} onClick={() => selectImportedLead(row.primary, "lists")} style={{ background: selected ? "rgba(176,137,84,0.12)" : "transparent", borderBottom: "1px solid var(--fog)", cursor: "pointer" }}>
                               <td style={{ padding: "11px 12px", verticalAlign: "top" }}>
@@ -4597,18 +4800,33 @@ export default function VaPage() {
                                 <span style={{ color: "var(--muted)", display: "block", fontSize: 11, marginTop: 3 }}>{firstProperty}</span>
                               </td>
                               <td style={{ color: "var(--ink)", padding: "11px 12px", verticalAlign: "top" }}>
-                                <span style={{ display: "block" }}>{row.primary.phone || row.primary.phone_2 || "Phone missing"}</span>
-                                <span style={{ color: "var(--muted)", display: "block", marginTop: 3 }}>{row.primary.email || "Email missing"}</span>
+                                <span style={{ display: "block", fontWeight: 700 }}>{allPhones[0] || "Phone missing"}</span>
+                                {allPhones.length > 1 && <span style={{ color: "var(--muted)", display: "block", marginTop: 3 }}>+{allPhones.length - 1} more phone{allPhones.length - 1 === 1 ? "" : "s"}</span>}
+                                <span style={{ color: "var(--muted)", display: "block", marginTop: 3 }}>{allEmails[0] || "Email missing"}</span>
                               </td>
-                              <td style={{ color: "var(--obsidian)", padding: "11px 12px", verticalAlign: "top" }}>{row.propertyCount}</td>
                               <td style={{ color: "var(--ink)", padding: "11px 12px", verticalAlign: "top" }}>
-                                {sourceNames.slice(0, 2).join(", ") || "Imported list"}
-                                {sourceNames.length > 2 ? ` +${sourceNames.length - 2}` : ""}
+                                <strong style={{ color: "var(--obsidian)", display: "block", fontSize: 13 }}>{row.propertyCount} propert{row.propertyCount === 1 ? "y" : "ies"}</strong>
+                                <span style={{ color: "var(--muted)", display: "block", marginTop: 3 }}>{linkedCount || "0"} linked packet{linkedCount === 1 ? "" : "s"}</span>
                               </td>
-                              <td style={{ color: "var(--muted)", padding: "11px 12px", verticalAlign: "top" }}>{formatDate(row.latestTouch || row.primary.updated_at || row.primary.created_at)}</td>
+                              <td style={{ color: "var(--ink)", padding: "11px 12px", verticalAlign: "top" }}>
+                                {qualityFlags.length ? (
+                                  <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+                                    {qualityFlags.slice(0, 3).map(flag => <span key={flag} style={flag === "Suppressed" ? mutedPill : pill}>{flag}</span>)}
+                                    {qualityFlags.length > 3 && <span style={mutedPill}>+{qualityFlags.length - 3}</span>}
+                                  </div>
+                                ) : (
+                                  <span style={goodPill}>Clean</span>
+                                )}
+                              </td>
+                              <td style={{ color: "var(--ink)", padding: "11px 12px", verticalAlign: "top" }}>
+                                <span style={{ display: "block" }}>
+                                  {sourceNames.slice(0, 2).join(", ") || "Imported list"}
+                                  {sourceNames.length > 2 ? ` +${sourceNames.length - 2}` : ""}
+                                </span>
+                                <span style={{ color: "var(--muted)", display: "block", marginTop: 3 }}>{formatDate(row.latestTouch || row.primary.updated_at || row.primary.created_at)}</span>
+                              </td>
                               <td style={{ padding: "11px 12px", verticalAlign: "top" }}>
-                                <span style={row.textable ? goodPill : cleanup ? mutedPill : pill}>{row.textable ? "Textable" : cleanup ? "Cleanup" : "Review"}</span>
-                                {linked && <span style={{ ...pill, marginLeft: 6 }}>Linked</span>}
+                                <span style={row.textable ? goodPill : suppressed ? mutedPill : cleanup ? pill : goodPill}>{row.textable ? "Textable" : suppressed ? "Suppressed" : cleanup ? "Cleanup" : "Ready"}</span>
                               </td>
                             </tr>
                           );
@@ -4644,19 +4862,68 @@ export default function VaPage() {
                     const row = contactPreviewRelationship;
                     const lead = row.primary;
                     const sms = checkLeadSmsCompliance(lead);
-                    const hasPhone = row.leads.some(item => Boolean(item.phone || item.phone_2));
-                    const hasEmail = row.leads.some(item => Boolean(item.email));
+                    const phoneLabels = importedLeadPhoneLabels(row.leads);
+                    const emailLabels = uniqueTextValues(row.leads.map(item => item.email));
+                    const mailingLabels = importedLeadMailingLabels(row.leads);
+                    const ownerNames = uniqueTextValues(row.leads.flatMap(item => [
+                      item.owner_name,
+                      item.owner_1_full_name,
+                      item.owner_2_full_name,
+                    ]));
+                    const hasPhone = phoneLabels.length > 0;
+                    const hasEmail = emailLabels.length > 0;
                     const missingOwner = !hasImportedLeadOwnerIdentity(lead.owner_name);
-                    const cleanup = missingOwner || !hasPhone || row.leads.some(item => item.duplicate_status && item.duplicate_status !== "new");
+                    const duplicateCount = row.leads.filter(item => item.duplicate_status && item.duplicate_status !== "new").length;
+                    const suppressed = row.leads.some(item => item.dnc || item.state_dnc || item.litigator || item.do_not_mail || item.sms_opt_status === "opted-out");
+                    const cleanup = missingOwner || !hasPhone || duplicateCount > 0 || suppressed;
                     const sourceNames = Array.from(new Set(row.leads.map(item => listSourceLabel(item)).filter(Boolean)));
                     const sourceSummary = sourceNames.slice(0, 3).join(", ") || "Imported list";
                     const linkedCount = row.leads.filter(item => item.deal_id).length;
                     const contactName = lead.owner_name || lead.phone || lead.phone_2 || "Owner unknown";
+                    const complianceLabels = [
+                      lead.dnc ? "DNC" : null,
+                      lead.state_dnc ? "State DNC" : null,
+                      lead.litigator ? "Litigator" : null,
+                      lead.do_not_mail ? "Do not mail" : null,
+                      lead.sms_opt_status === "opted-out" ? "SMS opted out" : null,
+                    ].filter(Boolean) as string[];
+                    const latestSmsLead = row.leads
+                      .filter(item => item.last_sms_at)
+                      .sort((a, b) => (Date.parse(b.last_sms_at || "") || 0) - (Date.parse(a.last_sms_at || "") || 0))[0];
+                    const nextFollowUp = row.leads
+                      .map(item => item.next_follow_up_date)
+                      .filter((value): value is string => Boolean(value))
+                      .sort()[0];
+                    const ownerLocations = [
+                      row.leads.some(item => item.owner_out_of_state) ? "Out-of-state owner" : null,
+                      row.leads.some(item => item.owner_out_of_county) ? "Out-of-county owner" : null,
+                      row.leads.some(item => item.owner_out_of_zip) ? "Out-of-ZIP owner" : null,
+                    ].filter(Boolean).join(" · ") || "Local / unflagged";
+                    const contactFlags = [
+                      missingOwner ? "Missing owner" : null,
+                      !hasPhone ? "Missing phone" : null,
+                      !hasEmail ? "Missing email" : null,
+                      duplicateCount > 0 ? `${duplicateCount} duplicate${duplicateCount === 1 ? "" : "s"}` : null,
+                      ...complianceLabels,
+                    ].filter(Boolean) as string[];
                     const drawerMetric: React.CSSProperties = { ...listDrawerSection, gridTemplateColumns: "repeat(3, 1fr)" };
                     const metricCell = (label: string, value: React.ReactNode) => (
                       <div>
                         <p style={{ ...miniLabel, color: "var(--muted)" }}>{label}</p>
                         <strong style={{ color: "var(--obsidian)", display: "block", fontSize: 13, fontWeight: 700, marginTop: 3 }}>{value}</strong>
+                      </div>
+                    );
+                    const compactSection = (title: string, items: Array<[string, React.ReactNode]>, columns = 2) => (
+                      <div style={listDrawerSection}>
+                        <p style={listDrawerLabel}>{title}</p>
+                        <div style={{ display: "grid", gap: 9, gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}>
+                          {items.map(([label, value]) => (
+                            <div key={label} style={{ minWidth: 0 }}>
+                              <p style={{ ...miniLabel, color: "var(--muted)", marginBottom: 3 }}>{label}</p>
+                              <span style={{ color: "var(--obsidian)", display: "block", fontSize: 12, fontWeight: 700, lineHeight: 1.35, overflowWrap: "anywhere" }}>{value || "—"}</span>
+                            </div>
+                          ))}
+                        </div>
                       </div>
                     );
                     return (
@@ -4668,40 +4935,94 @@ export default function VaPage() {
                           </div>
                           <strong style={{ color: "var(--obsidian)", display: "block", fontFamily: DISPLAY_FONT, fontSize: 22, fontWeight: 500 }}>{contactName}</strong>
                           <p style={{ color: "var(--ink)", fontSize: 13, lineHeight: 1.45, marginTop: 8 }}>
-                            {lead.phone || lead.phone_2 || "Phone missing"}<br />
-                            {lead.email || "Email missing"}
+                            {phoneLabels[0] || "Phone missing"}<br />
+                            {emailLabels[0] || "Email missing"}
                           </p>
+                          {contactFlags.length > 0 && (
+                            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 10 }}>
+                              {contactFlags.slice(0, 6).map(flag => <span key={flag} style={flag.includes("DNC") || flag.includes("Litigator") || flag.includes("opted") ? mutedPill : pill}>{flag}</span>)}
+                              {contactFlags.length > 6 && <span style={mutedPill}>+{contactFlags.length - 6} more</span>}
+                            </div>
+                          )}
                         </div>
                         <div style={drawerMetric}>
                           {metricCell("Properties", row.propertyCount)}
                           {metricCell("Linked", linkedCount || "—")}
                           {metricCell("Last Touch", formatDate(row.latestTouch || lead.updated_at || lead.created_at))}
                         </div>
-                        <div style={listDrawerSection}>
-                          <p style={listDrawerLabel}>Source Lists</p>
-                          <strong style={{ color: "var(--obsidian)", fontSize: 13 }}>{sourceSummary}</strong>
-                          {sourceNames.length > 3 && <p style={{ color: "var(--muted)", fontSize: 11 }}>+{sourceNames.length - 3} more source list{sourceNames.length - 3 === 1 ? "" : "s"}</p>}
-                        </div>
-                        <div style={listDrawerSection}>
-                          <p style={listDrawerLabel}>Data Quality</p>
-                          <div style={{ display: "grid", gap: 7 }}>
-                            <span style={{ color: missingOwner ? "#b94a3b" : "var(--ink)", fontSize: 12 }}>{missingOwner ? "Owner name needs cleanup" : "Owner name present"}</span>
-                            <span style={{ color: hasPhone ? "var(--ink)" : "#b94a3b", fontSize: 12 }}>{hasPhone ? "Phone present" : "Phone missing"}</span>
-                            <span style={{ color: hasEmail ? "var(--ink)" : "var(--muted)", fontSize: 12 }}>{hasEmail ? "Email present" : "Email missing"}</span>
-                            <span style={{ color: sms.allowed ? "#2e5a48" : "var(--muted)", fontSize: 12 }}>{sms.allowed ? "SMS eligible" : sms.blockLabel}</span>
+                        {compactSection("Contact Snapshot", [
+                          ["Primary Owner", ownerNames[0] || contactName],
+                          ["Owner Records", ownerNames.length ? ownerNames.join(" · ") : "—"],
+                          ["Source Lists", sourceSummary],
+                          ["Source System", lead.source_system || "Imported"],
+                          ["Owner Location", ownerLocations],
+                          ["Record Key", row.key],
+                        ])}
+                        {sourceNames.length > 3 && (
+                          <div style={listDrawerSection}>
+                            <p style={listDrawerLabel}>Additional Sources</p>
+                            <p style={{ color: "var(--muted)", fontSize: 12, lineHeight: 1.45 }}>{sourceNames.slice(3).join(", ")}</p>
                           </div>
-                        </div>
+                        )}
+                        {compactSection("Reachability", [
+                          ["Primary Phone", phoneLabels[0] || "Missing"],
+                          ["All Phones", phoneLabels.length ? phoneLabels.join(" · ") : "Missing"],
+                          ["Primary Email", emailLabels[0] || "Missing"],
+                          ["All Emails", emailLabels.length ? emailLabels.join(" · ") : "Missing"],
+                          ["Mailing", mailingLabels[0] || "Missing"],
+                          ["All Mailing", mailingLabels.length ? mailingLabels.join(" · ") : "Missing"],
+                        ])}
+                        {compactSection("Compliance", [
+                          ["SMS", sms.allowed ? "Eligible" : sms.blockLabel],
+                          ["SMS Opt", lead.sms_opt_status || "unknown"],
+                          ["DNC", row.leads.some(item => item.dnc) ? "Yes" : "No"],
+                          ["State DNC", row.leads.some(item => item.state_dnc) ? "Yes" : "No"],
+                          ["Litigator", row.leads.some(item => item.litigator) ? "Yes" : "No"],
+                          ["Do Not Mail", row.leads.some(item => item.do_not_mail) ? "Yes" : "No"],
+                        ], 3)}
                         <div style={listDrawerSection}>
                           <p style={listDrawerLabel}>Linked Properties</p>
                           <div style={{ display: "grid", gap: 8 }}>
-                            {row.leads.map(item => (
-                              <button key={item.id} onClick={() => selectImportedLead(item, "lists")} style={{ background: "transparent", border: "none", borderBottom: "1px solid var(--fog)", color: "var(--ink)", cursor: "pointer", padding: "0 0 8px", textAlign: "left" }}>
-                                <strong style={{ color: "var(--obsidian)", display: "block", fontSize: 12 }}>{item.property_address || item.parcel_id || "Property record"}</strong>
-                                <span style={{ color: "var(--muted)", display: "block", fontSize: 11, marginTop: 2 }}>{[item.city, item.state].filter(Boolean).join(", ") || item.county || "Location pending"} · {item.acreage ?? "—"} acres</span>
-                              </button>
-                            ))}
+                            {row.leads.map(item => {
+                              const propertyFlags = [
+                                item.deal_id ? "Linked" : "Unlinked",
+                                item.tax_delinquent ? "Tax" : null,
+                                item.is_land_locked ? "Landlocked" : null,
+                                item.duplicate_status && item.duplicate_status !== "new" ? "Duplicate" : null,
+                              ].filter(Boolean) as string[];
+                              return (
+                                <button key={item.id} onClick={() => selectImportedLead(item, "lists")} style={{ background: "transparent", border: "none", borderBottom: "1px solid var(--fog)", color: "var(--ink)", cursor: "pointer", padding: "0 0 9px", textAlign: "left" }}>
+                                  <strong style={{ color: "var(--obsidian)", display: "block", fontSize: 12 }}>{item.property_address || item.parcel_id || "Property record"}</strong>
+                                  <span style={{ color: "var(--muted)", display: "block", fontSize: 11, marginTop: 2 }}>{[item.city, item.state].filter(Boolean).join(", ") || item.county || "Location pending"} · {formatNumberValue(item.acreage, " ac")} · {item.parcel_id || "No APN"}</span>
+                                  <span style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 6 }}>
+                                    {propertyFlags.map(flag => <span key={flag} style={flag === "Linked" ? goodPill : pill}>{flag}</span>)}
+                                  </span>
+                                </button>
+                              );
+                            })}
                           </div>
                         </div>
+                        {compactSection("Workflow Quality", [
+                          ["Status", lead.status],
+                          ["Highest Score", fieldValue(row.highestScore)],
+                          ["Duplicate", duplicateCount ? `${duplicateCount} flagged` : "No"],
+                          ["Assigned", lead.assigned_to || "—"],
+                          ["Next Follow Up", nextFollowUp || "—"],
+                          ["Outreach Count", fieldValue(row.leads.reduce((sum, item) => sum + (item.outreach_count || 0), 0))],
+                          ["Last Activity", [lead.last_activity_type, lead.last_activity_at ? formatDate(lead.last_activity_at) : null].filter(Boolean).join(" · ") || "—"],
+                          ["Last SMS", latestSmsLead ? [latestSmsLead.last_sms_direction, latestSmsLead.last_sms_at ? formatDate(latestSmsLead.last_sms_at) : null, latestSmsLead.last_sms_body].filter(Boolean).join(" · ") : "—"],
+                        ])}
+                        {compactSection("Enrichment", [
+                          ["Seller IQ", lead.seller_iq || "—"],
+                          ["Age", fieldValue(lead.age)],
+                          ["Gender", lead.gender || "—"],
+                          ["Ethnicity", lead.ethnic_group || "—"],
+                          ["Religion", lead.religion || "—"],
+                          ["Education", lead.education_level || "—"],
+                          ["Occupation", lead.occupation || "—"],
+                          ["Language", lead.language || "—"],
+                          ["Marital", lead.marital_status || "—"],
+                        ], 3)}
                         <div style={listDrawerSection}>
                           <p style={listDrawerLabel}>Quick Actions</p>
                           <div style={{ display: "grid", gap: 8, gridTemplateColumns: "1fr 1fr" }}>

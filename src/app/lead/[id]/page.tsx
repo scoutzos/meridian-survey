@@ -768,6 +768,24 @@ export default function LeadPage() {
         <section style={{ display: "grid", gap: 12 }}>
           {allProperties.map(prop => {
             const expanded = expandedPropertyId === prop.id;
+            const propPhones = collectPhones(prop);
+            const propCoordinates = typeof prop.latitude === "number" && typeof prop.longitude === "number"
+              ? `${prop.latitude.toFixed(5)}, ${prop.longitude.toFixed(5)}`
+              : "—";
+            const propRiskFlags = [
+              prop.tax_delinquent ? "Tax delinquent" : null,
+              prop.is_land_locked ? "Landlocked" : null,
+              prop.flood_zone_percent && prop.flood_zone_percent > 0 ? `Flood ${percentValue(prop.flood_zone_percent)}` : null,
+              prop.wetlands_percent && prop.wetlands_percent > 0 ? `Wetlands ${percentValue(prop.wetlands_percent)}` : null,
+              prop.bad_topography ? "Bad topography" : null,
+              prop.tag_odd_shape ? "Odd shape" : null,
+              prop.tag_structure ? "Structure" : null,
+              prop.tag_farmland ? "Farmland" : null,
+              prop.tag_subdivide ? "Subdivide" : null,
+              prop.tag_entitlement ? "Entitlement" : null,
+            ].filter(Boolean) as string[];
+            const propRawEntries = Object.entries(prop.raw_data || {})
+              .filter(([, value]) => value !== null && value !== undefined && String(value).trim());
             return (
               <div key={prop.id} style={{ ...panel, padding: 0, overflow: "hidden" }}>
                 <button
@@ -795,18 +813,157 @@ export default function LeadPage() {
                 </button>
                 {expanded && (
                   <div style={{ padding: "0 18px 18px", display: "grid", gap: 12 }}>
-                    <dl style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12, fontSize: 12, color: "var(--ink)" }}>
-                      <Detail label="Parcel ID" value={prop.parcel_id || "—"} />
-                      <Detail label="Calc. acreage" value={prop.calculated_acreage ? `${prop.calculated_acreage} ac` : prop.acreage ? `${prop.acreage} ac` : "—"} />
-                      <Detail label="Market value" value={prop.market_value ? `$${prop.market_value.toLocaleString()}` : "—"} />
-                      <Detail label="Tax delinquent" value={prop.tax_delinquent ? `Yes${prop.tax_delinquent_years ? ` · ${prop.tax_delinquent_years}y` : ""}` : "No"} />
-                      <Detail label="Flood zone %" value={prop.flood_zone_percent != null ? `${prop.flood_zone_percent}%` : "—"} />
-                      <Detail label="Wetlands %" value={prop.wetlands_percent != null ? `${prop.wetlands_percent}%` : "—"} />
-                      <Detail label="Land locked" value={prop.is_land_locked ? "Yes" : "No"} />
-                      <Detail label="Subdividable" value={prop.tag_subdivide ? "Yes" : "—"} />
-                      <Detail label="HOA" value={prop.hoa_status || (prop.in_hoa ? "Yes" : "No")} />
-                      <Detail label="Mortgage" value={prop.mortgage_amount ? `$${prop.mortgage_amount.toLocaleString()}` : "None"} />
-                    </dl>
+                    {propRiskFlags.length > 0 && (
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                        {propRiskFlags.map(flag => <span key={flag} style={flag.includes("Tax") || flag.includes("Landlocked") ? warnChip : mutedChip}>{flag}</span>)}
+                      </div>
+                    )}
+                    <PropertyDataSection title="Snapshot" items={[
+                      ["Parcel ID", prop.parcel_id || "—"],
+                      ["Alt APN", prop.parcel_alt_apn || "—"],
+                      ["Source", joinValues([prop.campaign_source, prop.source_system])],
+                      ["Status", labelForStatus(prop.status)],
+                      ["Duplicate", joinValues([prop.duplicate_status, prop.duplicate_of ? `of ${prop.duplicate_of}` : null])],
+                      ["Created", dateValue(prop.created_at)],
+                      ["Updated", dateValue(prop.updated_at)],
+                      ["Assigned", prop.assigned_to || "—"],
+                      ["Follow up", prop.next_follow_up_date || "—"],
+                    ]} />
+                    <PropertyDataSection title="Location & Legal" items={[
+                      ["Situs address", prop.property_address || "—"],
+                      ["City / State / ZIP", joinValues([prop.city, prop.state, prop.zip], ", ")],
+                      ["County", prop.county || "—"],
+                      ["FIPS", prop.fips || "—"],
+                      ["Coordinates", propCoordinates],
+                      ["Acreage", prop.acreage ? `${numberValue(prop.acreage)} ac` : "—"],
+                      ["Calculated acreage", prop.calculated_acreage ? `${numberValue(prop.calculated_acreage)} ac` : "—"],
+                      ["Parcel Sq Ft", numberValue(prop.parcel_sq_ft)],
+                      ["Legal description", prop.legal_description || "—"],
+                      ["Subdivision / Lot / Block", joinValues([prop.subdivision, prop.lot ? `Lot ${prop.lot}` : null, prop.block ? `Block ${prop.block}` : null])],
+                    ]} />
+                    <PropertyDataSection title="Owner & Contact" items={[
+                      ["Primary owner", prop.owner_name || "—"],
+                      ["Owner first names", prop.owner_first_names || "—"],
+                      ["Owner 1", prop.owner_1_full_name || joinValues([prop.owner_1_first_name, prop.owner_1_middle_name, prop.owner_1_last_name, prop.owner_1_suffix], " ")],
+                      ["Owner 2", prop.owner_2_full_name || joinValues([prop.owner_2_first_name, prop.owner_2_middle_name, prop.owner_2_last_name, prop.owner_2_suffix], " ")],
+                      ["Owner type", prop.owner_type || "—"],
+                      ["Owner occupied", yesNo(prop.owner_occupied)],
+                      ["Owner location", prop.owner_out_of_state ? "Out-of-state" : prop.owner_out_of_county ? "Out-of-county" : prop.owner_out_of_zip ? "Out-of-ZIP" : "Local / unflagged"],
+                      ["Phones", propPhones.length ? propPhones.map(phone => `${phone.number}${phone.type ? ` (${phone.type})` : ""}`).join(" · ") : "—"],
+                      ["Email", prop.email || "—"],
+                      ["Mailing", joinValues([prop.mailing_address || prop.mail_address, joinValues([prop.mail_city, prop.mail_state, prop.mail_zip], ", ")], " ")],
+                    ]} />
+                    <PropertyDataSection title="Value, Tax & Transfer" items={[
+                      ["Asking price", money(prop.asking_price)],
+                      ["Market value", money(prop.market_value)],
+                      ["Assessed value", money(prop.assessed_value)],
+                      ["Land value", money(prop.land_value || prop.market_land_value)],
+                      ["Improvement value", money(prop.improvement_value || prop.market_improvement_value)],
+                      ["Improvement %", percentValue(prop.improvement_percentage)],
+                      ["Total parcel value", money(prop.total_parcel_value)],
+                      ["Property tax", money(prop.property_tax)],
+                      ["Tax year", textValue(prop.tax_year)],
+                      ["Tax delinquent", prop.tax_delinquent ? `Yes${prop.tax_delinquent_years ? ` · ${prop.tax_delinquent_years}y` : ""}` : yesNo(prop.tax_delinquent)],
+                      ["Delinquent since", prop.taxed_delinquent_since || textValue(prop.tax_delinquent_starting_year)],
+                      ["Last sale", joinValues([dateValue(prop.last_sale_date), prop.last_sale_price ? money(prop.last_sale_price) : null])],
+                      ["Deed", joinValues([prop.deed_type, prop.deed_book ? `Book ${prop.deed_book}` : null, prop.deed_page ? `Page ${prop.deed_page}` : null])],
+                      ["Previous owners", prop.previous_owners || joinValues([prop.previous_owner_1, prop.previous_owner_2])],
+                    ]} />
+                    <PropertyDataSection title="Land & Development" items={[
+                      ["Zoning", prop.zoning || "—"],
+                      ["Land use", prop.land_use || "—"],
+                      ["Road frontage", numberValue(prop.road_frontage_ft, " ft")],
+                      ["Landlocked", yesNo(prop.is_land_locked)],
+                      ["Min lot size", numberValue(prop.min_lot_size_acres, " ac")],
+                      ["HOA", prop.hoa_status || yesNo(prop.in_hoa)],
+                      ["Mineral rights", prop.mineral_rights_status || "—"],
+                      ["School district", prop.school_district || "—"],
+                      ["Structure", joinValues([prop.tag_structure ? "Flagged" : null, prop.structure_count ? `${prop.structure_count} structures` : null, prop.structure_sq_ft ? `${numberValue(prop.structure_sq_ft)} sf` : null, prop.structure_year_built ? `Built ${prop.structure_year_built}` : null])],
+                      ["Rooms / Units / Stories", joinValues([prop.structure_rooms ? `${prop.structure_rooms} rooms` : null, prop.structure_units ? `${prop.structure_units} units` : null, prop.structure_stories ? `${prop.structure_stories} stories` : null])],
+                    ]} />
+                    <PropertyDataSection title="Risk & Terrain" items={[
+                      ["Flood zone", joinValues([percentValue(prop.flood_zone_percent), prop.flood_zone_type])],
+                      ["Wetlands", percentValue(prop.wetlands_percent)],
+                      ["Topography", prop.topography || (prop.bad_topography ? "Bad topography flag" : "—")],
+                      ["Elevation min / avg / max", joinValues([numberValue(prop.min_elevation), numberValue(prop.avg_elevation), numberValue(prop.max_elevation)], " / ")],
+                      ["Slope min / avg / max", joinValues([numberValue(prop.min_slope), numberValue(prop.avg_slope), numberValue(prop.max_slope)], " / ")],
+                      ["Slope 0-0.5%", percentValue(prop.slope_0_0_5_pct)],
+                      ["Slope 0.5-2.5%", percentValue(prop.slope_0_5_2_5_pct)],
+                      ["Slope 2.5-5%", percentValue(prop.slope_2_5_5_pct)],
+                      ["Slope 5-7.5%", percentValue(prop.slope_5_7_5_pct)],
+                      ["Slope 7.5-10%", percentValue(prop.slope_7_5_10_pct)],
+                      ["Slope 10-15%", percentValue(prop.slope_10_15_pct)],
+                      ["Slope 15-20%", percentValue(prop.slope_15_20_pct)],
+                      ["Slope 20-25%", percentValue(prop.slope_20_25_pct)],
+                      ["Slope 25-30%", percentValue(prop.slope_25_30_pct)],
+                      ["Slope 30-40%", percentValue(prop.slope_30_40_pct)],
+                      ["Slope 40-50%", percentValue(prop.slope_40_50_pct)],
+                      ["Slope over 50%", percentValue(prop.slope_over_50_pct)],
+                    ]} />
+                    <PropertyDataSection title="Market & Exit Signals" items={[
+                      ["Market PPA", money(prop.market_value_estimate_ppa)],
+                      ["Comp count", textValue(prop.market_value_estimate_comp_count)],
+                      ["Confidence", prop.market_value_estimate_confidence || "—"],
+                      ["Gini index", textValue(prop.market_value_estimate_gini_index)],
+                      ["Odd shape", yesNo(prop.tag_odd_shape)],
+                      ["Farmland", yesNo(prop.tag_farmland)],
+                      ["Subdivide", yesNo(prop.tag_subdivide)],
+                      ["Entitlement", yesNo(prop.tag_entitlement)],
+                      ["Lead score", textValue(prop.lead_score)],
+                      ["Score reasons", prop.score_reasons?.join(" · ") || "—"],
+                    ]} />
+                    <PropertyDataSection title="Mortgage & Compliance" items={[
+                      ["Mortgage", prop.mortgage_amount ? money(prop.mortgage_amount) : "—"],
+                      ["Mortgage lender", prop.mortgage_lender || "—"],
+                      ["Mortgage type", joinValues([prop.mortgage_type, prop.mortgage_loan_type])],
+                      ["Mortgage length", prop.mortgage_length ? `${numberValue(prop.mortgage_length)} months` : "—"],
+                      ["Mortgage interest", percentValue(prop.mortgage_interest)],
+                      ["Do not mail", yesNo(prop.do_not_mail)],
+                      ["DNC", yesNo(prop.dnc)],
+                      ["State DNC", yesNo(prop.state_dnc)],
+                      ["Litigator", yesNo(prop.litigator)],
+                      ["SMS opt status", prop.sms_opt_status || "—"],
+                    ]} />
+                    <PropertyDataSection title="Enrichment" items={[
+                      ["Seller IQ", prop.seller_iq || "—"],
+                      ["Age", textValue(prop.age)],
+                      ["Gender", prop.gender || "—"],
+                      ["Ethnicity", prop.ethnic_group || "—"],
+                      ["Religion", prop.religion || "—"],
+                      ["Education", prop.education_level || "—"],
+                      ["Occupation", prop.occupation || "—"],
+                      ["Language", prop.language || "—"],
+                      ["Marital status", prop.marital_status || "—"],
+                    ]} />
+                    <PropertyDataSection title="Workflow & Outreach" items={[
+                      ["Outreach count", textValue(prop.outreach_count)],
+                      ["Last activity", joinValues([prop.last_activity_type, dateValue(prop.last_activity_at)])],
+                      ["Last SMS", joinValues([prop.last_sms_direction, dateValue(prop.last_sms_at)])],
+                      ["Last SMS body", prop.last_sms_body || "—"],
+                      ["Sakari contact", prop.sakari_contact_id || "—"],
+                      ["Sakari conversation", prop.sakari_conversation_id || "—"],
+                      ["Uploaded by", prop.uploaded_by || "—"],
+                      ["Batch", prop.batch_id || "—"],
+                    ]} />
+                    <PropertyDataSection title="Links" items={[
+                      ["Property URL", prop.property_url ? <a href={prop.property_url} target="_blank" rel="noreferrer" style={inlineLinkButton}>Open property URL</a> : "—"],
+                      ["Parcel link", prop.parcel_link ? <a href={prop.parcel_link} target="_blank" rel="noreferrer" style={inlineLinkButton}>Open parcel link</a> : "—"],
+                      ["Comping link", prop.comping_link ? <a href={prop.comping_link} target="_blank" rel="noreferrer" style={inlineLinkButton}>Open comping link</a> : "—"],
+                      ["Google map", prop.google_map_url ? <a href={prop.google_map_url} target="_blank" rel="noreferrer" style={inlineLinkButton}>Open map</a> : "—"],
+                      ["Google Earth", prop.google_earth_url ? <a href={prop.google_earth_url} target="_blank" rel="noreferrer" style={inlineLinkButton}>Open Earth</a> : "—"],
+                    ]} columns={2} />
+                    {propRawEntries.length > 0 && (
+                      <details style={subPanel}>
+                        <summary style={{ color: "var(--obsidian)", cursor: "pointer", fontSize: 11, fontWeight: 800, letterSpacing: "0.12em", textTransform: "uppercase" }}>
+                          Source Raw Fields ({propRawEntries.length})
+                        </summary>
+                        <dl style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 10, marginTop: 12, maxHeight: 360, overflow: "auto" }}>
+                          {propRawEntries.map(([key, value]) => (
+                            <Detail key={key} label={key} value={String(value)} />
+                          ))}
+                        </dl>
+                      </details>
+                    )}
                     <div style={subPanel}>
                       <p style={{ ...eyebrowSmall, marginBottom: 8 }}>Calculator Summary</p>
                       <LandUnderwritingPanel lead={prop} />
@@ -1070,11 +1227,59 @@ function money(value: number | null | undefined): string {
   return value.toLocaleString(undefined, { style: "currency", currency: "USD", maximumFractionDigits: 0 });
 }
 
-function Detail({ label, value }: { label: string; value: string }) {
+function numberValue(value: number | null | undefined, suffix = ""): string {
+  if (typeof value !== "number" || !Number.isFinite(value)) return "—";
+  return `${value.toLocaleString(undefined, { maximumFractionDigits: 2 })}${suffix}`;
+}
+
+function percentValue(value: number | null | undefined): string {
+  if (typeof value !== "number" || !Number.isFinite(value)) return "—";
+  return `${value.toLocaleString(undefined, { maximumFractionDigits: 1 })}%`;
+}
+
+function dateValue(value: string | null | undefined): string {
+  if (!value) return "—";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+}
+
+function yesNo(value: boolean | null | undefined): string {
+  if (value === true) return "Yes";
+  if (value === false) return "No";
+  return "—";
+}
+
+function textValue(value: string | number | boolean | null | undefined): string {
+  if (typeof value === "boolean") return yesNo(value);
+  if (typeof value === "number") return Number.isFinite(value) ? value.toLocaleString(undefined, { maximumFractionDigits: 2 }) : "—";
+  if (typeof value === "string" && value.trim()) return value;
+  return "—";
+}
+
+function joinValues(values: Array<string | number | boolean | null | undefined>, separator = " · "): string {
+  const cleaned = values
+    .map(value => textValue(value))
+    .filter(value => value !== "—");
+  return cleaned.join(separator) || "—";
+}
+
+function Detail({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div>
       <dt style={{ color: "var(--muted)", fontSize: 10, fontWeight: 700, letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: 4 }}>{label}</dt>
-      <dd style={{ color: "var(--ink)", fontSize: 13, margin: 0 }}>{value}</dd>
+      <dd style={{ color: "var(--ink)", fontSize: 13, lineHeight: 1.35, margin: 0, overflowWrap: "anywhere" }}>{value}</dd>
+    </div>
+  );
+}
+
+function PropertyDataSection({ title, items, columns = 3 }: { title: string; items: Array<[string, React.ReactNode]>; columns?: number }) {
+  return (
+    <div style={subPanel}>
+      <p style={{ ...eyebrowSmall, marginBottom: 8 }}>{title}</p>
+      <dl style={{ display: "grid", gridTemplateColumns: `repeat(auto-fit, minmax(${columns === 2 ? 220 : 170}px, 1fr))`, gap: 12, fontSize: 12, color: "var(--ink)" }}>
+        {items.map(([label, value]) => <Detail key={label} label={label} value={value || "—"} />)}
+      </dl>
     </div>
   );
 }
