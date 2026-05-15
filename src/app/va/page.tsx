@@ -42,6 +42,7 @@ import {
   fetchImportedLandLeads,
   inferLandLeadSourceFromUrl,
   leadToDealDraft,
+  listingTextHints,
   previewLandLeadsCsv,
   runAutomatedLandResearch,
   updateImportedLandLeadStatus,
@@ -223,8 +224,19 @@ const IMPORT_LEAD_SORTS: Array<{ value: ImportedLeadSort; label: string }> = [
   { value: "acreage", label: "Acres" },
 ];
 
+const LIST_RECORD_SORTS: Array<{ value: ListRecordSort; label: string }> = [
+  { value: "newest", label: "Newest added" },
+  { value: "source-list", label: "Source list" },
+  { value: "property", label: "Property address" },
+  { value: "owner", label: "Owner name" },
+  { value: "county", label: "County" },
+  { value: "acreage", label: "Acres" },
+  { value: "status", label: "Record status" },
+];
+
 type ImportStatusFilter = typeof IMPORT_STATUS_FILTERS[number]["value"];
 type ImportedLeadSort = "score" | "max-offer" | "required-ppa" | "projected-spread" | "best-exit" | "acreage";
+type ListRecordSort = "newest" | "source-list" | "property" | "owner" | "county" | "acreage" | "status";
 type ListOwnerLocationFilter = "all" | "out-of-state" | "out-of-county" | "local";
 type ListContactFilter = "all" | "phone" | "email" | "phone-or-email" | "mailing-address" | "no-contact";
 type ListOwnershipFilter = "all" | "multi-property" | "single-property";
@@ -241,11 +253,22 @@ type LinkIntakeDraft = {
   askingPrice: string;
   acreage: string;
   marketValue: string;
+  assessedValue: string;
+  propertyTax: string;
   county: string;
   city: string;
   state: string;
   zip: string;
   zoning: string;
+  landUse: string;
+  subdivision: string;
+  hoaStatus: string;
+  listingStatus: string;
+  listingDate: string;
+  water: string;
+  sewer: string;
+  utilities: string;
+  listingText: string;
   notes: string;
 };
 type BulkTextStep = "audience" | "compliance" | "message";
@@ -566,6 +589,14 @@ function toNumber(value: string): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+function fillDraftString(current: string, value: string | null | undefined): string {
+  return current.trim() ? current : value || "";
+}
+
+function fillDraftNumber(current: string, value: number | null | undefined): string {
+  return current.trim() || value === null || value === undefined ? current : String(value);
+}
+
 function bestUnderwriting(lead: ImportedLandLead): LandUnderwritingResult {
   return calculateLandUnderwriting(lead).best;
 }
@@ -623,11 +654,22 @@ function emptyLinkIntakeDraft(): LinkIntakeDraft {
     askingPrice: "",
     acreage: "",
     marketValue: "",
+    assessedValue: "",
+    propertyTax: "",
     county: "",
     city: "",
     state: "",
     zip: "",
     zoning: "",
+    landUse: "",
+    subdivision: "",
+    hoaStatus: "",
+    listingStatus: "",
+    listingDate: "",
+    water: "",
+    sewer: "",
+    utilities: "",
+    listingText: "",
     notes: "",
   };
 }
@@ -1055,6 +1097,7 @@ export default function VaPage() {
   const [acresBucket, setAcresBucket] = useState("any");
   const [scoreBucket, setScoreBucket] = useState("any");
   const [flagFilter, setFlagFilter] = useState("all");
+  const [listRecordSort, setListRecordSort] = useState<ListRecordSort>("newest");
   const [propertiesPage, setPropertiesPage] = useState(1);
   const [propertiesPerPage, setPropertiesPerPage] = useState(25);
   const [uploadSource, setUploadSource] = useState("Land Portal");
@@ -1325,6 +1368,11 @@ export default function VaPage() {
       "25-plus": [25, null],
     };
     const [bucketMin, bucketMax] = acresBounds[acresBucket] ?? [null, null];
+    const batchLabelById = new Map(leadBatches.map(batch => [
+      batch.id,
+      batch.campaign_source || batch.original_filename || batch.source_system || "",
+    ]));
+    const sourceLabel = (lead: ImportedLandLead) => lead.campaign_source || (lead.batch_id ? batchLabelById.get(lead.batch_id) : "") || lead.source_system || "";
     const rows = importedLeads.filter(lead => {
       if (selectedBatchId && lead.batch_id !== selectedBatchId) return false;
       if (lead.status === "converted") return false;
@@ -1346,13 +1394,22 @@ export default function VaPage() {
       if (bucketMax !== null && (lead.acreage ?? 0) >= bucketMax) return false;
       return importedLeadMatchesQuery(lead, query);
     });
-    return sortImportedLeadRows(rows, leadSort);
+    return rows.slice().sort((a, b) => {
+      if (listRecordSort === "source-list") return sourceLabel(a).localeCompare(sourceLabel(b), undefined, { sensitivity: "base" });
+      if (listRecordSort === "property") return (a.property_address || a.parcel_id || "").localeCompare(b.property_address || b.parcel_id || "", undefined, { sensitivity: "base" });
+      if (listRecordSort === "owner") return (a.owner_name || "").localeCompare(b.owner_name || "", undefined, { sensitivity: "base" });
+      if (listRecordSort === "county") return (a.county || "").localeCompare(b.county || "", undefined, { sensitivity: "base" });
+      if (listRecordSort === "acreage") return (b.acreage ?? 0) - (a.acreage ?? 0);
+      if (listRecordSort === "status") return statusLabel(a.status).localeCompare(statusLabel(b.status), undefined, { sensitivity: "base" });
+      return (Date.parse(b.created_at || "") || 0) - (Date.parse(a.created_at || "") || 0);
+    });
   }, [
     acresBucket,
     countyFilter,
+    leadBatches,
     importedLeads,
     leadSearch,
-    leadSort,
+    listRecordSort,
     listContactFilter,
     listOwnerCounts,
     listOwnerLocation,
@@ -2157,6 +2214,34 @@ export default function VaPage() {
     }
   };
 
+  const updateLinkListingText = (listingText: string) => {
+    const parsed = listingTextHints(listingText);
+    setLinkIntakeDraft(prev => ({
+      ...prev,
+      listingText,
+      propertyAddress: fillDraftString(prev.propertyAddress, parsed.propertyAddress),
+      parcelId: fillDraftString(prev.parcelId, parsed.parcelId),
+      county: fillDraftString(prev.county, parsed.county),
+      city: fillDraftString(prev.city, parsed.city),
+      state: fillDraftString(prev.state, parsed.state),
+      zip: fillDraftString(prev.zip, parsed.zip),
+      askingPrice: fillDraftNumber(prev.askingPrice, parsed.askingPrice),
+      acreage: fillDraftNumber(prev.acreage, parsed.acreage),
+      marketValue: fillDraftNumber(prev.marketValue, parsed.marketValue),
+      assessedValue: fillDraftNumber(prev.assessedValue, parsed.assessedValue),
+      propertyTax: fillDraftNumber(prev.propertyTax, parsed.propertyTax),
+      zoning: fillDraftString(prev.zoning, parsed.zoning),
+      landUse: fillDraftString(prev.landUse, parsed.landUse),
+      subdivision: fillDraftString(prev.subdivision, parsed.subdivision),
+      hoaStatus: fillDraftString(prev.hoaStatus, parsed.hoaStatus),
+      listingStatus: fillDraftString(prev.listingStatus, parsed.listingStatus),
+      listingDate: fillDraftString(prev.listingDate, parsed.listingDate),
+      water: fillDraftString(prev.water, parsed.water),
+      sewer: fillDraftString(prev.sewer, parsed.sewer),
+      utilities: fillDraftString(prev.utilities, parsed.utilities),
+    }));
+  };
+
   const saveLinkIntake = async () => {
     const sourceUrl = linkIntakeDraft.sourceUrl.trim();
     if (!sourceUrl) {
@@ -2182,7 +2267,18 @@ export default function VaPage() {
       acreage: toNumber(linkIntakeDraft.acreage),
       askingPrice: toNumber(linkIntakeDraft.askingPrice),
       marketValue: toNumber(linkIntakeDraft.marketValue),
+      assessedValue: toNumber(linkIntakeDraft.assessedValue),
+      propertyTax: toNumber(linkIntakeDraft.propertyTax),
       zoning: linkIntakeDraft.zoning,
+      landUse: linkIntakeDraft.landUse,
+      subdivision: linkIntakeDraft.subdivision,
+      hoaStatus: linkIntakeDraft.hoaStatus,
+      listingStatus: linkIntakeDraft.listingStatus,
+      listingDate: linkIntakeDraft.listingDate,
+      water: linkIntakeDraft.water,
+      sewer: linkIntakeDraft.sewer,
+      utilities: linkIntakeDraft.utilities,
+      listingText: linkIntakeDraft.listingText,
       notes: linkIntakeDraft.notes,
       actor: user || "VA",
     });
@@ -3840,6 +3936,15 @@ export default function VaPage() {
                   </select>
                 </div>
               </div>
+              <div style={{ marginBottom: 10 }}>
+                <label style={label}>Copied listing text</label>
+                <textarea
+                  rows={5}
+                  value={linkIntakeDraft.listingText}
+                  onChange={e => updateLinkListingText(e.target.value)}
+                  placeholder="Paste the copied Zillow/listing page text here."
+                />
+              </div>
               <div style={{ display: "grid", gridTemplateColumns: "1.35fr 0.65fr 0.65fr 0.65fr", gap: 10 }} className="va-form-grid">
                 <input value={linkIntakeDraft.propertyAddress} onChange={e => setLinkIntakeDraft({ ...linkIntakeDraft, propertyAddress: e.target.value })} placeholder="Property address" />
                 <input value={linkIntakeDraft.parcelId} onChange={e => setLinkIntakeDraft({ ...linkIntakeDraft, parcelId: e.target.value })} placeholder="APN / parcel" />
@@ -3848,7 +3953,17 @@ export default function VaPage() {
                 <input value={linkIntakeDraft.askingPrice} onChange={e => setLinkIntakeDraft({ ...linkIntakeDraft, askingPrice: e.target.value })} placeholder="Asking price" />
                 <input value={linkIntakeDraft.acreage} onChange={e => setLinkIntakeDraft({ ...linkIntakeDraft, acreage: e.target.value })} placeholder="Acres" />
                 <input value={linkIntakeDraft.marketValue} onChange={e => setLinkIntakeDraft({ ...linkIntakeDraft, marketValue: e.target.value })} placeholder="Estimated value" />
+                <input value={linkIntakeDraft.assessedValue} onChange={e => setLinkIntakeDraft({ ...linkIntakeDraft, assessedValue: e.target.value })} placeholder="Assessed value" />
+                <input value={linkIntakeDraft.propertyTax} onChange={e => setLinkIntakeDraft({ ...linkIntakeDraft, propertyTax: e.target.value })} placeholder="Annual tax" />
                 <input value={linkIntakeDraft.zoning} onChange={e => setLinkIntakeDraft({ ...linkIntakeDraft, zoning: e.target.value })} placeholder="Zoning" />
+                <input value={linkIntakeDraft.landUse} onChange={e => setLinkIntakeDraft({ ...linkIntakeDraft, landUse: e.target.value })} placeholder="Property type" />
+                <input value={linkIntakeDraft.subdivision} onChange={e => setLinkIntakeDraft({ ...linkIntakeDraft, subdivision: e.target.value })} placeholder="Subdivision" />
+                <input value={linkIntakeDraft.hoaStatus} onChange={e => setLinkIntakeDraft({ ...linkIntakeDraft, hoaStatus: e.target.value })} placeholder="HOA" />
+                <input value={linkIntakeDraft.listingStatus} onChange={e => setLinkIntakeDraft({ ...linkIntakeDraft, listingStatus: e.target.value })} placeholder="Listing status" />
+                <input value={linkIntakeDraft.listingDate} onChange={e => setLinkIntakeDraft({ ...linkIntakeDraft, listingDate: e.target.value })} placeholder="Date on market" />
+                <input value={linkIntakeDraft.water} onChange={e => setLinkIntakeDraft({ ...linkIntakeDraft, water: e.target.value })} placeholder="Water" />
+                <input value={linkIntakeDraft.sewer} onChange={e => setLinkIntakeDraft({ ...linkIntakeDraft, sewer: e.target.value })} placeholder="Sewer" />
+                <input value={linkIntakeDraft.utilities} onChange={e => setLinkIntakeDraft({ ...linkIntakeDraft, utilities: e.target.value })} placeholder="Utilities" />
                 <input value={linkIntakeDraft.ownerName} onChange={e => setLinkIntakeDraft({ ...linkIntakeDraft, ownerName: e.target.value })} placeholder="Owner / seller" />
                 <input value={linkIntakeDraft.phone} onChange={e => setLinkIntakeDraft({ ...linkIntakeDraft, phone: e.target.value })} placeholder="Phone" />
                 <input value={linkIntakeDraft.email} onChange={e => setLinkIntakeDraft({ ...linkIntakeDraft, email: e.target.value })} placeholder="Email" />

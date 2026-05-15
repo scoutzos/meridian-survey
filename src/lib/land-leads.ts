@@ -219,16 +219,47 @@ export interface SingleLinkLandLeadInput {
   acreage?: number | null;
   askingPrice?: number | null;
   marketValue?: number | null;
+  assessedValue?: number | null;
+  propertyTax?: number | null;
   zoning?: string | null;
+  landUse?: string | null;
+  subdivision?: string | null;
+  hoaStatus?: string | null;
+  listingStatus?: string | null;
+  listingDate?: string | null;
+  water?: string | null;
+  sewer?: string | null;
+  utilities?: string | null;
+  sourceMls?: string | null;
+  listingDescription?: string | null;
+  listingText?: string | null;
   notes?: string | null;
   actor: string;
 }
 
 export interface ListingUrlHints {
   propertyAddress?: string | null;
+  county?: string | null;
   city?: string | null;
   state?: string | null;
   zip?: string | null;
+  parcelId?: string | null;
+  acreage?: number | null;
+  askingPrice?: number | null;
+  marketValue?: number | null;
+  assessedValue?: number | null;
+  propertyTax?: number | null;
+  zoning?: string | null;
+  landUse?: string | null;
+  subdivision?: string | null;
+  hoaStatus?: string | null;
+  listingStatus?: string | null;
+  listingDate?: string | null;
+  water?: string | null;
+  sewer?: string | null;
+  utilities?: string | null;
+  sourceMls?: string | null;
+  listingDescription?: string | null;
 }
 
 export interface LandLeadImportPreview {
@@ -1110,7 +1141,20 @@ function singleLinkRawData(input: SingleLinkLandLeadInput): Record<string, strin
     "Acreage": input.acreage === null || input.acreage === undefined ? "" : String(input.acreage),
     "Asking Price": input.askingPrice === null || input.askingPrice === undefined ? "" : String(input.askingPrice),
     "Market Value Estimate": input.marketValue === null || input.marketValue === undefined ? "" : String(input.marketValue),
+    "Tax Assessed Value": input.assessedValue === null || input.assessedValue === undefined ? "" : String(input.assessedValue),
+    "Property Tax": input.propertyTax === null || input.propertyTax === undefined ? "" : String(input.propertyTax),
     "Zoning": input.zoning?.trim() || "",
+    "Land Use": input.landUse?.trim() || "",
+    "Subdivision": input.subdivision?.trim() || "",
+    "HOA": input.hoaStatus?.trim() || "",
+    "Listing Status": input.listingStatus?.trim() || "",
+    "Date On Market": input.listingDate?.trim() || "",
+    "Water": input.water?.trim() || "",
+    "Sewer": input.sewer?.trim() || "",
+    "Utilities": input.utilities?.trim() || "",
+    "Source MLS": input.sourceMls?.trim() || "",
+    "Listing Description": input.listingDescription?.trim() || "",
+    "Listing Text": input.listingText?.trim() || "",
     "Notes": input.notes?.trim() || "",
     "Intake Method": "Single Link Intake",
   };
@@ -1127,6 +1171,50 @@ function titleCaseAddressPart(value: string): string {
       return part.charAt(0).toUpperCase() + part.slice(1).toLowerCase();
     })
     .join(" ");
+}
+
+function parseListingMoneyValue(value: string): number | null {
+  if (value.includes("--")) return null;
+  const cleaned = value.replace(/[$,\s]/g, "").trim();
+  if (!cleaned) return null;
+  const multiplier = /m$/i.test(cleaned) ? 1000000 : /k$/i.test(cleaned) ? 1000 : 1;
+  const numeric = Number(cleaned.replace(/[mk]$/i, ""));
+  return Number.isFinite(numeric) ? Math.round(numeric * multiplier) : null;
+}
+
+function parseListingAddressLine(line: string): ListingUrlHints {
+  const full = line.match(/^(.+?),\s*([^,]+),\s*([A-Z]{2})\s+(\d{5}(?:-\d{4})?)$/i);
+  if (full) {
+    return {
+      propertyAddress: titleCaseAddressPart(full[1]),
+      city: titleCaseAddressPart(full[2]),
+      state: full[3].toUpperCase(),
+      zip: full[4].slice(0, 5),
+    };
+  }
+  return { propertyAddress: titleCaseAddressPart(line) };
+}
+
+function normalizeListingDate(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? value : parsed.toISOString().slice(0, 10);
+}
+
+function listingSummaryNotes(hints: ListingUrlHints): string | null {
+  const lines = [
+    hints.listingStatus ? `Listing status: ${hints.listingStatus}` : "",
+    hints.listingDate ? `Date on market: ${hints.listingDate}` : "",
+    hints.landUse ? `Property type: ${hints.landUse}` : "",
+    hints.subdivision ? `Subdivision: ${hints.subdivision}` : "",
+    hints.hoaStatus ? `HOA: ${hints.hoaStatus}` : "",
+    hints.water ? `Water: ${hints.water}` : "",
+    hints.sewer ? `Sewer: ${hints.sewer}` : "",
+    hints.utilities ? `Utilities: ${hints.utilities}` : "",
+    hints.sourceMls ? `MLS source: ${hints.sourceMls}` : "",
+    hints.listingDescription ? `Listing description: ${hints.listingDescription}` : "",
+  ].filter(Boolean);
+  return lines.length ? lines.join("\n") : null;
 }
 
 export function listingUrlHints(sourceUrl: string): ListingUrlHints {
@@ -1157,6 +1245,84 @@ export function listingUrlHints(sourceUrl: string): ListingUrlHints {
   }
 }
 
+export function listingTextHints(listingText: string): ListingUrlHints {
+  const lines = listingText.split(/\n+/).map(line => line.trim()).filter(Boolean);
+  if (!lines.length) return {};
+
+  const priceHistoryIndex = lines.findIndex(line => /^price history$/i.test(line));
+  const carouselIndex = lines.findIndex(line => /^(nearby homes|similar homes|homes for you)$/i.test(line));
+  const mainEnd = [priceHistoryIndex, carouselIndex].filter(index => index >= 0).sort((a, b) => a - b)[0] ?? lines.length;
+  const mainLines = lines.slice(0, mainEnd);
+  const mainText = mainLines.join(" ");
+  const allText = lines.join(" ");
+  const extractLineValue = (label: string): string | null => {
+    const prefix = `${label}:`.toLowerCase();
+    const line = mainLines.find(row => row.toLowerCase().startsWith(prefix));
+    return clean(line ? line.slice(label.length + 1) : null);
+  };
+
+  const priceLineIndex = mainLines.findIndex(line => /^\$\s?[\d,]+(?:\.\d+)?\s?[kKmM]?$/i.test(line) && !line.includes("--"));
+  const priceLine = priceLineIndex >= 0
+    ? mainLines[priceLineIndex]
+    : mainLines.find(line => /\$\s?[\d,]+(?:\.\d+)?\s?[kKmM]?\b/.test(line) && !line.includes("--"));
+  const fullAddressPattern = /^\d{1,6}\s+[^,]+,\s*[^,]+,\s*[A-Z]{2}\s+\d{5}(?:-\d{4})?$/i;
+  const streetAddressPattern = /^\d{1,6}\s+.+\s(?:Rd|Road|Dr|Drive|Cir|Circle|St|Street|Ave|Avenue|Ln|Lane|Ct|Court|Way|Trl|Trail|Pkwy|Hwy|Highway|Ter|Terrace|Blvd|Boulevard|Pl|Place)\b(?:\s+[NSEW]{1,2})?$/i;
+  const lineIsAddress = (line: string) =>
+    !/image of|interested in|travel times|street view|nearby|previous photo|next photo|skip carousel/i.test(line)
+    && (fullAddressPattern.test(line) || streetAddressPattern.test(line));
+  const nearbyAddress = priceLineIndex >= 0 ? mainLines.slice(priceLineIndex + 1, priceLineIndex + 8).find(lineIsAddress) : null;
+  const addressLine = nearbyAddress || mainLines.find(lineIsAddress) || "";
+  const addressHints = addressLine ? parseListingAddressLine(addressLine) : {};
+
+  const splitAcreIndex = mainLines.findIndex((line, index) => /^acres?$/i.test(line) && /^[\d.]+$/.test(mainLines[index - 1] || ""));
+  const acresFromSplitLines = splitAcreIndex > 0 ? Number(mainLines[splitAcreIndex - 1]) : null;
+  const acresMatch = mainText.match(/(?:Size:\s*)?([\d.]+)\s+Acres?\b/i)
+    || mainText.match(/([\d.]+)\s+acres?\s+lot/i);
+  const parcelMatch = mainText.match(/Parcel number:\s*([A-Za-z0-9-]+)/i);
+  const listingDateMatch = mainText.match(/Date on market:\s*(\d{1,2}\/\d{1,2}\/\d{2,4})/i);
+  const assessedValueMatch = mainText.match(/Tax assessed value:\s*(\$\s?[\d,]+(?:\.\d+)?\s?[kKmM]?)/i);
+  const propertyTaxMatch = mainText.match(/Annual tax amount:\s*(\$\s?[\d,]+(?:\.\d+)?\s?[kKmM]?)/i);
+  const marketValueMatch = mainText.match(/(?:Estimated market value|Zestimate®?)\s*(\$\s?[\d,]+(?:\.\d+)?\s?[kKmM]?)/i);
+  const standaloneCountyLine = lines.find(line => /^[A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+)*\s+County$/i.test(line) && !/^Georgia/i.test(line));
+  const embeddedGeorgiaCounty = allText.match(/Georgia([A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+)*)\s+County\b/);
+  const genericCounty = allText.match(/\b([A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+)*)\s+County\b/);
+  const countyName = standaloneCountyLine?.replace(/\s+County$/i, "")
+    || embeddedGeorgiaCounty?.[1]
+    || (genericCounty?.[1] && !/^Georgia/i.test(genericCounty[1]) ? genericCounty[1] : null);
+  const statusLine = mainLines.find(line => /^(active|for sale|pending|under contract|sold|off market|auction)$/i.test(line));
+  const landUseLine = mainLines.find(line => /^(residential lot|lot\s*\/\s*land|lot\/land|land|acreage|commercial lot|farm|unimproved land)$/i.test(line));
+  const sourceLine = extractLineValue("Source")?.replace(/\s*MLS Logo.*$/i, "").trim() || null;
+  const specialIndex = mainLines.findIndex(line => /^what'?s special$/i.test(line));
+  const specialEnd = specialIndex >= 0
+    ? mainLines.findIndex((line, index) => index > specialIndex && /^(show more|\d+\s+days|stay connected|listing updated|listed by:|source:|facts & features)$/i.test(line))
+    : -1;
+  const listingDescription = specialIndex >= 0
+    ? mainLines.slice(specialIndex + 1, specialEnd > specialIndex ? specialEnd : Math.min(mainLines.length, specialIndex + 5)).join(" ").slice(0, 1000)
+    : null;
+
+  return {
+    ...addressHints,
+    county: countyName ? `${titleCaseAddressPart(countyName)} County` : null,
+    parcelId: parcelMatch?.[1] || null,
+    acreage: acresFromSplitLines || (acresMatch?.[1] ? Number(acresMatch[1]) : null),
+    askingPrice: priceLine ? parseListingMoneyValue(priceLine) : null,
+    marketValue: marketValueMatch?.[1] ? parseListingMoneyValue(marketValueMatch[1]) : null,
+    assessedValue: assessedValueMatch?.[1] ? parseListingMoneyValue(assessedValueMatch[1]) : null,
+    propertyTax: propertyTaxMatch?.[1] ? parseListingMoneyValue(propertyTaxMatch[1]) : null,
+    zoning: extractLineValue("Zoning"),
+    landUse: landUseLine || null,
+    subdivision: extractLineValue("Subdivision"),
+    hoaStatus: extractLineValue("Has HOA"),
+    listingStatus: statusLine || null,
+    listingDate: normalizeListingDate(listingDateMatch?.[1]),
+    water: extractLineValue("Water"),
+    sewer: extractLineValue("Sewer"),
+    utilities: extractLineValue("Utilities for property"),
+    sourceMls: sourceLine,
+    listingDescription: clean(listingDescription),
+  };
+}
+
 export async function createSingleLinkLandLead(input: SingleLinkLandLeadInput): Promise<LeadImportResult> {
   const url = input.sourceUrl.trim();
   if (!url) return { batch: null, leads: [], error: "Paste a property or listing link first." };
@@ -1164,13 +1330,35 @@ export async function createSingleLinkLandLead(input: SingleLinkLandLeadInput): 
   const now = new Date().toISOString();
   const sourceSystem = input.sourceSystem?.trim() || inferLandLeadSourceFromUrl(url);
   const campaignSource = input.campaignSource?.trim() || "Single Link Intake";
-  const hints = listingUrlHints(url);
-  const enrichedInput = {
+  const urlHints = listingUrlHints(url);
+  const textHints = listingTextHints(input.listingText || "");
+  const parsedNotes = listingSummaryNotes(textHints);
+  const notes = [input.notes?.trim(), parsedNotes].filter(Boolean).join("\n") || null;
+  const enrichedInput: SingleLinkLandLeadInput = {
     ...input,
-    propertyAddress: input.propertyAddress?.trim() || hints.propertyAddress || null,
-    city: input.city?.trim() || hints.city || null,
-    state: input.state?.trim() || hints.state || null,
-    zip: input.zip?.trim() || hints.zip || null,
+    propertyAddress: input.propertyAddress?.trim() || textHints.propertyAddress || urlHints.propertyAddress || null,
+    parcelId: input.parcelId?.trim() || textHints.parcelId || null,
+    county: input.county?.trim() || textHints.county || null,
+    city: input.city?.trim() || textHints.city || urlHints.city || null,
+    state: input.state?.trim() || textHints.state || urlHints.state || null,
+    zip: input.zip?.trim() || textHints.zip || urlHints.zip || null,
+    acreage: input.acreage ?? textHints.acreage ?? null,
+    askingPrice: input.askingPrice ?? textHints.askingPrice ?? null,
+    marketValue: input.marketValue ?? textHints.marketValue ?? null,
+    assessedValue: input.assessedValue ?? textHints.assessedValue ?? null,
+    propertyTax: input.propertyTax ?? textHints.propertyTax ?? null,
+    zoning: input.zoning?.trim() || textHints.zoning || null,
+    landUse: input.landUse?.trim() || textHints.landUse || null,
+    subdivision: input.subdivision?.trim() || textHints.subdivision || null,
+    hoaStatus: input.hoaStatus?.trim() || textHints.hoaStatus || null,
+    listingStatus: input.listingStatus?.trim() || textHints.listingStatus || null,
+    listingDate: input.listingDate?.trim() || textHints.listingDate || null,
+    water: input.water?.trim() || textHints.water || null,
+    sewer: input.sewer?.trim() || textHints.sewer || null,
+    utilities: input.utilities?.trim() || textHints.utilities || null,
+    sourceMls: input.sourceMls?.trim() || textHints.sourceMls || null,
+    listingDescription: input.listingDescription?.trim() || textHints.listingDescription || null,
+    notes,
     sourceSystem,
     campaignSource,
   };
@@ -1191,8 +1379,9 @@ export async function createSingleLinkLandLead(input: SingleLinkLandLeadInput): 
       intake_method: "single-link",
       source_url: url,
       source_system: sourceSystem,
+      listing_text_captured: !!input.listingText?.trim(),
     },
-    notes: input.notes?.trim() || null,
+    notes,
   };
 
   if (!supabase) {
