@@ -393,6 +393,7 @@ export type LandDueDiligenceCategory = "access" | "flood" | "wetlands" | "zoning
 export type LandDueDiligenceStatus = "todo" | "in-progress" | "verified" | "blocked" | "not-applicable";
 export type LandCompType = "sold" | "active" | "pending" | "expired" | "manual-note";
 export type LandCompConfidence = "high" | "medium" | "low" | "needs-review";
+export type LandCompRelationshipStatus = "potential" | "accepted" | "rejected";
 
 export interface CountyResearchSource {
   county: string;
@@ -424,18 +425,31 @@ export interface LandDueDiligenceItem {
 export interface LandCompRecord {
   id: string;
   lead_id: string;
+  link_id?: string | null;
+  comp_property_id?: string | null;
+  comp_key?: string | null;
   comp_type: LandCompType;
   address: string | null;
   parcel_id: string | null;
   county: string | null;
+  city?: string | null;
   state: string | null;
+  zip?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
   price: number | null;
   acreage: number | null;
   price_per_acre: number | null;
   sale_or_list_date: string | null;
   distance_miles: number | null;
+  similarity_score?: number | null;
+  relationship_status?: LandCompRelationshipStatus | null;
+  match_reason?: string | null;
   source_system: string | null;
   source_url: string | null;
+  listing_text?: string | null;
+  listing_details?: ListingDetails | null;
+  raw_data?: Record<string, unknown> | null;
   similarity_notes: string | null;
   adjustment_notes: string | null;
   include_in_valuation: boolean;
@@ -447,22 +461,76 @@ export interface LandCompRecord {
 
 export interface LandCompInput {
   leadId: string;
+  compPropertyId?: string | null;
   compType: LandCompType;
   address?: string | null;
   parcelId?: string | null;
   county?: string | null;
+  city?: string | null;
   state?: string | null;
+  zip?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
   price?: number | null;
   acreage?: number | null;
   saleOrListDate?: string | null;
   distanceMiles?: number | null;
+  similarityScore?: number | null;
+  relationshipStatus?: LandCompRelationshipStatus | null;
+  matchReason?: string | null;
   sourceSystem?: string | null;
   sourceUrl?: string | null;
+  listingText?: string | null;
+  listingDetails?: ListingDetails | null;
+  rawData?: Record<string, unknown> | null;
   similarityNotes?: string | null;
   adjustmentNotes?: string | null;
   includeInValuation?: boolean;
   confidence?: LandCompConfidence;
   actor?: string | null;
+}
+
+export interface LandCompProperty {
+  id: string;
+  comp_key: string;
+  comp_type: LandCompType;
+  address: string | null;
+  parcel_id: string | null;
+  county: string | null;
+  city: string | null;
+  state: string | null;
+  zip: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  price: number | null;
+  acreage: number | null;
+  price_per_acre: number | null;
+  sale_or_list_date: string | null;
+  source_system: string | null;
+  source_url: string | null;
+  listing_text: string | null;
+  listing_details: ListingDetails;
+  raw_data: Record<string, unknown>;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface LandCompLink {
+  id: string;
+  lead_id: string;
+  comp_property_id: string;
+  relationship_status: LandCompRelationshipStatus;
+  distance_miles: number | null;
+  similarity_score: number | null;
+  match_reason: string | null;
+  similarity_notes: string | null;
+  adjustment_notes: string | null;
+  include_in_valuation: boolean;
+  confidence: LandCompConfidence;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface AutomatedLandResearchFinding {
@@ -522,6 +590,8 @@ const LOCAL_UNDERWRITING_RESULTS = "meridian_land_underwriting_results_local";
 const LOCAL_ACTIVITIES = "meridian_imported_land_lead_activities_local";
 const LOCAL_DUE_DILIGENCE = "meridian_land_due_diligence_items_local";
 const LOCAL_COMPS = "meridian_land_comp_records_local";
+const LOCAL_COMP_PROPERTIES = "meridian_land_comp_properties_local";
+const LOCAL_COMP_LINKS = "meridian_land_comp_links_local";
 
 function localGet<T>(key: string, fallback: T): T {
   if (typeof window === "undefined") return fallback;
@@ -2406,6 +2476,181 @@ export function summarizeLandComps(comps: LandCompRecord[]) {
   };
 }
 
+function normalizeCompKeyText(value: string | null | undefined): string {
+  return normalizeIdentityText(value).replace(/[^a-z0-9]+/g, " ").trim();
+}
+
+function normalizeCompSourceUrl(value: string | null | undefined): string | null {
+  const text = clean(value);
+  if (!text) return null;
+  try {
+    const url = new URL(text);
+    return `${url.origin}${url.pathname.replace(/\/+$/, "")}`.toLowerCase();
+  } catch {
+    return text.replace(/[?#].*$/, "").replace(/\/+$/, "").toLowerCase();
+  }
+}
+
+function buildLandCompKey(input: {
+  leadId?: string | null;
+  sourceUrl?: string | null;
+  parcelId?: string | null;
+  address?: string | null;
+  county?: string | null;
+  state?: string | null;
+  price?: number | null;
+  acreage?: number | null;
+  fallbackId?: string | null;
+}): string {
+  const sourceUrl = normalizeCompSourceUrl(input.sourceUrl);
+  if (sourceUrl) return `url:${sourceUrl}`;
+  const state = normalizeCompKeyText(input.state);
+  const county = normalizeCompKeyText(input.county).replace(/\s+county$/, "");
+  const parcel = normalizeCompKeyText(input.parcelId);
+  if (parcel) return `parcel:${state}:${county}:${parcel}`;
+  const address = normalizeCompKeyText(input.address);
+  if (address) return `addr:${state}:${county}:${address}`;
+  return `manual:${input.leadId || "unknown"}:${input.fallbackId || Date.now()}`;
+}
+
+function mergeListingDetails(...details: Array<ListingDetails | null | undefined>): ListingDetails {
+  return details.reduce<ListingDetails>((acc, detail) => {
+    Object.entries(detail || {}).forEach(([key, value]) => {
+      if (value !== null && value !== undefined && String(value).trim()) acc[key] = value;
+    });
+    return acc;
+  }, {});
+}
+
+function compRawData(input: LandCompInput, hints: ListingUrlHints, listingDetails: ListingDetails, pricePerAcre: number | null): Record<string, unknown> {
+  const detailFields = Object.entries(listingDetails).reduce<Record<string, string>>((acc, [key, value]) => {
+    if (value !== null && value !== undefined && String(value).trim()) acc[`Listing ${key}`] = String(value);
+    return acc;
+  }, {});
+  return {
+    ...(input.rawData || {}),
+    "Comp Role": "Reusable comp",
+    "Comp Type": input.compType,
+    "Comp Address": input.address?.trim() || hints.propertyAddress || "",
+    "Comp Parcel ID": input.parcelId?.trim() || hints.parcelId || "",
+    "Comp County": input.county?.trim() || hints.county || "",
+    "Comp City": input.city?.trim() || hints.city || "",
+    "Comp State": input.state?.trim() || hints.state || "",
+    "Comp Zip": input.zip?.trim() || hints.zip || "",
+    "Comp Price": input.price ?? hints.askingPrice ?? "",
+    "Comp Acres": input.acreage ?? hints.acreage ?? "",
+    "Comp PPA": pricePerAcre ?? "",
+    "Comp Sale/List Date": input.saleOrListDate || hints.listingDate || "",
+    "Comp Source System": input.sourceSystem?.trim() || inferLandLeadSourceFromUrl(input.sourceUrl || ""),
+    "Comp Source URL": input.sourceUrl?.trim() || "",
+    "Comp Source MLS": hints.sourceMls || "",
+    "Comp Listing Description": hints.listingDescription || "",
+    "Comp Listing Text": input.listingText?.trim() || "",
+    ...detailFields,
+  };
+}
+
+function landCompRecordFromParts(property: LandCompProperty, link: LandCompLink | null, leadId: string): LandCompRecord {
+  return {
+    id: link?.id || property.id,
+    lead_id: leadId,
+    link_id: link?.id || null,
+    comp_property_id: property.id,
+    comp_key: property.comp_key,
+    comp_type: property.comp_type,
+    address: property.address,
+    parcel_id: property.parcel_id,
+    county: property.county,
+    city: property.city,
+    state: property.state,
+    zip: property.zip,
+    latitude: property.latitude,
+    longitude: property.longitude,
+    price: property.price,
+    acreage: property.acreage,
+    price_per_acre: property.price_per_acre,
+    sale_or_list_date: property.sale_or_list_date,
+    distance_miles: link?.distance_miles ?? null,
+    similarity_score: link?.similarity_score ?? null,
+    relationship_status: link?.relationship_status ?? null,
+    match_reason: link?.match_reason ?? null,
+    source_system: property.source_system,
+    source_url: property.source_url,
+    listing_text: property.listing_text,
+    listing_details: property.listing_details,
+    raw_data: property.raw_data,
+    similarity_notes: link?.similarity_notes ?? null,
+    adjustment_notes: link?.adjustment_notes ?? null,
+    include_in_valuation: link?.include_in_valuation ?? false,
+    confidence: link?.confidence ?? "needs-review",
+    created_by: link?.created_by || property.created_by,
+    created_at: link?.created_at || property.created_at,
+    updated_at: link?.updated_at || property.updated_at,
+  };
+}
+
+function legacyLandCompKey(comp: LandCompRecord): string {
+  return buildLandCompKey({
+    leadId: comp.lead_id,
+    sourceUrl: comp.source_url,
+    parcelId: comp.parcel_id,
+    address: comp.address,
+    county: comp.county,
+    state: comp.state,
+    price: comp.price,
+    acreage: comp.acreage,
+    fallbackId: comp.id,
+  });
+}
+
+function scorePotentialLandComp(lead: ImportedLandLead, comp: LandCompProperty): { score: number; reason: string } {
+  let score = 0;
+  const reasons: string[] = [];
+  const leadCounty = countyName(lead.county).toLowerCase();
+  const compCounty = countyName(comp.county).toLowerCase();
+  if (lead.state && comp.state && lead.state.toLowerCase() === comp.state.toLowerCase()) {
+    score += 10;
+    reasons.push("same state");
+  }
+  if (leadCounty && compCounty && leadCounty === compCounty) {
+    score += 35;
+    reasons.push("same county");
+  }
+  if (lead.zip && comp.zip && lead.zip === comp.zip) {
+    score += 20;
+    reasons.push("same ZIP");
+  }
+  if (lead.acreage && comp.acreage) {
+    const ratio = Math.min(lead.acreage, comp.acreage) / Math.max(lead.acreage, comp.acreage);
+    if (ratio >= 0.75) {
+      score += 25;
+      reasons.push("very similar acreage");
+    } else if (ratio >= 0.45) {
+      score += 15;
+      reasons.push("workable acreage range");
+    } else if (ratio >= 0.25) {
+      score += 7;
+      reasons.push("loose acreage range");
+    }
+  }
+  if (comp.comp_type === "sold") {
+    score += 15;
+    reasons.push("sold comp");
+  } else if (["active", "pending"].includes(comp.comp_type)) {
+    score += 8;
+    reasons.push(`${labelForPlainStatus(comp.comp_type)} market signal`);
+  }
+  if (comp.price_per_acre) {
+    score += 5;
+    reasons.push("has PPA");
+  }
+  return { score, reason: reasons.join(" · ") || "Saved comp record" };
+}
+
+function labelForPlainStatus(value: string): string {
+  return value.replace(/-/g, " ");
+}
+
 export async function fetchLandDueDiligenceItems(lead: ImportedLandLead): Promise<LandDueDiligenceItem[]> {
   if (!supabase) {
     const rows = localGet<LandDueDiligenceItem[]>(LOCAL_DUE_DILIGENCE, [])
@@ -2484,39 +2729,134 @@ export async function saveLandDueDiligenceItem(
 }
 
 export async function fetchLandCompRecords(leadId: string): Promise<LandCompRecord[]> {
+  const legacyRows = async (): Promise<LandCompRecord[]> => {
+    if (!supabase) {
+      return localGet<LandCompRecord[]>(LOCAL_COMPS, [])
+        .filter(row => row.lead_id === leadId)
+        .sort((a, b) => (b.sale_or_list_date || b.created_at).localeCompare(a.sale_or_list_date || a.created_at));
+    }
+    const { data, error } = await supabase
+      .from("meridian_land_comp_records")
+      .select("*")
+      .eq("lead_id", leadId)
+      .order("created_at", { ascending: false });
+    if (error || !data) return [];
+    return data as LandCompRecord[];
+  };
+
   if (!supabase) {
-    return localGet<LandCompRecord[]>(LOCAL_COMPS, [])
-      .filter(row => row.lead_id === leadId)
-      .sort((a, b) => (b.sale_or_list_date || b.created_at).localeCompare(a.sale_or_list_date || a.created_at));
+    const properties = localGet<LandCompProperty[]>(LOCAL_COMP_PROPERTIES, []);
+    const links = localGet<LandCompLink[]>(LOCAL_COMP_LINKS, []).filter(row => row.lead_id === leadId);
+    const linked = links
+      .map(link => {
+        const property = properties.find(row => row.id === link.comp_property_id);
+        return property ? landCompRecordFromParts(property, link, leadId) : null;
+      })
+      .filter((row): row is LandCompRecord => !!row);
+    const linkedKeys = new Set(linked.map(row => row.comp_key).filter(Boolean));
+    const legacy = (await legacyRows()).filter(row => !linkedKeys.has(legacyLandCompKey(row)));
+    return [...linked, ...legacy].sort((a, b) => (b.sale_or_list_date || b.created_at).localeCompare(a.sale_or_list_date || a.created_at));
   }
-  const { data, error } = await supabase
-    .from("meridian_land_comp_records")
+
+  const legacy = await legacyRows();
+  const { data: links, error: linkError } = await supabase
+    .from("meridian_land_comp_links")
     .select("*")
     .eq("lead_id", leadId)
     .order("created_at", { ascending: false });
-  if (error || !data) return [];
-  return data as LandCompRecord[];
+  if (linkError || !links) return legacy;
+
+  const propertyIds = Array.from(new Set((links as LandCompLink[]).map(row => row.comp_property_id).filter(Boolean)));
+  if (!propertyIds.length) return legacy;
+
+  const { data: properties, error: propertyError } = await supabase
+    .from("meridian_land_comp_properties")
+    .select("*")
+    .in("id", propertyIds);
+  if (propertyError || !properties) return legacy;
+
+  const propertyById = new Map((properties as LandCompProperty[]).map(property => [property.id, property]));
+  const linked = (links as LandCompLink[])
+    .map(link => {
+      const property = propertyById.get(link.comp_property_id);
+      return property ? landCompRecordFromParts(property, link, leadId) : null;
+    })
+    .filter((row): row is LandCompRecord => !!row);
+  const linkedKeys = new Set(linked.map(row => row.comp_key).filter(Boolean));
+  const fallbackLegacy = legacy.filter(row => !linkedKeys.has(legacyLandCompKey(row)));
+  return [...linked, ...fallbackLegacy].sort((a, b) => (b.sale_or_list_date || b.created_at).localeCompare(a.sale_or_list_date || a.created_at));
 }
 
 export async function createLandCompRecord(input: LandCompInput): Promise<{ comp: LandCompRecord | null; error: string | null }> {
   const now = new Date().toISOString();
-  const pricePerAcre = input.price && input.acreage && input.acreage > 0
-    ? Math.round(input.price / input.acreage)
+  const textHints = listingTextHints(input.listingText || "");
+  const price = input.price ?? textHints.askingPrice ?? null;
+  const acreage = input.acreage ?? textHints.acreage ?? null;
+  const pricePerAcre = price && acreage && acreage > 0
+    ? Math.round(price / acreage)
     : null;
+  const listingDetails = mergeListingDetails(textHints.listingDetails, input.listingDetails);
+  const rawData = compRawData(input, textHints, listingDetails, pricePerAcre);
+  const compKey = buildLandCompKey({
+    leadId: input.leadId,
+    sourceUrl: input.sourceUrl,
+    parcelId: input.parcelId || textHints.parcelId,
+    address: input.address || textHints.propertyAddress,
+    county: input.county || textHints.county,
+    state: input.state || textHints.state,
+    price,
+    acreage,
+  });
+  const propertyRow = {
+    comp_key: compKey,
+    comp_type: input.compType,
+    address: input.address?.trim() || textHints.propertyAddress || null,
+    parcel_id: input.parcelId?.trim() || textHints.parcelId || null,
+    county: input.county?.trim() || textHints.county || null,
+    city: input.city?.trim() || textHints.city || null,
+    state: input.state?.trim() || textHints.state || null,
+    zip: input.zip?.trim() || textHints.zip || null,
+    latitude: input.latitude ?? null,
+    longitude: input.longitude ?? null,
+    price,
+    acreage,
+    price_per_acre: pricePerAcre,
+    sale_or_list_date: input.saleOrListDate || textHints.listingDate || null,
+    source_system: input.sourceSystem?.trim() || inferLandLeadSourceFromUrl(input.sourceUrl || ""),
+    source_url: input.sourceUrl?.trim() || null,
+    listing_text: input.listingText?.trim() || null,
+    listing_details: listingDetails,
+    raw_data: rawData,
+    created_by: input.actor || null,
+    updated_at: now,
+  };
+  const linkPatch = {
+    lead_id: input.leadId,
+    relationship_status: input.relationshipStatus || "accepted",
+    distance_miles: input.distanceMiles ?? null,
+    similarity_score: input.similarityScore ?? null,
+    match_reason: input.matchReason?.trim() || null,
+    similarity_notes: input.similarityNotes?.trim() || null,
+    adjustment_notes: input.adjustmentNotes?.trim() || null,
+    include_in_valuation: input.includeInValuation ?? true,
+    confidence: input.confidence || "needs-review",
+    created_by: input.actor || null,
+    updated_at: now,
+  };
   const row = {
     lead_id: input.leadId,
     comp_type: input.compType,
-    address: input.address?.trim() || null,
-    parcel_id: input.parcelId?.trim() || null,
-    county: input.county?.trim() || null,
-    state: input.state?.trim() || null,
-    price: input.price ?? null,
-    acreage: input.acreage ?? null,
+    address: propertyRow.address,
+    parcel_id: propertyRow.parcel_id,
+    county: propertyRow.county,
+    state: propertyRow.state,
+    price,
+    acreage,
     price_per_acre: pricePerAcre,
-    sale_or_list_date: input.saleOrListDate || null,
+    sale_or_list_date: propertyRow.sale_or_list_date,
     distance_miles: input.distanceMiles ?? null,
-    source_system: input.sourceSystem?.trim() || null,
-    source_url: input.sourceUrl?.trim() || null,
+    source_system: propertyRow.source_system,
+    source_url: propertyRow.source_url,
     similarity_notes: input.similarityNotes?.trim() || null,
     adjustment_notes: input.adjustmentNotes?.trim() || null,
     include_in_valuation: input.includeInValuation ?? true,
@@ -2524,23 +2864,175 @@ export async function createLandCompRecord(input: LandCompInput): Promise<{ comp
     created_by: input.actor || null,
   };
   if (!supabase) {
+    const existingProperty = input.compPropertyId
+      ? localGet<LandCompProperty[]>(LOCAL_COMP_PROPERTIES, []).find(property => property.id === input.compPropertyId) || null
+      : null;
+    const effectivePropertyRow = existingProperty || propertyRow;
     const comp: LandCompRecord = {
       ...row,
       id: makeId("comp"),
-      comp_type: row.comp_type as LandCompType,
+      link_id: makeId("comp-link"),
+      comp_property_id: existingProperty?.id || input.compPropertyId || makeId("comp-property"),
+      comp_key: existingProperty?.comp_key || compKey,
+      comp_type: effectivePropertyRow.comp_type as LandCompType,
+      address: effectivePropertyRow.address,
+      parcel_id: effectivePropertyRow.parcel_id,
+      county: effectivePropertyRow.county,
+      city: effectivePropertyRow.city,
+      state: effectivePropertyRow.state,
+      zip: effectivePropertyRow.zip,
+      latitude: effectivePropertyRow.latitude,
+      longitude: effectivePropertyRow.longitude,
+      price: effectivePropertyRow.price,
+      acreage: effectivePropertyRow.acreage,
+      price_per_acre: effectivePropertyRow.price_per_acre,
+      sale_or_list_date: effectivePropertyRow.sale_or_list_date,
+      source_system: effectivePropertyRow.source_system,
+      source_url: effectivePropertyRow.source_url,
+      similarity_score: linkPatch.similarity_score,
+      relationship_status: linkPatch.relationship_status as LandCompRelationshipStatus,
+      match_reason: linkPatch.match_reason,
+      listing_text: effectivePropertyRow.listing_text,
+      listing_details: effectivePropertyRow.listing_details,
+      raw_data: effectivePropertyRow.raw_data,
       confidence: row.confidence as LandCompConfidence,
       created_at: now,
       updated_at: now,
     };
-    localSet(LOCAL_COMPS, [comp, ...localGet<LandCompRecord[]>(LOCAL_COMPS, [])]);
+    const properties = localGet<LandCompProperty[]>(LOCAL_COMP_PROPERTIES, []);
+    const property: LandCompProperty = {
+      ...effectivePropertyRow,
+      id: comp.comp_property_id || makeId("comp-property"),
+      comp_type: effectivePropertyRow.comp_type as LandCompType,
+      comp_key: comp.comp_key || compKey,
+      listing_details: effectivePropertyRow.listing_details,
+      raw_data: effectivePropertyRow.raw_data,
+      created_at: existingProperty?.created_at || now,
+      updated_at: now,
+    };
+    const link: LandCompLink = {
+      ...linkPatch,
+      id: comp.link_id || makeId("comp-link"),
+      comp_property_id: property.id,
+      relationship_status: linkPatch.relationship_status as LandCompRelationshipStatus,
+      confidence: linkPatch.confidence as LandCompConfidence,
+      created_at: now,
+      updated_at: now,
+    };
+    localSet(LOCAL_COMP_PROPERTIES, [property, ...properties.filter(row => row.id !== property.id && row.comp_key !== property.comp_key)]);
+    localSet(LOCAL_COMP_LINKS, [link, ...localGet<LandCompLink[]>(LOCAL_COMP_LINKS, []).filter(row => !(row.lead_id === link.lead_id && row.comp_property_id === link.comp_property_id))]);
     return { comp, error: null };
   }
+
+  let property: LandCompProperty | null = null;
+  if (input.compPropertyId) {
+    const { data, error } = await supabase
+      .from("meridian_land_comp_properties")
+      .select("*")
+      .eq("id", input.compPropertyId)
+      .maybeSingle();
+    if (error) return await createLegacyLandCompRecord(row);
+    property = data as LandCompProperty | null;
+  }
+  if (!property) {
+    const { data, error } = await supabase
+      .from("meridian_land_comp_properties")
+      .upsert(propertyRow, { onConflict: "comp_key" })
+      .select()
+      .single();
+    if (error || !data) return await createLegacyLandCompRecord(row, error?.message);
+    property = data as LandCompProperty;
+  }
+
+  const { data: linkData, error: linkError } = await supabase
+    .from("meridian_land_comp_links")
+    .upsert({ ...linkPatch, comp_property_id: property.id }, { onConflict: "lead_id,comp_property_id" })
+    .select()
+    .single();
+  if (linkError || !linkData) return await createLegacyLandCompRecord(row, linkError?.message);
+  return { comp: landCompRecordFromParts(property, linkData as LandCompLink, input.leadId), error: null };
+}
+
+async function createLegacyLandCompRecord(row: Record<string, unknown>, underlyingError?: string | null): Promise<{ comp: LandCompRecord | null; error: string | null }> {
+  if (!supabase) return { comp: null, error: underlyingError || "Supabase is not configured." };
   const { data, error } = await supabase
     .from("meridian_land_comp_records")
     .insert(row)
     .select()
     .single();
-  return { comp: data as LandCompRecord | null, error: error?.message ?? null };
+  return { comp: data as LandCompRecord | null, error: error?.message ?? (data ? null : underlyingError ?? null) };
+}
+
+export async function linkLandCompToLead(input: {
+  leadId: string;
+  comp: LandCompRecord;
+  actor?: string | null;
+  confidence?: LandCompConfidence;
+  includeInValuation?: boolean;
+}): Promise<{ comp: LandCompRecord | null; error: string | null }> {
+  if (!input.comp.comp_property_id) return { comp: null, error: "This comp cannot be linked because it is missing a reusable comp record." };
+  return createLandCompRecord({
+    leadId: input.leadId,
+    compPropertyId: input.comp.comp_property_id,
+    compType: input.comp.comp_type,
+    relationshipStatus: "accepted",
+    distanceMiles: input.comp.distance_miles,
+    similarityScore: input.comp.similarity_score,
+    matchReason: input.comp.match_reason,
+    similarityNotes: input.comp.similarity_notes || input.comp.match_reason,
+    adjustmentNotes: input.comp.adjustment_notes,
+    includeInValuation: input.includeInValuation ?? true,
+    confidence: input.confidence || input.comp.confidence || "needs-review",
+    actor: input.actor,
+  });
+}
+
+export async function fetchPotentialLandCompRecords(lead: ImportedLandLead, existingComps: LandCompRecord[] = []): Promise<LandCompRecord[]> {
+  const existingPropertyIds = new Set(existingComps.map(comp => comp.comp_property_id).filter(Boolean));
+  const leadState = lead.state || "GA";
+  const leadCounty = countyName(lead.county).toLowerCase();
+  const buildCandidates = (properties: LandCompProperty[]) => properties
+    .filter(property => property.id && !existingPropertyIds.has(property.id))
+    .map(property => {
+      const match = scorePotentialLandComp(lead, property);
+      return { property, ...match };
+    })
+    .filter(candidate => {
+      const compCounty = countyName(candidate.property.county).toLowerCase();
+      return candidate.score >= 35 || (!!leadCounty && leadCounty === compCounty);
+    })
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 12)
+    .map(candidate => landCompRecordFromParts(candidate.property, {
+      id: `potential-${candidate.property.id}`,
+      lead_id: lead.id,
+      comp_property_id: candidate.property.id,
+      relationship_status: "potential",
+      distance_miles: null,
+      similarity_score: candidate.score,
+      match_reason: candidate.reason,
+      similarity_notes: null,
+      adjustment_notes: null,
+      include_in_valuation: false,
+      confidence: "needs-review",
+      created_by: null,
+      created_at: candidate.property.created_at,
+      updated_at: candidate.property.updated_at,
+    }, lead.id));
+
+  if (!supabase) {
+    const properties = localGet<LandCompProperty[]>(LOCAL_COMP_PROPERTIES, []);
+    return buildCandidates(properties.filter(property => !leadState || !property.state || property.state.toLowerCase() === leadState.toLowerCase()));
+  }
+
+  let query = supabase
+    .from("meridian_land_comp_properties")
+    .select("*")
+    .limit(250);
+  if (leadState) query = query.eq("state", leadState);
+  const { data, error } = await query;
+  if (error || !data) return [];
+  return buildCandidates(data as LandCompProperty[]);
 }
 
 function matchingResearchItem(items: LandDueDiligenceItem[], finding: AutomatedLandResearchFinding): LandDueDiligenceItem | null {

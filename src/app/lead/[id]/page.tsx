@@ -14,9 +14,12 @@ import {
   fetchLandDueDiligenceItems,
   fetchImportedLandLeads,
   fetchImportedLandLeadActivities,
+  fetchPotentialLandCompRecords,
   getCountyResearchSources,
   inferLandLeadSourceFromUrl,
   importedLeadContactIdentityKey,
+  linkLandCompToLead,
+  listingTextHints,
   listingUrlHints,
   runAutomatedLandResearch,
   saveLandDueDiligenceItem,
@@ -70,6 +73,7 @@ function parseMoneyValue(value: string): number | null {
 
 function parseCompListingText(text: string, sourceUrl: string) {
   const hints = listingUrlHints(sourceUrl);
+  const textHints = listingTextHints(text);
   const lines = text.split(/\n+/).map(line => line.trim()).filter(Boolean);
   const priceHistoryIndex = lines.findIndex(line => /^price history$/i.test(line));
   const carouselIndex = lines.findIndex(line => /^(nearby homes|similar homes|homes for you)$/i.test(line));
@@ -93,19 +97,24 @@ function parseCompListingText(text: string, sourceUrl: string) {
   const parcelMatch = mainText.match(/Parcel number:\s*([A-Za-z0-9-]+)/i);
   const listedDateMatch = mainText.match(/Date on market:\s*(\d{1,2}\/\d{1,2}\/\d{2,4})/i);
   const saleDateMatch = mainText.match(/(?:sold|closed)\s+(?:on\s+)?([A-Za-z]{3,9}\s+\d{1,2},?\s+\d{4}|\d{1,2}\/\d{1,2}\/\d{2,4})/i);
-  const status: LandCompType = /^active$/i.test(mainLines[0] || "") || /\bActive\b/i.test(mainText)
+  const statusText = textHints.listingStatus || mainLines[0] || "";
+  const status: LandCompType = /^active$/i.test(statusText) || /\bActive\b/i.test(mainText)
     ? "active"
     : /pending|under contract/i.test(mainText)
       ? "pending"
       : /sold|closed/i.test(mainText)
     ? "sold"
     : "manual-note";
-  const parsedDate = status === "sold" ? saleDateMatch?.[1] : listedDateMatch?.[1] || saleDateMatch?.[1];
+  const parsedDate = status === "sold" ? saleDateMatch?.[1] : textHints.listingDate || listedDateMatch?.[1] || saleDateMatch?.[1];
   return {
-    address: addressLine || [hints.propertyAddress, hints.city, hints.state, hints.zip].filter(Boolean).join(", "),
-    parcelId: parcelMatch?.[1] || "",
-    price: priceLine ? parseMoneyValue(priceLine) : null,
-    acreage: acresFromSplitLines || (acresMatch?.[1] ? Number(acresMatch[1]) : null),
+    address: addressLine || [textHints.propertyAddress || hints.propertyAddress, textHints.city || hints.city, textHints.state || hints.state, textHints.zip || hints.zip].filter(Boolean).join(", "),
+    parcelId: parcelMatch?.[1] || textHints.parcelId || "",
+    county: textHints.county || hints.county || "",
+    city: textHints.city || hints.city || "",
+    state: textHints.state || hints.state || "",
+    zip: textHints.zip || hints.zip || "",
+    price: priceLine ? parseMoneyValue(priceLine) : textHints.askingPrice ?? null,
+    acreage: acresFromSplitLines || (acresMatch?.[1] ? Number(acresMatch[1]) : null) || textHints.acreage || null,
     saleOrListDate: parsedDate ? new Date(parsedDate).toISOString().slice(0, 10) : "",
     compType: status,
   };
@@ -170,7 +179,9 @@ export default function LeadPage() {
   const [noteDraft, setNoteDraft] = useState("");
   const [researchItems, setResearchItems] = useState<LandDueDiligenceItem[]>([]);
   const [compRecords, setCompRecords] = useState<LandCompRecord[]>([]);
+  const [potentialCompRecords, setPotentialCompRecords] = useState<LandCompRecord[]>([]);
   const [compDraft, setCompDraft] = useState(EMPTY_COMP_DRAFT);
+  const [expandedCompId, setExpandedCompId] = useState<string | null>(null);
   const [savingResearch, setSavingResearch] = useState(false);
   const [autoResearchRunning, setAutoResearchRunning] = useState(false);
   const [autoResearchResult, setAutoResearchResult] = useState<AutomatedLandResearchResult | null>(null);
@@ -203,10 +214,12 @@ export default function LeadPage() {
         fetchLandDueDiligenceItems(me),
         fetchLandCompRecords(me.id),
       ]);
+      const potentialComps = await fetchPotentialLandCompRecords(me, comps);
       setCommunications(comms);
       setActivities(acts);
       setResearchItems(ddItems);
       setCompRecords(comps);
+      setPotentialCompRecords(potentialComps);
       if (!expandedPropertyId) setExpandedPropertyId(me.id);
     }
     setLoading(false);
@@ -363,25 +376,31 @@ export default function LeadPage() {
     setSavingResearch(true);
     setMessage("");
     try {
+      const parsed = listingTextHints(compDraft.listingText);
       const { comp, error } = await createLandCompRecord({
         leadId: lead.id,
         compType: compDraft.compType,
         address: compDraft.address,
         parcelId: compDraft.parcelId,
-        county: lead.county,
-        state: lead.state || "GA",
+        county: parsed.county || lead.county,
+        city: parsed.city,
+        state: parsed.state || lead.state || "GA",
+        zip: parsed.zip,
         price: compDraft.price ? Number(compDraft.price) : null,
         acreage: compDraft.acreage ? Number(compDraft.acreage) : null,
         saleOrListDate: compDraft.saleOrListDate || null,
         distanceMiles: compDraft.distanceMiles ? Number(compDraft.distanceMiles) : null,
         sourceSystem: compDraft.sourceSystem,
         sourceUrl: compDraft.sourceUrl,
+        listingText: compDraft.listingText,
+        listingDetails: parsed.listingDetails,
         similarityNotes: compDraft.similarityNotes,
         confidence: compDraft.confidence,
         actor: user,
       });
       if (error) { setMessage(error); return; }
       if (comp) setCompRecords(rows => [comp, ...rows]);
+      if (comp) setPotentialCompRecords(rows => rows.filter(row => row.comp_property_id !== comp.comp_property_id));
       setCompDraft(EMPTY_COMP_DRAFT);
       setMessage("Comp saved to this property record.");
     } finally {
@@ -412,6 +431,30 @@ export default function LeadPage() {
       saleOrListDate: prev.saleOrListDate || parsed.saleOrListDate,
       similarityNotes: prev.similarityNotes || "Parsed from pasted listing text.",
     }));
+  };
+
+  const handleUsePotentialComp = async (comp: LandCompRecord) => {
+    if (!lead || !user) return;
+    setSavingResearch(true);
+    setMessage("");
+    try {
+      const { comp: linked, error } = await linkLandCompToLead({
+        leadId: lead.id,
+        comp,
+        actor: user,
+        confidence: "needs-review",
+        includeInValuation: true,
+      });
+      if (error) { setMessage(error); return; }
+      if (linked) {
+        setCompRecords(rows => [linked, ...rows]);
+        setPotentialCompRecords(rows => rows.filter(row => row.comp_property_id !== linked.comp_property_id));
+        setExpandedCompId(linked.id);
+      }
+      setMessage("Potential comp linked to this property.");
+    } finally {
+      setSavingResearch(false);
+    }
   };
 
   const runAutoResearch = async () => {
@@ -929,22 +972,60 @@ export default function LeadPage() {
                 <p style={{ color: "var(--muted)", fontSize: 13 }}>No comps saved yet. Start with sold land comps, then add active listings to check market support.</p>
               ) : (
                 <div style={{ display: "grid", gap: 8 }}>
-                  {compRecords.map(comp => (
-                    <div key={comp.id} style={{ ...subPanel, display: "grid", gridTemplateColumns: "minmax(0, 1fr) 120px 120px", gap: 10, alignItems: "center" }} className="lead-comp-row">
-                      <div>
-                        <strong style={{ color: "var(--obsidian)", fontSize: 13 }}>{comp.address || comp.parcel_id || comp.source_url || "Saved comp"}</strong>
-                        <p style={{ color: "var(--muted)", fontSize: 11, marginTop: 3 }}>
-                          {labelForStatus(comp.comp_type)} · {comp.sale_or_list_date || "Date ?"} · {comp.distance_miles != null ? `${comp.distance_miles} mi` : "Distance ?"} · {labelForStatus(comp.confidence)}
-                        </p>
-                        {comp.similarity_notes && <p style={{ color: "var(--ink)", fontSize: 12, marginTop: 5 }}>{comp.similarity_notes}</p>}
+                  {compRecords.map(comp => {
+                    const expanded = expandedCompId === comp.id;
+                    return (
+                      <div key={comp.id} style={subPanel}>
+                        <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 120px 120px", gap: 10, alignItems: "center" }} className="lead-comp-row">
+                          <button
+                            type="button"
+                            onClick={() => setExpandedCompId(expanded ? null : comp.id)}
+                            style={{ background: "transparent", border: "none", cursor: "pointer", padding: 0, textAlign: "left" }}
+                          >
+                            <strong style={{ color: "var(--obsidian)", fontSize: 13 }}>{comp.address || comp.parcel_id || comp.source_url || "Saved comp"}</strong>
+                            <p style={{ color: "var(--muted)", fontSize: 11, marginTop: 3 }}>
+                              {labelForStatus(comp.comp_type)} · {comp.sale_or_list_date || "Date ?"} · {comp.distance_miles != null ? `${comp.distance_miles} mi` : "Distance ?"} · {labelForStatus(comp.confidence)}
+                            </p>
+                            {comp.relationship_status && <p style={{ color: "var(--brass)", fontSize: 11, marginTop: 3 }}>{labelForStatus(comp.relationship_status)} comp link</p>}
+                            {comp.similarity_notes && <p style={{ color: "var(--ink)", fontSize: 12, marginTop: 5 }}>{comp.similarity_notes}</p>}
+                          </button>
+                          <span style={{ color: "var(--obsidian)", fontWeight: 800, fontSize: 13 }}>{money(comp.price)}</span>
+                          <span style={{ color: "var(--brass)", fontWeight: 800, fontSize: 13 }}>{comp.price_per_acre ? `${money(comp.price_per_acre)}/ac` : "PPA ?"}</span>
+                        </div>
+                        {expanded && <CompDetails comp={comp} />}
                       </div>
-                      <span style={{ color: "var(--obsidian)", fontWeight: 800, fontSize: 13 }}>{money(comp.price)}</span>
-                      <span style={{ color: "var(--brass)", fontWeight: 800, fontSize: 13 }}>{comp.price_per_acre ? `${money(comp.price_per_acre)}/ac` : "PPA ?"}</span>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </section>
+
+            {potentialCompRecords.length > 0 && (
+              <section style={panel}>
+                <header style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "baseline", marginBottom: 12, flexWrap: "wrap" }}>
+                  <div>
+                    <p style={eyebrowSmall}>Potential comps</p>
+                    <h3 style={{ ...sectionTitle, fontSize: 20 }}>Reusable comps that may fit</h3>
+                  </div>
+                  <span style={mutedChip}>{potentialCompRecords.length} suggested</span>
+                </header>
+                <div style={{ display: "grid", gap: 8 }}>
+                  {potentialCompRecords.map(comp => (
+                    <div key={comp.id} style={{ ...subPanel, display: "grid", gridTemplateColumns: "minmax(0, 1fr) 120px 120px", gap: 10, alignItems: "center" }} className="lead-comp-row">
+                      <div>
+                        <strong style={{ color: "var(--obsidian)", fontSize: 13 }}>{comp.address || comp.parcel_id || comp.source_url || "Potential comp"}</strong>
+                        <p style={{ color: "var(--muted)", fontSize: 11, marginTop: 3 }}>
+                          {labelForStatus(comp.comp_type)} · {comp.county || "County ?"} · {comp.acreage ? `${comp.acreage} ac` : "Acres ?"} · {comp.similarity_score ? `${Math.round(comp.similarity_score)} score` : "Score ?"}
+                        </p>
+                        {comp.match_reason && <p style={{ color: "var(--ink)", fontSize: 12, marginTop: 5 }}>{comp.match_reason}</p>}
+                      </div>
+                      <span style={{ color: "var(--obsidian)", fontWeight: 800, fontSize: 13 }}>{money(comp.price)}</span>
+                      <button type="button" onClick={() => handleUsePotentialComp(comp)} disabled={savingResearch} style={{ ...secondaryButton, minHeight: 34, padding: "7px 9px", opacity: savingResearch ? 0.55 : 1 }}>Use Comp</button>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            )}
           </div>
 
           <aside style={{ display: "grid", gap: 16, alignContent: "start" }}>
@@ -994,6 +1075,45 @@ function Detail({ label, value }: { label: string; value: string }) {
     <div>
       <dt style={{ color: "var(--muted)", fontSize: 10, fontWeight: 700, letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: 4 }}>{label}</dt>
       <dd style={{ color: "var(--ink)", fontSize: 13, margin: 0 }}>{value}</dd>
+    </div>
+  );
+}
+
+function CompDetails({ comp }: { comp: LandCompRecord }) {
+  const rawEntries = Object.entries(comp.raw_data || {})
+    .filter(([, value]) => value !== null && value !== undefined && String(value).trim())
+    .slice(0, 80);
+  return (
+    <div style={{ borderTop: "1px solid var(--fog)", display: "grid", gap: 10, marginTop: 12, paddingTop: 12 }}>
+      <dl style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 10 }}>
+        <Detail label="Reusable ID" value={comp.comp_property_id || comp.id} />
+        <Detail label="Parcel" value={comp.parcel_id || "—"} />
+        <Detail label="Location" value={[comp.city, comp.county, comp.state, comp.zip].filter(Boolean).join(", ") || "—"} />
+        <Detail label="Source" value={comp.source_system || "—"} />
+        <Detail label="Status" value={comp.relationship_status ? labelForStatus(comp.relationship_status) : "Linked"} />
+        <Detail label="Match" value={comp.match_reason || "Manually saved"} />
+      </dl>
+      {comp.source_url && (
+        <a href={comp.source_url} target="_blank" rel="noreferrer" style={{ ...inlineLinkButton, width: "fit-content" }}>
+          Open comp source →
+        </a>
+      )}
+      {rawEntries.length > 0 && (
+        <div style={{ borderTop: "1px solid var(--fog)", maxHeight: 260, overflow: "auto", paddingTop: 8 }}>
+          <p style={{ ...eyebrowSmall, marginBottom: 8 }}>Captured listing fields</p>
+          <dl style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 8 }}>
+            {rawEntries.map(([key, value]) => (
+              <Detail key={key} label={key} value={typeof value === "object" ? JSON.stringify(value) : String(value)} />
+            ))}
+          </dl>
+        </div>
+      )}
+      {comp.listing_text && (
+        <details style={{ color: "var(--ink)", fontSize: 12 }}>
+          <summary style={{ cursor: "pointer", fontWeight: 800, letterSpacing: "0.1em", textTransform: "uppercase" }}>Listing text</summary>
+          <p style={{ color: "var(--muted)", lineHeight: 1.45, marginTop: 8, maxHeight: 180, overflow: "auto", whiteSpace: "pre-wrap" }}>{comp.listing_text}</p>
+        </details>
+      )}
     </div>
   );
 }
