@@ -224,6 +224,13 @@ export interface SingleLinkLandLeadInput {
   actor: string;
 }
 
+export interface ListingUrlHints {
+  propertyAddress?: string | null;
+  city?: string | null;
+  state?: string | null;
+  zip?: string | null;
+}
+
 export interface LandLeadImportPreview {
   filename: string;
   rowsFound: number;
@@ -1122,7 +1129,7 @@ function titleCaseAddressPart(value: string): string {
     .join(" ");
 }
 
-function listingUrlHints(sourceUrl: string): Partial<SingleLinkLandLeadInput> {
+export function listingUrlHints(sourceUrl: string): ListingUrlHints {
   try {
     const url = new URL(sourceUrl);
     const parts = url.pathname.split("/").filter(Boolean).map(part => decodeURIComponent(part));

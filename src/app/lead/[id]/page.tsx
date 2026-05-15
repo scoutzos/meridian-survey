@@ -15,6 +15,8 @@ import {
   fetchImportedLandLeads,
   fetchImportedLandLeadActivities,
   getCountyResearchSources,
+  inferLandLeadSourceFromUrl,
+  listingUrlHints,
   runAutomatedLandResearch,
   saveLandDueDiligenceItem,
   summarizeLandComps,
@@ -335,6 +337,16 @@ export default function LeadPage() {
     } finally {
       setSavingResearch(false);
     }
+  };
+
+  const updateCompSourceUrl = (sourceUrl: string) => {
+    const hints = listingUrlHints(sourceUrl);
+    setCompDraft(prev => ({
+      ...prev,
+      sourceUrl,
+      sourceSystem: inferLandLeadSourceFromUrl(sourceUrl),
+      address: prev.address || [hints.propertyAddress, hints.city, hints.state, hints.zip].filter(Boolean).join(", "),
+    }));
   };
 
   const runAutoResearch = async () => {
@@ -819,7 +831,7 @@ export default function LeadPage() {
                 <div style={{ display: "grid", gridTemplateColumns: "130px 100px minmax(0, 1fr)", gap: 8 }} className="lead-comp-form">
                   <input value={compDraft.saleOrListDate} onChange={e => setCompDraft({ ...compDraft, saleOrListDate: e.target.value })} type="date" style={inputStyle} />
                   <input value={compDraft.distanceMiles} onChange={e => setCompDraft({ ...compDraft, distanceMiles: e.target.value })} placeholder="Miles" style={inputStyle} />
-                  <input value={compDraft.sourceUrl} onChange={e => setCompDraft({ ...compDraft, sourceUrl: e.target.value })} placeholder="Source link" style={inputStyle} />
+                  <input value={compDraft.sourceUrl} onChange={e => updateCompSourceUrl(e.target.value)} placeholder="Comp source link" style={inputStyle} />
                 </div>
                 <textarea
                   value={compDraft.similarityNotes}
