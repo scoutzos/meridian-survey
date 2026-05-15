@@ -98,18 +98,39 @@ function sentByLabel(event: CommunicationEvent): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
+function normalizedStatus(event: CommunicationEvent): string {
+  return (event.status || event.raw_payload?.CallStatus || event.raw_payload?.DialCallStatus || event.provider_event_type || "")
+    .toString()
+    .toLowerCase();
+}
+
 function eventLabel(event: CommunicationEvent): string {
   if (event.channel === "voice") {
+    const status = normalizedStatus(event);
     if (event.provider_event_type === "call-recording") return "Recording";
+    if (event.direction === "inbound" && ["no-answer", "busy", "failed", "canceled", "cancelled", "missed"].includes(status)) return "Missed call";
     if (event.direction === "inbound") return "Inbound call";
     if (event.direction === "outbound") return "Outbound call";
+    if (status === "no-answer") return "No answer";
+    if (status === "busy") return "Busy call";
+    if (status === "failed") return "Failed call";
     return "Call update";
   }
   return event.direction === "inbound" ? "Seller" : "Meridian";
 }
 
 function eventBody(event: CommunicationEvent): string {
-  if (event.channel === "voice") return event.body || event.status || "Call update";
+  if (event.channel === "voice") {
+    const status = normalizedStatus(event);
+    const duration = event.raw_payload?.CallDuration || event.raw_payload?.DialCallDuration;
+    const seconds = typeof duration === "string" && duration.trim() ? duration.trim() : event.body?.match(/·\s*(\d+)s/)?.[1];
+    const suffix = seconds ? ` · ${seconds}s` : "";
+    if (event.provider_event_type === "call-recording") return event.body || `Recording ${event.status || "saved"}`;
+    if (event.direction === "inbound" && ["no-answer", "busy", "failed", "canceled", "cancelled", "missed"].includes(status)) return `Missed inbound call${suffix}`;
+    if (event.direction === "inbound") return `Inbound call ${event.status || "updated"}${suffix}`;
+    if (event.direction === "outbound") return `Outbound call ${event.status || "updated"}${suffix}`;
+    return event.body || event.status || "Call update";
+  }
   return event.body || event.status || "SMS update";
 }
 
