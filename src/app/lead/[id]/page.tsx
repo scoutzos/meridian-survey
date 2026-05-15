@@ -32,6 +32,7 @@ import {
   type LandCompRecord,
   type LandCompType,
   type AutomatedLandResearchResult,
+  type LandDueDiligenceCategory,
   type LandDueDiligenceItem,
   type LandDueDiligenceStatus,
   type ManualResearchLeadPatch,
@@ -100,6 +101,17 @@ const EMPTY_RESEARCH_UPDATE_DRAFT = {
   parcelLink: "",
   compingLink: "",
   notes: "",
+};
+
+type VerifiedFactItem = {
+  label: string;
+  value: React.ReactNode;
+  category?: LandDueDiligenceCategory;
+};
+
+type VerifiedFactGroup = {
+  title: string;
+  items: VerifiedFactItem[];
 };
 
 function parseMoneyValue(value: string): number | null {
@@ -233,6 +245,7 @@ export default function LeadPage() {
   const [compDraft, setCompDraft] = useState(EMPTY_COMP_DRAFT);
   const [expandedCompId, setExpandedCompId] = useState<string | null>(null);
   const [researchUpdateDraft, setResearchUpdateDraft] = useState(EMPTY_RESEARCH_UPDATE_DRAFT);
+  const [researchUpdateOpen, setResearchUpdateOpen] = useState(false);
   const [savingResearch, setSavingResearch] = useState(false);
   const [autoResearchRunning, setAutoResearchRunning] = useState(false);
   const [autoResearchResult, setAutoResearchResult] = useState<AutomatedLandResearchResult | null>(null);
@@ -324,6 +337,71 @@ export default function LeadPage() {
   const researchSources = useMemo(() => lead ? getCountyResearchSources(lead) : [], [lead]);
   const compSummary = useMemo(() => summarizeLandComps(compRecords), [compRecords]);
   const researchCompleteCount = useMemo(() => researchItems.filter(item => ["verified", "blocked", "not-applicable"].includes(item.status)).length, [researchItems]);
+  const researchStatusByCategory = useMemo(() => {
+    const rank: Record<LandDueDiligenceStatus, number> = {
+      blocked: 5,
+      verified: 4,
+      "in-progress": 3,
+      "not-applicable": 2,
+      todo: 1,
+    };
+    return researchItems.reduce<Partial<Record<LandDueDiligenceCategory, LandDueDiligenceStatus>>>((acc, item) => {
+      const current = acc[item.category];
+      if (!current || rank[item.status] > rank[current]) acc[item.category] = item.status;
+      return acc;
+    }, {});
+  }, [researchItems]);
+  const verifiedFactGroups = useMemo<VerifiedFactGroup[]>(() => {
+    if (!lead) return [];
+    return [
+      {
+        title: "Parcel Identity",
+        items: [
+          { label: "Situs address", value: lead.property_address || "—", category: "gis" },
+          { label: "Parcel ID", value: lead.parcel_id || "—", category: "gis" },
+          { label: "County", value: lead.county || "—", category: "gis" },
+          { label: "City / State / ZIP", value: joinValues([lead.city, lead.state, lead.zip], ", "), category: "gis" },
+          { label: "Coordinates", value: lead.latitude && lead.longitude ? `${lead.latitude.toFixed(5)}, ${lead.longitude.toFixed(5)}` : "—", category: "gis" },
+          { label: "Owner", value: lead.owner_name || "—", category: "ownership" },
+          { label: "Mailing", value: lead.mailing_address || "—", category: "ownership" },
+        ],
+      },
+      {
+        title: "Land And Use",
+        items: [
+          { label: "Acreage", value: lead.acreage ? `${numberValue(lead.acreage)} ac` : "—", category: "gis" },
+          { label: "Calculated acreage", value: lead.calculated_acreage ? `${numberValue(lead.calculated_acreage)} ac` : "—", category: "gis" },
+          { label: "Zoning", value: lead.zoning || "—", category: "zoning" },
+          { label: "Land use", value: lead.land_use || "—", category: "zoning" },
+          { label: "Subdivision", value: lead.subdivision || "—", category: "zoning" },
+          { label: "HOA", value: lead.hoa_status || yesNo(lead.in_hoa), category: "zoning" },
+          { label: "Minimum lot size", value: lead.min_lot_size_acres ? `${numberValue(lead.min_lot_size_acres)} ac` : "—", category: "zoning" },
+        ],
+      },
+      {
+        title: "Value And Tax",
+        items: [
+          { label: "Asking price", value: money(lead.asking_price), category: "comps" },
+          { label: "Market value", value: money(lead.market_value), category: "comps" },
+          { label: "Assessed value", value: money(lead.assessed_value), category: "tax" },
+          { label: "Property tax", value: money(lead.property_tax), category: "tax" },
+          { label: "Tax delinquent", value: lead.tax_delinquent ? `Yes${lead.tax_delinquent_years ? ` · ${lead.tax_delinquent_years}y` : ""}` : yesNo(lead.tax_delinquent), category: "tax" },
+          { label: "Median comp PPA", value: compSummary.medianPpa ? `${money(compSummary.medianPpa)}/ac` : "—", category: "comps" },
+        ],
+      },
+      {
+        title: "Risks And Access",
+        items: [
+          { label: "Road frontage", value: lead.road_frontage_ft ? `${numberValue(lead.road_frontage_ft)} ft` : "—", category: "access" },
+          { label: "Landlocked", value: yesNo(lead.is_land_locked), category: "access" },
+          { label: "Flood", value: joinValues([percentValue(lead.flood_zone_percent), lead.flood_zone_type]), category: "flood" },
+          { label: "Wetlands", value: percentValue(lead.wetlands_percent), category: "wetlands" },
+          { label: "Parcel/GIS link", value: lead.parcel_link ? <a href={lead.parcel_link} target="_blank" rel="noreferrer" style={inlineLinkButton}>Open source</a> : "—", category: "gis" },
+          { label: "Comping link", value: lead.comping_link ? <a href={lead.comping_link} target="_blank" rel="noreferrer" style={inlineLinkButton}>Open comps</a> : "—", category: "comps" },
+        ],
+      },
+    ];
+  }, [lead, compSummary.medianPpa]);
   const researchUpdatePreview = useMemo(() => {
     if (!lead) return [] as Array<{ label: string; current: string; next: string }>;
     return [
@@ -629,10 +707,11 @@ export default function LeadPage() {
 
   const openPropertyRecord = (propertyId: string) => {
     if (propertyId === lead?.id) {
-      setTab("research");
+      setTab("properties");
+      setExpandedPropertyId(propertyId);
       return;
     }
-    router.push(`/lead/${propertyId}?tab=research`);
+    router.push(`/lead/${propertyId}?tab=properties`);
   };
 
   if (!user) return null;
@@ -1151,8 +1230,24 @@ export default function LeadPage() {
             <section style={panel}>
               <header style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "baseline", marginBottom: 12, flexWrap: "wrap" }}>
                 <div>
-                  <p style={eyebrowSmall}>Due diligence</p>
-                  <h3 style={{ ...sectionTitle, fontSize: 20 }}>{researchCompleteCount} of {researchItems.length} checks resolved</h3>
+                  <p style={eyebrowSmall}>Verified property facts</p>
+                  <h3 style={{ ...sectionTitle, fontSize: 20 }}>Current record values</h3>
+                </div>
+                <span style={researchCompleteCount === researchItems.length && researchItems.length ? goodChip : warnChip}>
+                  {researchCompleteCount} of {researchItems.length} checks resolved
+                </span>
+              </header>
+              <VerifiedFactBoard groups={verifiedFactGroups} statusByCategory={researchStatusByCategory} />
+            </section>
+
+            <section style={panel}>
+              <header style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "baseline", marginBottom: 12, flexWrap: "wrap" }}>
+                <div>
+                  <p style={eyebrowSmall}>Verification checklist</p>
+                  <h3 style={{ ...sectionTitle, fontSize: 20 }}>Research tasks and evidence</h3>
+                  <p style={{ color: "var(--muted)", fontSize: 12, lineHeight: 1.45, marginTop: 4 }}>
+                    These rows track whether each source was checked. The verified facts above are the property record values.
+                  </p>
                 </div>
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
                   <span style={compSummary.trusted ? goodChip : warnChip}>
@@ -1165,7 +1260,7 @@ export default function LeadPage() {
               </header>
               {autoResearchResult && (
                 <div style={{ ...subPanel, marginBottom: 12 }}>
-                  <p style={eyebrowSmall}>Automatic research result</p>
+                  <p style={eyebrowSmall}>Last automatic research run</p>
                   <dl style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 10 }}>
                     <Detail label="Geocoder" value={autoResearchResult.location.geocoder || "—"} />
                     <Detail label="Matched address" value={autoResearchResult.location.matched_address || "—"} />
@@ -1181,17 +1276,23 @@ export default function LeadPage() {
               )}
               <div style={{ display: "grid", gap: 8 }}>
                 {researchItems.map(item => (
-                  <div key={item.id} style={{ ...subPanel, display: "grid", gap: 8 }}>
+                  <div key={item.id} style={{ ...subPanel, display: "grid", gap: 8, borderColor: item.status === "verified" ? "rgba(20,17,13,0.18)" : item.status === "blocked" ? "var(--brass)" : "var(--fog)" }}>
                     <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start", flexWrap: "wrap" }}>
                       <div style={{ flex: "1 1 260px" }}>
-                        <p style={{ ...eyebrowSmall, marginBottom: 3 }}>{labelForStatus(item.category)}</p>
+                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 5 }}>
+                          <span style={researchStatusChipStyle(item.status)}>{labelForStatus(item.status)}</span>
+                          <span style={{ ...eyebrowSmall, marginBottom: 0 }}>{labelForStatus(item.category)}</span>
+                        </div>
                         <strong style={{ color: "var(--obsidian)", fontSize: 14 }}>{item.title}</strong>
                         {(item.evidence_value || item.result_summary) && (
-                          <p style={{ color: "var(--ink)", fontSize: 12, marginTop: 5, lineHeight: 1.45 }}>
-                            {[item.evidence_value, item.result_summary].filter(Boolean).join(" · ")}
-                          </p>
+                          <div style={{ background: "rgba(255,255,255,0.62)", border: "1px solid var(--fog)", borderRadius: 6, marginTop: 8, padding: "8px 9px" }}>
+                            <p style={{ color: "var(--muted)", fontSize: 10, fontWeight: 800, letterSpacing: "0.1em", marginBottom: 3, textTransform: "uppercase" }}>Recorded result</p>
+                            <p style={{ color: "var(--ink)", fontSize: 12, lineHeight: 1.45 }}>
+                              {[item.evidence_value, item.result_summary].filter(Boolean).join(" · ")}
+                            </p>
+                          </div>
                         )}
-                        {item.notes && <p style={{ color: "var(--muted)", fontSize: 12, marginTop: 5, lineHeight: 1.45 }}>{item.notes}</p>}
+                        {item.notes && <p style={{ color: "var(--muted)", fontSize: 12, marginTop: 7, lineHeight: 1.45 }}>{item.notes}</p>}
                       </div>
                       <select
                         value={item.status}
@@ -1219,18 +1320,31 @@ export default function LeadPage() {
             <section style={panel}>
               <header style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "baseline", marginBottom: 12, flexWrap: "wrap" }}>
                 <div>
-                  <p style={eyebrowSmall}>Research update</p>
-                  <h3 style={{ ...sectionTitle, fontSize: 20 }}>Apply findings to property record</h3>
+                  <p style={eyebrowSmall}>Property correction</p>
+                  <h3 style={{ ...sectionTitle, fontSize: 20 }}>Update the record from a verified source</h3>
+                  <p style={{ color: "var(--muted)", fontSize: 12, lineHeight: 1.45, marginTop: 4 }}>
+                    Use this only when research proves the current property record is missing or wrong.
+                  </p>
                 </div>
-                <span style={researchUpdatePreview.length ? goodChip : mutedChip}>{researchUpdatePreview.length} change{researchUpdatePreview.length === 1 ? "" : "s"}</span>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                  <span style={researchUpdatePreview.length ? goodChip : mutedChip}>{researchUpdatePreview.length} change{researchUpdatePreview.length === 1 ? "" : "s"}</span>
+                  <button
+                    type="button"
+                    onClick={() => researchUpdatePreview.length > 0 ? setResearchUpdateOpen(true) : setResearchUpdateOpen(open => !open)}
+                    style={secondaryButton}
+                  >
+                    {researchUpdatePreview.length > 0 ? "Editing Facts" : researchUpdateOpen ? "Hide Form" : "Update Facts"}
+                  </button>
+                </div>
               </header>
-              <div style={{ ...subPanel, display: "grid", gap: 10 }}>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 8 }} className="lead-research-update-grid">
-                  <input value={researchUpdateDraft.sourceName} onChange={e => setResearchUpdateDraft({ ...researchUpdateDraft, sourceName: e.target.value })} placeholder="Source name" style={inputStyle} />
-                  <input value={researchUpdateDraft.sourceUrl} onChange={e => setResearchUpdateDraft({ ...researchUpdateDraft, sourceUrl: e.target.value })} placeholder="Source URL" style={inputStyle} />
-                  <input value={researchUpdateDraft.evidenceNotes} onChange={e => setResearchUpdateDraft({ ...researchUpdateDraft, evidenceNotes: e.target.value })} placeholder="Evidence notes" style={inputStyle} />
-                </div>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 8 }} className="lead-research-update-grid">
+              {researchUpdateOpen || researchUpdatePreview.length > 0 ? (
+                <div style={{ ...subPanel, display: "grid", gap: 10 }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 8 }} className="lead-research-update-grid">
+                    <input value={researchUpdateDraft.sourceName} onChange={e => setResearchUpdateDraft({ ...researchUpdateDraft, sourceName: e.target.value })} placeholder="Source name" style={inputStyle} />
+                    <input value={researchUpdateDraft.sourceUrl} onChange={e => setResearchUpdateDraft({ ...researchUpdateDraft, sourceUrl: e.target.value })} placeholder="Source URL" style={inputStyle} />
+                    <input value={researchUpdateDraft.evidenceNotes} onChange={e => setResearchUpdateDraft({ ...researchUpdateDraft, evidenceNotes: e.target.value })} placeholder="Evidence notes" style={inputStyle} />
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 8 }} className="lead-research-update-grid">
                   <ResearchUpdateField label="Parcel ID" current={lead.parcel_id} value={researchUpdateDraft.parcelId} onChange={value => setResearchUpdateDraft({ ...researchUpdateDraft, parcelId: value })} />
                   <ResearchUpdateField label="Address" current={lead.property_address} value={researchUpdateDraft.propertyAddress} onChange={value => setResearchUpdateDraft({ ...researchUpdateDraft, propertyAddress: value })} />
                   <ResearchUpdateField label="County" current={lead.county} value={researchUpdateDraft.county} onChange={value => setResearchUpdateDraft({ ...researchUpdateDraft, county: value })} />
@@ -1260,8 +1374,8 @@ export default function LeadPage() {
                   <ResearchUpdateField label="Min lot size" current={lead.min_lot_size_acres} value={researchUpdateDraft.minLotSizeAcres} onChange={value => setResearchUpdateDraft({ ...researchUpdateDraft, minLotSizeAcres: value })} />
                   <ResearchUpdateField label="GIS link" current={lead.parcel_link} value={researchUpdateDraft.parcelLink} onChange={value => setResearchUpdateDraft({ ...researchUpdateDraft, parcelLink: value })} />
                   <ResearchUpdateField label="Comping link" current={lead.comping_link} value={researchUpdateDraft.compingLink} onChange={value => setResearchUpdateDraft({ ...researchUpdateDraft, compingLink: value })} />
-                </div>
-                <textarea
+                  </div>
+                  <textarea
                   value={researchUpdateDraft.notes}
                   onChange={e => setResearchUpdateDraft({ ...researchUpdateDraft, notes: e.target.value })}
                   rows={2}
@@ -1282,12 +1396,20 @@ export default function LeadPage() {
                   </div>
                 )}
                 <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-                  <button type="button" onClick={() => setResearchUpdateDraft(EMPTY_RESEARCH_UPDATE_DRAFT)} style={secondaryButton}>Clear</button>
+                  <button type="button" onClick={() => { setResearchUpdateDraft(EMPTY_RESEARCH_UPDATE_DRAFT); setResearchUpdateOpen(false); }} style={secondaryButton}>Clear</button>
                   <button type="button" onClick={applyResearchUpdate} disabled={savingResearch || researchUpdatePreview.length === 0} style={{ ...primaryButton, opacity: savingResearch || researchUpdatePreview.length === 0 ? 0.55 : 1 }}>
                     Apply To Property Record
                   </button>
                 </div>
               </div>
+              ) : (
+                <div style={{ ...subPanel, display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+                  <p style={{ color: "var(--muted)", fontSize: 12, lineHeight: 1.45 }}>
+                    The current verified facts are shown at the top of this tab. Open this form only when a source gives a better value.
+                  </p>
+                  <button type="button" onClick={() => setResearchUpdateOpen(true)} style={secondaryButton}>Update Facts</button>
+                </div>
+              )}
             </section>
 
             <section style={panel}>
@@ -1438,7 +1560,7 @@ export default function LeadPage() {
       <style jsx>{`
         @media (max-width: 880px) {
           .lead-root { padding-top: 28px !important; }
-          .lead-overview-grid, .lead-conv-grid, .lead-research-grid, .lead-comp-form, .lead-comp-row, .lead-research-update-grid { grid-template-columns: 1fr !important; }
+          .lead-overview-grid, .lead-conv-grid, .lead-research-grid, .lead-fact-grid, .lead-comp-form, .lead-comp-row, .lead-research-update-grid { grid-template-columns: 1fr !important; }
         }
       `}</style>
     </div>
@@ -1503,6 +1625,70 @@ function PropertyDataSection({ title, items, columns = 3 }: { title: string; ite
       <dl style={{ display: "grid", gridTemplateColumns: `repeat(auto-fit, minmax(${columns === 2 ? 220 : 170}px, 1fr))`, gap: 12, fontSize: 12, color: "var(--ink)" }}>
         {items.map(([label, value]) => <Detail key={label} label={label} value={value || "—"} />)}
       </dl>
+    </div>
+  );
+}
+
+function factValueIsMissing(value: React.ReactNode): boolean {
+  return value === null || value === undefined || value === "" || value === "—";
+}
+
+function researchStatusChipStyle(status: LandDueDiligenceStatus | undefined, missing = false): React.CSSProperties {
+  const base: React.CSSProperties = {
+    padding: "3px 7px",
+    fontSize: 10,
+    whiteSpace: "nowrap",
+  };
+  if (missing) return { ...warnChip, ...base };
+  if (status === "verified") return { ...goodChip, ...base };
+  if (status === "blocked") return { ...warnChip, ...base, background: "rgba(176,137,84,0.2)" };
+  if (status === "in-progress") return { ...mutedChip, ...base, borderColor: "var(--brass)", color: "var(--obsidian)" };
+  return { ...mutedChip, ...base };
+}
+
+function VerifiedFactBoard({
+  groups,
+  statusByCategory,
+}: {
+  groups: VerifiedFactGroup[];
+  statusByCategory: Partial<Record<LandDueDiligenceCategory, LandDueDiligenceStatus>>;
+}) {
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12 }} className="lead-fact-grid">
+      {groups.map(group => (
+        <div key={group.title} style={{ ...subPanel, background: "rgba(255,255,255,0.58)" }}>
+          <p style={{ ...eyebrowSmall, marginBottom: 10 }}>{group.title}</p>
+          <dl style={{ display: "grid", gap: 9 }}>
+            {group.items.map(item => {
+              const status = item.category ? statusByCategory[item.category] : undefined;
+              const missing = factValueIsMissing(item.value);
+              return (
+                <div
+                  key={item.label}
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "minmax(118px, 0.7fr) minmax(0, 1fr) auto",
+                    gap: 9,
+                    alignItems: "center",
+                    borderBottom: "1px solid var(--fog)",
+                    paddingBottom: 8,
+                  }}
+                >
+                  <dt style={{ color: "var(--muted)", fontSize: 10, fontWeight: 800, letterSpacing: "0.1em", textTransform: "uppercase" }}>
+                    {item.label}
+                  </dt>
+                  <dd style={{ color: missing ? "var(--muted)" : "var(--obsidian)", fontSize: 13, fontWeight: missing ? 500 : 800, lineHeight: 1.35, margin: 0, overflowWrap: "anywhere" }}>
+                    {missing ? "—" : item.value}
+                  </dd>
+                  <span style={researchStatusChipStyle(status, missing)}>
+                    {missing ? "Missing" : status ? labelForStatus(status) : "Needs Check"}
+                  </span>
+                </div>
+              );
+            })}
+          </dl>
+        </div>
+      ))}
     </div>
   );
 }
