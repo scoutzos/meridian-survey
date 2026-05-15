@@ -1265,10 +1265,20 @@ export default function VaPage() {
   }, [router, reload]);
 
   useEffect(() => {
+    const openPropertyIntake = () => {
+      setActiveTab("lists");
+      setListsView("properties");
+      setImportStep("work");
+      setLinkIntakeOpen(true);
+      setMessage("Add property intake is ready.");
+    };
     const readUrlTab = () => {
       const params = new URLSearchParams(window.location.search);
       const tab = params.get("tab") || "today";
       if (TABS.some(item => item.value === tab)) setActiveTab(tab as VaTab);
+      if (tab === "lists" && params.get("create") === "property") {
+        openPropertyIntake();
+      }
       const sellerPhone = params.get("seller_phone") || "";
       const sellerName = params.get("seller_name") || "";
       const leadId = params.get("lead") || "";
@@ -1292,12 +1302,19 @@ export default function VaPage() {
       const tab = (event as CustomEvent<VaTab>).detail;
       if (TABS.some(item => item.value === tab)) setActiveTab(tab);
     };
+    const handleGlobalCreate = (event: Event) => {
+      if ((event as CustomEvent<string>).detail === "property") {
+        openPropertyIntake();
+      }
+    };
     readUrlTab();
     window.addEventListener("popstate", readUrlTab);
     window.addEventListener("meridian-va-tab", handleTabEvent);
+    window.addEventListener("meridian-global-create", handleGlobalCreate);
     return () => {
       window.removeEventListener("popstate", readUrlTab);
       window.removeEventListener("meridian-va-tab", handleTabEvent);
+      window.removeEventListener("meridian-global-create", handleGlobalCreate);
     };
   }, []);
 

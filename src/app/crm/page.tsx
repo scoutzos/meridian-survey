@@ -159,6 +159,23 @@ function CrmContent() {
   }, [searchParams]);
 
   useEffect(() => {
+    if (searchParams.get("create") !== "contact") return;
+    setView("records");
+    setMessage("New contact form is ready.");
+    let attempts = 0;
+    const focusTimer = window.setInterval(() => {
+      attempts += 1;
+      const target = document.getElementById("crm-new-contact-name") as HTMLInputElement | null;
+      if (target) {
+        target.focus();
+        window.clearInterval(focusTimer);
+      }
+      if (attempts >= 20) window.clearInterval(focusTimer);
+    }, 50);
+    return () => window.clearInterval(focusTimer);
+  }, [searchParams]);
+
+  useEffect(() => {
     const requestedDeal = searchParams.get("deal");
     if (requestedDeal && data.deals.some(deal => deal.id === requestedDeal)) {
       setSelectedDealId(requestedDeal);
@@ -982,7 +999,7 @@ function CrmContent() {
           <select value={contactDraft.contact_type} onChange={e => setContactDraft({ ...contactDraft, contact_type: e.target.value as CrmContactType })}>
             {["seller", "buyer", "agent", "broker", "builder", "neighbor", "title", "lender", "vendor", "member", "other"].map(type => <option key={type} value={type}>{statusLabel(type)}</option>)}
           </select>
-          <input placeholder="Display name" value={contactDraft.display_name} onChange={e => setContactDraft({ ...contactDraft, display_name: e.target.value })} />
+          <input id="crm-new-contact-name" placeholder="Display name" value={contactDraft.display_name} onChange={e => setContactDraft({ ...contactDraft, display_name: e.target.value })} />
           <input placeholder="Phone" value={contactDraft.phone} onChange={e => setContactDraft({ ...contactDraft, phone: e.target.value })} />
           <input placeholder="Email" value={contactDraft.email} onChange={e => setContactDraft({ ...contactDraft, email: e.target.value })} />
           <input placeholder="County" value={contactDraft.county} onChange={e => setContactDraft({ ...contactDraft, county: e.target.value })} />

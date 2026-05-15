@@ -45,6 +45,7 @@ const crmCreateButton: CSSProperties = {
   fontWeight: 800,
   letterSpacing: "0.08em",
   textTransform: "uppercase",
+  cursor: "pointer",
 };
 
 const crmPortalButton: CSSProperties = {
@@ -57,6 +58,45 @@ const crmPortalButton: CSSProperties = {
   fontWeight: 800,
   letterSpacing: "0.08em",
   textTransform: "uppercase",
+};
+
+const createMenuPanel: CSSProperties = {
+  position: "absolute",
+  right: 0,
+  top: "calc(100% + 0.55rem)",
+  zIndex: 80,
+  width: 228,
+  border: "1px solid rgba(215, 180, 124, 0.36)",
+  borderRadius: 12,
+  background: "rgba(255, 250, 240, 0.98)",
+  boxShadow: "0 18px 48px rgba(21, 17, 13, 0.18)",
+  padding: "0.45rem",
+};
+
+const createMenuItem: CSSProperties = {
+  width: "100%",
+  border: "none",
+  borderRadius: 9,
+  background: "transparent",
+  color: "var(--ink)",
+  cursor: "pointer",
+  display: "grid",
+  gap: "0.18rem",
+  padding: "0.72rem 0.8rem",
+  textAlign: "left",
+};
+
+const createMenuLabel: CSSProperties = {
+  fontSize: "0.78rem",
+  fontWeight: 900,
+  letterSpacing: "0.13em",
+  textTransform: "uppercase",
+};
+
+const createMenuHint: CSSProperties = {
+  color: "var(--muted)",
+  fontSize: "0.82rem",
+  lineHeight: 1.25,
 };
 
 export default function NavBar() {
@@ -73,6 +113,7 @@ export default function NavBar() {
     callDuration?: number;
   }>({});
   const [moreOpen, setMoreOpen] = useState(false);
+  const [createMenuOpen, setCreateMenuOpen] = useState(false);
 
   useEffect(() => {
     setUser(getCurrentMeridianUser());
@@ -164,6 +205,88 @@ export default function NavBar() {
     return false;
   };
 
+  const openVaTab = (tab: string, extraQuery = "") => {
+    const href = `/va?tab=${tab}${extraQuery}`;
+    if (pathname === "/va") {
+      setVaTab(tab);
+      window.history.pushState(null, "", href);
+      window.dispatchEvent(new PopStateEvent("popstate"));
+      window.dispatchEvent(new CustomEvent("meridian-va-tab", { detail: tab }));
+      return;
+    }
+    router.push(href);
+  };
+
+  const openAddProperty = () => {
+    setCreateMenuOpen(false);
+    setMoreOpen(false);
+    if (pathname === "/va") {
+      openVaTab("lists", "&create=property");
+      window.dispatchEvent(new CustomEvent("meridian-global-create", { detail: "property" }));
+      return;
+    }
+    router.push("/va?tab=lists&create=property");
+  };
+
+  const openAddContact = () => {
+    setCreateMenuOpen(false);
+    setMoreOpen(false);
+    router.push("/crm?view=records&create=contact");
+  };
+
+  const openDealBrief = () => {
+    setCreateMenuOpen(false);
+    setMoreOpen(false);
+    openVaTab("packet");
+  };
+
+  const globalCreateMenu = (
+    <div style={createMenuPanel}>
+      <button
+        type="button"
+        onClick={openAddProperty}
+        onMouseEnter={(event) => {
+          event.currentTarget.style.background = "rgba(215, 180, 124, 0.14)";
+        }}
+        onMouseLeave={(event) => {
+          event.currentTarget.style.background = "transparent";
+        }}
+        style={createMenuItem}
+      >
+        <span style={createMenuLabel}>Add property</span>
+        <span style={createMenuHint}>Create a property record from a link or parcel details.</span>
+      </button>
+      <button
+        type="button"
+        onClick={openAddContact}
+        onMouseEnter={(event) => {
+          event.currentTarget.style.background = "rgba(215, 180, 124, 0.14)";
+        }}
+        onMouseLeave={(event) => {
+          event.currentTarget.style.background = "transparent";
+        }}
+        style={createMenuItem}
+      >
+        <span style={createMenuLabel}>Add contact</span>
+        <span style={createMenuHint}>Open the CRM contact form for a seller, buyer, or vendor.</span>
+      </button>
+      <button
+        type="button"
+        onClick={openDealBrief}
+        onMouseEnter={(event) => {
+          event.currentTarget.style.background = "rgba(215, 180, 124, 0.14)";
+        }}
+        onMouseLeave={(event) => {
+          event.currentTarget.style.background = "transparent";
+        }}
+        style={createMenuItem}
+      >
+        <span style={createMenuLabel}>Deal brief</span>
+        <span style={createMenuHint}>Start the existing deal packet workflow.</span>
+      </button>
+    </div>
+  );
+
   if (crmShell) {
     return (
       <>
@@ -191,6 +314,7 @@ export default function NavBar() {
                 <button
                   key={link.href}
                   onClick={() => {
+                    setCreateMenuOpen(false);
                     setCrmView(linkView);
                     setVaTab(linkTab);
                     if (linkTab && pathname === "/va") {
@@ -275,9 +399,19 @@ export default function NavBar() {
               <button className="va-top-utility" onClick={() => window.dispatchEvent(new CustomEvent("meridian-contact-queue-bulk-text"))}>Bulk Text</button>
             </>
           )}
-          {!(isVaUser(user) && pathname === "/va" && vaTab === "outreach") && (
-            <button className={isVaUser(user) && pathname === "/va" ? "va-top-create" : undefined} onClick={() => router.push(isVaUser(user) ? "/va?tab=packet" : "/va")} style={crmCreateButton}>{isVaUser(user) ? "+ Deal Brief" : "+ Create"}</button>
-          )}
+          <div style={{ position: "relative" }}>
+            <button
+              className={isVaUser(user) && pathname === "/va" ? "va-top-create" : undefined}
+              onClick={() => {
+                setCreateMenuOpen(open => !open);
+                setMoreOpen(false);
+              }}
+              style={crmCreateButton}
+            >
+              + Create
+            </button>
+            {createMenuOpen && globalCreateMenu}
+          </div>
           <span className={isVaUser(user) && pathname === "/va" ? "va-top-dot" : undefined} style={{ color: "var(--fog)", fontSize: 12 }}>●</span>
           <div className={isVaUser(user) && pathname === "/va" ? "va-top-user" : undefined} style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <span style={{ display: "grid", placeItems: "center", width: 28, height: 28, borderRadius: 999, background: "var(--obsidian)", color: "var(--bone)", fontSize: 11 }}>{user.split(/\s+/).map(part => part[0]).join("").slice(0, 2)}</span>
@@ -316,6 +450,7 @@ export default function NavBar() {
                 key={l.href}
                 onClick={() => {
                   setMoreOpen(false);
+                  setCreateMenuOpen(false);
                   router.push(l.href);
                 }}
                 style={{
@@ -342,7 +477,10 @@ export default function NavBar() {
           {!isVaUser(user) && (
             <div style={{ position: "relative", flexShrink: 0 }}>
               <button
-                onClick={() => setMoreOpen(open => !open)}
+                onClick={() => {
+                  setMoreOpen(open => !open);
+                  setCreateMenuOpen(false);
+                }}
                 style={{
                   background: moreOpen ? "rgba(201,168,120,0.16)" : "transparent",
                   color: moreOpen || secondaryMemberLinks.some(l => isActive(l.href)) ? "var(--brass)" : "var(--fog)",
@@ -381,6 +519,7 @@ export default function NavBar() {
                         key={l.href}
                         onClick={() => {
                           setMoreOpen(false);
+                          setCreateMenuOpen(false);
                           router.push(l.href);
                         }}
                         style={{
@@ -408,11 +547,18 @@ export default function NavBar() {
         </div>
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 16, flexShrink: 0 }}>
-        {!isVaUser(user) && (
-          <button onClick={() => router.push("/va")} style={crmCreateButton}>
-            New Deal Brief
+        <div style={{ position: "relative" }}>
+          <button
+            onClick={() => {
+              setCreateMenuOpen(open => !open);
+              setMoreOpen(false);
+            }}
+            style={crmCreateButton}
+          >
+            + Create
           </button>
-        )}
+          {createMenuOpen && globalCreateMenu}
+        </div>
         <span style={{
           fontFamily: "var(--font-body)",
           fontSize: 11,
