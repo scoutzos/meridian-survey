@@ -12,6 +12,7 @@ import {
   type ImportedLandLead,
   type LandLeadBatch,
 } from "@/lib/land-leads";
+import { calculateLandUnderwriting, type LandExitType, type LandUnderwritingResult } from "@/lib/land-underwriting";
 import { labelForStatus } from "@/lib/status-map";
 
 type FilterKey =
@@ -24,7 +25,27 @@ type FilterKey =
   | "out-of-state"
   | "compliance-clean"
   | "opted-out"
-  | "multi-property";
+  | "multi-property"
+  | "underwriting-strong"
+  | "underwriting-possible"
+  | "underwriting-pass"
+  | "best-retail-resale"
+  | "best-neighbor-sale"
+  | "best-land-flip"
+  | "best-assignment"
+  | "best-subdivide"
+  | "max-offer-50k"
+  | "ppa-works"
+  | "needs-comp-check"
+  | "physical-blockers";
+
+type SortKey =
+  | "score"
+  | "max-offer"
+  | "required-ppa"
+  | "projected-spread"
+  | "best-exit"
+  | "acreage";
 
 const FILTERS: Array<{ key: FilterKey; label: string; matches: (lead: ImportedLandLead, ctx: FilterCtx) => boolean }> = [
   { key: "all", label: "All", matches: () => true },
@@ -37,6 +58,34 @@ const FILTERS: Array<{ key: FilterKey; label: string; matches: (lead: ImportedLa
   { key: "compliance-clean", label: "Compliance clean", matches: (l) => !l.dnc && !l.state_dnc && !l.litigator && l.sms_opt_status !== "opted-out" },
   { key: "opted-out", label: "Opted out", matches: (l) => l.sms_opt_status === "opted-out" },
   { key: "multi-property", label: "Multi-property owner", matches: (l, ctx) => ctx.multiPropertyOwners.has(ownerKey(l)) },
+  { key: "underwriting-strong", label: "Strong deals", matches: (l) => bestUnderwriting(l).status === "strong" },
+  { key: "underwriting-possible", label: "Possible deals", matches: (l) => bestUnderwriting(l).status === "possible" },
+  { key: "underwriting-pass", label: "Pass / blockers", matches: (l) => bestUnderwriting(l).status === "pass" || hasPhysicalBlocker(l) },
+  { key: "best-retail-resale", label: "Best: retail", matches: (l) => bestExit(l, "retail-resale") },
+  { key: "best-neighbor-sale", label: "Best: neighbor", matches: (l) => bestExit(l, "neighbor-sale") },
+  { key: "best-land-flip", label: "Best: flip", matches: (l) => bestExit(l, "land-flip") },
+  { key: "best-assignment", label: "Best: assignment", matches: (l) => bestExit(l, "assignment") },
+  { key: "best-subdivide", label: "Subdivision candidates", matches: (l) => bestExit(l, "subdivide") || !!l.tag_subdivide || !!l.tag_entitlement },
+  { key: "max-offer-50k", label: "Max offer $50k+", matches: (l) => (bestUnderwriting(l).maxOffer ?? 0) >= 50000 },
+  { key: "ppa-works", label: "PPA works", matches: (l) => {
+    const best = bestUnderwriting(l);
+    return best.requiredPpa !== null && best.landInsightsPpa !== null && best.landInsightsPpa >= best.requiredPpa;
+  } },
+  { key: "needs-comp-check", label: "Needs comp check", matches: (l) => {
+    const best = bestUnderwriting(l);
+    const compCount = Number(l.market_value_estimate_comp_count ?? 0);
+    return compCount < 3 || best.requiredPpa === null || best.landInsightsPpa === null || best.landInsightsPpa < best.requiredPpa;
+  } },
+  { key: "physical-blockers", label: "Landlocked / flood / wetlands", matches: (l) => hasPhysicalBlocker(l) },
+];
+
+const SORTS: Array<{ key: SortKey; label: string }> = [
+  { key: "score", label: "Score" },
+  { key: "max-offer", label: "Max offer" },
+  { key: "required-ppa", label: "Required PPA" },
+  { key: "projected-spread", label: "Spread" },
+  { key: "best-exit", label: "Best exit" },
+  { key: "acreage", label: "Acres" },
 ];
 
 interface FilterCtx {
@@ -59,6 +108,31 @@ function hasMobile(lead: ImportedLandLead): boolean {
   return false;
 }
 
+function bestUnderwriting(lead: ImportedLandLead): LandUnderwritingResult {
+  return calculateLandUnderwriting(lead).best;
+}
+
+function bestExit(lead: ImportedLandLead, exitType: LandExitType): boolean {
+  return bestUnderwriting(lead).exitType === exitType;
+}
+
+function hasPhysicalBlocker(lead: ImportedLandLead): boolean {
+  return !!lead.is_land_locked || (lead.wetlands_percent ?? 0) > 25 || (lead.flood_zone_percent ?? 0) > 25 || !!lead.bad_topography;
+}
+
+function sortLeads(leads: ImportedLandLead[], sort: SortKey): ImportedLandLead[] {
+  return leads.slice().sort((a, b) => {
+    const aBest = bestUnderwriting(a);
+    const bBest = bestUnderwriting(b);
+    if (sort === "max-offer") return (bBest.maxOffer ?? -1) - (aBest.maxOffer ?? -1);
+    if (sort === "required-ppa") return (aBest.requiredPpa ?? Number.MAX_SAFE_INTEGER) - (bBest.requiredPpa ?? Number.MAX_SAFE_INTEGER);
+    if (sort === "projected-spread") return (bBest.projectedSpread ?? -1) - (aBest.projectedSpread ?? -1);
+    if (sort === "best-exit") return aBest.label.localeCompare(bBest.label);
+    if (sort === "acreage") return (b.acreage ?? 0) - (a.acreage ?? 0);
+    return (b.lead_score ?? 0) - (a.lead_score ?? 0);
+  });
+}
+
 export default function ListDetailPage() {
   const params = useParams<{ batch_id: string }>();
   const batchId = params?.batch_id;
@@ -68,6 +142,7 @@ export default function ListDetailPage() {
   const [allLeads, setAllLeads] = useState<ImportedLandLead[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<FilterKey>("all");
+  const [sort, setSort] = useState<SortKey>("score");
   const [search, setSearch] = useState("");
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -117,16 +192,18 @@ export default function ListDetailPage() {
   const filteredLeads = useMemo(() => {
     const filterFn = FILTERS.find(f => f.key === filter)?.matches ?? FILTERS[0].matches;
     const query = search.trim().toLowerCase();
-    return allLeads.filter(lead => {
+    const rows = allLeads.filter(lead => {
       if (!filterFn(lead, filterCtx)) return false;
       if (!query) return true;
       const hay = [
         lead.owner_name, lead.property_address, lead.parcel_id, lead.county,
-        lead.phone, lead.phone_2, lead.email,
+        lead.phone, lead.phone_2, lead.email, lead.property_url,
+        ...Object.values(lead.raw_data ?? {}).map(value => String(value ?? "")),
       ].filter(Boolean).join(" ").toLowerCase();
       return hay.includes(query);
     });
-  }, [allLeads, filter, search, filterCtx]);
+    return sortLeads(rows, sort);
+  }, [allLeads, filter, search, filterCtx, sort]);
 
   const selectedLeads = useMemo(() => filteredLeads.filter(l => selectedIds.has(l.id)), [filteredLeads, selectedIds]);
   const bulkSourceLeads = selectMode && selectedIds.size > 0 ? selectedLeads : filteredLeads;
@@ -157,6 +234,18 @@ export default function ListDetailPage() {
       "compliance-clean": 0,
       "opted-out": 0,
       "multi-property": 0,
+      "underwriting-strong": 0,
+      "underwriting-possible": 0,
+      "underwriting-pass": 0,
+      "best-retail-resale": 0,
+      "best-neighbor-sale": 0,
+      "best-land-flip": 0,
+      "best-assignment": 0,
+      "best-subdivide": 0,
+      "max-offer-50k": 0,
+      "ppa-works": 0,
+      "needs-comp-check": 0,
+      "physical-blockers": 0,
     };
     for (const lead of allLeads) {
       for (const f of FILTERS) {
@@ -306,6 +395,9 @@ export default function ListDetailPage() {
             style={searchInput}
           />
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <select value={sort} onChange={e => setSort(e.target.value as SortKey)} style={selectInput} aria-label="Sort leads">
+              {SORTS.map(item => <option key={item.key} value={item.key}>Sort: {item.label}</option>)}
+            </select>
             <button
               onClick={() => { setSelectMode(m => !m); if (selectMode) clearSelected(); }}
               style={{ ...secondaryButton, opacity: 1 }}
@@ -350,7 +442,7 @@ export default function ListDetailPage() {
                 return (
                   <tr key={lead.id} style={{ background: selectedIds.has(lead.id) ? "rgba(176,137,84,0.12)" : "var(--surface)", cursor: "pointer" }} onClick={() => {
                     if (selectMode) { toggleSelected(lead.id); return; }
-                    router.push(`/lead/${lead.id}`);
+                    router.push(`/lead/${lead.id}?tab=research`);
                   }}>
                     {selectMode && (
                       <td style={tableCell} onClick={e => { e.stopPropagation(); toggleSelected(lead.id); }}>
@@ -492,6 +584,17 @@ const searchInput: React.CSSProperties = {
   fontFamily: "var(--font-body)",
   background: "var(--surface)",
   color: "var(--ink)",
+};
+
+const selectInput: React.CSSProperties = {
+  padding: "10px 12px",
+  border: "1px solid var(--fog)",
+  borderRadius: 6,
+  fontSize: 12,
+  fontFamily: "var(--font-body)",
+  background: "var(--surface)",
+  color: "var(--ink)",
+  minHeight: 42,
 };
 
 const tableHead: React.CSSProperties = {

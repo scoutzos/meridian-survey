@@ -203,6 +203,27 @@ export interface LeadImportResult {
   warning?: string | null;
 }
 
+export interface SingleLinkLandLeadInput {
+  sourceUrl: string;
+  sourceSystem?: string;
+  campaignSource?: string | null;
+  ownerName?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  propertyAddress?: string | null;
+  parcelId?: string | null;
+  county?: string | null;
+  city?: string | null;
+  state?: string | null;
+  zip?: string | null;
+  acreage?: number | null;
+  askingPrice?: number | null;
+  marketValue?: number | null;
+  zoning?: string | null;
+  notes?: string | null;
+  actor: string;
+}
+
 export interface LandLeadImportPreview {
   filename: string;
   rowsFound: number;
@@ -306,11 +327,139 @@ export interface LandUnderwritingResultRow {
   created_at: string;
 }
 
+export type LandDueDiligenceCategory = "access" | "flood" | "wetlands" | "zoning" | "tax" | "gis" | "comps" | "ownership" | "utilities" | "notes";
+export type LandDueDiligenceStatus = "todo" | "in-progress" | "verified" | "blocked" | "not-applicable";
+export type LandCompType = "sold" | "active" | "pending" | "expired" | "manual-note";
+export type LandCompConfidence = "high" | "medium" | "low" | "needs-review";
+
+export interface CountyResearchSource {
+  county: string;
+  state: string;
+  category: LandDueDiligenceCategory;
+  source_name: string;
+  source_url: string;
+  instructions: string;
+}
+
+export interface LandDueDiligenceItem {
+  id: string;
+  lead_id: string;
+  category: LandDueDiligenceCategory;
+  title: string;
+  status: LandDueDiligenceStatus;
+  result_summary: string | null;
+  source_name: string | null;
+  source_url: string | null;
+  evidence_value: string | null;
+  verified_by: string | null;
+  verified_at: string | null;
+  notes: string | null;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface LandCompRecord {
+  id: string;
+  lead_id: string;
+  comp_type: LandCompType;
+  address: string | null;
+  parcel_id: string | null;
+  county: string | null;
+  state: string | null;
+  price: number | null;
+  acreage: number | null;
+  price_per_acre: number | null;
+  sale_or_list_date: string | null;
+  distance_miles: number | null;
+  source_system: string | null;
+  source_url: string | null;
+  similarity_notes: string | null;
+  adjustment_notes: string | null;
+  include_in_valuation: boolean;
+  confidence: LandCompConfidence;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface LandCompInput {
+  leadId: string;
+  compType: LandCompType;
+  address?: string | null;
+  parcelId?: string | null;
+  county?: string | null;
+  state?: string | null;
+  price?: number | null;
+  acreage?: number | null;
+  saleOrListDate?: string | null;
+  distanceMiles?: number | null;
+  sourceSystem?: string | null;
+  sourceUrl?: string | null;
+  similarityNotes?: string | null;
+  adjustmentNotes?: string | null;
+  includeInValuation?: boolean;
+  confidence?: LandCompConfidence;
+  actor?: string | null;
+}
+
+export interface AutomatedLandResearchFinding {
+  category: LandDueDiligenceCategory;
+  title: string;
+  status: LandDueDiligenceStatus;
+  result_summary: string;
+  evidence_value: string | null;
+  source_name: string;
+  source_url: string;
+  confidence: LandCompConfidence;
+  blocker?: string | null;
+}
+
+export interface AutomatedLandParcelMatch {
+  sourceName: string;
+  sourceUrl: string;
+  parcelId: string | null;
+  address: string | null;
+  owner: string | null;
+  acreage: number | null;
+  zoning: string | null;
+  landUse: string | null;
+  assessedValue: number | null;
+  propertyTax: number | null;
+  mailingAddress: string | null;
+  addressMatchesSubject: boolean | null;
+  raw: Record<string, unknown>;
+}
+
+export interface AutomatedLandResearchResult {
+  ok: boolean;
+  location: {
+    latitude: number | null;
+    longitude: number | null;
+    matched_address: string | null;
+    county: string | null;
+    state: string | null;
+    geocoder: string;
+  };
+  parcel_match: AutomatedLandParcelMatch | null;
+  findings: AutomatedLandResearchFinding[];
+  source_links: Array<{
+    category: LandDueDiligenceCategory;
+    source_name: string;
+    source_url: string;
+  }>;
+  warnings: string[];
+  checked_at: string;
+  error?: string;
+}
+
 const LOCAL_BATCHES = "meridian_land_lead_batches_local";
 const LOCAL_LEADS = "meridian_imported_land_leads_local";
 const LOCAL_FIELD_VALUES = "meridian_imported_land_lead_field_values_local";
 const LOCAL_UNDERWRITING_RESULTS = "meridian_land_underwriting_results_local";
 const LOCAL_ACTIVITIES = "meridian_imported_land_lead_activities_local";
+const LOCAL_DUE_DILIGENCE = "meridian_land_due_diligence_items_local";
+const LOCAL_COMPS = "meridian_land_comp_records_local";
 
 function localGet<T>(key: string, fallback: T): T {
   if (typeof window === "undefined") return fallback;
@@ -484,6 +633,22 @@ function normalizeUrl(value: string | null | undefined): string {
   } catch {
     return normalizeText(value);
   }
+}
+
+export function inferLandLeadSourceFromUrl(value: string): string {
+  try {
+    const host = new URL(value).hostname.toLowerCase();
+    if (host.includes("zillow")) return "Zillow";
+    if (host.includes("realtor")) return "Realtor";
+    if (host.includes("land.com") || host.includes("landwatch") || host.includes("landandfarm")) return "Land.com";
+    if (host.includes("crexi")) return "Crexi";
+    if (host.includes("loopnet")) return "LoopNet";
+    if (host.includes("qpublic") || host.includes("gis") || host.includes("county")) return "County GIS";
+    if (host.includes("google")) return "Google Maps";
+  } catch {
+    return "Manual Link";
+  }
+  return "Manual Link";
 }
 
 function leadLabel(lead: Pick<ImportedLandLead, "owner_name" | "property_address" | "parcel_id" | "phone" | "phone_2">): string {
@@ -921,6 +1086,114 @@ async function insertLeadRowsInChunks(
   return { count, rows, error: null };
 }
 
+function singleLinkRawData(input: SingleLinkLandLeadInput): Record<string, string> {
+  return {
+    "Source URL": input.sourceUrl.trim(),
+    "Listing URL": input.sourceUrl.trim(),
+    "Source Type": input.sourceSystem || inferLandLeadSourceFromUrl(input.sourceUrl),
+    "Property Address": input.propertyAddress?.trim() || "",
+    "Parcel ID": input.parcelId?.trim() || "",
+    "Owner Name": input.ownerName?.trim() || "",
+    "Phone": input.phone?.trim() || "",
+    "Email": input.email?.trim() || "",
+    "County": input.county?.trim() || "",
+    "City": input.city?.trim() || "",
+    "State": input.state?.trim() || "",
+    "Zip": input.zip?.trim() || "",
+    "Acreage": input.acreage === null || input.acreage === undefined ? "" : String(input.acreage),
+    "Asking Price": input.askingPrice === null || input.askingPrice === undefined ? "" : String(input.askingPrice),
+    "Market Value Estimate": input.marketValue === null || input.marketValue === undefined ? "" : String(input.marketValue),
+    "Zoning": input.zoning?.trim() || "",
+    "Notes": input.notes?.trim() || "",
+    "Intake Method": "Single Link Intake",
+  };
+}
+
+export async function createSingleLinkLandLead(input: SingleLinkLandLeadInput): Promise<LeadImportResult> {
+  const url = input.sourceUrl.trim();
+  if (!url) return { batch: null, leads: [], error: "Paste a property or listing link first." };
+
+  const now = new Date().toISOString();
+  const sourceSystem = input.sourceSystem?.trim() || inferLandLeadSourceFromUrl(url);
+  const campaignSource = input.campaignSource?.trim() || "Single Link Intake";
+  const rawData = singleLinkRawData({ ...input, sourceSystem, campaignSource });
+
+  const batchSeed = {
+    source_system: sourceSystem,
+    original_filename: null,
+    campaign_source: campaignSource,
+    row_count: 1,
+    uploaded_by: input.actor,
+  };
+  const batchEnhancement = {
+    status: "in-progress" as const,
+    assigned_to: input.actor,
+    started_at: now,
+    import_summary: {
+      intake_method: "single-link",
+      source_url: url,
+      source_system: sourceSystem,
+    },
+    notes: input.notes?.trim() || null,
+  };
+
+  if (!supabase) {
+    const batch: LandLeadBatch = {
+      id: `single-link-batch-${Date.now()}`,
+      ...batchSeed,
+      ...batchEnhancement,
+      completed_at: null,
+      created_at: now,
+    };
+    const normalized = normalizeLead(rawData, sourceSystem, campaignSource, input.actor, batch.id);
+    const lead: ImportedLandLead = {
+      ...normalized,
+      id: `single-link-lead-${Date.now()}`,
+      created_at: now,
+      updated_at: now,
+    };
+    localSet(LOCAL_BATCHES, [batch, ...localGet<LandLeadBatch[]>(LOCAL_BATCHES, [])]);
+    localSet(LOCAL_LEADS, [lead, ...localGet<ImportedLandLead[]>(LOCAL_LEADS, [])]);
+    await insertFieldValueRowsInChunks([lead], [normalized]);
+    await upsertLandUnderwritingForLeads([lead]);
+    return { batch, leads: [lead], error: null };
+  }
+
+  const batchResult = await supabase
+    .from("meridian_land_lead_import_batches")
+    .insert({ ...batchSeed, ...batchEnhancement })
+    .select()
+    .single();
+  let batchData = batchResult.data;
+  const batchError = batchResult.error;
+  if (batchError || !batchData) {
+    const fallback = await supabase
+      .from("meridian_land_lead_import_batches")
+      .insert(batchSeed)
+      .select()
+      .single();
+    if (fallback.error || !fallback.data) {
+      return { batch: null, leads: [], error: fallback.error?.message ?? batchError?.message ?? "Could not create the link intake batch." };
+    }
+    batchData = fallback.data;
+  }
+
+  const batch = batchData as LandLeadBatch;
+  const existing = await fetchImportedLandLeads(5000);
+  const normalized = applyDuplicateMetadata([normalizeLead(rawData, sourceSystem, campaignSource, input.actor, batch.id)], existing)[0];
+  const inserted = await insertLeadRowsInChunks([normalized]);
+  if (inserted.error) return { batch, leads: [], error: inserted.error.message ?? "Could not save the link property record." };
+  const savedLead = inserted.rows[0] ?? {
+    ...normalized,
+    id: `${batch.id}-single-link`,
+    created_at: now,
+    updated_at: now,
+  } as ImportedLandLead;
+  await insertFieldValueRowsInChunks([savedLead], [normalized]);
+  await upsertLandUnderwritingForLeads([savedLead]);
+  return { batch, leads: [savedLead], error: null };
+}
+
 function fieldRowsForLead(leadId: string, rawData: Record<string, unknown>) {
   return buildSourceFieldValues(rawData).map(field => ({
     lead_id: leadId,
@@ -1275,6 +1548,69 @@ export async function updateImportedLandLeadStatus(id: string, status: ImportedL
   return { error: error?.message ?? null };
 }
 
+function researchLeadPatch(lead: ImportedLandLead, result: AutomatedLandResearchResult): Partial<ImportedLandLead> | null {
+  const match = result.parcel_match;
+  if (!match || match.addressMatchesSubject === false) return null;
+  const rawData = {
+    ...(lead.raw_data || {}),
+    "County parcel research": {
+      sourceName: match.sourceName,
+      sourceUrl: match.sourceUrl,
+      checkedAt: result.checked_at,
+      parcelId: match.parcelId,
+      address: match.address,
+      owner: match.owner,
+      acreage: match.acreage,
+      zoning: match.zoning,
+      landUse: match.landUse,
+      assessedValue: match.assessedValue,
+      propertyTax: match.propertyTax,
+      mailingAddress: match.mailingAddress,
+      addressMatchesSubject: match.addressMatchesSubject,
+      raw: match.raw,
+    },
+  };
+  const patch: Partial<ImportedLandLead> = {
+    raw_data: rawData,
+  };
+  if (match.parcelId && !lead.parcel_id) patch.parcel_id = match.parcelId;
+  if (match.address && !lead.property_address) patch.property_address = match.address;
+  if (match.owner && !lead.owner_name) patch.owner_name = match.owner;
+  if (match.mailingAddress && !lead.mailing_address) patch.mailing_address = match.mailingAddress;
+  if (match.acreage !== null && match.acreage !== undefined) {
+    if (!lead.acreage) patch.acreage = match.acreage;
+    if (!lead.calculated_acreage) patch.calculated_acreage = match.acreage;
+  }
+  if (match.zoning && !lead.zoning) patch.zoning = match.zoning;
+  if (match.landUse && !lead.land_use) patch.land_use = match.landUse;
+  if (match.assessedValue !== null && match.assessedValue !== undefined && !lead.assessed_value) patch.assessed_value = match.assessedValue;
+  if (match.propertyTax !== null && match.propertyTax !== undefined && !lead.property_tax) patch.property_tax = match.propertyTax;
+  if (match.sourceUrl && !lead.parcel_link) patch.parcel_link = match.sourceUrl;
+  return patch;
+}
+
+export async function updateImportedLandLeadFromResearch(
+  lead: ImportedLandLead,
+  result: AutomatedLandResearchResult,
+): Promise<{ lead: ImportedLandLead | null; error: string | null }> {
+  const patch = researchLeadPatch(lead, result);
+  if (!patch) return { lead, error: null };
+  const now = new Date().toISOString();
+  const next = { ...lead, ...patch, updated_at: now };
+  if (!supabase) {
+    const rows = localGet<ImportedLandLead[]>(LOCAL_LEADS, []);
+    localSet(LOCAL_LEADS, rows.map(row => row.id === lead.id ? next : row));
+    return { lead: next, error: null };
+  }
+  const { data, error } = await supabase
+    .from("meridian_imported_land_leads")
+    .update({ ...patch, updated_at: now })
+    .eq("id", lead.id)
+    .select("*")
+    .single();
+  return { lead: data as ImportedLandLead | null, error: error?.message ?? null };
+}
+
 export async function updateLandLeadBatch(id: string, patch: Partial<Pick<LandLeadBatch, "status" | "assigned_to" | "notes">>): Promise<{ error: string | null }> {
   const now = new Date().toISOString();
   const row = {
@@ -1358,6 +1694,362 @@ export async function fetchImportedLandLeadActivities(leadId?: string, limit = 8
   return data as ImportedLandLeadActivity[];
 }
 
+const GEORGIA_RESEARCH_COUNTIES = [
+  "Pickens",
+  "Lumpkin",
+  "Dawson",
+  "Cherokee",
+  "Clayton",
+  "Cobb",
+  "DeKalb",
+  "Douglas",
+  "Fayette",
+  "Forsyth",
+  "Fulton",
+  "Gwinnett",
+  "Henry",
+  "Newton",
+  "Rockdale",
+  "Walton",
+];
+
+const RESEARCH_SOURCE_TEMPLATES: Array<Pick<CountyResearchSource, "category" | "source_name" | "instructions"> & { query: string }> = [
+  { category: "gis", source_name: "County GIS / parcel viewer", query: "county GIS parcel viewer", instructions: "Find the parcel map, parcel card, acreage, owner, parcel ID, and map link." },
+  { category: "tax", source_name: "County tax assessor", query: "county tax assessor property search", instructions: "Verify assessed value, tax year, tax amount, exemptions, and delinquency clues." },
+  { category: "zoning", source_name: "County zoning / planning", query: "county zoning map planning department", instructions: "Verify zoning, future land use, minimum lot size, and subdivision constraints." },
+  { category: "comps", source_name: "County sales records", query: "county land sales records assessor", instructions: "Look for vacant land sales and save clean sold comps with source links." },
+];
+
+function makeId(prefix: string): string {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) return `${prefix}-${crypto.randomUUID()}`;
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+function countyName(value: string | null | undefined): string {
+  return (value || "").replace(/\s+county$/i, "").trim();
+}
+
+function countySearchUrl(county: string, state: string, query: string): string {
+  return `https://www.google.com/search?q=${encodeURIComponent(`${county} County ${state} ${query}`)}`;
+}
+
+export function getCountyResearchSources(lead: Pick<ImportedLandLead, "county" | "state" | "latitude" | "longitude" | "property_address" | "parcel_id">): CountyResearchSource[] {
+  const county = countyName(lead.county);
+  const state = lead.state || "GA";
+  const supported = state.toUpperCase() === "GA" && GEORGIA_RESEARCH_COUNTIES.some(name => name.toLowerCase() === county.toLowerCase());
+  const localSources = supported
+    ? RESEARCH_SOURCE_TEMPLATES.map(source => ({
+      county,
+      state,
+      category: source.category,
+      source_name: source.source_name,
+      source_url: countySearchUrl(county, state, source.query),
+      instructions: source.instructions,
+    }))
+    : [];
+
+  const locationQuery = [lead.property_address, lead.parcel_id, county ? `${county} County` : null, state].filter(Boolean).join(" ");
+  const nationalSources: CountyResearchSource[] = [
+    {
+      county: county || "Unknown",
+      state,
+      category: "flood",
+      source_name: "FEMA flood map",
+      source_url: "https://msc.fema.gov/portal/search",
+      instructions: "Search the address or coordinates and record flood zone, floodway, and map panel evidence.",
+    },
+    {
+      county: county || "Unknown",
+      state,
+      category: "wetlands",
+      source_name: "USFWS Wetlands Mapper",
+      source_url: "https://www.fws.gov/program/national-wetlands-inventory/wetlands-mapper",
+      instructions: "Check mapped wetlands on or near the parcel and record rough impact.",
+    },
+    {
+      county: county || "Unknown",
+      state,
+      category: "access",
+      source_name: "Google Maps / road access",
+      source_url: `https://www.google.com/maps/search/${encodeURIComponent(locationQuery || `${county} County ${state}`)}`,
+      instructions: "Confirm visible road frontage, driveway potential, and whether the parcel appears landlocked.",
+    },
+    {
+      county: county || "Unknown",
+      state,
+      category: "utilities",
+      source_name: "Utility availability search",
+      source_url: countySearchUrl(county || "Georgia", state, "water sewer utility availability GIS"),
+      instructions: "Look for water, sewer, power, or septic clues and save the source link.",
+    },
+  ];
+
+  return [...localSources, ...nationalSources];
+}
+
+export function generateLandDueDiligenceChecklist(lead: ImportedLandLead): LandDueDiligenceItem[] {
+  const now = new Date().toISOString();
+  const sourceByCategory = getCountyResearchSources(lead).reduce<Partial<Record<LandDueDiligenceCategory, CountyResearchSource>>>((acc, source) => {
+    if (!acc[source.category]) acc[source.category] = source;
+    return acc;
+  }, {});
+  const items: Array<{ category: LandDueDiligenceCategory; title: string; summary?: string | null; evidence?: string | null }> = [
+    { category: "gis", title: "Open county GIS and confirm parcel identity", summary: lead.parcel_link ? "Parcel link imported from source file." : null, evidence: lead.parcel_id || null },
+    { category: "access", title: "Confirm road frontage and landlocked risk", summary: lead.is_land_locked ? "Imported data says landlocked." : lead.road_frontage_ft ? "Road frontage imported." : null, evidence: lead.road_frontage_ft ? `${lead.road_frontage_ft} ft` : lead.is_land_locked ? "Landlocked flag" : null },
+    { category: "flood", title: "Check FEMA flood zone", summary: lead.flood_zone_percent ? "Flood data imported from source file." : null, evidence: lead.flood_zone_percent != null ? `${lead.flood_zone_percent}%${lead.flood_zone_type ? ` · ${lead.flood_zone_type}` : ""}` : null },
+    { category: "wetlands", title: "Check wetlands impact", summary: lead.wetlands_percent ? "Wetlands data imported from source file." : null, evidence: lead.wetlands_percent != null ? `${lead.wetlands_percent}%` : null },
+    { category: "zoning", title: "Verify zoning, future land use, and minimum lot size", summary: lead.zoning ? "Zoning imported from source file." : null, evidence: [lead.zoning, lead.min_lot_size_acres ? `${lead.min_lot_size_acres} min acres` : null].filter(Boolean).join(" · ") || null },
+    { category: "tax", title: "Verify assessed value, taxes, and delinquency", summary: lead.tax_delinquent ? "Tax delinquency imported from source file." : null, evidence: [lead.assessed_value ? `$${lead.assessed_value.toLocaleString()}` : null, lead.property_tax ? `$${lead.property_tax.toLocaleString()} tax` : null, lead.tax_delinquent ? "Delinquent" : null].filter(Boolean).join(" · ") || null },
+    { category: "comps", title: "Add at least three sold land comps", summary: lead.market_value_estimate_comp_count ? "Land Insights comp count imported." : null, evidence: lead.market_value_estimate_comp_count ? `${lead.market_value_estimate_comp_count} LI comps` : null },
+    { category: "comps", title: "Add active listing comps and check PPA support", summary: lead.market_value_estimate_ppa ? "Imported PPA estimate available." : null, evidence: lead.market_value_estimate_ppa ? `$${Math.round(lead.market_value_estimate_ppa).toLocaleString()}/ac` : null },
+    { category: "ownership", title: "Confirm seller/owner and mailing address", summary: lead.owner_name ? "Owner imported from source file." : null, evidence: [lead.owner_name, lead.mailing_address].filter(Boolean).join(" · ") || null },
+    { category: "notes", title: "Check elevation/topography risk", summary: lead.topography || lead.bad_topography ? "Topography data imported from source file." : null, evidence: [lead.topography, lead.bad_topography ? "Bad topography flag" : null].filter(Boolean).join(" · ") || null },
+    { category: "notes", title: "Check soil/septic risk", summary: null, evidence: null },
+    { category: "utilities", title: "Check utility availability", summary: null, evidence: null },
+  ];
+
+  return items.map((item, index) => {
+    const source = sourceByCategory[item.category];
+    const hasEvidence = !!item.evidence || item.summary?.includes("imported");
+    return {
+      id: `template-${lead.id}-${item.category}-${index}`,
+      lead_id: lead.id,
+      category: item.category,
+      title: item.title,
+      status: hasEvidence ? "in-progress" : "todo",
+      result_summary: item.summary ?? null,
+      source_name: source?.source_name ?? null,
+      source_url: source?.source_url ?? null,
+      evidence_value: item.evidence ?? null,
+      verified_by: null,
+      verified_at: null,
+      notes: source?.instructions ?? null,
+      sort_order: index + 1,
+      created_at: now,
+      updated_at: now,
+    };
+  });
+}
+
+export function summarizeLandComps(comps: LandCompRecord[]) {
+  const usable = comps.filter(comp => comp.include_in_valuation && typeof comp.price_per_acre === "number" && comp.price_per_acre > 0);
+  const ppas = usable.map(comp => comp.price_per_acre as number).sort((a, b) => a - b);
+  const averagePpa = ppas.length ? Math.round(ppas.reduce((sum, value) => sum + value, 0) / ppas.length) : null;
+  const medianPpa = ppas.length ? Math.round(ppas[Math.floor(ppas.length / 2)]) : null;
+  const soldCount = usable.filter(comp => comp.comp_type === "sold").length;
+  const activeCount = usable.filter(comp => comp.comp_type === "active").length;
+  return {
+    usableCount: usable.length,
+    soldCount,
+    activeCount,
+    averagePpa,
+    medianPpa,
+    trusted: soldCount >= 3,
+  };
+}
+
+export async function fetchLandDueDiligenceItems(lead: ImportedLandLead): Promise<LandDueDiligenceItem[]> {
+  if (!supabase) {
+    const rows = localGet<LandDueDiligenceItem[]>(LOCAL_DUE_DILIGENCE, [])
+      .filter(row => row.lead_id === lead.id)
+      .sort((a, b) => a.sort_order - b.sort_order);
+    return rows.length ? rows : generateLandDueDiligenceChecklist(lead);
+  }
+  const { data, error } = await supabase
+    .from("meridian_land_due_diligence_items")
+    .select("*")
+    .eq("lead_id", lead.id)
+    .order("sort_order");
+  if (error || !data || data.length === 0) return generateLandDueDiligenceChecklist(lead);
+  return data as LandDueDiligenceItem[];
+}
+
+export async function saveLandDueDiligenceItem(
+  lead: ImportedLandLead,
+  item: LandDueDiligenceItem,
+  patch: Partial<Pick<LandDueDiligenceItem, "status" | "result_summary" | "evidence_value" | "notes" | "source_url" | "source_name">>,
+  actor?: string | null,
+): Promise<{ item: LandDueDiligenceItem | null; error: string | null }> {
+  const now = new Date().toISOString();
+  const next: LandDueDiligenceItem = {
+    ...item,
+    ...patch,
+    verified_by: patch.status === "verified" ? actor || item.verified_by : item.verified_by,
+    verified_at: patch.status === "verified" ? now : item.verified_at,
+    updated_at: now,
+  };
+  const isTemplate = item.id.startsWith("template-");
+  if (!supabase) {
+    const rows = localGet<LandDueDiligenceItem[]>(LOCAL_DUE_DILIGENCE, []);
+    const saved = isTemplate ? { ...next, id: makeId("dd"), created_at: now } : next;
+    localSet(LOCAL_DUE_DILIGENCE, [saved, ...rows.filter(row => row.id !== item.id && row.id !== saved.id)]);
+    return { item: saved, error: null };
+  }
+  if (isTemplate) {
+    const { data, error } = await supabase
+      .from("meridian_land_due_diligence_items")
+      .insert({
+        lead_id: lead.id,
+        category: next.category,
+        title: next.title,
+        status: next.status,
+        result_summary: next.result_summary,
+        source_name: next.source_name,
+        source_url: next.source_url,
+        evidence_value: next.evidence_value,
+        verified_by: next.verified_by,
+        verified_at: next.verified_at,
+        notes: next.notes,
+        sort_order: next.sort_order,
+      })
+      .select()
+      .single();
+    return { item: data as LandDueDiligenceItem | null, error: error?.message ?? null };
+  }
+  const { data, error } = await supabase
+    .from("meridian_land_due_diligence_items")
+    .update({
+      status: next.status,
+      result_summary: next.result_summary,
+      source_name: next.source_name,
+      source_url: next.source_url,
+      evidence_value: next.evidence_value,
+      verified_by: next.verified_by,
+      verified_at: next.verified_at,
+      notes: next.notes,
+      updated_at: now,
+    })
+    .eq("id", item.id)
+    .select()
+    .single();
+  return { item: data as LandDueDiligenceItem | null, error: error?.message ?? null };
+}
+
+export async function fetchLandCompRecords(leadId: string): Promise<LandCompRecord[]> {
+  if (!supabase) {
+    return localGet<LandCompRecord[]>(LOCAL_COMPS, [])
+      .filter(row => row.lead_id === leadId)
+      .sort((a, b) => (b.sale_or_list_date || b.created_at).localeCompare(a.sale_or_list_date || a.created_at));
+  }
+  const { data, error } = await supabase
+    .from("meridian_land_comp_records")
+    .select("*")
+    .eq("lead_id", leadId)
+    .order("created_at", { ascending: false });
+  if (error || !data) return [];
+  return data as LandCompRecord[];
+}
+
+export async function createLandCompRecord(input: LandCompInput): Promise<{ comp: LandCompRecord | null; error: string | null }> {
+  const now = new Date().toISOString();
+  const pricePerAcre = input.price && input.acreage && input.acreage > 0
+    ? Math.round(input.price / input.acreage)
+    : null;
+  const row = {
+    lead_id: input.leadId,
+    comp_type: input.compType,
+    address: input.address?.trim() || null,
+    parcel_id: input.parcelId?.trim() || null,
+    county: input.county?.trim() || null,
+    state: input.state?.trim() || null,
+    price: input.price ?? null,
+    acreage: input.acreage ?? null,
+    price_per_acre: pricePerAcre,
+    sale_or_list_date: input.saleOrListDate || null,
+    distance_miles: input.distanceMiles ?? null,
+    source_system: input.sourceSystem?.trim() || null,
+    source_url: input.sourceUrl?.trim() || null,
+    similarity_notes: input.similarityNotes?.trim() || null,
+    adjustment_notes: input.adjustmentNotes?.trim() || null,
+    include_in_valuation: input.includeInValuation ?? true,
+    confidence: input.confidence || "needs-review",
+    created_by: input.actor || null,
+  };
+  if (!supabase) {
+    const comp: LandCompRecord = {
+      ...row,
+      id: makeId("comp"),
+      comp_type: row.comp_type as LandCompType,
+      confidence: row.confidence as LandCompConfidence,
+      created_at: now,
+      updated_at: now,
+    };
+    localSet(LOCAL_COMPS, [comp, ...localGet<LandCompRecord[]>(LOCAL_COMPS, [])]);
+    return { comp, error: null };
+  }
+  const { data, error } = await supabase
+    .from("meridian_land_comp_records")
+    .insert(row)
+    .select()
+    .single();
+  return { comp: data as LandCompRecord | null, error: error?.message ?? null };
+}
+
+function matchingResearchItem(items: LandDueDiligenceItem[], finding: AutomatedLandResearchFinding): LandDueDiligenceItem | null {
+  const exact = items.find(item => item.category === finding.category && item.title.toLowerCase() === finding.title.toLowerCase());
+  if (exact) return exact;
+  const categoryMatch = items.find(item => item.category === finding.category);
+  return categoryMatch ?? null;
+}
+
+export async function runAutomatedLandResearch(
+  lead: ImportedLandLead,
+  items: LandDueDiligenceItem[],
+  actor?: string | null,
+): Promise<{ result: AutomatedLandResearchResult | null; items: LandDueDiligenceItem[]; lead: ImportedLandLead | null; error: string | null }> {
+  let response: Response;
+  try {
+    response = await fetch("/api/land-research/run", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ lead }),
+    });
+  } catch (error) {
+    return {
+      result: null,
+      items,
+      lead,
+      error: `Automatic research could not start: ${error instanceof Error ? error.message : "network error"}`,
+    };
+  }
+
+  const payload = await response.json().catch(() => ({})) as AutomatedLandResearchResult;
+  if (!response.ok || payload.error) {
+    return { result: payload, items, lead, error: payload.error || response.statusText || "Automatic research failed." };
+  }
+
+  let nextItems = [...items];
+  for (const finding of payload.findings) {
+    const item = matchingResearchItem(nextItems, finding);
+    if (!item) continue;
+    const saved = await saveLandDueDiligenceItem(lead, item, {
+      status: finding.status,
+      result_summary: finding.result_summary,
+      evidence_value: finding.evidence_value,
+      source_name: finding.source_name,
+      source_url: finding.source_url,
+      notes: [
+        finding.blocker ? `Blocker: ${finding.blocker}` : "",
+        `Auto research confidence: ${finding.confidence}.`,
+        item.notes,
+      ].filter(Boolean).join("\n"),
+    }, actor);
+    if (saved.error) {
+      return { result: payload, items: nextItems, lead, error: saved.error };
+    }
+    if (saved.item) {
+      nextItems = nextItems.map(row => row.id === item.id ? saved.item as LandDueDiligenceItem : row);
+    }
+  }
+
+  const updated = await updateImportedLandLeadFromResearch(lead, payload);
+  if (updated.error) {
+    return { result: payload, items: nextItems, lead, error: updated.error };
+  }
+
+  return { result: payload, items: nextItems.sort((a, b) => a.sort_order - b.sort_order), lead: updated.lead, error: null };
+}
+
 function statusLabel(value: string): string {
   return value.split("-").map(part => part.charAt(0).toUpperCase() + part.slice(1)).join(" ");
 }
@@ -1365,22 +2057,71 @@ function statusLabel(value: string): string {
 export function leadToDealDraft(lead: ImportedLandLead): Partial<DealInput> & { linksText?: string } {
   const title = lead.property_address || lead.parcel_id || `${lead.owner_name || "Imported"} land lead`;
   const location = [lead.property_address, lead.city, lead.state, lead.zip].filter(Boolean).join(", ");
+  const underwriting = calculateLandUnderwriting(lead);
+  const best = underwriting.best;
+  const retail = underwriting.results.find(result => result.exitType === "retail-resale");
+  const buyerTypeByExit: Partial<Record<LandExitType, string>> = {
+    "retail-resale": "Retail land buyer",
+    "neighbor-sale": "Adjacent owner",
+    "land-flip": "Land investor",
+    assignment: "Local investor / buyer list",
+    subdivide: "Builder / developer",
+    pass: "No buyer until blocker clears",
+  };
+  const calculatorNotes = [
+    `Best exit: ${best.label} (${best.status}).`,
+    best.maxOffer !== null ? `Max offer: ${best.maxOffer.toLocaleString(undefined, { style: "currency", currency: "USD", maximumFractionDigits: 0 })}.` : "",
+    best.requiredPpa !== null ? `Required PPA: ${best.requiredPpa.toLocaleString(undefined, { style: "currency", currency: "USD", maximumFractionDigits: 0 })}.` : "",
+    best.landInsightsPpa !== null ? `Land Insights PPA: ${best.landInsightsPpa.toLocaleString(undefined, { style: "currency", currency: "USD", maximumFractionDigits: 0 })}.` : "",
+    best.projectedSpread !== null ? `Projected spread: ${best.projectedSpread.toLocaleString(undefined, { style: "currency", currency: "USD", maximumFractionDigits: 0 })}.` : "",
+    best.blocker ? `Blocker: ${best.blocker}.` : "",
+    `VA next step: ${best.nextStep}`,
+  ].filter(Boolean).join("\n");
   return {
     title,
     source: lead.source_system,
     property_type: "land",
-    strategy: "land resale",
+    strategy: best.exitType === "pass" ? "pass / blocked land lead" : best.label,
     status: "lead",
-    urgency: "routine",
+    urgency: best.status === "strong" ? "hot" : best.status === "possible" ? "time-sensitive" : "routine",
     address: location || lead.property_address || "",
     parcel_id: lead.parcel_id || "",
     seller_name: lead.owner_name || "",
     seller_phone: lead.phone || lead.phone_2 || "",
-    asking_price: lead.asking_price,
-    arv: lead.market_value || lead.assessed_value,
+    asking_price: lead.asking_price ?? best.maxOffer,
+    arv: best.requiredResaleValue ?? best.landInsightsValue ?? lead.market_value ?? lead.assessed_value,
     acreage: lead.acreage,
     zoning: lead.zoning || "",
+    road_frontage: lead.road_frontage_ft ? `${lead.road_frontage_ft} ft` : "",
+    utilities: "",
+    disposition_status: best.exitType === "pass" ? "not-started" : "exit-strategy-set",
+    exit_strategy: best.label,
+    target_buyer_type: buyerTypeByExit[best.exitType] ?? "",
+    target_resale_price: best.requiredResaleValue ?? best.landInsightsValue ?? null,
+    minimum_acceptable_price: best.requiredResaleValue ?? null,
+    closing_costs_estimate: underwriting.assumptions.closingCost,
+    marketing_costs_estimate: best.exitType === "retail-resale" || best.exitType === "neighbor-sale"
+      ? Math.round((best.requiredResaleValue ?? best.landInsightsValue ?? 0) * underwriting.assumptions.brokerCommissionPct)
+      : null,
+    desired_minimum_spread: underwriting.assumptions.targetSpread,
+    calculator_notes: calculatorNotes,
+    disposition_next_step: best.nextStep,
+    buyer_demand_evidence: best.keyAssumption,
+    review_intent: best.status === "pass" ? "blocked-decision" : "needs-info-review",
+    requested_next_step: best.nextStep,
+    submit_uncertainties: best.blocker || retail?.keyAssumption.includes("must be verified")
+      ? [best.blocker ? `Clear blocker: ${best.blocker}` : "", "Verify sold land comps / PPA support."].filter(Boolean).join("\n")
+      : "Verify comps, buyer demand, access, utilities, and county constraints before making a firm offer.",
+    submission_summary: [
+      `${best.label} is the current calculator-leading exit for this imported land lead.`,
+      best.maxOffer !== null ? `Suggested max offer starts around ${best.maxOffer.toLocaleString(undefined, { style: "currency", currency: "USD", maximumFractionDigits: 0 })}.` : "",
+      best.requiredPpa !== null ? `Comps need to support about ${best.requiredPpa.toLocaleString(undefined, { style: "currency", currency: "USD", maximumFractionDigits: 0 })}/acre for this to work.` : "",
+      best.blocker ? `Current blocker: ${best.blocker}.` : "",
+    ].filter(Boolean).join(" "),
     notes: [
+      "Automatic underwriting summary:",
+      calculatorNotes,
+      "",
       lead.notes,
       lead.county ? `County: ${lead.county}` : "",
       lead.land_use ? `Land use: ${lead.land_use}` : "",

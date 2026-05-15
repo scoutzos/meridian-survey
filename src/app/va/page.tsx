@@ -35,9 +35,11 @@ import {
 import { createNotification } from "@/lib/operations";
 import {
   createImportedLandLeadActivity,
+  createSingleLinkLandLead,
   fetchImportedLandLeadActivities,
   fetchLandLeadBatches,
   fetchImportedLandLeads,
+  inferLandLeadSourceFromUrl,
   leadToDealDraft,
   previewLandLeadsCsv,
   updateImportedLandLeadStatus,
@@ -75,6 +77,7 @@ import ConversationPanel, { type ConversationActivity } from "@/components/Conve
 import LandUnderwritingPanel from "@/components/LandUnderwritingPanel";
 import { labelForStatus } from "@/lib/status-map";
 import { getLeadNextAction, type WorkflowTone } from "@/lib/workflow-actions";
+import { calculateLandUnderwriting, type LandExitType, type LandUnderwritingResult } from "@/lib/land-underwriting";
 import OperatingHeader from "@/components/OperatingHeader";
 import TwilioCallButton from "@/components/TwilioCallButton";
 import {
@@ -195,11 +198,51 @@ const IMPORT_STATUS_FILTERS = [
   { value: "flood", label: "Flood" },
   { value: "wetlands", label: "Wetlands" },
   { value: "score-60", label: "Score 60+" },
+  { value: "underwriting-strong", label: "Strong deals" },
+  { value: "underwriting-possible", label: "Possible deals" },
+  { value: "underwriting-pass", label: "Pass / blockers" },
+  { value: "best-retail-resale", label: "Best: retail" },
+  { value: "best-neighbor-sale", label: "Best: neighbor" },
+  { value: "best-land-flip", label: "Best: flip" },
+  { value: "best-assignment", label: "Best: assignment" },
+  { value: "best-subdivide", label: "Subdivision candidates" },
+  { value: "max-offer-50k", label: "Max offer $50k+" },
+  { value: "ppa-works", label: "PPA works" },
+  { value: "needs-comp-check", label: "Needs comp check" },
+  { value: "physical-blockers", label: "Landlocked / flood / wetlands" },
 ] as const;
 
+const IMPORT_LEAD_SORTS: Array<{ value: ImportedLeadSort; label: string }> = [
+  { value: "score", label: "Score" },
+  { value: "max-offer", label: "Max offer" },
+  { value: "required-ppa", label: "Required PPA" },
+  { value: "projected-spread", label: "Spread" },
+  { value: "best-exit", label: "Best exit" },
+  { value: "acreage", label: "Acres" },
+];
+
 type ImportStatusFilter = typeof IMPORT_STATUS_FILTERS[number]["value"];
+type ImportedLeadSort = "score" | "max-offer" | "required-ppa" | "projected-spread" | "best-exit" | "acreage";
 type ImportStep = "upload" | "preview" | "importing" | "work";
 type ImportStage = "idle" | "previewing" | "creating-batch" | "saving-leads" | "refreshing" | "done";
+type LinkIntakeDraft = {
+  sourceUrl: string;
+  sourceSystem: string;
+  propertyAddress: string;
+  parcelId: string;
+  ownerName: string;
+  phone: string;
+  email: string;
+  askingPrice: string;
+  acreage: string;
+  marketValue: string;
+  county: string;
+  city: string;
+  state: string;
+  zip: string;
+  zoning: string;
+  notes: string;
+};
 type BulkTextStep = "audience" | "compliance" | "message";
 type SegmentBooleanFilter = "any" | "yes" | "no";
 type SavedLeadSegment = {
@@ -516,6 +559,72 @@ function toNumber(value: string): number | null {
   if (!value.trim()) return null;
   const parsed = Number(value.replace(/[$,]/g, ""));
   return Number.isFinite(parsed) ? parsed : null;
+}
+
+function bestUnderwriting(lead: ImportedLandLead): LandUnderwritingResult {
+  return calculateLandUnderwriting(lead).best;
+}
+
+function bestExit(lead: ImportedLandLead, exitType: LandExitType): boolean {
+  return bestUnderwriting(lead).exitType === exitType;
+}
+
+function hasPhysicalBlocker(lead: ImportedLandLead): boolean {
+  return !!lead.is_land_locked || (lead.wetlands_percent ?? 0) > 25 || (lead.flood_zone_percent ?? 0) > 25 || !!lead.bad_topography;
+}
+
+function leadMatchesUnderwritingFilter(lead: ImportedLandLead, filter: ImportStatusFilter): boolean {
+  const best = bestUnderwriting(lead);
+  if (filter === "underwriting-strong") return best.status === "strong";
+  if (filter === "underwriting-possible") return best.status === "possible";
+  if (filter === "underwriting-pass") return best.status === "pass" || hasPhysicalBlocker(lead);
+  if (filter === "best-retail-resale") return bestExit(lead, "retail-resale");
+  if (filter === "best-neighbor-sale") return bestExit(lead, "neighbor-sale");
+  if (filter === "best-land-flip") return bestExit(lead, "land-flip");
+  if (filter === "best-assignment") return bestExit(lead, "assignment");
+  if (filter === "best-subdivide") return bestExit(lead, "subdivide") || !!lead.tag_subdivide || !!lead.tag_entitlement;
+  if (filter === "max-offer-50k") return (best.maxOffer ?? 0) >= 50000;
+  if (filter === "ppa-works") return best.requiredPpa !== null && best.landInsightsPpa !== null && best.landInsightsPpa >= best.requiredPpa;
+  if (filter === "needs-comp-check") {
+    const compCount = Number(lead.market_value_estimate_comp_count ?? 0);
+    return compCount < 3 || best.requiredPpa === null || best.landInsightsPpa === null || best.landInsightsPpa < best.requiredPpa;
+  }
+  if (filter === "physical-blockers") return hasPhysicalBlocker(lead);
+  return true;
+}
+
+function sortImportedLeadRows(leads: ImportedLandLead[], sort: ImportedLeadSort): ImportedLandLead[] {
+  return leads.slice().sort((a, b) => {
+    const aBest = bestUnderwriting(a);
+    const bBest = bestUnderwriting(b);
+    if (sort === "max-offer") return (bBest.maxOffer ?? -1) - (aBest.maxOffer ?? -1);
+    if (sort === "required-ppa") return (aBest.requiredPpa ?? Number.MAX_SAFE_INTEGER) - (bBest.requiredPpa ?? Number.MAX_SAFE_INTEGER);
+    if (sort === "projected-spread") return (bBest.projectedSpread ?? -1) - (aBest.projectedSpread ?? -1);
+    if (sort === "best-exit") return aBest.label.localeCompare(bBest.label);
+    if (sort === "acreage") return (b.acreage ?? 0) - (a.acreage ?? 0);
+    return (b.lead_score ?? 0) - (a.lead_score ?? 0);
+  });
+}
+
+function emptyLinkIntakeDraft(): LinkIntakeDraft {
+  return {
+    sourceUrl: "",
+    sourceSystem: "Manual Link",
+    propertyAddress: "",
+    parcelId: "",
+    ownerName: "",
+    phone: "",
+    email: "",
+    askingPrice: "",
+    acreage: "",
+    marketValue: "",
+    county: "",
+    city: "",
+    state: "",
+    zip: "",
+    zoning: "",
+    notes: "",
+  };
 }
 
 function statusLabel(value: string): string {
@@ -921,11 +1030,14 @@ export default function VaPage() {
   const [importStage, setImportStage] = useState<ImportStage>("idle");
   const [leadSearch, setLeadSearch] = useState("");
   const [leadFilter, setLeadFilter] = useState<ImportStatusFilter>("all");
+  const [leadSort, setLeadSort] = useState<ImportedLeadSort>("score");
   const [listsView, setListsView] = useState<ListsView>("properties");
   const [minAcreage, setMinAcreage] = useState("");
   const [maxAcreage, setMaxAcreage] = useState("");
   const [uploadSource, setUploadSource] = useState("Land Portal");
   const [uploadCampaign, setUploadCampaign] = useState("");
+  const [linkIntakeDraft, setLinkIntakeDraft] = useState<LinkIntakeDraft>(() => emptyLinkIntakeDraft());
+  const [linkIntakeSaving, setLinkIntakeSaving] = useState(false);
   const [activityDraft, setActivityDraft] = useState<{ activityType: ImportedLandLeadActivity["activity_type"]; summary: string; nextFollowUpDate: string }>({ activityType: "called", summary: "", nextFollowUpDate: "" });
   const [dispositionDraft, setDispositionDraft] = useState<{ disposition: LeadDisposition; note: string; nextFollowUpDate: string }>({ disposition: "no-answer", note: "", nextFollowUpDate: "" });
   const [smsDraft, setSmsDraft] = useState("");
@@ -1177,13 +1289,14 @@ export default function VaPage() {
       if (leadFilter === "landlocked" && !String(lead.raw_data?.["Land Locked"] ?? lead.raw_data?.["Tag:Land Locked"] ?? "").toLowerCase().startsWith("y")) return false;
       if (leadFilter === "flood" && !(toNumber(String(lead.raw_data?.["Flood Zone Percent"] ?? "")) ?? 0)) return false;
       if (leadFilter === "wetlands" && !(toNumber(String(lead.raw_data?.["Wetlands Percent"] ?? "")) ?? 0)) return false;
+      if (!leadMatchesUnderwritingFilter(lead, leadFilter)) return false;
       if (["new", "contacted", "interested", "passed"].includes(leadFilter) && lead.status !== leadFilter) return false;
       if (min !== null && (lead.acreage ?? 0) < min) return false;
       if (max !== null && (lead.acreage ?? 0) > max) return false;
       return importedLeadMatchesQuery(lead, query);
     });
-    return rows.sort((a, b) => (b.lead_score ?? 0) - (a.lead_score ?? 0)).slice(0, 120);
-  }, [importedLeads, leadFilter, leadSearch, maxAcreage, minAcreage, selectedBatchId]);
+    return sortImportedLeadRows(rows, leadSort).slice(0, 120);
+  }, [importedLeads, leadFilter, leadSearch, leadSort, maxAcreage, minAcreage, selectedBatchId]);
   const bulkSmsCategorization = useMemo(() => categorizeForBulkSms(filteredImportedLeads), [filteredImportedLeads]);
   const bulkEligibleLeads = bulkSmsCategorization.eligible;
   const bulkTextAudience = useMemo(() => {
@@ -1910,6 +2023,58 @@ export default function VaPage() {
     } finally {
       setImporting(false);
     }
+  };
+
+  const saveLinkIntake = async () => {
+    const sourceUrl = linkIntakeDraft.sourceUrl.trim();
+    if (!sourceUrl) {
+      setMessage("Paste the Zillow, listing, county, or property link first.");
+      return;
+    }
+    if (!linkIntakeDraft.propertyAddress.trim() && !linkIntakeDraft.parcelId.trim()) {
+      setMessage("Add at least a property address or parcel/APN before saving the link.");
+      return;
+    }
+    setLinkIntakeSaving(true);
+    setMessage("Saving the link as a property record and running underwriting.");
+    const sourceSystem = linkIntakeDraft.sourceSystem.trim() || inferLandLeadSourceFromUrl(sourceUrl);
+    const result = await createSingleLinkLandLead({
+      sourceUrl,
+      sourceSystem,
+      campaignSource: "Single Link Intake",
+      ownerName: linkIntakeDraft.ownerName,
+      phone: linkIntakeDraft.phone,
+      email: linkIntakeDraft.email,
+      propertyAddress: linkIntakeDraft.propertyAddress,
+      parcelId: linkIntakeDraft.parcelId,
+      county: linkIntakeDraft.county,
+      city: linkIntakeDraft.city,
+      state: linkIntakeDraft.state,
+      zip: linkIntakeDraft.zip,
+      acreage: toNumber(linkIntakeDraft.acreage),
+      askingPrice: toNumber(linkIntakeDraft.askingPrice),
+      marketValue: toNumber(linkIntakeDraft.marketValue),
+      zoning: linkIntakeDraft.zoning,
+      notes: linkIntakeDraft.notes,
+      actor: user || "VA",
+    });
+    if (result.error) {
+      setMessage(`Link intake failed: ${result.error}`);
+      setLinkIntakeSaving(false);
+      return;
+    }
+    const [leadRows, batchRows] = await Promise.all([fetchImportedLandLeads(1500), fetchLandLeadBatches()]);
+    const savedLead = result.leads[0];
+    setImportedLeads(leadRows);
+    setLeadBatches(batchRows);
+    setSelectedBatchId(savedLead?.batch_id ?? result.batch?.id ?? null);
+    setSelectedImportedLeadId(savedLead?.id ?? null);
+    setListsView("properties");
+    setLeadSearch("");
+    setLeadFilter("all");
+    setLinkIntakeDraft(emptyLinkIntakeDraft());
+    setMessage("Saved the link as a searchable property record. Underwriting is ready for review.");
+    setLinkIntakeSaving(false);
   };
 
   const loadImportedLead = async (lead: ImportedLandLead, markInterested = true) => {
@@ -3491,6 +3656,68 @@ export default function VaPage() {
               <MiniStat label="Deal Packets" value={String(listKpis.packets)} />
             </div>
 
+            <div style={{ ...subPanel, marginBottom: 12, borderColor: "rgba(176,137,84,0.45)", background: "rgba(255,252,245,0.72)" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12, flexWrap: "wrap", marginBottom: 10 }}>
+                <div>
+                  <p style={eyebrowSmall}>Single link intake</p>
+                  <h3 style={{ ...sectionTitle, fontSize: 22 }}>Start a property from Zillow, Land.com, county GIS, or any listing link.</h3>
+                </div>
+                <button onClick={saveLinkIntake} disabled={linkIntakeSaving} style={{ ...primaryButton, opacity: linkIntakeSaving ? 0.58 : 1 }}>
+                  {linkIntakeSaving ? "Saving..." : "Save Link Property"}
+                </button>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "minmax(240px, 1.4fr) minmax(160px, 0.6fr)", gap: 10, marginBottom: 10 }} className="two-col">
+                <div>
+                  <label style={label}>Property / listing URL</label>
+                  <input
+                    value={linkIntakeDraft.sourceUrl}
+                    onChange={e => {
+                      const sourceUrl = e.target.value;
+                      setLinkIntakeDraft(prev => ({
+                        ...prev,
+                        sourceUrl,
+                        sourceSystem: prev.sourceSystem === "Manual Link" || !prev.sourceSystem ? inferLandLeadSourceFromUrl(sourceUrl) : prev.sourceSystem,
+                      }));
+                    }}
+                    placeholder="Paste Zillow, Land.com, Realtor, county GIS, map, or listing URL"
+                  />
+                </div>
+                <div>
+                  <label style={label}>Source</label>
+                  <select value={linkIntakeDraft.sourceSystem} onChange={e => setLinkIntakeDraft({ ...linkIntakeDraft, sourceSystem: e.target.value })}>
+                    {["Manual Link", "Zillow", "Land.com", "Realtor", "County GIS", "Google Maps", "Crexi", "LoopNet", "Other Listing"].map(source => (
+                      <option key={source} value={source}>{source}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1.35fr 0.65fr 0.65fr 0.65fr", gap: 10 }} className="va-form-grid">
+                <input value={linkIntakeDraft.propertyAddress} onChange={e => setLinkIntakeDraft({ ...linkIntakeDraft, propertyAddress: e.target.value })} placeholder="Property address" />
+                <input value={linkIntakeDraft.parcelId} onChange={e => setLinkIntakeDraft({ ...linkIntakeDraft, parcelId: e.target.value })} placeholder="APN / parcel" />
+                <input value={linkIntakeDraft.county} onChange={e => setLinkIntakeDraft({ ...linkIntakeDraft, county: e.target.value })} placeholder="County" />
+                <input value={linkIntakeDraft.state} onChange={e => setLinkIntakeDraft({ ...linkIntakeDraft, state: e.target.value })} placeholder="State" />
+                <input value={linkIntakeDraft.askingPrice} onChange={e => setLinkIntakeDraft({ ...linkIntakeDraft, askingPrice: e.target.value })} placeholder="Asking price" />
+                <input value={linkIntakeDraft.acreage} onChange={e => setLinkIntakeDraft({ ...linkIntakeDraft, acreage: e.target.value })} placeholder="Acres" />
+                <input value={linkIntakeDraft.marketValue} onChange={e => setLinkIntakeDraft({ ...linkIntakeDraft, marketValue: e.target.value })} placeholder="Estimated value" />
+                <input value={linkIntakeDraft.zoning} onChange={e => setLinkIntakeDraft({ ...linkIntakeDraft, zoning: e.target.value })} placeholder="Zoning" />
+                <input value={linkIntakeDraft.ownerName} onChange={e => setLinkIntakeDraft({ ...linkIntakeDraft, ownerName: e.target.value })} placeholder="Owner / seller" />
+                <input value={linkIntakeDraft.phone} onChange={e => setLinkIntakeDraft({ ...linkIntakeDraft, phone: e.target.value })} placeholder="Phone" />
+                <input value={linkIntakeDraft.email} onChange={e => setLinkIntakeDraft({ ...linkIntakeDraft, email: e.target.value })} placeholder="Email" />
+                <input value={linkIntakeDraft.city} onChange={e => setLinkIntakeDraft({ ...linkIntakeDraft, city: e.target.value })} placeholder="City" />
+                <input value={linkIntakeDraft.zip} onChange={e => setLinkIntakeDraft({ ...linkIntakeDraft, zip: e.target.value })} placeholder="ZIP" />
+              </div>
+              <textarea
+                rows={2}
+                value={linkIntakeDraft.notes}
+                onChange={e => setLinkIntakeDraft({ ...linkIntakeDraft, notes: e.target.value })}
+                placeholder="Listing notes, visible description, seller context, or what still needs to be confirmed."
+                style={{ marginTop: 10 }}
+              />
+              <p style={{ color: "var(--muted)", fontSize: 12, lineHeight: 1.45, marginTop: 8 }}>
+                This saves as a normal property record with the original URL in source fields, so it appears in search, calculator filters, property detail, and packet creation.
+              </p>
+            </div>
+
             {((importStep === "upload" && !importPreview) || (!importPreview && importedLeads.length === 0)) && (
               <div id="va-list-upload" style={{ ...subPanel, marginBottom: 12, borderColor: "var(--brass)", background: "rgba(176,137,84,0.08)" }}>
                 <div style={{ display: "grid", gridTemplateColumns: "240px minmax(0, 1fr)", gap: 14, alignItems: "stretch" }} className="two-col">
@@ -3603,9 +3830,12 @@ export default function VaPage() {
                   </div>
                   {selectedBatch && <span style={hotPill}>{batchLeads.length} in selected batch</span>}
                 </div>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(120px, 1fr)) minmax(180px, 1.2fr)", gap: 8, marginBottom: 10 }} className="va-form-grid">
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(5, minmax(120px, 1fr)) minmax(180px, 1.2fr)", gap: 8, marginBottom: 10 }} className="va-form-grid">
                   <select value={leadFilter} onChange={e => setLeadFilter(e.target.value as ImportStatusFilter)}>
                     {IMPORT_STATUS_FILTERS.map(filter => <option key={filter.value} value={filter.value}>{filter.label}</option>)}
+                  </select>
+                  <select value={leadSort} onChange={e => setLeadSort(e.target.value as ImportedLeadSort)}>
+                    {IMPORT_LEAD_SORTS.map(sort => <option key={sort.value} value={sort.value}>Sort: {sort.label}</option>)}
                   </select>
                   <input value={minAcreage} onChange={e => setMinAcreage(e.target.value)} placeholder="Min acres" />
                   <input value={maxAcreage} onChange={e => setMaxAcreage(e.target.value)} placeholder="Max acres" />
@@ -3616,7 +3846,7 @@ export default function VaPage() {
                   <input value={leadSearch} onChange={e => setLeadSearch(e.target.value)} placeholder="Search APN or address..." />
                 </div>
                 <div style={{ overflow: "auto", border: "1px solid var(--fog)", borderRadius: 8, background: "var(--surface)", maxHeight: 548 }}>
-                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, minWidth: 860 }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, minWidth: 1080 }}>
                     <thead>
                       <tr style={{ borderBottom: "1px solid var(--fog)", color: "var(--muted)", textAlign: "left" }}>
                         <th style={th}></th>
@@ -3625,6 +3855,7 @@ export default function VaPage() {
                         <th style={th}>County</th>
                         <th style={th}>Acres</th>
                         <th style={th}>Score</th>
+                        <th style={th}>Calculator</th>
                         <th style={th}>Owner / Contact</th>
                         <th style={th}>Status</th>
                         <th style={th}>Linked Deal</th>
@@ -3649,6 +3880,7 @@ export default function VaPage() {
                             <td style={td}>{lead.county || "N/A"}</td>
                             <td style={td}>{lead.acreage ?? "N/A"}</td>
                             <td style={{ ...td, color: (lead.lead_score ?? 0) >= 80 ? "var(--pine)" : "var(--muted)", fontWeight: 800 }}>{lead.lead_score ?? 0}</td>
+                            <td style={{ ...td, minWidth: 220 }}><LandUnderwritingPanel lead={lead} compact /></td>
                             <td style={td}>{lead.owner_name || "Owner unknown"}<br /><span style={{ color: "var(--muted)" }}>{lead.phone || lead.phone_2 || "No phone"}</span></td>
                             <td style={td}><span style={lead.status === "interested" ? hotPill : pill}>{statusLabel(lead.status)}</span></td>
                             <td style={td}>{lead.deal_id ? <button onClick={event => { event.stopPropagation(); openLinkedDeal(lead.deal_id); }} style={pill}>Open</button> : <span style={{ color: "var(--muted)" }}>—</span>}</td>
@@ -3683,6 +3915,7 @@ export default function VaPage() {
                       <MiniStat label="Acres" value={String(selectedImportedLead.acreage ?? "N/A")} />
                       <MiniStat label="Score" value={String(selectedImportedLead.lead_score ?? 0)} />
                     </div>
+                    <LandUnderwritingPanel lead={selectedImportedLead} compact />
                     <InfoStack title="Primary Owner / Contact">
                       <p>{selectedImportedLead.owner_name || "Owner unknown"}</p>
                       <p>{selectedImportedLead.phone || selectedImportedLead.phone_2 || "Phone missing"}</p>
@@ -4090,6 +4323,12 @@ export default function VaPage() {
                           {IMPORT_STATUS_FILTERS.map(filter => <option key={filter.value} value={filter.value}>{filter.label}</option>)}
                         </select>
                       </label>
+                      <label style={{ display: "grid", gap: 5, color: "var(--muted)", fontSize: 11, fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase" }}>
+                        Sort
+                        <select value={leadSort} onChange={e => setLeadSort(e.target.value as ImportedLeadSort)} style={{ fontSize: 13 }}>
+                          {IMPORT_LEAD_SORTS.map(sort => <option key={sort.value} value={sort.value}>{sort.label}</option>)}
+                        </select>
+                      </label>
                       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
                         <label style={{ display: "grid", gap: 5, color: "var(--muted)", fontSize: 11, fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase" }}>
                           Min Acres
@@ -4106,6 +4345,7 @@ export default function VaPage() {
                           onClick={() => {
                             setLeadSearch("");
                             setLeadFilter("all");
+                            setLeadSort("score");
                             setMinAcreage("");
                             setMaxAcreage("");
                             setContactThreadFilter("all");

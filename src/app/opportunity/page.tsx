@@ -20,16 +20,24 @@ import {
 } from "@/lib/deals";
 import {
   createImportedLandLeadActivity,
+  fetchLandCompRecords,
+  fetchLandDueDiligenceItems,
   fetchImportedLandLeadActivities,
   fetchImportedLandLeads,
+  summarizeLandComps,
   type ImportedLandLead,
   type ImportedLandLeadActivity,
+  type LandCompRecord,
+  type LandDueDiligenceItem as LeadResearchItem,
 } from "@/lib/land-leads";
 import { fetchCommunicationEvents, type CommunicationEvent } from "@/lib/communications";
 import { fetchCrmDashboardData, type BuyerOffer, type CrmBuyer, type DispositionCampaign } from "@/lib/crm";
 import ConversationPanel from "@/components/ConversationPanel";
+import LandUnderwritingMatrix from "@/components/LandUnderwritingMatrix";
+import LandUnderwritingPanel from "@/components/LandUnderwritingPanel";
 import { labelForStatus } from "@/lib/status-map";
 import { getDealNextAction, getLeadNextAction } from "@/lib/workflow-actions";
+import { calculateLandUnderwriting } from "@/lib/land-underwriting";
 
 const DISPLAY_FONT = "var(--font-display)";
 
@@ -79,6 +87,8 @@ function OpportunityContent() {
   const [dealActivity, setDealActivity] = useState<DealActivity[]>([]);
   const [communications, setCommunications] = useState<CommunicationEvent[]>([]);
   const [checklist, setChecklist] = useState<DealDueDiligenceItem[]>([]);
+  const [leadResearch, setLeadResearch] = useState<LeadResearchItem[]>([]);
+  const [leadComps, setLeadComps] = useState<LandCompRecord[]>([]);
   const [votes, setVotes] = useState<DealVote[]>([]);
   const [attachments, setAttachments] = useState<DealAttachment[]>([]);
   const [agreement, setAgreement] = useState<DealAgreement | null>(null);
@@ -132,6 +142,9 @@ function OpportunityContent() {
   }, [dealParam, deals, selectedLead]);
 
   const analysis = useMemo(() => selectedDeal ? selectedDeal.analysis ?? calculateDealAnalysis(selectedDeal) : null, [selectedDeal]);
+  const landUnderwriting = useMemo(() => selectedLead ? calculateLandUnderwriting(selectedLead) : null, [selectedLead]);
+  const leadCompSummary = useMemo(() => summarizeLandComps(leadComps), [leadComps]);
+  const leadResearchResolved = useMemo(() => leadResearch.filter(item => ["verified", "blocked", "not-applicable"].includes(item.status)).length, [leadResearch]);
   const relatedCampaigns = useMemo(() => selectedDeal ? campaigns.filter(campaign => campaign.deal_id === selectedDeal.id) : [], [campaigns, selectedDeal]);
   const relatedOffers = useMemo(() => selectedDeal ? offers.filter(offer => offer.deal_id === selectedDeal.id) : [], [offers, selectedDeal]);
   const matchedBuyers = useMemo(() => {
@@ -195,9 +208,11 @@ function OpportunityContent() {
     if (!selectedLead && !selectedDeal) return;
     const leadId = selectedLead?.id ?? null;
     const dealId = selectedDeal?.id ?? null;
-    const [leadActivityRows, leadComms, dealActivityRows, dealComms, checklistRows, voteRows, attachmentRows, agreementRow] = await Promise.all([
+    const [leadActivityRows, leadComms, leadResearchRows, leadCompRows, dealActivityRows, dealComms, checklistRows, voteRows, attachmentRows, agreementRow] = await Promise.all([
       leadId ? fetchImportedLandLeadActivities(leadId, 80) : Promise.resolve([]),
       leadId ? fetchCommunicationEvents({ leadId, limit: 50 }) : Promise.resolve([]),
+      selectedLead ? fetchLandDueDiligenceItems(selectedLead) : Promise.resolve([]),
+      leadId ? fetchLandCompRecords(leadId) : Promise.resolve([]),
       dealId ? fetchDealActivity(dealId) : Promise.resolve([]),
       dealId ? fetchCommunicationEvents({ dealId, limit: 50 }) : Promise.resolve([]),
       dealId ? fetchDealChecklist(dealId) : Promise.resolve([]),
@@ -206,6 +221,8 @@ function OpportunityContent() {
       dealId ? fetchDealAgreement(dealId) : Promise.resolve(null),
     ]);
     setLeadActivities(leadActivityRows);
+    setLeadResearch(leadResearchRows);
+    setLeadComps(leadCompRows);
     setDealActivity(dealActivityRows);
     setCommunications([...leadComms, ...dealComms].sort((a, b) => (b.provider_created_at || b.created_at).localeCompare(a.provider_created_at || a.created_at)));
     setChecklist(checklistRows);
@@ -303,7 +320,7 @@ function OpportunityContent() {
   const fileSections: { id: OpportunitySection; label: string; count?: number }[] = [
     { id: "overview", label: "Overview" },
     { id: "notes", label: "Notes", count: sharedNotes.length },
-    { id: "calculator", label: "Calculator", count: analysis?.missingInfo.length ?? 0 },
+    { id: "calculator", label: "Calculator", count: (analysis?.missingInfo.length ?? 0) + (landUnderwriting?.best.blocker ? 1 : 0) },
     { id: "timeline", label: "Timeline", count: communications.length + leadActivities.length + dealActivity.length },
     { id: "review", label: "Review", count: votes.length + checklist.length },
   ];
@@ -317,9 +334,11 @@ function OpportunityContent() {
     },
     {
       label: "2. Calculator",
-      title: analysis?.recommendation || "Needs numbers",
-      detail: analysis ? `${money(analysis.acquisition.recommendedOffer)} recommended · ${analysis.disposition.exitConfidence} confidence` : "Add price, value, and exit details.",
-      state: analysis && analysis.missingInfo.length === 0 ? "done" : "active",
+      title: landUnderwriting?.best.label || analysis?.recommendation || "Needs numbers",
+      detail: landUnderwriting?.best.maxOffer
+        ? `${money(landUnderwriting.best.maxOffer)} max · ${landUnderwriting.best.status}`
+        : analysis ? `${money(analysis.acquisition.recommendedOffer)} recommended · ${analysis.disposition.exitConfidence} confidence` : "Add price, value, and exit details.",
+      state: landUnderwriting?.best.status === "strong" || (analysis && analysis.missingInfo.length === 0) ? "done" : "active",
       section: "calculator" as OpportunitySection,
     },
     {
@@ -414,10 +433,10 @@ function OpportunityContent() {
 
         <section style={summaryStrip} className="summary-strip">
           <SummaryMetric label="Lead status" value={statusLabel(selectedLead?.status || selectedDeal?.status)} />
-          <SummaryMetric label="Calculator" value={analysis?.recommendation || "Needs Info"} tone={analysis?.recommendation === "Strong Review" ? "hot" : "calm"} />
+          <SummaryMetric label="Best exit" value={landUnderwriting?.best.label || analysis?.recommendation || "Needs Info"} tone={landUnderwriting?.best.status === "strong" || analysis?.recommendation === "Strong Review" ? "hot" : "calm"} />
           <SummaryMetric label="Checklist" value={checklist.length ? `${clearedChecklist}/${checklist.length}` : "Not Started"} />
           <SummaryMetric label="Votes" value={votes.length ? `${approvedVotes}/${votes.length} support` : "No Votes"} />
-          <SummaryMetric label="Best Offer" value={money(analysis?.disposition.bestBuyerOffer ?? relatedOffers[0]?.offer_amount)} tone={relatedOffers.length ? "hot" : "calm"} />
+          <SummaryMetric label="Max offer" value={money(landUnderwriting?.best.maxOffer ?? analysis?.acquisition.maxOffer)} tone={landUnderwriting?.best.status === "strong" || relatedOffers.length ? "hot" : "calm"} />
         </section>
 
         {selectedDeal && (
@@ -466,7 +485,8 @@ function OpportunityContent() {
                 <PathStep label="Imported lead" detail={selectedLead ? selectedLead.source_system : "No source lead linked"} state={selectedLead ? "done" : "open"} />
                 <PathStep label="VA work" detail={`${leadActivities.length} lead activities · ${communications.length} messages`} state={leadActivities.length || communications.length ? "done" : "open"} />
                 <PathStep label="Deal brief" detail={selectedDeal ? statusLabel(selectedDeal.status) : "Not converted yet"} state={selectedDeal ? "done" : "open"} />
-                <PathStep label="Calculator" detail={analysis?.recommendation || "Needs deal numbers"} state={analysis ? "done" : "open"} />
+                <PathStep label="Calculator" detail={landUnderwriting?.best.label || analysis?.recommendation || "Needs deal numbers"} state={landUnderwriting || analysis ? "done" : "open"} />
+                <PathStep label="Property research" detail={`${leadResearchResolved}/${leadResearch.length || 0} checks · ${leadCompSummary.soldCount} sold comps`} state={leadResearchResolved || leadCompSummary.usableCount ? "active" : "open"} />
                 <PathStep label="Member review" detail={votes.length ? `${votes.length} vote records` : "No member votes yet"} state={votes.length ? "done" : selectedDeal?.status === "under-review" ? "active" : "open"} />
                 <PathStep label="Disposition" detail={`${relatedCampaigns.length} campaigns · ${relatedOffers.length} offers`} state={relatedCampaigns.length || relatedOffers.length ? "active" : "open"} />
               </div>
@@ -504,6 +524,26 @@ function OpportunityContent() {
                   {selectedDeal?.requested_next_step && <p style={{ ...bodyText, marginTop: 8 }}><strong>Requested next step:</strong> {selectedDeal.requested_next_step}</p>}
                   {selectedDeal?.submit_uncertainties && <p style={{ ...bodyText, marginTop: 8 }}><strong>Open questions:</strong> {selectedDeal.submit_uncertainties}</p>}
                 </div>
+                {selectedLead && (
+                  <div style={{ ...subPanel, marginTop: 12 }}>
+                    <p style={eyebrowSmall}>Underwriting snapshot</p>
+                    <LandUnderwritingPanel lead={selectedLead} />
+                  </div>
+                )}
+                {selectedLead && (
+                  <div style={{ ...subPanel, marginTop: 12 }}>
+                    <p style={eyebrowSmall}>Property research</p>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }} className="number-grid">
+                      <MiniStat label="DD checks" value={`${leadResearchResolved}/${leadResearch.length || 0}`} />
+                      <MiniStat label="Sold comps" value={String(leadCompSummary.soldCount)} />
+                      <MiniStat label="Median PPA" value={leadCompSummary.medianPpa ? `${money(leadCompSummary.medianPpa)}/ac` : "N/A"} />
+                      <MiniStat label="Research status" value={leadCompSummary.trusted ? "Comp ready" : "Needs comps"} />
+                    </div>
+                    <button type="button" onClick={() => router.push(`/lead/${selectedLead.id}?tab=research`)} style={{ ...secondaryButton, marginTop: 10 }}>
+                      Open Property Research
+                    </button>
+                  </div>
+                )}
               </section>
               )}
 
@@ -547,23 +587,33 @@ function OpportunityContent() {
               {activeSection === "calculator" && (
               <section style={panel}>
                 <p style={eyebrowSmall}>Calculator + decision packet</p>
-                <h2 style={sectionTitle}>{analysis?.recommendation || "Calculator starts after conversion"}</h2>
+                <h2 style={sectionTitle}>{landUnderwriting?.best.label || analysis?.recommendation || "Calculator starts after conversion"}</h2>
+                {selectedLead && (
+                  <div style={{ display: "grid", gap: 12, marginTop: 12 }}>
+                    <LandUnderwritingPanel lead={selectedLead} />
+                    <LandUnderwritingMatrix lead={selectedLead} />
+                  </div>
+                )}
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8, marginTop: 12 }} className="number-grid">
                   <MiniStat label="Asking" value={money(selectedDeal?.asking_price ?? selectedLead?.asking_price)} />
-                  <MiniStat label="Target resale" value={money(analysis?.disposition.targetResale ?? selectedDeal?.target_resale_price ?? selectedLead?.market_value)} />
-                  <MiniStat label="Recommended offer" value={money(analysis?.acquisition.recommendedOffer)} />
-                  <MiniStat label="Max offer" value={money(analysis?.acquisition.maxOffer)} />
+                  <MiniStat label="Target resale" value={money(landUnderwriting?.best.requiredResaleValue ?? analysis?.disposition.targetResale ?? selectedDeal?.target_resale_price ?? selectedLead?.market_value)} />
+                  <MiniStat label="Recommended offer" value={money(landUnderwriting?.best.maxOffer ?? analysis?.acquisition.recommendedOffer)} />
+                  <MiniStat label="Max offer" value={money(landUnderwriting?.best.maxOffer ?? analysis?.acquisition.maxOffer)} />
                   <MiniStat label="Spread @ ask" value={money(analysis?.acquisition.projectedSpreadAtAsk)} />
-                  <MiniStat label="Minimum sale" value={money(analysis?.disposition.minimumAcceptable)} />
+                  <MiniStat label="Required PPA" value={money(landUnderwriting?.best.requiredPpa)} />
                   <MiniStat label="Exit confidence" value={analysis?.disposition.exitConfidence || "N/A"} />
                   <MiniStat label="Status" value={statusLabel(selectedDeal?.disposition_status)} />
                 </div>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 12 }} className="two-col">
                   <InfoBlock title="Missing or risky">
+                    {landUnderwriting?.best.blocker && <p style={bodyText}>• {landUnderwriting.best.blocker}</p>}
                     {(analysis?.missingInfo.length ? analysis.missingInfo : ["No calculator issues available yet."]).map(item => <p key={item} style={bodyText}>• {item}</p>)}
                     {analysis?.riskFlags.map(item => <p key={item} style={bodyText}>• {item}</p>)}
                   </InfoBlock>
                   <InfoBlock title="Diligence">
+                    {landUnderwriting?.best.nextStep && <p style={bodyText}>{landUnderwriting.best.nextStep}</p>}
+                    <p style={bodyText}>Property research: {leadResearchResolved} of {leadResearch.length || 0} checks resolved.</p>
+                    <p style={bodyText}>Comps: {leadCompSummary.soldCount} sold · {leadCompSummary.activeCount} active · {leadCompSummary.trusted ? "PPA support ready" : "needs at least 3 sold comps"}.</p>
                     <p style={bodyText}>{checklist.length ? `${clearedChecklist} of ${checklist.length} checklist items cleared.` : "Checklist will appear after a deal brief is saved."}</p>
                     <p style={{ ...bodyText, marginTop: 6 }}>{attachments.length} research attachment{attachments.length === 1 ? "" : "s"} linked.</p>
                     <p style={{ ...bodyText, marginTop: 6 }}>Agreement: {agreement ? statusLabel(agreement.status) : "Not started"}</p>
