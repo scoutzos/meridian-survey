@@ -55,9 +55,41 @@ const EMPTY_COMP_DRAFT = {
   distanceMiles: "",
   sourceSystem: "",
   sourceUrl: "",
+  listingText: "",
   similarityNotes: "",
   confidence: "needs-review" as LandCompConfidence,
 };
+
+function parseMoneyValue(value: string): number | null {
+  const cleaned = value.replace(/[$,\s]/g, "");
+  const multiplier = /m$/i.test(cleaned) ? 1000000 : /k$/i.test(cleaned) ? 1000 : 1;
+  const numeric = Number(cleaned.replace(/[mk]$/i, ""));
+  return Number.isFinite(numeric) ? Math.round(numeric * multiplier) : null;
+}
+
+function parseCompListingText(text: string, sourceUrl: string) {
+  const hints = listingUrlHints(sourceUrl);
+  const normalized = text.replace(/\s+/g, " ").trim();
+  const priceMatch = normalized.match(/\$\s?[\d,]+(?:\.\d+)?\s?[kKmM]?\b/);
+  const acresMatch = normalized.match(/(?:lot size|lot|land|acres?)[:\s]*([\d.]+)\s*(?:acres?|acre|ac\b)/i)
+    || normalized.match(/([\d.]+)\s*(?:acres?|acre|ac\b)/i);
+  const addressMatch = normalized.match(/\b\d{1,6}\s+[A-Za-z0-9.' -]+?\s(?:Rd|Road|Dr|Drive|Cir|Circle|St|Street|Ave|Avenue|Ln|Lane|Ct|Court|Way|Trl|Trail|Pkwy|Hwy|Highway|Ter|Terrace)\b(?:\s+[NSEW]{1,2})?/i);
+  const saleDateMatch = normalized.match(/(?:sold|closed)\s+(?:on\s+)?([A-Za-z]{3,9}\s+\d{1,2},?\s+\d{4}|\d{1,2}\/\d{1,2}\/\d{2,4})/i);
+  const status: LandCompType = /sold|closed/i.test(normalized)
+    ? "sold"
+    : /pending|under contract/i.test(normalized)
+      ? "pending"
+      : /for sale|active|listed/i.test(normalized)
+        ? "active"
+        : "manual-note";
+  return {
+    address: addressMatch?.[0] || [hints.propertyAddress, hints.city, hints.state, hints.zip].filter(Boolean).join(", "),
+    price: priceMatch ? parseMoneyValue(priceMatch[0]) : null,
+    acreage: acresMatch?.[1] ? Number(acresMatch[1]) : null,
+    saleOrListDate: saleDateMatch?.[1] ? new Date(saleDateMatch[1]).toISOString().slice(0, 10) : "",
+    compType: status,
+  };
+}
 
 function ownerKey(lead: ImportedLandLead): string {
   const phone = (lead.phone || lead.phone_2 || "").replace(/\D/g, "");
@@ -346,6 +378,20 @@ export default function LeadPage() {
       sourceUrl,
       sourceSystem: inferLandLeadSourceFromUrl(sourceUrl),
       address: prev.address || [hints.propertyAddress, hints.city, hints.state, hints.zip].filter(Boolean).join(", "),
+    }));
+  };
+
+  const updateCompListingText = (listingText: string) => {
+    const parsed = parseCompListingText(listingText, compDraft.sourceUrl);
+    setCompDraft(prev => ({
+      ...prev,
+      listingText,
+      compType: prev.compType === "manual-note" || !prev.compType ? parsed.compType : prev.compType,
+      address: prev.address || parsed.address,
+      price: prev.price || (parsed.price ? String(parsed.price) : ""),
+      acreage: prev.acreage || (parsed.acreage ? String(parsed.acreage) : ""),
+      saleOrListDate: prev.saleOrListDate || parsed.saleOrListDate,
+      similarityNotes: prev.similarityNotes || "Parsed from pasted listing text.",
     }));
   };
 
@@ -833,6 +879,13 @@ export default function LeadPage() {
                   <input value={compDraft.distanceMiles} onChange={e => setCompDraft({ ...compDraft, distanceMiles: e.target.value })} placeholder="Miles" style={inputStyle} />
                   <input value={compDraft.sourceUrl} onChange={e => updateCompSourceUrl(e.target.value)} placeholder="Comp source link" style={inputStyle} />
                 </div>
+                <textarea
+                  value={compDraft.listingText}
+                  onChange={e => updateCompListingText(e.target.value)}
+                  rows={2}
+                  placeholder="Paste copied listing text here to auto-fill price, acres, address, and sold/active status."
+                  style={textareaStyle}
+                />
                 <textarea
                   value={compDraft.similarityNotes}
                   onChange={e => setCompDraft({ ...compDraft, similarityNotes: e.target.value })}
