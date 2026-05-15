@@ -4052,61 +4052,7 @@ export default function VaPage() {
             )}
 
             {listsView === "properties" && (
-            <div style={{ display: "grid", gridTemplateColumns: "minmax(260px, 0.72fr) minmax(520px, 1.72fr) minmax(300px, 0.78fr)", gap: 12, marginBottom: 12 }} className="va-form-grid">
-              <aside style={subPanel}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: 10 }}>
-                  <p style={{ ...eyebrowSmall, marginBottom: 0, color: "var(--obsidian)", fontSize: 13, letterSpacing: "0.04em", textTransform: "none", fontWeight: 800 }}>List Batches</p>
-                  <button onClick={startNewImport} style={{ ...compactButton, background: "rgba(176,137,84,0.12)", borderColor: "rgba(176,137,84,0.45)", color: "var(--obsidian)", minHeight: 30, padding: "6px 10px" }}>Upload List</button>
-                </div>
-                <div style={{ display: "grid", gap: 8, maxHeight: 540, overflow: "auto", paddingRight: 2 }}>
-                  {listBatchRows.slice(0, 8).map(({ batch, leads, textable, county, state }) => {
-                    const active = selectedBatchId === batch.id;
-                    const countyLabel = county ? `${county}${state ? `, ${state}` : ""}` : (state || null);
-                    return (
-                      <button
-                        key={batch.id}
-                        onClick={() => { setSelectedBatchId(batch.id); setListsView("properties"); setImportStep("work"); }}
-                        style={{
-                          background: active ? "rgba(176,137,84,0.12)" : "var(--surface)",
-                          border: active ? "1px solid var(--brass)" : "1px solid var(--fog)",
-                          borderRadius: 8,
-                          cursor: "pointer",
-                          padding: 10,
-                          textAlign: "left",
-                        }}
-                      >
-                        <div style={{ alignItems: "start", display: "flex", gap: 8, justifyContent: "space-between" }}>
-                          <div style={{ alignItems: "start", display: "flex", gap: 8, minWidth: 0 }}>
-                            <span style={{ color: "var(--brass)", flexShrink: 0, marginTop: 1 }}><Icon name="document" size={14} /></span>
-                            <div style={{ minWidth: 0 }}>
-                              <strong style={{ color: "var(--obsidian)", display: "block", fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{batch.campaign_source || batch.original_filename || "Imported list"}</strong>
-                              <span style={{ color: "var(--muted)", display: "block", fontSize: 11, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{batch.original_filename || batch.source_system}</span>
-                            </div>
-                          </div>
-                          <span style={batch.status === "completed" ? goodPill : batch.status === "in-progress" ? hotPill : mutedPill}>{statusLabel(batch.status || "not-started")}</span>
-                        </div>
-                        <div style={{ alignItems: "center", color: "var(--muted)", display: "flex", flexWrap: "wrap", fontSize: 11, gap: 8, marginTop: 7 }}>
-                          {countyLabel && <span>{countyLabel}</span>}
-                          {countyLabel && <span style={{ color: "var(--fog)" }}>·</span>}
-                          <span>{formatDate(batch.created_at)}</span>
-                        </div>
-                        <div style={{ alignItems: "center", display: "flex", gap: 12, marginTop: 6 }}>
-                          <span style={{ color: "var(--ink)", fontSize: 11 }}><strong style={{ color: "var(--obsidian)", fontWeight: 700 }}>{(leads.length || batch.row_count || 0).toLocaleString()}</strong> <span style={{ color: "var(--muted)" }}>rows</span></span>
-                          <span style={{ color: "var(--ink)", fontSize: 11 }}><strong style={{ color: "var(--obsidian)", fontWeight: 700 }}>{textable}</strong> <span style={{ color: "var(--muted)" }}>textable</span></span>
-                        </div>
-                      </button>
-                    );
-                  })}
-                  {listBatchRows.length === 0 && <p style={{ color: "var(--muted)", fontSize: 13 }}>No list batches yet.</p>}
-                </div>
-                {listBatchRows.length > 0 && (
-                  <div style={{ alignItems: "center", display: "flex", justifyContent: "space-between", marginTop: 10 }}>
-                    <span style={{ color: "var(--muted)", fontSize: 11 }}>Showing 1–{Math.min(listBatchRows.length, 8)} of {listBatchRows.length} batches</span>
-                    <button onClick={() => setListsView("batches")} style={{ background: "transparent", border: "none", color: "var(--brass)", cursor: "pointer", fontSize: 11, fontWeight: 700, letterSpacing: "0.04em" }}>View all batches →</button>
-                  </div>
-                )}
-              </aside>
-
+            <div style={{ display: "grid", gridTemplateColumns: "minmax(680px, 1fr) minmax(340px, 0.42fr)", gap: 12, marginBottom: 12 }} className="va-form-grid">
               <section style={subPanel}>
                 <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "baseline", flexWrap: "wrap", marginBottom: 12 }}>
                   <div style={{ alignItems: "baseline", display: "flex", gap: 10 }}>
@@ -4190,8 +4136,8 @@ export default function VaPage() {
                   </div>
                   <div>
                     <label style={{ color: "var(--muted)", display: "block", fontSize: 11, fontWeight: 600, marginBottom: 4 }}>Sort</label>
-                    <select value={leadSort} onChange={e => { setLeadSort(e.target.value as ImportedLeadSort); setPropertiesPage(1); }}>
-                      {IMPORT_LEAD_SORTS.map(sort => <option key={sort.value} value={sort.value}>{sort.label}</option>)}
+                    <select value={listRecordSort} onChange={e => { setListRecordSort(e.target.value as ListRecordSort); setPropertiesPage(1); }}>
+                      {LIST_RECORD_SORTS.map(sort => <option key={sort.value} value={sort.value}>{sort.label}</option>)}
                     </select>
                   </div>
                 </div>
@@ -4209,7 +4155,7 @@ export default function VaPage() {
                         <th style={th}>Owner Type</th>
                         <th style={th}>Contact</th>
                         <th style={th}>Status</th>
-                        <th style={{ ...th, whiteSpace: "nowrap" }}>Linked Deal</th>
+                        <th style={{ ...th, whiteSpace: "nowrap" }}>Linked Packet</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -4284,18 +4230,24 @@ export default function VaPage() {
                 ) : (() => {
                   const lead = listPreviewLead;
                   const sms = checkLeadSmsCompliance(lead);
-                  const call = checkLeadCallCompliance(lead);
-                  const flags = leadFlagLabels(lead);
+                  const sourceBatch = lead.batch_id ? leadBatches.find(batch => batch.id === lead.batch_id) ?? null : null;
+                  const sourceName = lead.campaign_source || sourceBatch?.campaign_source || sourceBatch?.original_filename || lead.source_system || "Imported list";
+                  const sourceDate = formatDate(sourceBatch?.created_at || lead.created_at || new Date().toISOString());
                   const ownerProperties = contactRelationshipRows.find(row => row.leads.some(rowLead => rowLead.id === lead.id))?.leads ?? [lead];
                   const ownerCount = ownerProperties.length;
-                  const isNew = (lead.status || "new") === "new";
                   const taxStatus = lead.tax_delinquent ? "Delinquent" : lead.tax_delinquent === false ? "Current" : "—";
                   const hoaLabel = lead.in_hoa === true ? "Yes" : lead.in_hoa === false ? "No" : (lead.hoa_status || "—");
                   const ownerType = lead.owner_type || "Individual";
                   const lastSale = lead.last_sale_date || (lead.last_sale_price ? `$${lead.last_sale_price.toLocaleString()}` : "—");
-                  const onDnc = lead.dnc || lead.state_dnc;
+                  const ownerLocation = lead.owner_out_of_state ? "Out-of-state" : lead.owner_out_of_county ? "Out-of-county" : "Local / unflagged";
                   const phoneLine = lead.phone || lead.phone_2 || "Phone missing";
                   const phoneType = lead.phone_1_type || (lead.phone ? "Mobile" : null);
+                  const mailingLine = [
+                    lead.mailing_address || lead.mail_address,
+                    [lead.mail_city, lead.mail_state].filter(Boolean).join(", "),
+                    lead.mail_zip,
+                  ].filter(Boolean).join(" ") || "Mailing address missing";
+                  const linkedPacketLabel = lead.deal_id ? `Deal-${(lead.deal_id || "").slice(-6).toUpperCase()}` : "Unlinked";
                   const fieldRow: React.CSSProperties = { display: "grid", gap: 6, gridTemplateColumns: "repeat(3, 1fr)" };
                   const fieldCell = (label: string, value: React.ReactNode, valueStyle?: React.CSSProperties) => (
                     <div>
@@ -4303,30 +4255,35 @@ export default function VaPage() {
                       <strong style={{ color: "var(--obsidian)", display: "block", fontSize: 13, fontWeight: 700, marginTop: 3, ...valueStyle }}>{value}</strong>
                     </div>
                   );
-                  const eligibilityRow = (label: string, value: string, ok: boolean) => (
+                  const detailRow = (label: string, value: string, ok?: boolean) => (
                     <div style={{ alignItems: "center", display: "flex", justifyContent: "space-between", gap: 8 }}>
                       <span style={{ color: "var(--muted)", fontSize: 11, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase" }}>{label}</span>
-                      <span style={{ color: ok ? "#2e5a48" : "var(--obsidian)", fontSize: 12, fontWeight: 700 }}>{value}</span>
+                      <span style={{ color: ok ? "#2e5a48" : "var(--obsidian)", fontSize: 12, fontWeight: 700, textAlign: "right" }}>{value}</span>
                     </div>
                   );
                   return (
                     <div style={{ display: "grid", gap: 12 }}>
                       <div style={{ alignItems: "center", display: "flex", justifyContent: "space-between", gap: 8 }}>
-                        <h3 style={{ color: "var(--obsidian)", fontFamily: DISPLAY_FONT, fontSize: 16, fontWeight: 500 }}>{selectedImportedLeadId === lead.id ? "Selected Property" : "Record Preview"}</h3>
+                        <h3 style={{ color: "var(--obsidian)", fontFamily: DISPLAY_FONT, fontSize: 16, fontWeight: 500 }}>Record Preview</h3>
                         <button onClick={() => setMessage("Property quick-actions menu is coming next.")} style={{ background: "transparent", border: "none", color: "var(--muted)", cursor: "pointer", fontSize: 16, lineHeight: 1, padding: 4 }} aria-label="More actions">⋯</button>
                       </div>
                       <div style={{ alignItems: "center", display: "flex", gap: 8, justifyContent: "space-between" }}>
                         <strong style={{ color: "var(--obsidian)", fontFamily: DISPLAY_FONT, fontSize: 22, fontWeight: 500 }}>{lead.parcel_id || "No APN"}</strong>
-                        {isNew && <span style={goodPill}>New</span>}
+                        <span style={lead.deal_id ? goodPill : mutedPill}>{linkedPacketLabel}</span>
                       </div>
                       <p style={{ color: "var(--ink)", fontSize: 13, lineHeight: 1.4, marginTop: -6 }}>
                         {lead.property_address || "No address"}<br />
                         {[lead.city, lead.state].filter(Boolean).join(", ")}{lead.zip ? ` ${lead.zip}` : ""}
                       </p>
+                      <div style={{ border: "1px solid var(--fog)", borderRadius: 8, display: "grid", gap: 6, padding: 12 }}>
+                        {detailRow("Source List", sourceName)}
+                        {detailRow("Source System", lead.source_system || "Imported")}
+                        {detailRow("Added", sourceDate)}
+                      </div>
                       <div style={fieldRow}>
                         {fieldCell("County", lead.county || "—")}
                         {fieldCell("Acres", lead.acreage != null ? lead.acreage : "—")}
-                        {fieldCell("Score", lead.lead_score ?? 0, { color: (lead.lead_score ?? 0) >= 80 ? "var(--pine)" : (lead.lead_score ?? 0) >= 60 ? "var(--brass)" : "var(--obsidian)" })}
+                        {fieldCell("State", lead.state || "—")}
                       </div>
                       <div style={fieldRow}>
                         {fieldCell("Land Use", lead.land_use || "—")}
@@ -4335,45 +4292,37 @@ export default function VaPage() {
                       </div>
                       <div style={fieldRow}>
                         {fieldCell("Owner Type", ownerType)}
-                        {fieldCell("HOA", hoaLabel)}
+                        {fieldCell("Owner Location", ownerLocation)}
                         {fieldCell("Last Sale", lastSale)}
-                      </div>
-                      <LandUnderwritingPanel lead={lead} compact />
-                      <div>
-                        <p style={{ ...miniLabel, color: "var(--muted)", marginBottom: 6 }}>Flags</p>
-                        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                          {flags.length === 0 && <span style={{ color: "var(--muted)", fontSize: 12 }}>Clear</span>}
-                          {flags.map(flag => <span key={flag} style={flagChip}>{flag}</span>)}
-                          <button onClick={() => setMessage("Add Flag is coming next — pick from a controlled list and attach to this record.")} style={{ ...flagChip, background: "transparent", border: "1px dashed var(--fog)", cursor: "pointer" }} aria-label="Add flag">+</button>
-                        </div>
                       </div>
                       <div style={{ border: "1px solid var(--fog)", borderRadius: 8, padding: 12 }}>
                         <p style={{ ...miniLabel, color: "var(--muted)", marginBottom: 6 }}>Primary Owner / Contact</p>
                         <div style={{ alignItems: "center", display: "flex", gap: 8, justifyContent: "space-between" }}>
                           <strong style={{ color: "var(--obsidian)", fontSize: 14 }}>{lead.owner_name || "Owner unknown"}</strong>
-                          <span style={goodPill}>Confirmed</span>
+                          <span style={sms.allowed ? goodPill : mutedPill}>{sms.allowed ? "Textable" : "Review"}</span>
                         </div>
                         <div style={{ alignItems: "center", display: "flex", gap: 8, marginTop: 6 }}>
                           <span style={{ color: "var(--ink)", fontSize: 13 }}>{phoneLine}</span>
                           {phoneType && <span style={mutedPill}>{phoneType}</span>}
                         </div>
                         <p style={{ color: "var(--ink)", fontSize: 13, marginTop: 4 }}>{lead.email || "Email missing"}</p>
+                        <p style={{ color: "var(--muted)", fontSize: 12, lineHeight: 1.45, marginTop: 4 }}>{mailingLine}</p>
                         <div style={{ alignItems: "center", display: "flex", gap: 8, justifyContent: "space-between", marginTop: 8 }}>
                           <span style={{ color: "var(--muted)", fontSize: 12 }}>Owner of {ownerCount} propert{ownerCount === 1 ? "y" : "ies"}</span>
                           <button onClick={() => setListsView("contacts")} style={{ ...compactButton, minHeight: 28, padding: "5px 10px" }}>View Contact</button>
                         </div>
                       </div>
                       <div style={{ border: "1px solid var(--fog)", borderRadius: 8, display: "grid", gap: 6, padding: 12 }}>
-                        {eligibilityRow("Phone Eligibility", sms.allowed ? "Textable" : sms.blockLabel || "Blocked", sms.allowed)}
-                        {eligibilityRow("DNC Status", onDnc ? "On DNC" : "Not on DNC", !onDnc)}
-                        {eligibilityRow("Consent Status", call.allowed ? "On File" : call.blockLabel || "Missing", call.allowed)}
+                        {detailRow("Phone", phoneLine, Boolean(lead.phone || lead.phone_2))}
+                        {detailRow("Email", lead.email || "Missing", Boolean(lead.email))}
+                        {detailRow("HOA", hoaLabel)}
                       </div>
                       <div style={{ border: "1px solid var(--fog)", borderRadius: 8, padding: 12 }}>
-                        <p style={{ ...miniLabel, color: "var(--brass)", marginBottom: 6 }}>Linked Deal Packet</p>
+                        <p style={{ ...miniLabel, color: "var(--brass)", marginBottom: 6 }}>Linked Packet</p>
                         {lead.deal_id ? (
                           <div style={{ alignItems: "center", display: "flex", gap: 8, justifyContent: "space-between" }}>
                             <div>
-                              <strong style={{ color: "var(--obsidian)", fontSize: 13 }}>{`Deal-${(lead.deal_id || "").slice(-6).toUpperCase()}`}</strong>
+                              <strong style={{ color: "var(--obsidian)", fontSize: 13 }}>{linkedPacketLabel}</strong>
                               <p style={{ color: "var(--muted)", fontSize: 11, marginTop: 2 }}>Created {formatDate(lead.updated_at || lead.created_at || new Date().toISOString())}</p>
                             </div>
                             <button onClick={() => loadImportedLead(lead, true)} style={{ ...compactButton, minHeight: 28, padding: "5px 10px" }}>Open Packet</button>
