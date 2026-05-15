@@ -40,6 +40,7 @@ import {
   fetchImportedLandLeadActivities,
   fetchLandLeadBatches,
   fetchImportedLandLeads,
+  fetchImportedLandLeadListMetrics,
   inferLandLeadSourceFromUrl,
   leadToDealDraft,
   listingTextHints,
@@ -47,6 +48,7 @@ import {
   runAutomatedLandResearch,
   updateImportedLandLeadStatus,
   type ImportedLandLeadActivity,
+  type ImportedLandLeadListMetrics,
   type ImportedLandLead,
   type LandLeadBatch,
   type LandLeadImportPreview,
@@ -1072,6 +1074,7 @@ export default function VaPage() {
   const [clockBusy, setClockBusy] = useState(false);
   const [, setClockTick] = useState(0);
   const [importedLeads, setImportedLeads] = useState<ImportedLandLead[]>([]);
+  const [importedLeadMetrics, setImportedLeadMetrics] = useState<ImportedLandLeadListMetrics | null>(null);
   const [leadBatches, setLeadBatches] = useState<LandLeadBatch[]>([]);
   const [selectedImportedLeadId, setSelectedImportedLeadId] = useState<string | null>(null);
   const [selectedCommunicationEventId, setSelectedCommunicationEventId] = useState<string | null>(null);
@@ -1186,6 +1189,7 @@ export default function VaPage() {
       fetchCommunicationEvents({ limit: 120 }),
       fetchActionItems(),
       fetchActiveMemberNames(),
+      fetchImportedLandLeadListMetrics(),
     ]);
     const value = <T,>(index: number, fallback: T) => {
       const result = results[index] as PromiseSettledResult<T>;
@@ -1202,6 +1206,7 @@ export default function VaPage() {
     const recentSmsRows = value<CommunicationEvent[]>(8, []);
     const taskRows = value<ActionItem[]>(9, []);
     const memberNames = value<string[]>(10, []);
+    const metrics = value<ImportedLandLeadListMetrics | null>(11, null);
     const failedLoads = results
       .map((result, index) => result.status === "rejected" ? index : null)
       .filter((index): index is number => index !== null);
@@ -1216,6 +1221,7 @@ export default function VaPage() {
     setTimeChangeRequests(requestRows.filter(request => !memberName || request.operator_name === memberName));
     setOpenShift(currentShift);
     setImportedLeads(importRows);
+    setImportedLeadMetrics(metrics);
     setLeadBatches(batchRows);
     setUnmatchedSms(smsRows);
     setRecentInboundSms(recentSmsRows.filter(event => event.direction === "inbound").slice(0, 40));
@@ -1586,8 +1592,8 @@ export default function VaPage() {
   const selectedContactProperties = selectedImportedLead ? contactRelationshipRows.find(row => row.leads.some(lead => lead.id === selectedImportedLead.id))?.leads ?? [selectedImportedLead] : [];
   const listKpis = {
     batches: leadBatches.length,
-    properties: importedLeads.length,
-    contacts: contactRelationshipRows.length,
+    properties: importedLeadMetrics?.properties ?? importedLeads.length,
+    contacts: importedLeadMetrics?.contacts ?? contactRelationshipRows.length,
     textable: categorizeForBulkSms(importedLeads).eligible.length,
     packets: importedLeads.filter(lead => lead.deal_id || lead.status === "converted").length,
   };
@@ -2090,7 +2096,12 @@ export default function VaPage() {
       addToDailyBrief(`Converted lead to deal packet: ${leadLabel(matchingLead)} → ${result.data.title}`, {
         leads_updated: (briefDraft.leads_updated ?? 0) + 1,
       });
-      setImportedLeads(await fetchImportedLandLeads());
+      const [freshImportedLeads, metrics] = await Promise.all([
+        fetchImportedLandLeads(500),
+        fetchImportedLandLeadListMetrics(),
+      ]);
+      setImportedLeads(freshImportedLeads);
+      setImportedLeadMetrics(metrics);
     }
     if (draftCommunicationEventId) {
       await attachCommunicationEventToDeal(draftCommunicationEventId, result.data.id, user);
@@ -2192,8 +2203,13 @@ export default function VaPage() {
       const result = await response.json() as { importedCount?: number; batchId?: string | null; warning?: string | null; error?: string };
       if (!response.ok || result.error) { setImportStep("preview"); setMessage(`Import failed: ${result.error || response.statusText}`); return; }
       setImportStage("refreshing");
-      const [leadRows, batchRows] = await Promise.all([fetchImportedLandLeads(1500), fetchLandLeadBatches()]);
+      const [leadRows, batchRows, metrics] = await Promise.all([
+        fetchImportedLandLeads(1500),
+        fetchLandLeadBatches(),
+        fetchImportedLandLeadListMetrics(),
+      ]);
       setImportedLeads(leadRows);
+      setImportedLeadMetrics(metrics);
       setLeadBatches(batchRows);
       setSelectedBatchId(result.batchId ?? batchRows[0]?.id ?? null);
       setSelectedImportedLeadId(leadRows.find(lead => lead.batch_id === (result.batchId ?? batchRows[0]?.id))?.id ?? leadRows[0]?.id ?? null);
@@ -2304,8 +2320,13 @@ export default function VaPage() {
         researchMessage = `Property saved, but auto research did not finish: ${error instanceof Error ? error.message : "unknown error"}.`;
       }
     }
-    const [leadRows, batchRows] = await Promise.all([fetchImportedLandLeads(1500), fetchLandLeadBatches()]);
+    const [leadRows, batchRows, metrics] = await Promise.all([
+      fetchImportedLandLeads(1500),
+      fetchLandLeadBatches(),
+      fetchImportedLandLeadListMetrics(),
+    ]);
     setImportedLeads(leadRows);
+    setImportedLeadMetrics(metrics);
     setLeadBatches(batchRows);
     setSelectedBatchId(savedLead?.batch_id ?? result.batch?.id ?? null);
     setSelectedImportedLeadId(savedLead?.id ?? null);
@@ -3007,7 +3028,7 @@ export default function VaPage() {
     },
     {
       label: "Lists",
-      value: String(importedLeads.length),
+      value: listKpis.properties.toLocaleString(),
       detail: "Imported leads available",
       action: "Open Lists",
       onAction: () => goToTab("lists"),
@@ -3128,7 +3149,7 @@ export default function VaPage() {
     { label: "Interested", value: String(interestedLeads.length), detail: "Contacts showing interest", action: "Open Leads", onAction: () => { setLeadFilter("interested"); goToTab("lists"); }, tone: interestedLeads.length ? "hot" as const : "default" as const },
     { label: "Draft Packets", value: String(draftLeads.length), detail: "Leads ready to package", action: "Build", onAction: () => draftLeads[0] ? openDealBrief(draftLeads[0]) : goToTab("packet"), tone: draftLeads.length ? "hot" as const : "default" as const },
   ] : activeTab === "lists" ? [
-    { label: "Imported", value: String(importedLeads.length), detail: "Total list records", action: "Upload", onAction: startNewImport, tone: "default" as const },
+    { label: "Imported", value: listKpis.properties.toLocaleString(), detail: "Total list records", action: "Upload", onAction: startNewImport, tone: "default" as const },
     { label: "New", value: String(importStats.newRows), detail: "Fresh from lists", action: "Filter", onAction: () => setLeadFilter("new"), tone: importStats.newRows ? "hot" as const : "default" as const },
     { label: "Eligible", value: String(bulkEligibleLeads.length), detail: "Current view recipients", action: "Bulk Text", onAction: () => openBulkTextWorkflow(true), tone: bulkEligibleLeads.length ? "hot" as const : "default" as const },
     { label: "Converted", value: String(importStats.converted), detail: "Moved into deal flow", action: "Packets", onAction: () => goToTab("packet"), tone: "default" as const },

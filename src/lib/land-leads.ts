@@ -196,6 +196,13 @@ export interface ImportedLandLead {
   updated_at: string;
 }
 
+type ImportedLandLeadMetricsRow = Pick<ImportedLandLead, "status" | "phone" | "phone_2" | "owner_name" | "mailing_address" | "county">;
+
+export interface ImportedLandLeadListMetrics {
+  properties: number;
+  contacts: number;
+}
+
 export interface LeadImportResult {
   batch: LandLeadBatch | null;
   leads: ImportedLandLead[];
@@ -1747,6 +1754,62 @@ export async function fetchImportedLandLeads(limit = 250): Promise<ImportedLandL
     .limit(limit);
   if (error || !data) return [];
   return data as ImportedLandLead[];
+}
+
+function normalizedImportedLeadMetricsPhone(value: string | null | undefined): string | null {
+  if (String(value || "").toLowerCase().startsWith("client:")) return null;
+  const digits = String(value || "").replace(/\D/g, "");
+  if (!digits) return null;
+  if (digits.length === 10) return `+1${digits}`;
+  if (digits.length === 11 && digits.startsWith("1")) return `+${digits}`;
+  return value?.startsWith("+") ? value : null;
+}
+
+function importedLeadContactMetricsKey(lead: ImportedLandLeadMetricsRow): string {
+  const phone = normalizedImportedLeadMetricsPhone(lead.phone || lead.phone_2) || "";
+  if (phone) return phone;
+  return `${(lead.owner_name || "Unknown contact").toLowerCase()}|${(lead.mailing_address || lead.county || "").toLowerCase()}`;
+}
+
+function countImportedLeadContactMetrics(rows: ImportedLandLeadMetricsRow[]): number {
+  const groups = new Set<string>();
+  rows.forEach(row => {
+    if (row.status === "converted") return;
+    groups.add(importedLeadContactMetricsKey(row));
+  });
+  return groups.size;
+}
+
+export async function fetchImportedLandLeadListMetrics(): Promise<ImportedLandLeadListMetrics | null> {
+  if (!supabase) {
+    const rows = localGet<ImportedLandLead[]>(LOCAL_LEADS, []);
+    return {
+      properties: rows.length,
+      contacts: countImportedLeadContactMetrics(rows),
+    };
+  }
+
+  const { count } = await supabase
+    .from("meridian_imported_land_leads")
+    .select("id", { count: "exact", head: true });
+
+  const rows: ImportedLandLeadMetricsRow[] = [];
+  const pageSize = 1000;
+  for (let from = 0; ; from += pageSize) {
+    const { data, error } = await supabase
+      .from("meridian_imported_land_leads")
+      .select("status,phone,phone_2,owner_name,mailing_address,county")
+      .order("created_at", { ascending: false })
+      .range(from, from + pageSize - 1);
+    if (error || !data) return null;
+    rows.push(...(data as ImportedLandLeadMetricsRow[]));
+    if (data.length < pageSize || (count !== null && rows.length >= count)) break;
+  }
+
+  return {
+    properties: count ?? rows.length,
+    contacts: countImportedLeadContactMetrics(rows),
+  };
 }
 
 export async function fetchImportedLandLeadFieldValues(leadId: string): Promise<ImportedLandLeadFieldValue[]> {
