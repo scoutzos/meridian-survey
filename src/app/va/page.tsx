@@ -36,12 +36,14 @@ import { createNotification } from "@/lib/operations";
 import {
   createImportedLandLeadActivity,
   createSingleLinkLandLead,
+  fetchLandDueDiligenceItems,
   fetchImportedLandLeadActivities,
   fetchLandLeadBatches,
   fetchImportedLandLeads,
   inferLandLeadSourceFromUrl,
   leadToDealDraft,
   previewLandLeadsCsv,
+  runAutomatedLandResearch,
   updateImportedLandLeadStatus,
   type ImportedLandLeadActivity,
   type ImportedLandLead,
@@ -2109,8 +2111,23 @@ export default function VaPage() {
       setLinkIntakeSaving(false);
       return;
     }
-    const [leadRows, batchRows] = await Promise.all([fetchImportedLandLeads(1500), fetchLandLeadBatches()]);
     const savedLead = result.leads[0];
+    let researchMessage = "Automatic research was queued, but no saved property record came back.";
+    if (savedLead) {
+      setMessage("Property saved. Running first-pass research now.");
+      try {
+        const researchItems = await fetchLandDueDiligenceItems(savedLead);
+        const research = await runAutomatedLandResearch(savedLead, researchItems, user || "VA");
+        const findingCount = research.result?.findings.length ?? 0;
+        const blockerCount = research.result?.findings.filter(finding => finding.status === "blocked").length ?? 0;
+        researchMessage = research.error
+          ? `Property saved, but auto research needs review: ${research.error}`
+          : `Property saved and auto research ran. ${findingCount} finding${findingCount === 1 ? "" : "s"} saved${blockerCount ? `, ${blockerCount} blocker${blockerCount === 1 ? "" : "s"} flagged` : ""}.`;
+      } catch (error) {
+        researchMessage = `Property saved, but auto research did not finish: ${error instanceof Error ? error.message : "unknown error"}.`;
+      }
+    }
+    const [leadRows, batchRows] = await Promise.all([fetchImportedLandLeads(1500), fetchLandLeadBatches()]);
     setImportedLeads(leadRows);
     setLeadBatches(batchRows);
     setSelectedBatchId(savedLead?.batch_id ?? result.batch?.id ?? null);
@@ -2119,7 +2136,7 @@ export default function VaPage() {
     setLeadSearch("");
     setLeadFilter("all");
     setLinkIntakeDraft(emptyLinkIntakeDraft());
-    setMessage("Saved the link as a searchable property record. Underwriting is ready for review.");
+    setMessage(researchMessage);
     setLinkIntakeSaving(false);
   };
 
