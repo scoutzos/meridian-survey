@@ -224,6 +224,46 @@ export interface LeadImportResult {
 }
 
 type ListingDetails = Record<string, string | number | null>;
+export type ManualResearchLeadPatch = Partial<Pick<ImportedLandLead,
+  "parcel_id"
+  | "property_address"
+  | "county"
+  | "city"
+  | "state"
+  | "zip"
+  | "latitude"
+  | "longitude"
+  | "acreage"
+  | "calculated_acreage"
+  | "owner_name"
+  | "mailing_address"
+  | "zoning"
+  | "land_use"
+  | "subdivision"
+  | "hoa_status"
+  | "assessed_value"
+  | "market_value"
+  | "property_tax"
+  | "tax_delinquent"
+  | "tax_delinquent_years"
+  | "road_frontage_ft"
+  | "is_land_locked"
+  | "flood_zone_percent"
+  | "flood_zone_type"
+  | "wetlands_percent"
+  | "min_lot_size_acres"
+  | "parcel_link"
+  | "comping_link"
+  | "notes"
+>>;
+
+export interface ManualResearchLeadUpdateInput {
+  actor: string;
+  sourceName?: string | null;
+  sourceUrl?: string | null;
+  notes?: string | null;
+  patch: ManualResearchLeadPatch;
+}
 
 export interface SingleLinkLandLeadInput {
   sourceUrl: string;
@@ -2237,6 +2277,181 @@ export async function updateImportedLandLeadFromResearch(
     .select("*")
     .single();
   return { lead: data as ImportedLandLead | null, error: error?.message ?? null };
+}
+
+const MANUAL_RESEARCH_FIELD_LABELS: Partial<Record<keyof ManualResearchLeadPatch, string>> = {
+  parcel_id: "Parcel ID",
+  property_address: "Property address",
+  county: "County",
+  city: "City",
+  state: "State",
+  zip: "ZIP",
+  latitude: "Latitude",
+  longitude: "Longitude",
+  acreage: "Acreage",
+  calculated_acreage: "Calculated acreage",
+  owner_name: "Owner",
+  mailing_address: "Mailing address",
+  zoning: "Zoning",
+  land_use: "Land use",
+  subdivision: "Subdivision",
+  hoa_status: "HOA",
+  assessed_value: "Assessed value",
+  market_value: "Market value",
+  property_tax: "Property tax",
+  tax_delinquent: "Tax delinquent",
+  tax_delinquent_years: "Tax delinquent years",
+  road_frontage_ft: "Road frontage",
+  is_land_locked: "Landlocked",
+  flood_zone_percent: "Flood zone %",
+  flood_zone_type: "Flood zone type",
+  wetlands_percent: "Wetlands %",
+  min_lot_size_acres: "Minimum lot size",
+  parcel_link: "Parcel/GIS link",
+  comping_link: "Comping link",
+  notes: "Property notes",
+};
+
+const MANUAL_RESEARCH_TEXT_FIELDS: Array<keyof ManualResearchLeadPatch> = [
+  "parcel_id",
+  "property_address",
+  "county",
+  "city",
+  "state",
+  "zip",
+  "owner_name",
+  "mailing_address",
+  "zoning",
+  "land_use",
+  "subdivision",
+  "hoa_status",
+  "flood_zone_type",
+  "parcel_link",
+  "comping_link",
+  "notes",
+];
+
+const MANUAL_RESEARCH_NUMBER_FIELDS: Array<keyof ManualResearchLeadPatch> = [
+  "latitude",
+  "longitude",
+  "acreage",
+  "calculated_acreage",
+  "assessed_value",
+  "market_value",
+  "property_tax",
+  "tax_delinquent_years",
+  "road_frontage_ft",
+  "flood_zone_percent",
+  "wetlands_percent",
+  "min_lot_size_acres",
+];
+
+const MANUAL_RESEARCH_BOOLEAN_FIELDS: Array<keyof ManualResearchLeadPatch> = [
+  "tax_delinquent",
+  "is_land_locked",
+];
+
+function normalizeManualResearchValue(key: keyof ManualResearchLeadPatch, value: unknown): unknown {
+  if (MANUAL_RESEARCH_TEXT_FIELDS.includes(key)) {
+    if (key === "county") return countyDisplayName(clean(value));
+    if (key === "state") return clean(value)?.toUpperCase() || null;
+    return clean(value);
+  }
+  if (MANUAL_RESEARCH_NUMBER_FIELDS.includes(key)) {
+    if (value === null || value === undefined || value === "") return null;
+    const parsed = typeof value === "number" ? value : Number(String(value).replace(/[$,%\s,]/g, ""));
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  if (MANUAL_RESEARCH_BOOLEAN_FIELDS.includes(key)) {
+    if (value === null || value === undefined || value === "") return null;
+    return typeof value === "boolean" ? value : boolish(value);
+  }
+  return value;
+}
+
+function valuesMatchForManualResearch(a: unknown, b: unknown): boolean {
+  if ((a === null || a === undefined || a === "") && (b === null || b === undefined || b === "")) return true;
+  if (typeof a === "number" || typeof b === "number") return Number(a) === Number(b);
+  return String(a ?? "").trim() === String(b ?? "").trim();
+}
+
+export async function updateImportedLandLeadFromManualResearch(
+  lead: ImportedLandLead,
+  input: ManualResearchLeadUpdateInput,
+): Promise<{ lead: ImportedLandLead | null; changedFields: string[]; error: string | null }> {
+  const allowedKeys = new Set<keyof ManualResearchLeadPatch>([
+    ...MANUAL_RESEARCH_TEXT_FIELDS,
+    ...MANUAL_RESEARCH_NUMBER_FIELDS,
+    ...MANUAL_RESEARCH_BOOLEAN_FIELDS,
+  ]);
+  const patch: Partial<ImportedLandLead> = {};
+  const changes: Array<{ field: string; label: string; from: unknown; to: unknown }> = [];
+  (Object.keys(input.patch) as Array<keyof ManualResearchLeadPatch>).forEach(key => {
+    if (!allowedKeys.has(key)) return;
+    const nextValue = normalizeManualResearchValue(key, input.patch[key]);
+    const currentValue = lead[key as keyof ImportedLandLead];
+    if (valuesMatchForManualResearch(currentValue, nextValue)) return;
+    patch[key as keyof ImportedLandLead] = nextValue as never;
+    changes.push({
+      field: String(key),
+      label: MANUAL_RESEARCH_FIELD_LABELS[key] || String(key),
+      from: currentValue ?? null,
+      to: nextValue ?? null,
+    });
+  });
+  if (!changes.length) return { lead, changedFields: [], error: null };
+
+  const now = new Date().toISOString();
+  const existingUpdates = Array.isArray(lead.raw_data?.["Manual research updates"])
+    ? lead.raw_data["Manual research updates"] as unknown[]
+    : [];
+  const sourceName = clean(input.sourceName);
+  const sourceUrl = clean(input.sourceUrl);
+  const updateLog = {
+    checkedAt: now,
+    actor: input.actor,
+    sourceName,
+    sourceUrl,
+    notes: clean(input.notes),
+    changes,
+  };
+  patch.raw_data = {
+    ...(lead.raw_data || {}),
+    "Manual research updates": [updateLog, ...existingUpdates].slice(0, 50),
+  };
+
+  const next = { ...lead, ...patch, updated_at: now };
+  if (!supabase) {
+    const rows = localGet<ImportedLandLead[]>(LOCAL_LEADS, []);
+    localSet(LOCAL_LEADS, rows.map(row => row.id === lead.id ? next : row));
+    await createImportedLandLeadActivity({
+      leadId: lead.id,
+      actor: input.actor,
+      activityType: "note",
+      summary: `Research update applied: ${changes.map(change => change.label).join(", ")}.${sourceName ? ` Source: ${sourceName}.` : ""}${sourceUrl ? ` ${sourceUrl}` : ""}${input.notes ? ` Notes: ${input.notes.trim()}` : ""}`,
+    });
+    return { lead: next, changedFields: changes.map(change => change.label), error: null };
+  }
+
+  const { data, error } = await supabase
+    .from("meridian_imported_land_leads")
+    .update({ ...patch, updated_at: now })
+    .eq("id", lead.id)
+    .select("*")
+    .single();
+  if (error) return { lead: null, changedFields: [], error: error.message };
+
+  const activity = await createImportedLandLeadActivity({
+    leadId: lead.id,
+    actor: input.actor,
+    activityType: "note",
+    summary: `Research update applied: ${changes.map(change => change.label).join(", ")}.${sourceName ? ` Source: ${sourceName}.` : ""}${sourceUrl ? ` ${sourceUrl}` : ""}${input.notes ? ` Notes: ${input.notes.trim()}` : ""}`,
+  });
+  return {
+    lead: data as ImportedLandLead | null,
+    changedFields: changes.map(change => change.label),
+    error: activity.error,
+  };
 }
 
 export async function updateLandLeadBatch(id: string, patch: Partial<Pick<LandLeadBatch, "status" | "assigned_to" | "notes">>): Promise<{ error: string | null }> {

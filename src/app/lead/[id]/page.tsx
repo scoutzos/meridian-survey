@@ -24,6 +24,7 @@ import {
   runAutomatedLandResearch,
   saveLandDueDiligenceItem,
   summarizeLandComps,
+  updateImportedLandLeadFromManualResearch,
   updateImportedLandLeadStatus,
   type ImportedLandLead,
   type ImportedLandLeadActivity,
@@ -33,6 +34,7 @@ import {
   type AutomatedLandResearchResult,
   type LandDueDiligenceItem,
   type LandDueDiligenceStatus,
+  type ManualResearchLeadPatch,
 } from "@/lib/land-leads";
 import {
   fetchCommunicationEvents,
@@ -64,11 +66,59 @@ const EMPTY_COMP_DRAFT = {
   confidence: "needs-review" as LandCompConfidence,
 };
 
+const EMPTY_RESEARCH_UPDATE_DRAFT = {
+  sourceName: "",
+  sourceUrl: "",
+  evidenceNotes: "",
+  parcelId: "",
+  propertyAddress: "",
+  county: "",
+  city: "",
+  state: "",
+  zip: "",
+  latitude: "",
+  longitude: "",
+  acreage: "",
+  calculatedAcreage: "",
+  ownerName: "",
+  mailingAddress: "",
+  zoning: "",
+  landUse: "",
+  subdivision: "",
+  hoaStatus: "",
+  assessedValue: "",
+  marketValue: "",
+  propertyTax: "",
+  taxDelinquent: "",
+  taxDelinquentYears: "",
+  roadFrontageFt: "",
+  isLandLocked: "",
+  floodZonePercent: "",
+  floodZoneType: "",
+  wetlandsPercent: "",
+  minLotSizeAcres: "",
+  parcelLink: "",
+  compingLink: "",
+  notes: "",
+};
+
 function parseMoneyValue(value: string): number | null {
   const cleaned = value.replace(/[$,\s]/g, "");
   const multiplier = /m$/i.test(cleaned) ? 1000000 : /k$/i.test(cleaned) ? 1000 : 1;
   const numeric = Number(cleaned.replace(/[mk]$/i, ""));
   return Number.isFinite(numeric) ? Math.round(numeric * multiplier) : null;
+}
+
+function parseOptionalNumberInput(value: string): number | null {
+  const text = value.trim();
+  if (!text) return null;
+  const numeric = Number(text.replace(/[$,%\s,]/g, ""));
+  return Number.isFinite(numeric) ? numeric : null;
+}
+
+function optionalTextInput(value: string): string | null {
+  const text = value.trim();
+  return text || null;
 }
 
 function parseCompListingText(text: string, sourceUrl: string) {
@@ -182,6 +232,7 @@ export default function LeadPage() {
   const [potentialCompRecords, setPotentialCompRecords] = useState<LandCompRecord[]>([]);
   const [compDraft, setCompDraft] = useState(EMPTY_COMP_DRAFT);
   const [expandedCompId, setExpandedCompId] = useState<string | null>(null);
+  const [researchUpdateDraft, setResearchUpdateDraft] = useState(EMPTY_RESEARCH_UPDATE_DRAFT);
   const [savingResearch, setSavingResearch] = useState(false);
   const [autoResearchRunning, setAutoResearchRunning] = useState(false);
   const [autoResearchResult, setAutoResearchResult] = useState<AutomatedLandResearchResult | null>(null);
@@ -273,6 +324,41 @@ export default function LeadPage() {
   const researchSources = useMemo(() => lead ? getCountyResearchSources(lead) : [], [lead]);
   const compSummary = useMemo(() => summarizeLandComps(compRecords), [compRecords]);
   const researchCompleteCount = useMemo(() => researchItems.filter(item => ["verified", "blocked", "not-applicable"].includes(item.status)).length, [researchItems]);
+  const researchUpdatePreview = useMemo(() => {
+    if (!lead) return [] as Array<{ label: string; current: string; next: string }>;
+    return [
+      { label: "Parcel ID", current: lead.parcel_id || "—", next: researchUpdateDraft.parcelId },
+      { label: "Address", current: lead.property_address || "—", next: researchUpdateDraft.propertyAddress },
+      { label: "County", current: lead.county || "—", next: researchUpdateDraft.county },
+      { label: "City", current: lead.city || "—", next: researchUpdateDraft.city },
+      { label: "State", current: lead.state || "—", next: researchUpdateDraft.state },
+      { label: "ZIP", current: lead.zip || "—", next: researchUpdateDraft.zip },
+      { label: "Latitude", current: lead.latitude != null ? `${lead.latitude}` : "—", next: researchUpdateDraft.latitude },
+      { label: "Longitude", current: lead.longitude != null ? `${lead.longitude}` : "—", next: researchUpdateDraft.longitude },
+      { label: "Acreage", current: lead.acreage ? `${lead.acreage}` : "—", next: researchUpdateDraft.acreage },
+      { label: "Calculated acreage", current: lead.calculated_acreage ? `${lead.calculated_acreage}` : "—", next: researchUpdateDraft.calculatedAcreage },
+      { label: "Owner", current: lead.owner_name || "—", next: researchUpdateDraft.ownerName },
+      { label: "Mailing", current: lead.mailing_address || "—", next: researchUpdateDraft.mailingAddress },
+      { label: "Zoning", current: lead.zoning || "—", next: researchUpdateDraft.zoning },
+      { label: "Land use", current: lead.land_use || "—", next: researchUpdateDraft.landUse },
+      { label: "Subdivision", current: lead.subdivision || "—", next: researchUpdateDraft.subdivision },
+      { label: "HOA", current: lead.hoa_status || "—", next: researchUpdateDraft.hoaStatus },
+      { label: "Assessed value", current: money(lead.assessed_value), next: researchUpdateDraft.assessedValue },
+      { label: "Market value", current: money(lead.market_value), next: researchUpdateDraft.marketValue },
+      { label: "Property tax", current: money(lead.property_tax), next: researchUpdateDraft.propertyTax },
+      { label: "Tax delinquent", current: lead.tax_delinquent == null ? "—" : lead.tax_delinquent ? "Yes" : "No", next: researchUpdateDraft.taxDelinquent },
+      { label: "Tax years", current: lead.tax_delinquent_years ? `${lead.tax_delinquent_years}` : "—", next: researchUpdateDraft.taxDelinquentYears },
+      { label: "Road frontage", current: lead.road_frontage_ft ? `${lead.road_frontage_ft} ft` : "—", next: researchUpdateDraft.roadFrontageFt },
+      { label: "Landlocked", current: lead.is_land_locked == null ? "—" : lead.is_land_locked ? "Yes" : "No", next: researchUpdateDraft.isLandLocked },
+      { label: "Flood %", current: lead.flood_zone_percent != null ? `${lead.flood_zone_percent}%` : "—", next: researchUpdateDraft.floodZonePercent },
+      { label: "Flood type", current: lead.flood_zone_type || "—", next: researchUpdateDraft.floodZoneType },
+      { label: "Wetlands %", current: lead.wetlands_percent != null ? `${lead.wetlands_percent}%` : "—", next: researchUpdateDraft.wetlandsPercent },
+      { label: "Min lot size", current: lead.min_lot_size_acres ? `${lead.min_lot_size_acres} ac` : "—", next: researchUpdateDraft.minLotSizeAcres },
+      { label: "GIS link", current: lead.parcel_link || "—", next: researchUpdateDraft.parcelLink },
+      { label: "Comping link", current: lead.comping_link || "—", next: researchUpdateDraft.compingLink },
+      { label: "Notes", current: lead.notes || "—", next: researchUpdateDraft.notes },
+    ].filter(row => row.next.trim());
+  }, [lead, researchUpdateDraft]);
 
   const nextActionText = useMemo(() => {
     if (!lead) return "";
@@ -362,6 +448,69 @@ export default function LeadPage() {
       if (saved) {
         setResearchItems(rows => rows.map(row => row.id === item.id ? saved : row).sort((a, b) => a.sort_order - b.sort_order));
       }
+    } finally {
+      setSavingResearch(false);
+    }
+  };
+
+  const applyResearchUpdate = async () => {
+    if (!lead || !user) return;
+    if (researchUpdatePreview.length === 0) {
+      setMessage("Add at least one researched property value before applying an update.");
+      return;
+    }
+    setSavingResearch(true);
+    setMessage("");
+    try {
+      const patch = {
+        parcel_id: optionalTextInput(researchUpdateDraft.parcelId),
+        property_address: optionalTextInput(researchUpdateDraft.propertyAddress),
+        county: optionalTextInput(researchUpdateDraft.county),
+        city: optionalTextInput(researchUpdateDraft.city),
+        state: optionalTextInput(researchUpdateDraft.state),
+        zip: optionalTextInput(researchUpdateDraft.zip),
+        latitude: parseOptionalNumberInput(researchUpdateDraft.latitude),
+        longitude: parseOptionalNumberInput(researchUpdateDraft.longitude),
+        acreage: parseOptionalNumberInput(researchUpdateDraft.acreage),
+        calculated_acreage: parseOptionalNumberInput(researchUpdateDraft.calculatedAcreage),
+        owner_name: optionalTextInput(researchUpdateDraft.ownerName),
+        mailing_address: optionalTextInput(researchUpdateDraft.mailingAddress),
+        zoning: optionalTextInput(researchUpdateDraft.zoning),
+        land_use: optionalTextInput(researchUpdateDraft.landUse),
+        subdivision: optionalTextInput(researchUpdateDraft.subdivision),
+        hoa_status: optionalTextInput(researchUpdateDraft.hoaStatus),
+        assessed_value: parseOptionalNumberInput(researchUpdateDraft.assessedValue),
+        market_value: parseOptionalNumberInput(researchUpdateDraft.marketValue),
+        property_tax: parseOptionalNumberInput(researchUpdateDraft.propertyTax),
+        tax_delinquent: researchUpdateDraft.taxDelinquent === "" ? undefined : researchUpdateDraft.taxDelinquent === "true",
+        tax_delinquent_years: parseOptionalNumberInput(researchUpdateDraft.taxDelinquentYears),
+        road_frontage_ft: parseOptionalNumberInput(researchUpdateDraft.roadFrontageFt),
+        is_land_locked: researchUpdateDraft.isLandLocked === "" ? undefined : researchUpdateDraft.isLandLocked === "true",
+        flood_zone_percent: parseOptionalNumberInput(researchUpdateDraft.floodZonePercent),
+        flood_zone_type: optionalTextInput(researchUpdateDraft.floodZoneType),
+        wetlands_percent: parseOptionalNumberInput(researchUpdateDraft.wetlandsPercent),
+        min_lot_size_acres: parseOptionalNumberInput(researchUpdateDraft.minLotSizeAcres),
+        parcel_link: optionalTextInput(researchUpdateDraft.parcelLink),
+        comping_link: optionalTextInput(researchUpdateDraft.compingLink),
+        notes: optionalTextInput(researchUpdateDraft.notes),
+      };
+      const compactPatch = Object.fromEntries(Object.entries(patch).filter(([, value]) => value !== null && value !== undefined));
+      const { lead: updatedLead, changedFields, error } = await updateImportedLandLeadFromManualResearch(lead, {
+        actor: user,
+        sourceName: researchUpdateDraft.sourceName,
+        sourceUrl: researchUpdateDraft.sourceUrl,
+        notes: researchUpdateDraft.evidenceNotes,
+        patch: compactPatch as ManualResearchLeadPatch,
+      });
+      if (error) { setMessage(error); return; }
+      if (!changedFields.length) {
+        setMessage("No property values changed.");
+        return;
+      }
+      if (updatedLead) setLead(updatedLead);
+      setResearchUpdateDraft(EMPTY_RESEARCH_UPDATE_DRAFT);
+      setMessage(`Property record updated: ${changedFields.join(", ")}.`);
+      await loadAll();
     } finally {
       setSavingResearch(false);
     }
@@ -1070,6 +1219,80 @@ export default function LeadPage() {
             <section style={panel}>
               <header style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "baseline", marginBottom: 12, flexWrap: "wrap" }}>
                 <div>
+                  <p style={eyebrowSmall}>Research update</p>
+                  <h3 style={{ ...sectionTitle, fontSize: 20 }}>Apply findings to property record</h3>
+                </div>
+                <span style={researchUpdatePreview.length ? goodChip : mutedChip}>{researchUpdatePreview.length} change{researchUpdatePreview.length === 1 ? "" : "s"}</span>
+              </header>
+              <div style={{ ...subPanel, display: "grid", gap: 10 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 8 }} className="lead-research-update-grid">
+                  <input value={researchUpdateDraft.sourceName} onChange={e => setResearchUpdateDraft({ ...researchUpdateDraft, sourceName: e.target.value })} placeholder="Source name" style={inputStyle} />
+                  <input value={researchUpdateDraft.sourceUrl} onChange={e => setResearchUpdateDraft({ ...researchUpdateDraft, sourceUrl: e.target.value })} placeholder="Source URL" style={inputStyle} />
+                  <input value={researchUpdateDraft.evidenceNotes} onChange={e => setResearchUpdateDraft({ ...researchUpdateDraft, evidenceNotes: e.target.value })} placeholder="Evidence notes" style={inputStyle} />
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 8 }} className="lead-research-update-grid">
+                  <ResearchUpdateField label="Parcel ID" current={lead.parcel_id} value={researchUpdateDraft.parcelId} onChange={value => setResearchUpdateDraft({ ...researchUpdateDraft, parcelId: value })} />
+                  <ResearchUpdateField label="Address" current={lead.property_address} value={researchUpdateDraft.propertyAddress} onChange={value => setResearchUpdateDraft({ ...researchUpdateDraft, propertyAddress: value })} />
+                  <ResearchUpdateField label="County" current={lead.county} value={researchUpdateDraft.county} onChange={value => setResearchUpdateDraft({ ...researchUpdateDraft, county: value })} />
+                  <ResearchUpdateField label="City" current={lead.city} value={researchUpdateDraft.city} onChange={value => setResearchUpdateDraft({ ...researchUpdateDraft, city: value })} />
+                  <ResearchUpdateField label="State" current={lead.state} value={researchUpdateDraft.state} onChange={value => setResearchUpdateDraft({ ...researchUpdateDraft, state: value })} />
+                  <ResearchUpdateField label="ZIP" current={lead.zip} value={researchUpdateDraft.zip} onChange={value => setResearchUpdateDraft({ ...researchUpdateDraft, zip: value })} />
+                  <ResearchUpdateField label="Latitude" current={lead.latitude} value={researchUpdateDraft.latitude} onChange={value => setResearchUpdateDraft({ ...researchUpdateDraft, latitude: value })} />
+                  <ResearchUpdateField label="Longitude" current={lead.longitude} value={researchUpdateDraft.longitude} onChange={value => setResearchUpdateDraft({ ...researchUpdateDraft, longitude: value })} />
+                  <ResearchUpdateField label="Acreage" current={lead.acreage} value={researchUpdateDraft.acreage} onChange={value => setResearchUpdateDraft({ ...researchUpdateDraft, acreage: value })} />
+                  <ResearchUpdateField label="Calc acres" current={lead.calculated_acreage} value={researchUpdateDraft.calculatedAcreage} onChange={value => setResearchUpdateDraft({ ...researchUpdateDraft, calculatedAcreage: value })} />
+                  <ResearchUpdateField label="Owner" current={lead.owner_name} value={researchUpdateDraft.ownerName} onChange={value => setResearchUpdateDraft({ ...researchUpdateDraft, ownerName: value })} />
+                  <ResearchUpdateField label="Mailing" current={lead.mailing_address} value={researchUpdateDraft.mailingAddress} onChange={value => setResearchUpdateDraft({ ...researchUpdateDraft, mailingAddress: value })} />
+                  <ResearchUpdateField label="Zoning" current={lead.zoning} value={researchUpdateDraft.zoning} onChange={value => setResearchUpdateDraft({ ...researchUpdateDraft, zoning: value })} />
+                  <ResearchUpdateField label="Land use" current={lead.land_use} value={researchUpdateDraft.landUse} onChange={value => setResearchUpdateDraft({ ...researchUpdateDraft, landUse: value })} />
+                  <ResearchUpdateField label="Subdivision" current={lead.subdivision} value={researchUpdateDraft.subdivision} onChange={value => setResearchUpdateDraft({ ...researchUpdateDraft, subdivision: value })} />
+                  <ResearchUpdateField label="HOA" current={lead.hoa_status} value={researchUpdateDraft.hoaStatus} onChange={value => setResearchUpdateDraft({ ...researchUpdateDraft, hoaStatus: value })} />
+                  <ResearchUpdateField label="Assessed value" current={lead.assessed_value} value={researchUpdateDraft.assessedValue} onChange={value => setResearchUpdateDraft({ ...researchUpdateDraft, assessedValue: value })} />
+                  <ResearchUpdateField label="Market value" current={lead.market_value} value={researchUpdateDraft.marketValue} onChange={value => setResearchUpdateDraft({ ...researchUpdateDraft, marketValue: value })} />
+                  <ResearchUpdateField label="Property tax" current={lead.property_tax} value={researchUpdateDraft.propertyTax} onChange={value => setResearchUpdateDraft({ ...researchUpdateDraft, propertyTax: value })} />
+                  <ResearchSelectField label="Tax delinquent" current={lead.tax_delinquent == null ? null : lead.tax_delinquent ? "Yes" : "No"} value={researchUpdateDraft.taxDelinquent} onChange={value => setResearchUpdateDraft({ ...researchUpdateDraft, taxDelinquent: value })} />
+                  <ResearchUpdateField label="Tax years" current={lead.tax_delinquent_years} value={researchUpdateDraft.taxDelinquentYears} onChange={value => setResearchUpdateDraft({ ...researchUpdateDraft, taxDelinquentYears: value })} />
+                  <ResearchUpdateField label="Road frontage" current={lead.road_frontage_ft} value={researchUpdateDraft.roadFrontageFt} onChange={value => setResearchUpdateDraft({ ...researchUpdateDraft, roadFrontageFt: value })} />
+                  <ResearchSelectField label="Landlocked" current={lead.is_land_locked == null ? null : lead.is_land_locked ? "Yes" : "No"} value={researchUpdateDraft.isLandLocked} onChange={value => setResearchUpdateDraft({ ...researchUpdateDraft, isLandLocked: value })} />
+                  <ResearchUpdateField label="Flood %" current={lead.flood_zone_percent} value={researchUpdateDraft.floodZonePercent} onChange={value => setResearchUpdateDraft({ ...researchUpdateDraft, floodZonePercent: value })} />
+                  <ResearchUpdateField label="Flood type" current={lead.flood_zone_type} value={researchUpdateDraft.floodZoneType} onChange={value => setResearchUpdateDraft({ ...researchUpdateDraft, floodZoneType: value })} />
+                  <ResearchUpdateField label="Wetlands %" current={lead.wetlands_percent} value={researchUpdateDraft.wetlandsPercent} onChange={value => setResearchUpdateDraft({ ...researchUpdateDraft, wetlandsPercent: value })} />
+                  <ResearchUpdateField label="Min lot size" current={lead.min_lot_size_acres} value={researchUpdateDraft.minLotSizeAcres} onChange={value => setResearchUpdateDraft({ ...researchUpdateDraft, minLotSizeAcres: value })} />
+                  <ResearchUpdateField label="GIS link" current={lead.parcel_link} value={researchUpdateDraft.parcelLink} onChange={value => setResearchUpdateDraft({ ...researchUpdateDraft, parcelLink: value })} />
+                  <ResearchUpdateField label="Comping link" current={lead.comping_link} value={researchUpdateDraft.compingLink} onChange={value => setResearchUpdateDraft({ ...researchUpdateDraft, compingLink: value })} />
+                </div>
+                <textarea
+                  value={researchUpdateDraft.notes}
+                  onChange={e => setResearchUpdateDraft({ ...researchUpdateDraft, notes: e.target.value })}
+                  rows={2}
+                  placeholder={lead.notes || "Property notes"}
+                  style={textareaStyle}
+                />
+                {researchUpdatePreview.length > 0 && (
+                  <div style={{ borderTop: "1px solid var(--fog)", paddingTop: 8 }}>
+                    <p style={{ ...eyebrowSmall, marginBottom: 8 }}>Preview</p>
+                    <dl style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 8, maxHeight: 180, overflow: "auto" }}>
+                      {researchUpdatePreview.map(row => (
+                        <div key={row.label}>
+                          <dt style={{ color: "var(--muted)", fontSize: 10, fontWeight: 800, letterSpacing: "0.1em", textTransform: "uppercase" }}>{row.label}</dt>
+                          <dd style={{ color: "var(--ink)", fontSize: 12, lineHeight: 1.35, margin: "3px 0 0" }}>{row.current} → <strong>{row.next}</strong></dd>
+                        </div>
+                      ))}
+                    </dl>
+                  </div>
+                )}
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                  <button type="button" onClick={() => setResearchUpdateDraft(EMPTY_RESEARCH_UPDATE_DRAFT)} style={secondaryButton}>Clear</button>
+                  <button type="button" onClick={applyResearchUpdate} disabled={savingResearch || researchUpdatePreview.length === 0} style={{ ...primaryButton, opacity: savingResearch || researchUpdatePreview.length === 0 ? 0.55 : 1 }}>
+                    Apply To Property Record
+                  </button>
+                </div>
+              </div>
+            </section>
+
+            <section style={panel}>
+              <header style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "baseline", marginBottom: 12, flexWrap: "wrap" }}>
+                <div>
                   <p style={eyebrowSmall}>Comps</p>
                   <h3 style={{ ...sectionTitle, fontSize: 20 }}>{compRecords.length} saved comps</h3>
                 </div>
@@ -1215,7 +1438,7 @@ export default function LeadPage() {
       <style jsx>{`
         @media (max-width: 880px) {
           .lead-root { padding-top: 28px !important; }
-          .lead-overview-grid, .lead-conv-grid, .lead-research-grid, .lead-comp-form, .lead-comp-row { grid-template-columns: 1fr !important; }
+          .lead-overview-grid, .lead-conv-grid, .lead-research-grid, .lead-comp-form, .lead-comp-row, .lead-research-update-grid { grid-template-columns: 1fr !important; }
         }
       `}</style>
     </div>
@@ -1281,6 +1504,29 @@ function PropertyDataSection({ title, items, columns = 3 }: { title: string; ite
         {items.map(([label, value]) => <Detail key={label} label={label} value={value || "—"} />)}
       </dl>
     </div>
+  );
+}
+
+function ResearchUpdateField({ label, current, value, onChange }: { label: string; current: unknown; value: string; onChange: (value: string) => void }) {
+  const placeholder = current === null || current === undefined || current === "" ? label : `${label}: ${String(current)}`;
+  return (
+    <label style={{ display: "grid", gap: 4 }}>
+      <span style={{ color: "var(--muted)", fontSize: 10, fontWeight: 800, letterSpacing: "0.11em", textTransform: "uppercase" }}>{label}</span>
+      <input value={value} onChange={event => onChange(event.target.value)} placeholder={placeholder} style={inputStyle} />
+    </label>
+  );
+}
+
+function ResearchSelectField({ label, current, value, onChange }: { label: string; current: string | null; value: string; onChange: (value: string) => void }) {
+  return (
+    <label style={{ display: "grid", gap: 4 }}>
+      <span style={{ color: "var(--muted)", fontSize: 10, fontWeight: 800, letterSpacing: "0.11em", textTransform: "uppercase" }}>{label}</span>
+      <select value={value} onChange={event => onChange(event.target.value)} style={inputStyle}>
+        <option value="">{current ? `${label}: ${current}` : label}</option>
+        <option value="true">Yes</option>
+        <option value="false">No</option>
+      </select>
+    </label>
   );
 }
 
