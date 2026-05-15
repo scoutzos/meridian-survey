@@ -289,6 +289,16 @@ function searchUrl(query: string): string {
   return `https://www.google.com/search?q=${encodeURIComponent(query)}`;
 }
 
+function googleAddressComponent(
+  components: Array<{ long_name?: string; short_name?: string; types?: string[] }> | undefined,
+  type: string,
+  preferShort = false,
+): string | null {
+  const match = components?.find(component => component.types?.includes(type));
+  if (!match) return null;
+  return (preferShort ? match.short_name : match.long_name) || match.long_name || match.short_name || null;
+}
+
 function pickAttr(attrs: Record<string, unknown>, fields: string[]): string | null {
   for (const field of fields) {
     const value = clean(attrs[field]);
@@ -348,6 +358,36 @@ async function geocode(lead: ResearchLeadPayload, warnings: string[]) {
   }
 
   try {
+    const googleKey = process.env.GOOGLE_MAPS_API_KEY;
+    if (googleKey) {
+      const params = new URLSearchParams({
+        address,
+        key: googleKey,
+        region: "us",
+      });
+      const json = await fetchJson(`https://maps.googleapis.com/maps/api/geocode/json?${params}`) as {
+        status?: string;
+        error_message?: string;
+        results?: Array<{
+          formatted_address?: string;
+          geometry?: { location?: { lat?: number; lng?: number } };
+          address_components?: Array<{ long_name?: string; short_name?: string; types?: string[] }>;
+        }>;
+      };
+      if (json.status === "OK") {
+        const match = json.results?.[0];
+        return {
+          latitude: typeof match?.geometry?.location?.lat === "number" ? match.geometry.location.lat : null,
+          longitude: typeof match?.geometry?.location?.lng === "number" ? match.geometry.location.lng : null,
+          matched_address: match?.formatted_address || address,
+          county: googleAddressComponent(match?.address_components, "administrative_area_level_2")?.replace(/\s+county$/i, "") || lead.county || null,
+          state: googleAddressComponent(match?.address_components, "administrative_area_level_1", true) || lead.state || null,
+          geocoder: "Google Maps Geocoding API",
+        };
+      }
+      warnings.push(`Google geocoder did not return a usable match: ${json.status || "unknown"}${json.error_message ? ` (${json.error_message})` : ""}.`);
+    }
+
     const url = `https://geocoding.geo.census.gov/geocoder/geographies/onelineaddress?address=${encodeURIComponent(address)}&benchmark=Public_AR_Current&vintage=Current_Current&format=json`;
     const json = await fetchJson(url) as {
       result?: {
