@@ -14,7 +14,6 @@ import {
   updateBuyerOffer,
   updateBuyerOfferStatus,
   updateCrmBuyer,
-  updateCrmContact,
   updateCrmProperty,
   updateDispositionCampaign,
   updateDispositionCampaignStatus,
@@ -190,8 +189,8 @@ function CrmContent() {
     const requestedOffer = searchParams.get("offer");
 
     if (requestedContact && data.contacts.some(contact => contact.id === requestedContact)) {
-      setSelectedContactId(requestedContact);
-      setView("records");
+      router.replace(`/contacts/${requestedContact}?source=crm&from=crm`);
+      return;
     }
 
     if (requestedProperty && data.properties.some(property => property.id === requestedProperty)) {
@@ -219,7 +218,7 @@ function CrmContent() {
       if (offer?.disposition_campaign_id) setSelectedCampaignId(offer.disposition_campaign_id);
       setView("dispo");
     }
-  }, [data.buyers, data.campaigns, data.contacts, data.offers, data.properties, searchParams]);
+  }, [data.buyers, data.campaigns, data.contacts, data.offers, data.properties, router, searchParams]);
 
   const selectedDeal = useMemo(() => data.deals.find(deal => deal.id === selectedDealId) ?? data.deals[0] ?? null, [data.deals, selectedDealId]);
   const selectedContact = useMemo(() => data.contacts.find(contact => contact.id === selectedContactId) ?? data.contacts[0] ?? null, [data.contacts, selectedContactId]);
@@ -468,13 +467,6 @@ function CrmContent() {
     if (!response.ok) { setMessage(result.error || "SMS failed."); return; }
     setSmsDraft({ contact_id: selected.contact.id, body: "" });
     setMessage("SMS sent and logged to the opportunity.");
-    await reload();
-  };
-
-  const saveContact = async (contact: CrmContact, patch: Parameters<typeof updateCrmContact>[1]) => {
-    const { error } = await updateCrmContact(contact.id, patch, user);
-    if (error) { setMessage(error); return; }
-    setMessage("Contact updated.");
     await reload();
   };
 
@@ -775,7 +767,7 @@ function CrmContent() {
                   label={`Duplicate contacts by ${group.type}`}
                   detail={`${group.rows.length} records share ${group.type === "phone" ? "phone" : group.type === "email" ? "email" : "name"}: ${group.key}`}
                   names={group.rows.map(contact => contact.display_name)}
-                  onClick={() => setSelectedContactId(group.rows[0].id)}
+                  onClick={() => router.push(`/contacts/${group.rows[0].id}?source=crm&from=crm`)}
                 />
               ))}
               {duplicateProperties.slice(0, 5).map(group => (
@@ -821,7 +813,7 @@ function CrmContent() {
                   <span>{linkedCount} linked opportunit{linkedCount === 1 ? "y" : "ies"} · SMS {statusLabel(contact.sms_opt_status)} · {cleanup ? "Needs cleanup" : statusLabel(contact.relationship_status || "new")}</span>
                 </>
               );
-            }} onSelect={contact => setSelectedContactId(contact.id)} selectedId={selectedContact?.id} />
+            }} onSelect={contact => router.push(`/contacts/${contact.id}?source=crm&from=crm`)} selectedId={selectedContact?.id} />
             <CrmList title="Properties" items={data.properties} render={property => (
               <>
                 <strong>{property.address || property.parcel_id || "Property record"}</strong>
@@ -844,20 +836,11 @@ function CrmContent() {
   const renderRightRail = () => (
     <aside style={{ display: "flex", flexDirection: "column", gap: 12 }}>
       {view === "records" && selectedContact && (
-        <ContactDetailCard
+        <ContactRecordShortcutCard
           key={selectedContact.id}
           contact={selectedContact}
           links={data.opportunityContacts.filter(link => link.contact_id === selectedContact.id)}
-          deals={data.deals}
-          communications={data.communications.filter(event => {
-            const phone = selectedContact.phone || selectedContact.phone_2;
-            return !!phone && [event.contact_number, event.from_number, event.to_number].some(value => value?.replace(/\D/g, "").endsWith(phone.replace(/\D/g, "").slice(-10)));
-          })}
-          onOpenDeal={dealId => {
-            setSelectedDealId(dealId);
-            selectView("deals");
-          }}
-          onSave={patch => saveContact(selectedContact, patch)}
+          onOpen={() => router.push(`/contacts/${selectedContact.id}?source=crm&from=crm`)}
         />
       )}
 
@@ -1340,164 +1323,23 @@ function HygieneChecklist({ items }: { items: Array<{ label: string; ok: boolean
   );
 }
 
-function ContactDetailCard({
-  contact,
-  links,
-  deals,
-  communications,
-  onOpenDeal,
-  onSave,
-}: {
-  contact: CrmContact;
-  links: CrmDashboardData["opportunityContacts"];
-  deals: CrmDashboardData["deals"];
-  communications: CommunicationEvent[];
-  onOpenDeal: (dealId: string) => void;
-  onSave: (patch: Parameters<typeof updateCrmContact>[1]) => Promise<void>;
-}) {
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState({
-    contact_type: contact.contact_type,
-    display_name: contact.display_name,
-    company_name: contact.company_name || "",
-    phone: contact.phone || "",
-    phone_2: contact.phone_2 || "",
-    email: contact.email || "",
-    mailing_address: contact.mailing_address || "",
-    county: contact.county || "",
-    state: contact.state || "",
-    relationship_status: contact.relationship_status || "new",
-    sms_opt_status: contact.sms_opt_status,
-    tags: contact.tags.join(", "),
-    notes: contact.notes || "",
-  });
-  const linkedDeals = links
-    .map(link => ({ link, deal: deals.find(deal => deal.id === link.deal_id) ?? null }))
-    .filter((item): item is { link: typeof item.link; deal: NonNullable<typeof item.deal> } => !!item.deal);
-  const phoneValues = [contact.phone, contact.phone_2].filter(Boolean) as string[];
-  const lastCommunication = communications
-    .slice()
-    .sort((a, b) => (Date.parse(b.provider_created_at || b.created_at) || 0) - (Date.parse(a.provider_created_at || a.created_at) || 0))[0];
-  const recordFlags = [
-    contact.relationship_status === "do-not-contact" ? "Do not contact" : null,
-    contact.sms_opt_status === "opted-out" ? "SMS opted out" : null,
-    !phoneValues.length ? "Missing phone" : null,
-    !contact.email ? "Missing email" : null,
-    !contact.mailing_address ? "Missing mailing" : null,
-    links.length === 0 ? "Unlinked" : null,
-  ].filter(Boolean) as string[];
-  const detailGrid = (title: string, items: Array<[string, React.ReactNode]>, columns = 2) => (
-    <DetailSection title={title}>
-      <div style={{ display: "grid", gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`, gap: 10 }}>
-        {items.map(([label, value]) => <DetailLine key={label} label={label} value={value} />)}
-      </div>
-    </DetailSection>
-  );
-
+function ContactRecordShortcutCard({ contact, links, onOpen }: { contact: CrmContact; links: CrmDashboardData["opportunityContacts"]; onOpen: () => void }) {
+  const hasCoreContact = Boolean(contact.phone || contact.phone_2 || contact.email);
   return (
     <div style={panel}>
       <p style={eyebrowSmall}>Contact record</p>
       <h3 style={smallHeading}>{contact.display_name}</h3>
-      <p style={{ ...bodyText, fontSize: 12, marginTop: 4 }}>{statusLabel(contact.contact_type)} · {statusLabel(contact.relationship_status || "new")} · SMS {statusLabel(contact.sms_opt_status)}</p>
-      {recordFlags.length > 0 && (
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 10 }}>
-          {recordFlags.map(flag => <span key={flag} style={flag.includes("opted") || flag.includes("Do not") ? { ...pill, color: "#9b3b2f", borderColor: "rgba(155,59,47,0.26)", background: "rgba(155,59,47,0.08)" } : pill}>{flag}</span>)}
-        </div>
-      )}
-      <button onClick={() => setEditing(open => !open)} style={{ ...secondaryButton, marginTop: 10 }}>{editing ? "Close Edit" : "Edit Contact"}</button>
-      {editing && (
-        <div style={{ ...subPanel, marginTop: 10 }}>
-          <p style={eyebrowSmall}>Edit contact</p>
-          <div style={{ display: "grid", gap: 8, marginTop: 8 }}>
-            <select value={draft.contact_type} onChange={e => setDraft({ ...draft, contact_type: e.target.value as CrmContactType })}>
-              {["seller", "buyer", "agent", "broker", "builder", "neighbor", "title", "lender", "vendor", "member", "other"].map(type => <option key={type} value={type}>{statusLabel(type)}</option>)}
-            </select>
-            <input value={draft.display_name} onChange={e => setDraft({ ...draft, display_name: e.target.value })} placeholder="Display name" />
-            <input value={draft.company_name} onChange={e => setDraft({ ...draft, company_name: e.target.value })} placeholder="Company / organization" />
-            <input value={draft.phone} onChange={e => setDraft({ ...draft, phone: e.target.value })} placeholder="Primary phone" />
-            <input value={draft.phone_2} onChange={e => setDraft({ ...draft, phone_2: e.target.value })} placeholder="Alt phone" />
-            <input value={draft.email} onChange={e => setDraft({ ...draft, email: e.target.value })} placeholder="Email" />
-            <input value={draft.mailing_address} onChange={e => setDraft({ ...draft, mailing_address: e.target.value })} placeholder="Mailing address" />
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-              <input value={draft.county} onChange={e => setDraft({ ...draft, county: e.target.value })} placeholder="County" />
-              <input value={draft.state} onChange={e => setDraft({ ...draft, state: e.target.value })} placeholder="State" />
-            </div>
-            <select value={draft.relationship_status} onChange={e => setDraft({ ...draft, relationship_status: e.target.value as CrmContact["relationship_status"] || "new" })}>
-              {["new", "active", "warm", "nurture", "do-not-contact", "inactive"].map(status => <option key={status} value={status}>{statusLabel(status)}</option>)}
-            </select>
-            <select value={draft.sms_opt_status} onChange={e => setDraft({ ...draft, sms_opt_status: e.target.value as CrmContact["sms_opt_status"] })}>
-              {["unknown", "opted-in", "opted-out"].map(status => <option key={status} value={status}>{statusLabel(status)}</option>)}
-            </select>
-            <input value={draft.tags} onChange={e => setDraft({ ...draft, tags: e.target.value })} placeholder="Tags, comma separated" />
-            <textarea rows={3} value={draft.notes} onChange={e => setDraft({ ...draft, notes: e.target.value })} placeholder="Notes" />
-            <button onClick={async () => { await onSave(draft); setEditing(false); }} style={primaryButton}>Save Contact</button>
-          </div>
-        </div>
-      )}
-
-      <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
-        {detailGrid("Snapshot", [
-          ["Type", statusLabel(contact.contact_type)],
-          ["Relationship", statusLabel(contact.relationship_status || "new")],
-          ["Company", contact.company_name || "N/A"],
-          ["Source", contact.source_system || "Manual / CRM"],
-          ["Tags", contact.tags.length ? contact.tags.join(", ") : "N/A"],
-          ["Created", formatDate(contact.created_at)],
-          ["Updated", formatDate(contact.updated_at)],
-          ["Updated By", contact.updated_by || "N/A"],
-        ])}
-        {detailGrid("Reachability", [
-          ["Primary Phone", contact.phone || "N/A"],
-          ["Alt Phone", contact.phone_2 || "N/A"],
-          ["Email", contact.email || "N/A"],
-          ["Mailing Address", contact.mailing_address || "N/A"],
-          ["County", contact.county || "N/A"],
-          ["State", contact.state || "N/A"],
-          ["Last Contacted", formatDate(contact.last_contacted_at)],
-          ["Last Contacted By", contact.last_contacted_by || "N/A"],
-        ])}
-        {detailGrid("Compliance & Workflow", [
-          ["SMS Status", statusLabel(contact.sms_opt_status)],
-          ["Contact Permission", contact.relationship_status === "do-not-contact" ? "Do not contact" : "Contact allowed"],
-          ["Linked Opportunities", linkedDeals.length],
-          ["Primary Links", links.filter(link => link.is_primary).length],
-          ["Recent Messages", communications.length],
-          ["Last Message", lastCommunication ? formatDate(lastCommunication.provider_created_at || lastCommunication.created_at) : "N/A"],
-        ], 3)}
-        {contact.notes && (
-          <DetailSection title="Notes">
-            <p style={{ ...bodyText, fontSize: 12 }}>{contact.notes}</p>
-          </DetailSection>
-        )}
-        <HygieneChecklist items={[
-          { label: "Phone or email on file", ok: Boolean(contact.phone || contact.phone_2 || contact.email) },
-          { label: "Mailing address captured", ok: Boolean(contact.mailing_address) },
-          { label: "SMS status known", ok: contact.sms_opt_status !== "unknown" },
-          { label: "Linked to an opportunity", ok: links.length > 0 },
-          { label: "Relationship status set", ok: Boolean(contact.relationship_status) },
-        ]} />
-        <DetailSection title="Linked opportunities">
-          {linkedDeals.map(({ link, deal }) => (
-            <button key={link.id} onClick={() => onOpenDeal(deal.id)} style={workRow}>
-              <span style={rowTop}>
-                <strong style={rowTitle}>{deal.title}</strong>
-                <span style={pill}>{statusLabel(link.role)}</span>
-              </span>
-              <span style={rowMeta}>{deal.address || deal.parcel_id || "Location pending"} · {statusLabel(deal.status)}</span>
-              <span style={rowMeta}>{link.is_primary ? "Primary contact" : "Secondary contact"} · {link.source_system || "CRM"}{link.relationship_notes ? ` · ${link.relationship_notes}` : ""}</span>
-            </button>
-          ))}
-          {linkedDeals.length === 0 && <EmptyText>No linked opportunities yet.</EmptyText>}
-        </DetailSection>
-        <ConversationPanel
-          eyebrow="Contact communication"
-          title="Recent messages"
-          communications={communications}
-          emptyText="No texts or calls are tied to this contact yet."
-          maxHeight={240}
-          compact
-        />
+      <p style={{ ...bodyText, fontSize: 12, marginTop: 4 }}>
+        {statusLabel(contact.contact_type)} · {statusLabel(contact.relationship_status || "new")} · SMS {statusLabel(contact.sms_opt_status)}
+      </p>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 10 }}>
+        <span style={hasCoreContact ? pill : { ...pill, color: "var(--brass)" }}>{hasCoreContact ? "Reachable" : "Missing contact info"}</span>
+        <span style={links.length ? pill : { ...pill, color: "var(--muted)" }}>{links.length} linked opportunit{links.length === 1 ? "y" : "ies"}</span>
       </div>
+      <p style={{ ...rowMeta, marginTop: 10 }}>
+        Full contact details now live in the shared contact record so Lists and CRM open the same organized view.
+      </p>
+      <button onClick={onOpen} style={{ ...primaryButton, marginTop: 12, width: "100%" }}>Open Contact Record</button>
     </div>
   );
 }

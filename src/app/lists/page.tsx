@@ -603,6 +603,7 @@ function PropertyRow({
 
 // Property Details Sidebar
 function PropertyDetailsSidebar({ property }: { property: ImportedLandLead }) {
+  const router = useRouter();
   return (
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
@@ -670,7 +671,7 @@ function PropertyDetailsSidebar({ property }: { property: ImportedLandLead }) {
 
       {/* Quick Actions */}
       <div style={{ display: "grid", gap: 8 }}>
-        <button style={primaryButton}>📞 View Contact</button>
+        <button onClick={() => router.push(`/contacts/${property.id}?source=imported&from=lists`)} style={primaryButton}>View Contact</button>
         <button style={secondaryButton}>📋 Open Property Record</button>
         <button style={secondaryButton}>📄 Create Packet</button>
         <button style={secondaryButton}>➕ Add to Segment</button>

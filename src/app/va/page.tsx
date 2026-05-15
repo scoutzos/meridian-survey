@@ -4548,7 +4548,7 @@ export default function VaPage() {
                         <p style={{ color: "var(--muted)", fontSize: 12, lineHeight: 1.45, marginTop: 4 }}>{mailingLine}</p>
                         <div style={{ alignItems: "center", display: "flex", gap: 8, justifyContent: "space-between", marginTop: 8 }}>
                           <span style={{ color: "var(--muted)", fontSize: 12 }}>Owner of {ownerCount} propert{ownerCount === 1 ? "y" : "ies"}</span>
-                          <button onClick={() => setListsView("contacts")} style={{ ...compactButton, minHeight: 28, padding: "5px 10px" }}>View Contact</button>
+                          <button onClick={() => router.push(`/contacts/${lead.id}?source=imported&from=lists`)} style={{ ...compactButton, minHeight: 28, padding: "5px 10px" }}>View Contact</button>
                         </div>
                       </div>
                       <div style={listDrawerSection}>
@@ -4639,7 +4639,7 @@ export default function VaPage() {
                           <button onClick={() => router.push(`/lead/${lead.id}?tab=research`)} style={{ ...compactButton, alignItems: "center", display: "inline-flex", gap: 7, justifyContent: "center" }}>
                             <Icon name="document" size={13} /> Open Property Record
                           </button>
-                          <button onClick={() => setListsView("contacts")} style={{ ...compactButton, alignItems: "center", display: "inline-flex", gap: 7, justifyContent: "center" }}>
+                          <button onClick={() => router.push(`/contacts/${lead.id}?source=imported&from=lists`)} style={{ ...compactButton, alignItems: "center", display: "inline-flex", gap: 7, justifyContent: "center" }}>
                             <Icon name="user" size={13} /> View Contact
                           </button>
                           <button onClick={() => loadImportedLead(lead, true)} style={{ ...compactButton, alignItems: "center", display: "inline-flex", gap: 7, justifyContent: "center" }}>
@@ -5026,10 +5026,10 @@ export default function VaPage() {
                         <div style={listDrawerSection}>
                           <p style={listDrawerLabel}>Quick Actions</p>
                           <div style={{ display: "grid", gap: 8, gridTemplateColumns: "1fr 1fr" }}>
+                            <button onClick={() => router.push(`/contacts/${lead.id}?source=imported&from=lists`)} style={compactButton}>Open Record</button>
                             <button onClick={() => { setSelectedImportedLeadId(lead.id); setListsView("properties"); }} style={compactButton}>View Properties</button>
                             <button onClick={() => selectImportedLead(lead, "outreach")} style={compactButton}>Work Queue</button>
                             <button onClick={() => loadImportedLead(lead, true)} style={compactButton}>{lead.deal_id ? "Open Packet" : "Create Packet"}</button>
-                            <button onClick={() => openBulkTextWorkflow(true)} style={compactButton}>Bulk Text</button>
                           </div>
                         </div>
                       </div>
