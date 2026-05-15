@@ -583,16 +583,30 @@ function formatCallSeconds(seconds: number): string {
 }
 
 function normalizedPhone(value: string | null | undefined): string | null {
+  if (String(value || "").toLowerCase().startsWith("client:")) return null;
   const digits = String(value || "").replace(/\D/g, "");
   if (!digits) return null;
   if (digits.length === 10) return `+1${digits}`;
   if (digits.length === 11 && digits.startsWith("1")) return `+${digits}`;
-  return value || null;
+  return value?.startsWith("+") ? value : null;
+}
+
+function communicationPhoneCandidates(event: CommunicationEvent): Array<string | null | undefined> {
+  if (event.channel === "voice") {
+    return event.direction === "inbound"
+      ? [event.contact_number, event.from_number, event.to_number]
+      : [event.contact_number, event.to_number, event.from_number];
+  }
+  return [event.contact_number, event.direction === "inbound" ? event.from_number : event.to_number, event.from_number, event.to_number];
 }
 
 function phoneForCommunicationEvent(event: CommunicationEvent | null): string | null {
   if (!event) return null;
-  return normalizedPhone(event.contact_number || event.from_number || event.to_number);
+  for (const value of communicationPhoneCandidates(event)) {
+    const phone = normalizedPhone(value);
+    if (phone) return phone;
+  }
+  return null;
 }
 
 type ConversationItem = {
@@ -626,8 +640,8 @@ function threadKeyForCommunicationEvent(event: CommunicationEvent): string {
   const phoneKey = phoneDigits.length > 10 ? phoneDigits.slice(-10) : phoneDigits;
   if (event.matched_deal_id) return `deal:${event.matched_deal_id}`;
   if (event.matched_lead_id) return `lead:${event.matched_lead_id}`;
-  if (event.provider_conversation_id) return `conversation:${event.provider_conversation_id}`;
   if (phoneKey) return `phone:${phoneKey}`;
+  if (event.provider_conversation_id) return `conversation:${event.provider_conversation_id}`;
   return `event:${event.id}`;
 }
 
@@ -647,7 +661,7 @@ function buildContactThreads(events: CommunicationEvent[]): ContactThread[] {
     return {
       key,
       phone,
-      title: latestEvent.contact_name || latestEvent.contact_number || latestEvent.from_number || latestEvent.to_number || "Unknown contact",
+      title: latestEvent.contact_name || phone || "Unknown contact",
       statusLabel,
       latestEvent,
       events: sorted,

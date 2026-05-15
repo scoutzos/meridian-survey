@@ -57,6 +57,19 @@ function displayPhone(value: string | null | undefined): string {
   return `(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}`;
 }
 
+function isClientAddress(value: string | null | undefined): boolean {
+  return String(value || "").toLowerCase().startsWith("client:");
+}
+
+function firstPhoneCandidate(values: Array<string | null | undefined>): string {
+  for (const value of values) {
+    if (isClientAddress(value)) continue;
+    const phone = last10(value);
+    if (phone) return phone;
+  }
+  return "";
+}
+
 function callablePhone(value: string | null | undefined): string {
   const d = digits(value);
   if (d.length === 10) return `+1${d}`;
@@ -88,7 +101,12 @@ function eventTime(event: CommunicationEvent): string {
 }
 
 function contactPhoneFor(event: CommunicationEvent): string {
-  return last10(event.contact_number || (event.direction === "inbound" ? event.from_number : event.to_number));
+  if (event.channel === "voice") {
+    return event.direction === "inbound"
+      ? firstPhoneCandidate([event.contact_number, event.from_number, event.to_number])
+      : firstPhoneCandidate([event.contact_number, event.to_number, event.from_number]);
+  }
+  return firstPhoneCandidate([event.contact_number, event.direction === "inbound" ? event.from_number : event.to_number, event.from_number, event.to_number]);
 }
 
 function sentByLabel(event: CommunicationEvent): string | null {
