@@ -69,24 +69,43 @@ function parseMoneyValue(value: string): number | null {
 
 function parseCompListingText(text: string, sourceUrl: string) {
   const hints = listingUrlHints(sourceUrl);
-  const normalized = text.replace(/\s+/g, " ").trim();
-  const priceMatch = normalized.match(/\$\s?[\d,]+(?:\.\d+)?\s?[kKmM]?\b/);
-  const acresMatch = normalized.match(/(?:lot size|lot|land|acres?)[:\s]*([\d.]+)\s*(?:acres?|acre|ac\b)/i)
-    || normalized.match(/([\d.]+)\s*(?:acres?|acre|ac\b)/i);
-  const addressMatch = normalized.match(/\b\d{1,6}\s+[A-Za-z0-9.' -]+?\s(?:Rd|Road|Dr|Drive|Cir|Circle|St|Street|Ave|Avenue|Ln|Lane|Ct|Court|Way|Trl|Trail|Pkwy|Hwy|Highway|Ter|Terrace)\b(?:\s+[NSEW]{1,2})?/i);
-  const saleDateMatch = normalized.match(/(?:sold|closed)\s+(?:on\s+)?([A-Za-z]{3,9}\s+\d{1,2},?\s+\d{4}|\d{1,2}\/\d{1,2}\/\d{2,4})/i);
-  const status: LandCompType = /sold|closed/i.test(normalized)
-    ? "sold"
-    : /pending|under contract/i.test(normalized)
+  const lines = text.split(/\n+/).map(line => line.trim()).filter(Boolean);
+  const priceHistoryIndex = lines.findIndex(line => /^price history$/i.test(line));
+  const carouselIndex = lines.findIndex(line => /^(nearby homes|similar homes|homes for you)$/i.test(line));
+  const mainEnd = [priceHistoryIndex, carouselIndex].filter(index => index >= 0).sort((a, b) => a - b)[0] ?? lines.length;
+  const mainLines = lines.slice(0, mainEnd);
+  const mainText = mainLines.join(" ");
+  const priceLineIndex = mainLines.findIndex(line => /^\$\s?[\d,]+(?:\.\d+)?\s?[kKmM]?$/i.test(line) && !line.includes("--"));
+  const priceLine = priceLineIndex >= 0 ? mainLines[priceLineIndex] : mainLines.find(line => /\$\s?[\d,]+(?:\.\d+)?\s?[kKmM]?\b/.test(line) && !line.includes("--"));
+  const fullAddressPattern = /^\d{1,6}\s+[^,]+,\s*[^,]+,\s*[A-Z]{2}\s+\d{5}(?:-\d{4})?$/i;
+  const streetAddressPattern = /^\d{1,6}\s+.+\s(?:Rd|Road|Dr|Drive|Cir|Circle|St|Street|Ave|Avenue|Ln|Lane|Ct|Court|Way|Trl|Trail|Pkwy|Hwy|Highway|Ter|Terrace)\b(?:\s+[NSEW]{1,2})?$/i;
+  const lineIsAddress = (line: string) =>
+    !/image of|interested in|travel times|nearby|more$/i.test(line)
+    && (fullAddressPattern.test(line) || streetAddressPattern.test(line));
+  const nearbyAddress = priceLineIndex >= 0 ? mainLines.slice(priceLineIndex + 1, priceLineIndex + 7).find(lineIsAddress) : null;
+  const addressLine = nearbyAddress || mainLines.find(line => fullAddressPattern.test(line) && !/image of|interested in/i.test(line)) || "";
+  const acresFromSplitLines = mainLines.find((line, index) => /^acres?$/i.test(line) && /^[\d.]+$/.test(mainLines[index - 1] || ""))
+    ? Number(mainLines[(mainLines.findIndex((line, index) => /^acres?$/i.test(line) && /^[\d.]+$/.test(mainLines[index - 1] || ""))) - 1])
+    : null;
+  const acresMatch = mainText.match(/(?:Size:\s*)?([\d.]+)\s+Acres?\b/i)
+    || mainText.match(/([\d.]+)\s+acres?\s+lot/i);
+  const parcelMatch = mainText.match(/Parcel number:\s*([A-Za-z0-9-]+)/i);
+  const listedDateMatch = mainText.match(/Date on market:\s*(\d{1,2}\/\d{1,2}\/\d{2,4})/i);
+  const saleDateMatch = mainText.match(/(?:sold|closed)\s+(?:on\s+)?([A-Za-z]{3,9}\s+\d{1,2},?\s+\d{4}|\d{1,2}\/\d{1,2}\/\d{2,4})/i);
+  const status: LandCompType = /^active$/i.test(mainLines[0] || "") || /\bActive\b/i.test(mainText)
+    ? "active"
+    : /pending|under contract/i.test(mainText)
       ? "pending"
-      : /for sale|active|listed/i.test(normalized)
-        ? "active"
-        : "manual-note";
+      : /sold|closed/i.test(mainText)
+    ? "sold"
+    : "manual-note";
+  const parsedDate = status === "sold" ? saleDateMatch?.[1] : listedDateMatch?.[1] || saleDateMatch?.[1];
   return {
-    address: addressMatch?.[0] || [hints.propertyAddress, hints.city, hints.state, hints.zip].filter(Boolean).join(", "),
-    price: priceMatch ? parseMoneyValue(priceMatch[0]) : null,
-    acreage: acresMatch?.[1] ? Number(acresMatch[1]) : null,
-    saleOrListDate: saleDateMatch?.[1] ? new Date(saleDateMatch[1]).toISOString().slice(0, 10) : "",
+    address: addressLine || [hints.propertyAddress, hints.city, hints.state, hints.zip].filter(Boolean).join(", "),
+    parcelId: parcelMatch?.[1] || "",
+    price: priceLine ? parseMoneyValue(priceLine) : null,
+    acreage: acresFromSplitLines || (acresMatch?.[1] ? Number(acresMatch[1]) : null),
+    saleOrListDate: parsedDate ? new Date(parsedDate).toISOString().slice(0, 10) : "",
     compType: status,
   };
 }
@@ -386,8 +405,9 @@ export default function LeadPage() {
     setCompDraft(prev => ({
       ...prev,
       listingText,
-      compType: prev.compType === "manual-note" || !prev.compType ? parsed.compType : prev.compType,
+      compType: parsed.compType === "manual-note" ? prev.compType : parsed.compType,
       address: prev.address || parsed.address,
+      parcelId: prev.parcelId || parsed.parcelId,
       price: prev.price || (parsed.price ? String(parsed.price) : ""),
       acreage: prev.acreage || (parsed.acreage ? String(parsed.acreage) : ""),
       saleOrListDate: prev.saleOrListDate || parsed.saleOrListDate,
