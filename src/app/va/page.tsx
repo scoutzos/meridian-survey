@@ -1060,6 +1060,7 @@ export default function VaPage() {
   const [uploadSource, setUploadSource] = useState("Land Portal");
   const [uploadCampaign, setUploadCampaign] = useState("");
   const [linkIntakeDraft, setLinkIntakeDraft] = useState<LinkIntakeDraft>(() => emptyLinkIntakeDraft());
+  const [linkIntakeOpen, setLinkIntakeOpen] = useState(false);
   const [linkIntakeSaving, setLinkIntakeSaving] = useState(false);
   const [activityDraft, setActivityDraft] = useState<{ activityType: ImportedLandLeadActivity["activity_type"]; summary: string; nextFollowUpDate: string }>({ activityType: "called", summary: "", nextFollowUpDate: "" });
   const [dispositionDraft, setDispositionDraft] = useState<{ disposition: LeadDisposition; note: string; nextFollowUpDate: string }>({ disposition: "no-answer", note: "", nextFollowUpDate: "" });
@@ -1400,6 +1401,9 @@ export default function VaPage() {
   const propertiesPageSafe = Math.min(propertiesPage, propertiesPageCount);
   const propertiesPageStart = (propertiesPageSafe - 1) * propertiesPerPage;
   const propertiesPageRows = listFilteredImportedLeads.slice(propertiesPageStart, propertiesPageStart + propertiesPerPage);
+  const listPreviewLead = selectedImportedLead && listFilteredImportedLeads.some(lead => lead.id === selectedImportedLead.id)
+    ? selectedImportedLead
+    : propertiesPageRows[0] ?? null;
   const bulkSmsCategorization = useMemo(() => categorizeForBulkSms(filteredImportedLeads), [filteredImportedLeads]);
   const bulkEligibleLeads = bulkSmsCategorization.eligible;
   const bulkTextAudience = useMemo(() => {
@@ -3746,6 +3750,16 @@ export default function VaPage() {
                 </p>
               </div>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <button
+                  type="button"
+                  onClick={() => setLinkIntakeOpen(open => !open)}
+                  style={linkIntakeOpen ? secondaryButton : primaryButton}
+                >
+                  <span style={{ alignItems: "center", display: "inline-flex", gap: 8, justifyContent: "center" }}>
+                    <Icon name="plus" size={14} color={linkIntakeOpen ? "var(--obsidian)" : "var(--bone)"} />
+                    {linkIntakeOpen ? "Hide Add Property" : "Add Property"}
+                  </span>
+                </button>
                 <button onClick={() => setMessage("List settings are coming next: default filters, columns, assignment rules, and segment permissions.")} style={secondaryButton}>Lists Settings</button>
               </div>
             </div>
@@ -3790,6 +3804,7 @@ export default function VaPage() {
               <MiniStat label="Deal Packets" value={String(listKpis.packets)} sub="Created" icon="package" />
             </div>
 
+            {linkIntakeOpen && (
             <div style={{ ...subPanel, marginBottom: 12, borderColor: "rgba(176,137,84,0.45)", background: "rgba(255,252,245,0.72)" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12, flexWrap: "wrap", marginBottom: 10 }}>
                 <div>
@@ -3851,6 +3866,7 @@ export default function VaPage() {
                 This saves as a normal property record with the original URL in source fields, so it appears in search, calculator filters, property detail, and packet creation.
               </p>
             </div>
+            )}
 
             {((importStep === "upload" && !importPreview) || (!importPreview && importedLeads.length === 0)) && (
               <div id="va-list-upload" style={{ ...subPanel, marginBottom: 12, borderColor: "var(--brass)", background: "rgba(176,137,84,0.08)" }}>
@@ -4148,14 +4164,15 @@ export default function VaPage() {
               </section>
 
               <aside style={{ ...subPanel, alignSelf: "start", maxHeight: "calc(100vh - 120px)", overflowY: "auto", position: "sticky", top: 16 }}>
-                {!selectedImportedLead ? (
-                  <p style={{ fontSize: 13, color: "var(--muted)", lineHeight: 1.5 }}>Select a property to see record details, contact eligibility, linked packet, and quick actions.</p>
+                {!listPreviewLead ? (
+                  <p style={{ fontSize: 13, color: "var(--muted)", lineHeight: 1.5 }}>No record is available for this filtered list yet.</p>
                 ) : (() => {
-                  const lead = selectedImportedLead;
+                  const lead = listPreviewLead;
                   const sms = checkLeadSmsCompliance(lead);
                   const call = checkLeadCallCompliance(lead);
                   const flags = leadFlagLabels(lead);
-                  const ownerCount = selectedContactProperties.length;
+                  const ownerProperties = contactRelationshipRows.find(row => row.leads.some(rowLead => rowLead.id === lead.id))?.leads ?? [lead];
+                  const ownerCount = ownerProperties.length;
                   const isNew = (lead.status || "new") === "new";
                   const taxStatus = lead.tax_delinquent ? "Delinquent" : lead.tax_delinquent === false ? "Current" : "—";
                   const hoaLabel = lead.in_hoa === true ? "Yes" : lead.in_hoa === false ? "No" : (lead.hoa_status || "—");
@@ -4180,7 +4197,7 @@ export default function VaPage() {
                   return (
                     <div style={{ display: "grid", gap: 12 }}>
                       <div style={{ alignItems: "center", display: "flex", justifyContent: "space-between", gap: 8 }}>
-                        <h3 style={{ color: "var(--obsidian)", fontFamily: DISPLAY_FONT, fontSize: 16, fontWeight: 500 }}>Selected Property</h3>
+                        <h3 style={{ color: "var(--obsidian)", fontFamily: DISPLAY_FONT, fontSize: 16, fontWeight: 500 }}>{selectedImportedLeadId === lead.id ? "Selected Property" : "Record Preview"}</h3>
                         <button onClick={() => setMessage("Property quick-actions menu is coming next.")} style={{ background: "transparent", border: "none", color: "var(--muted)", cursor: "pointer", fontSize: 16, lineHeight: 1, padding: 4 }} aria-label="More actions">⋯</button>
                       </div>
                       <div style={{ alignItems: "center", display: "flex", gap: 8, justifyContent: "space-between" }}>
