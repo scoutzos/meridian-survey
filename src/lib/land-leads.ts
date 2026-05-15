@@ -1889,12 +1889,26 @@ export async function updateImportedLandLeadStatus(id: string, status: ImportedL
   return { error: error?.message ?? null };
 }
 
+function countyDisplayName(value: string | null | undefined): string | null {
+  const county = clean(value);
+  if (!county) return null;
+  return /county$/i.test(county) ? titleCaseAddressPart(county) : `${titleCaseAddressPart(county)} County`;
+}
+
 function researchLeadPatch(lead: ImportedLandLead, result: AutomatedLandResearchResult): Partial<ImportedLandLead> | null {
   const match = result.parcel_match;
-  if (!match || match.addressMatchesSubject === false) return null;
   const rawData = {
     ...(lead.raw_data || {}),
-    "County parcel research": {
+    "Location research": {
+      checkedAt: result.checked_at,
+      latitude: result.location.latitude,
+      longitude: result.location.longitude,
+      matchedAddress: result.location.matched_address,
+      county: result.location.county,
+      state: result.location.state,
+      geocoder: result.location.geocoder,
+    },
+    ...(match ? { "County parcel research": {
       sourceName: match.sourceName,
       sourceUrl: match.sourceUrl,
       checkedAt: result.checked_at,
@@ -1909,11 +1923,18 @@ function researchLeadPatch(lead: ImportedLandLead, result: AutomatedLandResearch
       mailingAddress: match.mailingAddress,
       addressMatchesSubject: match.addressMatchesSubject,
       raw: match.raw,
-    },
+    } } : {}),
   };
   const patch: Partial<ImportedLandLead> = {
     raw_data: rawData,
   };
+  const county = countyDisplayName(result.location.county);
+  if (county && !lead.county) patch.county = county;
+  if (result.location.state && !lead.state) patch.state = result.location.state;
+  if (typeof result.location.latitude === "number" && !lead.latitude) patch.latitude = result.location.latitude;
+  if (typeof result.location.longitude === "number" && !lead.longitude) patch.longitude = result.location.longitude;
+
+  if (!match || match.addressMatchesSubject === false) return patch;
   if (match.parcelId && !lead.parcel_id) patch.parcel_id = match.parcelId;
   if (match.address && !lead.property_address) patch.property_address = match.address;
   if (match.owner && !lead.owner_name) patch.owner_name = match.owner;
