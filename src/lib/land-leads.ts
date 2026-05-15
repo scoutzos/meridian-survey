@@ -223,6 +223,8 @@ export interface LeadImportResult {
   warning?: string | null;
 }
 
+type ListingDetails = Record<string, string | number | null>;
+
 export interface SingleLinkLandLeadInput {
   sourceUrl: string;
   sourceSystem?: string;
@@ -252,6 +254,7 @@ export interface SingleLinkLandLeadInput {
   utilities?: string | null;
   sourceMls?: string | null;
   listingDescription?: string | null;
+  listingDetails?: ListingDetails | null;
   listingText?: string | null;
   notes?: string | null;
   actor: string;
@@ -280,6 +283,7 @@ export interface ListingUrlHints {
   utilities?: string | null;
   sourceMls?: string | null;
   listingDescription?: string | null;
+  listingDetails?: ListingDetails;
 }
 
 export interface LandLeadImportPreview {
@@ -1178,6 +1182,10 @@ async function insertLeadRowsInChunks(
 }
 
 function singleLinkRawData(input: SingleLinkLandLeadInput): Record<string, string> {
+  const listingDetails = Object.entries(input.listingDetails || {}).reduce<Record<string, string>>((acc, [key, value]) => {
+    if (value !== null && value !== undefined && String(value).trim()) acc[`Listing ${key}`] = String(value);
+    return acc;
+  }, {});
   return {
     "Source URL": input.sourceUrl.trim(),
     "Listing URL": input.sourceUrl.trim(),
@@ -1208,6 +1216,7 @@ function singleLinkRawData(input: SingleLinkLandLeadInput): Record<string, strin
     "Source MLS": input.sourceMls?.trim() || "",
     "Listing Description": input.listingDescription?.trim() || "",
     "Listing Text": input.listingText?.trim() || "",
+    ...listingDetails,
     "Notes": input.notes?.trim() || "",
     "Intake Method": "Single Link Intake",
   };
@@ -1255,12 +1264,17 @@ function normalizeListingDate(value: string | null | undefined): string | null {
 }
 
 function listingSummaryNotes(hints: ListingUrlHints): string | null {
+  const details = hints.listingDetails || {};
   const lines = [
     hints.listingStatus ? `Listing status: ${hints.listingStatus}` : "",
     hints.listingDate ? `Date on market: ${hints.listingDate}` : "",
     hints.landUse ? `Property type: ${hints.landUse}` : "",
     hints.subdivision ? `Subdivision: ${hints.subdivision}` : "",
     hints.hoaStatus ? `HOA: ${hints.hoaStatus}` : "",
+    details["HOA Fee"] ? `HOA fee: ${details["HOA Fee"]}` : "",
+    details["Waterfront"] ? `Waterfront: ${details["Waterfront"]}` : "",
+    details["Flood Zone"] ? `Flood zone: ${details["Flood Zone"]}` : "",
+    details["Buildability Note"] ? `Buildability: ${details["Buildability Note"]}` : "",
     hints.water ? `Water: ${hints.water}` : "",
     hints.sewer ? `Sewer: ${hints.sewer}` : "",
     hints.utilities ? `Utilities: ${hints.utilities}` : "",
@@ -1296,6 +1310,117 @@ export function listingUrlHints(sourceUrl: string): ListingUrlHints {
   } catch {
     return {};
   }
+}
+
+function moneyText(value: string | null | undefined): string | null {
+  const text = clean(value);
+  return text && /^\$/.test(text) && !text.includes("--") ? text : null;
+}
+
+function lineAfter(lines: string[], pattern: RegExp): string | null {
+  const index = lines.findIndex(line => pattern.test(line));
+  if (index < 0) return null;
+  return clean(lines[index + 1]);
+}
+
+function valueBeforeLine(lines: string[], label: RegExp): string | null {
+  const index = lines.findIndex(line => label.test(line));
+  if (index <= 0) return null;
+  return clean(lines[index - 1]);
+}
+
+function colonValue(lines: string[], label: string): string | null {
+  const prefix = `${label}:`.toLowerCase();
+  const line = lines.find(row => row.toLowerCase().startsWith(prefix));
+  return clean(line ? line.slice(label.length + 1) : null);
+}
+
+function sectionLines(lines: string[], start: RegExp, end: RegExp[]): string[] {
+  const startIndex = lines.findIndex(line => start.test(line));
+  if (startIndex < 0) return [];
+  const relativeEnd = lines.slice(startIndex + 1).findIndex(line => end.some(pattern => pattern.test(line)));
+  const endIndex = relativeEnd >= 0 ? startIndex + 1 + relativeEnd : lines.length;
+  return lines.slice(startIndex + 1, endIndex);
+}
+
+function parseListingSource(value: string | null): { source: string | null; mls: string | null } {
+  const text = value?.replace(/MLS Logo.*$/i, "").trim() || "";
+  if (!text) return { source: null, mls: null };
+  const mls = text.match(/MLS#:\s*([A-Za-z0-9-]+)/i)?.[1] || null;
+  return { source: text.replace(/,\s*MLS#:.*/i, "").trim() || text, mls };
+}
+
+function parseListingAgent(mainLines: string[]): { name: string | null; phone: string | null; brokerage: string | null } {
+  const listedByIndex = mainLines.findIndex(line => /^Listed by:$/i.test(line));
+  if (listedByIndex < 0) return { name: null, phone: null, brokerage: null };
+  const agentLine = clean(mainLines[listedByIndex + 1]?.replace(/,$/, ""));
+  const phone = agentLine?.match(/(\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4})/)?.[1] || null;
+  const name = clean(phone ? agentLine?.replace(phone, "").replace(/[, ]+$/, "") : agentLine);
+  const brokerage = clean(mainLines[listedByIndex + 2]?.replace(/,$/, ""));
+  return { name, phone, brokerage };
+}
+
+function parseScore(lines: string[], label: RegExp): { score: string | null; description: string | null } {
+  const index = lines.findIndex(line => label.test(line));
+  if (index < 0) return { score: null, description: null };
+  return {
+    score: clean(lines[index + 1]),
+    description: clean(lines[index + 2]),
+  };
+}
+
+function parseSchoolLines(lines: string[]): string | null {
+  const startIndex = lines.findIndex(line => /^Nearby schools$/i.test(line));
+  if (startIndex < 0) return null;
+  const endIndex = lines.slice(startIndex + 1).findIndex(line => /^(Show more|Skip carousel|Nearby homes)$/i.test(line));
+  const rows = lines.slice(startIndex + 1, endIndex >= 0 ? startIndex + 1 + endIndex : Math.min(lines.length, startIndex + 35));
+  return rows.join(" | ").slice(0, 1500) || null;
+}
+
+function parsePriceHistory(lines: string[]): string | null {
+  const rows = sectionLines(lines, /^Price history$/i, [/^Public tax history$/i, /^Monthly payment$/i, /^Climate risks$/i]);
+  const entries: Array<Record<string, string>> = [];
+  for (let index = 0; index < rows.length; index += 1) {
+    if (!/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(rows[index])) continue;
+    const event = rows[index + 1] || "";
+    const price = moneyText(rows[index + 2]) || "";
+    const change = /^[-+]?[\d.]+%$/.test(rows[index + 3] || "") ? rows[index + 3] : "";
+    const sourceOffset = change ? 4 : 3;
+    const source = /^Source:/i.test(rows[index + sourceOffset] || "") ? rows[index + sourceOffset].replace(/^Source:\s*/i, "") : "";
+    entries.push({ date: rows[index], event, price, change, source });
+  }
+  return entries.length ? JSON.stringify(entries.slice(0, 30)) : null;
+}
+
+function parsePublicTaxHistory(lines: string[]): string | null {
+  const rows = sectionLines(lines, /^Public tax history$/i, [/^Monthly payment$/i, /^Climate risks$/i, /^Neighborhood:/i]);
+  if (rows.some(line => /^Tax history is unavailable\.$/i.test(line))) return "Unavailable";
+  const entries: Array<Record<string, string>> = [];
+  for (let index = 0; index < rows.length; index += 1) {
+    if (!/^\d{4}$/.test(rows[index])) continue;
+    const propertyTaxes = rows[index + 1] || "";
+    const taxAssessment = rows[index + 2] || "";
+    entries.push({ year: rows[index], propertyTaxes, taxAssessment });
+  }
+  return entries.length ? JSON.stringify(entries.slice(0, 20)) : null;
+}
+
+function parseListingCards(lines: string[], start: RegExp, end: RegExp[]): string | null {
+  const rows = sectionLines(lines, start, end);
+  const cards: Array<Record<string, string>> = [];
+  const fullAddressPattern = /^\d{1,6}\s+[^,]+,\s*[^,]+,\s*[A-Z]{2}\s+\d{5}(?:-\d{4})?$/i;
+  for (let index = 0; index < rows.length; index += 1) {
+    const price = moneyText(rows[index]) || (rows[index] === "$--" ? "$--" : null);
+    if (!price) continue;
+    const window = rows.slice(index + 1, index + 12);
+    const address = window.find(line => fullAddressPattern.test(line)) || "";
+    if (!address) continue;
+    const size = window.find(line => /acre|square feet|sqft/i.test(line)) || "";
+    const status = window.find(line => /^(Active|Lot \/ Land|Lot\/Land|For Sale|Off Market|Sold|Auction|Pending)$/i.test(line)) || "";
+    const source = window.find(line => /MLS ID|GAMLS|FMLS|Hive MLS/i.test(line)) || "";
+    cards.push({ price, size, address, status, source });
+  }
+  return cards.length ? JSON.stringify(cards.slice(0, 30)) : null;
 }
 
 export function listingTextHints(listingText: string): ListingUrlHints {
@@ -1352,6 +1477,75 @@ export function listingTextHints(listingText: string): ListingUrlHints {
   const listingDescription = specialIndex >= 0
     ? mainLines.slice(specialIndex + 1, specialEnd > specialIndex ? specialEnd : Math.min(mainLines.length, specialIndex + 5)).join(" ").slice(0, 1000)
     : null;
+  const sourceInfo = parseListingSource(sourceLine);
+  const agent = parseListingAgent(mainLines);
+  const featureValues = mainLines
+    .filter(line => /^Features:/i.test(line))
+    .map(line => line.replace(/^Features:\s*/i, "").trim())
+    .filter(Boolean);
+  const hoaFee = colonValue(mainLines, "HOA fee");
+  const monthlyHoa = mainLines.find(line => /^\$\s?[\d,]+(?:\.\d+)?\/mo HOA$/i.test(line)) || null;
+  const walk = parseScore(lines, /^Walk Score/);
+  const bike = parseScore(lines, /^Bike Score/);
+  const floodZone = lineAfter(lines, /^Flood zone$/i);
+  const neighborhood = colonValue(lines, "Neighborhood") || lineAfter(lines, /^Neighborhood$/i);
+  const priceHistory = parsePriceHistory(lines);
+  const publicTaxHistory = parsePublicTaxHistory(lines);
+  const nearbyHomes = parseListingCards(lines, /^Nearby homes$/i, [/^Local experts/i, /^Similar homes$/i]);
+  const similarHomes = parseListingCards(lines, /^Similar homes$/i, [/^Homes for you$/i, /^Skip carousel$/i]);
+  const homesForYou = parseListingCards(lines, /^Homes for you$/i, [/^The data relating/i, /^For Sale$/i]);
+  const details: ListingDetails = {
+    "Bedrooms": valueBeforeLine(mainLines, /^beds$/i),
+    "Bathrooms": valueBeforeLine(mainLines, /^baths$/i),
+    "Lot Size Text": mainLines.find(line => /\bAcres? Lot\b|\bsqft lot\b|\bSquare Feet\b/i.test(line)) || null,
+    "Built In": mainText.match(/Built in\s+([^\s]+)/i)?.[1] || null,
+    "Zestimate": lineAfter(lines, /^Zestimate®?$/i),
+    "Price Per Sqft": mainLines.find(line => /^\$[\d,.-]+\/sqft$/i.test(line)) || null,
+    "HOA Monthly Display": monthlyHoa,
+    "What's Special": specialIndex >= 0 ? clean(mainLines[specialIndex + 1]) : null,
+    "Days On Zillow": mainText.match(/([\d,]+)\s+days\s+on Zillow/i)?.[1] || null,
+    "Views": mainText.match(/\|\s*([\d,]+)\s+views/i)?.[1] || null,
+    "Saves": mainText.match(/\|\s*[\d,]+\s+views\s*\|\s*([\d,]+)\s+saves/i)?.[1] || null,
+    "Zillow Last Checked": colonValue(lines, "Zillow last checked"),
+    "Listing Updated": colonValue(lines, "Listing updated"),
+    "Listing Agent": agent.name,
+    "Listing Agent Phone": agent.phone,
+    "Listing Brokerage": agent.brokerage,
+    "MLS Number": sourceInfo.mls,
+    "Waterfront": colonValue(mainLines, "On waterfront"),
+    "Waterfront Features": colonValue(mainLines, "Waterfront features"),
+    "Body Of Water": colonValue(mainLines, "Body of water"),
+    "Waterfront Frontage": colonValue(mainLines, "Frontage length"),
+    "Lot Features": featureValues[0] || null,
+    "Community Features": featureValues[1] || null,
+    "Special Conditions": colonValue(mainLines, "Special conditions"),
+    "HOA Fee": hoaFee,
+    "Region": colonValue(mainLines, "Region"),
+    "Cumulative Days On Market": colonValue(mainLines, "Cumulative days on market"),
+    "Listing Agreement": colonValue(mainLines, "Listing agreement"),
+    "Listing Terms": colonValue(mainLines, "Listing terms"),
+    "Electric Utility On Property": colonValue(mainLines, "Electric utility on property"),
+    "Monthly Estimated Payment": lineAfter(lines, /^Estimated monthly payment$/i),
+    "Monthly Principal And Interest": lineAfter(lines, /^Principal & interest$/i),
+    "Monthly Mortgage Insurance": lineAfter(lines, /^Mortgage insurance$/i),
+    "Monthly Property Taxes": lineAfter(lines, /^Property taxes$/i),
+    "Monthly Home Insurance": lineAfter(lines, /^Home insurance$/i),
+    "Monthly HOA Fees": lineAfter(lines, /^HOA fees$/i),
+    "Flood Zone": floodZone,
+    "Neighborhood": neighborhood,
+    "Walk Score": walk.score,
+    "Walk Score Label": walk.description,
+    "Bike Score": bike.score,
+    "Bike Score Label": bike.description,
+    "Schools": parseSchoolLines(lines),
+    "Price History": priceHistory,
+    "Public Tax History": publicTaxHistory,
+    "Nearby Homes": nearbyHomes,
+    "Similar Homes": similarHomes,
+    "Homes For You": homesForYou,
+    "Buildability Note": /non-buildable|not buildable/i.test(mainText) ? "Non-buildable lot mentioned in listing copy" : null,
+    "Recreational Use Mentioned": /recreational use|boating|fishing/i.test(mainText) ? "Yes" : null,
+  };
 
   return {
     ...addressHints,
@@ -1371,8 +1565,9 @@ export function listingTextHints(listingText: string): ListingUrlHints {
     water: extractLineValue("Water"),
     sewer: extractLineValue("Sewer"),
     utilities: extractLineValue("Utilities for property"),
-    sourceMls: sourceLine,
+    sourceMls: sourceInfo.source || sourceLine,
     listingDescription: clean(listingDescription),
+    listingDetails: details,
   };
 }
 
@@ -1411,6 +1606,7 @@ export async function createSingleLinkLandLead(input: SingleLinkLandLeadInput): 
     utilities: input.utilities?.trim() || textHints.utilities || null,
     sourceMls: input.sourceMls?.trim() || textHints.sourceMls || null,
     listingDescription: input.listingDescription?.trim() || textHints.listingDescription || null,
+    listingDetails: { ...(textHints.listingDetails || {}), ...(input.listingDetails || {}) },
     notes,
     sourceSystem,
     campaignSource,
