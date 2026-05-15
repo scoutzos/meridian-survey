@@ -192,10 +192,10 @@ function buildThreads(events: CommunicationEvent[], leads: ImportedLandLead[], r
   const leadById = new Map(leads.map(lead => [lead.id, lead]));
   const leadByPhone = new Map<string, ImportedLandLead>();
   leads.forEach(lead => {
-    const primary = last10(lead.phone);
-    const secondary = last10(lead.phone_2);
-    if (primary) leadByPhone.set(primary, lead);
-    if (secondary) leadByPhone.set(secondary, lead);
+    [lead.phone, lead.phone_2, lead.phone_3, lead.phone_4, lead.phone_5, lead.phone_6].forEach(value => {
+      const phone = last10(value);
+      if (phone) leadByPhone.set(phone, lead);
+    });
   });
 
   const groups = new Map<string, CommunicationEvent[]>();
@@ -931,7 +931,7 @@ export default function FloatingSmsWindow({
                       ☎
                     </button>
                     {selectedThread.dealId && <button type="button" onClick={() => onOpenDeal?.(selectedThread.dealId!)} style={compactAction}>Open Deal</button>}
-                    {selectedLead && !selectedThread.dealId && <button type="button" onClick={() => onOpenLead?.(selectedLead)} style={compactAction}>Open Lead</button>}
+                    {selectedLead && !selectedThread.dealId && <button type="button" onClick={() => onOpenLead?.(selectedLead)} style={compactAction}>Open Contact</button>}
                     {!selectedLead && !selectedThread.dealId && <button type="button" onClick={openSelectedRecord} style={compactAction}>Find Record</button>}
                     <button type="button" onClick={createPacketFromSelectedContact} style={compactAction} title={selectedLead ? "Create packet from lead" : selectedThread.dealId ? "Open linked deal" : "Create packet from this contact"}>
                       {selectedThread.dealId ? "Packet" : "Create Packet"}
@@ -941,7 +941,7 @@ export default function FloatingSmsWindow({
                     {threadActionsOpen && (
                       <div style={moreMenu}>
                         <button type="button" onClick={openSelectedRecord} style={moreMenuItem}>
-                          {selectedThread.dealId ? "Open deal" : selectedLead ? "Open lead" : "Find linked record"}
+                          {selectedThread.dealId ? "Open deal" : selectedLead ? "Open contact" : "Find linked record"}
                         </button>
                         <button type="button" onClick={createPacketFromSelectedContact} style={moreMenuItem}>
                           {selectedThread.dealId ? "Open packet" : "Create packet"}

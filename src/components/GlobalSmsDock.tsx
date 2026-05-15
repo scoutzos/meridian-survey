@@ -21,7 +21,7 @@ export default function GlobalSmsDock() {
 
   const refresh = async () => {
     const [leadRows, eventRows] = await Promise.all([
-      fetchImportedLandLeads(800),
+      fetchImportedLandLeads(5000),
       fetchCommunicationEvents({ limit: 160 }),
     ]);
     setLeads(leadRows);
@@ -47,7 +47,7 @@ export default function GlobalSmsDock() {
       leads={leads}
       events={events}
       canSend={canSend}
-      onOpenLead={lead => router.push(`/lead/${lead.id}`)}
+      onOpenLead={lead => router.push(`/contacts/${lead.id}?source=imported&from=comms`)}
       onOpenDeal={dealId => router.push(`/opportunity?deal=${dealId}`)}
       onCreateDealBrief={lead => router.push(`/va?tab=packet&lead=${lead.id}`)}
       onCreateDealBriefFromContact={({ phone, name }) => {

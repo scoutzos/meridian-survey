@@ -14,7 +14,6 @@ import {
   updateBuyerOffer,
   updateBuyerOfferStatus,
   updateCrmBuyer,
-  updateCrmProperty,
   updateDispositionCampaign,
   updateDispositionCampaignStatus,
   type CrmDashboardData,
@@ -470,13 +469,6 @@ function CrmContent() {
     await reload();
   };
 
-  const saveProperty = async (property: CrmProperty, patch: Parameters<typeof updateCrmProperty>[1]) => {
-    const { error } = await updateCrmProperty(property.id, patch, user);
-    if (error) { setMessage(error); return; }
-    setMessage("Property updated.");
-    await reload();
-  };
-
   const saveBuyer = async (buyer: CrmBuyer, patch: Parameters<typeof updateCrmBuyer>[1]) => {
     const { error } = await updateCrmBuyer(buyer.id, patch, user);
     if (error) { setMessage(error); return; }
@@ -845,10 +837,15 @@ function CrmContent() {
       )}
 
       {view === "records" && selectedProperty && (
-        <PropertyDetailCard key={selectedProperty.id} property={selectedProperty} deals={data.deals.filter(deal => deal.parcel_id === selectedProperty.parcel_id || deal.address === selectedProperty.address)} onOpenDeal={dealId => {
-          setSelectedDealId(dealId);
-          selectView("deals");
-        }} onSave={patch => saveProperty(selectedProperty, patch)} />
+        <PropertyRecordShortcutCard
+          key={selectedProperty.id}
+          property={selectedProperty}
+          deals={data.deals.filter(deal =>
+            Boolean(selectedProperty.parcel_id && deal.parcel_id === selectedProperty.parcel_id) ||
+            Boolean(selectedProperty.address && deal.address === selectedProperty.address)
+          )}
+          onOpenDeal={dealId => router.push(`/opportunity?deal=${dealId}`)}
+        />
       )}
 
       {view === "buyers" && selectedBuyer && (
@@ -1344,87 +1341,40 @@ function ContactRecordShortcutCard({ contact, links, onOpen }: { contact: CrmCon
   );
 }
 
-function PropertyDetailCard({ property, deals, onOpenDeal, onSave }: { property: CrmProperty; deals: CrmDashboardData["deals"]; onOpenDeal: (dealId: string) => void; onSave: (patch: Parameters<typeof updateCrmProperty>[1]) => Promise<void> }) {
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState({
-    property_type: property.property_type || "land",
-    parcel_id: property.parcel_id || "",
-    address: property.address || "",
-    county: property.county || "",
-    city: property.city || "",
-    state: property.state || "",
-    zip: property.zip || "",
-    acreage: property.acreage?.toString() || "",
-    zoning: property.zoning || "",
-    land_use: property.land_use || "",
-    road_frontage: property.road_frontage || "",
-    utilities: property.utilities || "",
-    assessed_value: property.assessed_value?.toString() || "",
-    market_value: property.market_value?.toString() || "",
-    notes: property.notes || "",
-  });
+function PropertyRecordShortcutCard({ property, deals, onOpenDeal }: { property: CrmProperty; deals: CrmDashboardData["deals"]; onOpenDeal: (dealId: string) => void }) {
+  const hasCoreProperty = Boolean(property.parcel_id || property.address);
+  const linkedDeal = deals[0] ?? null;
   return (
     <div style={panel}>
       <p style={eyebrowSmall}>Property record</p>
       <h3 style={smallHeading}>{property.address || property.parcel_id || "Property record"}</h3>
       <p style={{ ...bodyText, fontSize: 12, marginTop: 4 }}>{[property.city, property.county, property.state].filter(Boolean).join(", ") || "Location pending"}</p>
-      <button onClick={() => setEditing(open => !open)} style={{ ...secondaryButton, marginTop: 10 }}>{editing ? "Close Edit" : "Edit Property"}</button>
-      {editing && (
-        <div style={{ ...subPanel, marginTop: 10 }}>
-          <p style={eyebrowSmall}>Edit property</p>
-          <div style={{ display: "grid", gap: 8, marginTop: 8 }}>
-            <input value={draft.parcel_id} onChange={e => setDraft({ ...draft, parcel_id: e.target.value })} placeholder="Parcel ID" />
-            <input value={draft.address} onChange={e => setDraft({ ...draft, address: e.target.value })} placeholder="Address" />
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-              <input value={draft.city} onChange={e => setDraft({ ...draft, city: e.target.value })} placeholder="City" />
-              <input value={draft.county} onChange={e => setDraft({ ...draft, county: e.target.value })} placeholder="County" />
-            </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-              <input value={draft.state} onChange={e => setDraft({ ...draft, state: e.target.value })} placeholder="State" />
-              <input value={draft.zip} onChange={e => setDraft({ ...draft, zip: e.target.value })} placeholder="ZIP" />
-            </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-              <input value={draft.acreage} onChange={e => setDraft({ ...draft, acreage: e.target.value })} placeholder="Acreage" />
-              <input value={draft.zoning} onChange={e => setDraft({ ...draft, zoning: e.target.value })} placeholder="Zoning" />
-            </div>
-            <input value={draft.land_use} onChange={e => setDraft({ ...draft, land_use: e.target.value })} placeholder="Land use" />
-            <input value={draft.utilities} onChange={e => setDraft({ ...draft, utilities: e.target.value })} placeholder="Utilities" />
-            <input value={draft.road_frontage} onChange={e => setDraft({ ...draft, road_frontage: e.target.value })} placeholder="Road frontage" />
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-              <input value={draft.market_value} onChange={e => setDraft({ ...draft, market_value: e.target.value })} placeholder="Market value" />
-              <input value={draft.assessed_value} onChange={e => setDraft({ ...draft, assessed_value: e.target.value })} placeholder="Assessed value" />
-            </div>
-            <textarea rows={3} value={draft.notes} onChange={e => setDraft({ ...draft, notes: e.target.value })} placeholder="Notes" />
-            <button onClick={async () => { await onSave(draft); setEditing(false); }} style={primaryButton}>Save Property</button>
-          </div>
-        </div>
-      )}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 12 }}>
         <DetailLine label="Parcel" value={property.parcel_id} />
         <DetailLine label="Acres" value={property.acreage ?? "N/A"} />
         <DetailLine label="Zoning" value={property.zoning} />
         <DetailLine label="Land use" value={property.land_use} />
-        <DetailLine label="Market value" value={money(property.market_value)} />
-        <DetailLine label="Assessed" value={money(property.assessed_value)} />
-        <DetailLine label="Utilities" value={property.utilities} />
-        <DetailLine label="Road" value={property.road_frontage} />
       </div>
-      {property.notes && <p style={{ ...bodyText, fontSize: 12, marginTop: 10 }}>{property.notes}</p>}
-      <HygieneChecklist items={[
-        { label: "Parcel or address", ok: Boolean(property.parcel_id || property.address) },
-        { label: "County and state", ok: Boolean(property.county && property.state) },
-        { label: "Acreage", ok: typeof property.acreage === "number" },
-        { label: "Zoning or land use", ok: Boolean(property.zoning || property.land_use) },
-        { label: "Connected deal packet", ok: deals.length > 0 },
-      ]} />
-      <DetailSection title="Connected deals">
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 10 }}>
+        <span style={hasCoreProperty ? pill : { ...pill, color: "var(--brass)" }}>{hasCoreProperty ? "Has property key" : "Missing parcel/address"}</span>
+        <span style={deals.length ? pill : { ...pill, color: "var(--muted)" }}>{deals.length} linked deal{deals.length === 1 ? "" : "s"}</span>
+      </div>
+      <p style={{ ...rowMeta, marginTop: 10 }}>
+        Full property work should live on the shared property or deal record. CRM keeps this as a routing pointer instead of a second editable card.
+      </p>
+      {linkedDeal && (
+        <button onClick={() => onOpenDeal(linkedDeal.id)} style={{ ...primaryButton, marginTop: 12, width: "100%" }}>
+          Open Shared Property File
+        </button>
+      )}
+      <DetailSection title="Linked deal files">
         {deals.map(deal => (
           <button key={deal.id} onClick={() => onOpenDeal(deal.id)} style={workRow}>
             <strong style={rowTitle}>{deal.title}</strong>
             <span style={rowMeta}>{deal.status} · {money(deal.asking_price)}</span>
           </button>
         ))}
-        {deals.length === 0 && <EmptyText>No deal packet is linked to this property yet.</EmptyText>}
+        {deals.length === 0 && <EmptyText>No shared file is linked to this CRM property yet.</EmptyText>}
       </DetailSection>
     </div>
   );

@@ -225,7 +225,9 @@ export default function LeadPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const leadId = params?.id;
-  const initialTab = (searchParams.get("tab") as Tab | null) || "overview";
+  const requestedTab = searchParams.get("tab") as Tab | null;
+  const requestedPropertyId = searchParams.get("property");
+  const initialTab = requestedTab || "overview";
 
   const [user, setUser] = useState<string | null>(null);
   const [lead, setLead] = useState<ImportedLandLead | null>(null);
@@ -251,9 +253,9 @@ export default function LeadPage() {
   const [autoResearchResult, setAutoResearchResult] = useState<AutomatedLandResearchResult | null>(null);
 
   useEffect(() => {
-    const requested = searchParams.get("tab") as Tab | null;
-    if (requested && TABS.some(t => t.value === requested)) setTab(requested);
-  }, [searchParams]);
+    if (requestedTab && TABS.some(t => t.value === requestedTab)) setTab(requestedTab);
+    if (requestedTab === "properties" && leadId) setExpandedPropertyId(requestedPropertyId || leadId);
+  }, [leadId, requestedPropertyId, requestedTab]);
 
   useEffect(() => {
     const u = typeof window !== "undefined" ? localStorage.getItem("meridian_user") : null;
@@ -284,11 +286,11 @@ export default function LeadPage() {
       setResearchItems(ddItems);
       setCompRecords(comps);
       setPotentialCompRecords(potentialComps);
-      if (!expandedPropertyId) setExpandedPropertyId(me.id);
+      if (requestedTab === "properties") setExpandedPropertyId(requestedPropertyId || me.id);
+      else setExpandedPropertyId(current => current || me.id);
     }
     setLoading(false);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [leadId]);
+  }, [leadId, requestedPropertyId, requestedTab]);
 
   useEffect(() => {
     void loadAll();
@@ -711,7 +713,7 @@ export default function LeadPage() {
       setExpandedPropertyId(propertyId);
       return;
     }
-    router.push(`/lead/${propertyId}?tab=properties`);
+    router.push(`/lead/${propertyId}?tab=properties&property=${propertyId}`);
   };
 
   if (!user) return null;

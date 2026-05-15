@@ -88,6 +88,13 @@ import { calculateLandUnderwriting, type LandExitType, type LandUnderwritingResu
 import OperatingHeader from "@/components/OperatingHeader";
 import TwilioCallButton from "@/components/TwilioCallButton";
 import {
+  buildPacketReadiness,
+  buildPacketRiskMitigations,
+  type PacketReadinessItem,
+  type PacketRiskMitigation,
+  type PacketSource,
+} from "@/lib/deal-packet";
+import {
   BULK_SMS_MERGE_FIELDS,
   EXCLUSION_REASONS_BY_SEVERITY,
   EXCLUSION_SEVERITY_LABEL,
@@ -1877,22 +1884,119 @@ export default function VaPage() {
       window.removeEventListener("meridian-contact-queue-bulk-text", handleBulkText);
     };
   });
-  const readinessItems = useMemo(() => [
-    { label: "Address or parcel", done: !!(liveInput.address || liveInput.parcel_id) },
-    { label: "Contact", done: !!(liveInput.seller_name || liveInput.seller_phone) },
-    { label: "Asking price", done: typeof liveInput.asking_price === "number" && Number.isFinite(liveInput.asking_price) },
-    { label: liveInput.property_type === "land" ? "Exit value or comp support" : "ARV or value", done: typeof liveInput.arv === "number" && Number.isFinite(liveInput.arv) },
-    { label: "Disposition thesis", done: !!(liveInput.exit_strategy && liveInput.target_buyer_type && liveInput.buyer_demand_evidence) },
-    { label: "Calculator assumptions", done: typeof liveInput.desired_minimum_spread === "number" || typeof liveInput.minimum_acceptable_price === "number" },
-    { label: "Notes added", done: !!liveInput.notes },
-    { label: "Link or attachment", done: (liveInput.links?.length ?? 0) > 0 || attachments.length > 0 },
-  ], [attachments.length, liveInput]);
+  const sellerTouchCount = communicationEvents.length + leadActivities.length;
+  const packetEvidenceCount = (liveInput.links?.length ?? 0) + attachments.length + (selectedImportedLead?.property_url ? 1 : 0);
+  const packetRiskFlags = useMemo(() => {
+    const flags = [
+      selectedImportedLead?.tax_delinquent ? "Tax delinquent" : null,
+      selectedImportedLead?.is_land_locked ? "Landlocked" : null,
+      selectedImportedLead?.flood_zone_percent && selectedImportedLead.flood_zone_percent > 0 ? `Flood ${formatPercentValue(selectedImportedLead.flood_zone_percent)}` : null,
+      selectedImportedLead?.wetlands_percent && selectedImportedLead.wetlands_percent > 0 ? `Wetlands ${formatPercentValue(selectedImportedLead.wetlands_percent)}` : null,
+      selectedImportedLead?.bad_topography ? "Topography concern" : null,
+      selectedImportedLead?.dnc ? "DNC" : null,
+      selectedImportedLead?.state_dnc ? "State DNC" : null,
+      selectedImportedLead?.litigator ? "Litigator" : null,
+      ...liveAnalysis.riskFlags,
+    ].filter(Boolean) as string[];
+    return Array.from(new Set(flags));
+  }, [liveAnalysis.riskFlags, selectedImportedLead]);
+  const packetRiskMitigations = useMemo(() => buildPacketRiskMitigations({
+    input: liveInput,
+    analysis: liveAnalysis,
+    extraFlags: packetRiskFlags,
+  }), [liveAnalysis, liveInput, packetRiskFlags]);
+  const readinessItems = useMemo(() => buildPacketReadiness({
+    input: liveInput,
+    analysis: liveAnalysis,
+    evidenceCount: packetEvidenceCount,
+    sellerTouchCount,
+    propertyLinked: !!selectedImportedLead,
+    contactLinked: !!(selectedImportedLead && (hasImportedLeadOwnerIdentity(selectedImportedLead.owner_name) || selectedImportedLead.phone || selectedImportedLead.email)),
+    riskCount: packetRiskMitigations.length,
+  }), [liveAnalysis, liveInput, packetEvidenceCount, packetRiskMitigations.length, selectedImportedLead, sellerTouchCount]);
   const readyCount = readinessItems.filter(item => item.done).length;
   const missingReadyItems = readinessItems.filter(item => !item.done).map(item => item.label);
-  const submissionReady = readyCount === readinessItems.length
-    && !!liveInput.submission_summary
-    && !!liveInput.requested_next_step
-    && !!liveInput.review_intent;
+  const submissionReady = readyCount === readinessItems.length;
+  const packetSourceLabel: PacketSource = selectedImportedLead ? "Property record" : "Manual override";
+  const packetSourceCards = useMemo(() => [
+    {
+      label: "Property",
+      value: selectedImportedLead ? "Connected" : liveInput.address || liveInput.parcel_id ? "Draft" : "Missing",
+      sub: selectedImportedLead
+        ? selectedImportedLead.property_address || selectedImportedLead.parcel_id || "Imported property record"
+        : liveInput.address || liveInput.parcel_id || "Select a property record",
+      icon: "home" as IconName,
+    },
+    {
+      label: "Contact",
+      value: selectedImportedLead ? "Connected" : liveInput.seller_name || liveInput.seller_phone ? "Draft" : "Missing",
+      sub: selectedImportedLead
+        ? selectedImportedLead.owner_name || selectedImportedLead.phone || selectedImportedLead.email || "Imported contact record"
+        : liveInput.seller_name || liveInput.seller_phone || "Add seller context",
+      icon: "users" as IconName,
+    },
+    {
+      label: "Research",
+      value: liveAnalysis.disposition.exitConfidence,
+      sub: liveAnalysis.recommendation,
+      icon: "compass" as IconName,
+    },
+    {
+      label: "Evidence",
+      value: String(packetEvidenceCount),
+      sub: packetEvidenceCount === 1 ? "link or attachment" : "links and attachments",
+      icon: "document" as IconName,
+    },
+  ], [liveAnalysis.disposition.exitConfidence, liveAnalysis.recommendation, liveInput.address, liveInput.parcel_id, liveInput.seller_name, liveInput.seller_phone, packetEvidenceCount, selectedImportedLead]);
+  const standardizeMemberSummary = () => {
+    const propertyLine = liveInput.address || liveInput.parcel_id || "This property";
+    const priceLine = [
+      liveInput.asking_price ? `asking ${formatMoneyValue(liveInput.asking_price)}` : null,
+      liveInput.acreage ? `${formatNumberValue(liveInput.acreage, " ac")}` : null,
+      selectedImportedLead?.county || null,
+    ].filter(Boolean).join(" · ");
+    const summary = [
+      `${propertyLine} is being packaged for ${liveInput.exit_strategy || liveInput.strategy || "member review"}.`,
+      priceLine ? `Snapshot: ${priceLine}.` : "",
+      liveAnalysis.acquisition.maxOffer ? `Current max offer model is ${formatMoneyValue(liveAnalysis.acquisition.maxOffer)}.` : "",
+      sellerTouchCount ? `Seller/contact history has ${sellerTouchCount} logged touch${sellerTouchCount === 1 ? "" : "es"}.` : "",
+      packetRiskFlags.length ? `Main items to check: ${packetRiskFlags.slice(0, 4).join(", ")}.` : "",
+    ].filter(Boolean).join(" ");
+    const requestedNextStep = liveInput.requested_next_step || (liveAnalysis.missingInfo.length
+      ? `Review missing items: ${liveAnalysis.missingInfo.slice(0, 3).join(", ")}.`
+      : "Approve the next acquisition step or request changes.");
+    const uncertainties = packetRiskFlags.length
+      ? packetRiskFlags.join("\n")
+      : liveAnalysis.missingInfo.length
+        ? liveAnalysis.missingInfo.join("\n")
+        : liveInput.submit_uncertainties || "";
+    setDraft(prev => ({
+      ...prev,
+      submission_summary: summary,
+      requested_next_step: requestedNextStep,
+      submit_uncertainties: uncertainties,
+    }));
+    setMessage("Member packet summary standardized from the current property, contact, and calculator data.");
+  };
+  const refreshPacketFromSelectedRecord = () => {
+    if (!selectedImportedLead) {
+      setMessage("Select a property/contact record first, then refresh the packet from records.");
+      return;
+    }
+    const imported = leadToDealDraft(selectedImportedLead);
+    setDraft(prev => ({
+      ...prev,
+      ...imported,
+      linksText: imported.linksText ?? prev.linksText ?? "",
+      submitted_by: prev.submitted_by || user,
+      assigned_to: prev.assigned_to || user,
+      submission_summary: prev.submission_summary || imported.submission_summary || "",
+      requested_next_step: prev.requested_next_step || imported.requested_next_step || "",
+      submit_uncertainties: prev.submit_uncertainties || imported.submit_uncertainties || "",
+      notes: prev.notes || imported.notes || "",
+    }));
+    setMessage("Packet refreshed from the connected property and contact record.");
+  };
 
   useEffect(() => {
     if (!selected) {
@@ -3737,25 +3841,57 @@ export default function VaPage() {
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12, flexWrap: "wrap", marginBottom: 14 }}>
               <div>
                 <p style={eyebrowSmall}>Member review packet</p>
-                <h2 style={sectionTitle}>Build the deal packet</h2>
+                <h2 style={sectionTitle}>Generate the deal packet</h2>
+                <p style={{ color: "var(--muted)", fontSize: 13, lineHeight: 1.5, marginTop: 5 }}>
+                  Property, contact, research, and calculator data are pulled in first. The VA layer is the summary, open questions, and member ask.
+                </p>
               </div>
-              <span style={submissionReady ? hotPill : pill}>{submissionReady ? "Ready to submit" : `${readyCount}/${readinessItems.length} ready`}</span>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                <button type="button" onClick={refreshPacketFromSelectedRecord} disabled={!selectedImportedLead} style={{ ...secondaryButton, opacity: selectedImportedLead ? 1 : 0.55 }}>
+                  Refresh From Records
+                </button>
+                <button type="button" onClick={standardizeMemberSummary} style={secondaryButton}>
+                  Standardize Summary
+                </button>
+                <span style={submissionReady ? hotPill : pill}>{submissionReady ? "Ready to submit" : `${readyCount}/${readinessItems.length} ready`}</span>
+              </div>
+            </div>
+            <div style={{ ...subPanel, background: "rgba(255,252,245,0.72)", marginBottom: 14 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "baseline", flexWrap: "wrap", marginBottom: 10 }}>
+                <div>
+                  <p style={eyebrowSmall}>Generated from records</p>
+                  <h3 style={{ ...sectionTitle, fontSize: 21 }}>
+                    {selectedImportedLead ? selectedImportedLead.property_address || selectedImportedLead.parcel_id || "Imported property record" : draft.title || "Packet draft"}
+                  </h3>
+                </div>
+                <span style={selectedImportedLead ? hotPill : pill}>{selectedImportedLead ? "Property + contact linked" : "Draft-only packet"}</span>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10 }} className="number-grid">
+                {packetSourceCards.map(card => (
+                  <MiniStat key={card.label} label={card.label} value={card.value} sub={card.sub} icon={card.icon} />
+                ))}
+              </div>
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1.1fr) minmax(300px, 0.9fr)", gap: 18 }} className="va-form-grid">
               <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                <div style={subPanel}>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "baseline", flexWrap: "wrap", marginBottom: 10 }}>
+                    <p style={eyebrowSmall}>Packet setup</p>
+                    <SourceBadge source="Manual override" />
+                  </div>
                 <div>
-                  <label style={label}>Packet title</label>
+                  <FieldLabel source="Manual override">Packet title</FieldLabel>
                   <input type="text" value={draft.title} onChange={e => setDraft({ ...draft, title: e.target.value })} placeholder="1842 Oakview Dr SW or Parcel 14-..." />
                 </div>
                 <div style={twoCol} className="two-col">
                   <div>
-                    <label style={label}>Property type</label>
+                    <FieldLabel source={packetSourceLabel}>Property type</FieldLabel>
                     <select value={draft.property_type} onChange={e => setDraft({ ...draft, property_type: e.target.value as DealPropertyType })}>
                       {PROPERTY_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
                     </select>
                   </div>
                   <div>
-                    <label style={label}>Status</label>
+                    <FieldLabel source="System">Status</FieldLabel>
                     <select value={draft.status ?? "lead"} onChange={e => setDraft({ ...draft, status: e.target.value as DealStatus })}>
                       {STATUSES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
                     </select>
@@ -3763,51 +3899,55 @@ export default function VaPage() {
                 </div>
                 <div style={twoCol} className="two-col">
                   <div>
-                    <label style={label}>Urgency</label>
+                    <FieldLabel source="VA note">Urgency</FieldLabel>
                     <select value={draft.urgency} onChange={e => setDraft({ ...draft, urgency: e.target.value as DealUrgency })}>
                       {URGENCY.map(u => <option key={u.value} value={u.value}>{u.label}</option>)}
                     </select>
                   </div>
                   <div>
-                    <label style={label}>Source</label>
+                    <FieldLabel source={packetSourceLabel}>Source</FieldLabel>
                     <input type="text" value={draft.source ?? ""} onChange={e => setDraft({ ...draft, source: e.target.value })} placeholder="Land portal, SMS, call, referral" />
                   </div>
                 </div>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }} className="three-col">
                   <div>
-                    <label style={label}>Lead temperature</label>
+                    <FieldLabel source="VA note">Lead temperature</FieldLabel>
                     <select value={draft.lead_temperature ?? ""} onChange={e => setDraft({ ...draft, lead_temperature: (e.target.value || null) as DealInput["lead_temperature"] })}>
                       <option value="">Unset</option>
                       {LEAD_TEMPERATURES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
                     </select>
                   </div>
                   <div>
-                    <label style={label}>Campaign</label>
+                    <FieldLabel source={packetSourceLabel}>Campaign</FieldLabel>
                     <input type="text" value={draft.campaign_source ?? ""} onChange={e => setDraft({ ...draft, campaign_source: e.target.value })} placeholder="Mail batch, SMS list, portal saved search" />
                   </div>
                   <div>
-                    <label style={label}>Next follow-up</label>
+                    <FieldLabel source="VA note">Next follow-up</FieldLabel>
                     <input type="date" value={draft.next_follow_up_date ?? ""} onChange={e => setDraft({ ...draft, next_follow_up_date: e.target.value })} />
                   </div>
                 </div>
                 <div>
-                  <label style={label}>Strategy / recommendation</label>
+                  <FieldLabel source="VA note">Strategy / recommendation</FieldLabel>
                   <input type="text" value={draft.strategy} onChange={e => setDraft({ ...draft, strategy: e.target.value })} placeholder="wholesale, list retail, land resale, needs review" />
                 </div>
+                </div>
                 <div style={subPanel}>
-                  <p style={eyebrowSmall}>Member-facing ask</p>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "baseline", flexWrap: "wrap" }}>
+                    <p style={eyebrowSmall}>VA judgment</p>
+                    <SourceBadge source="VA note" />
+                  </div>
                   <p style={{ color: "var(--muted)", fontSize: 12, lineHeight: 1.5, marginBottom: 10 }}>
                     Pick the review type that matches what you want members to do. Use <strong>Ready For Vote</strong> only when the packet is complete and you want a yes/no decision.
                   </p>
                   <div style={twoCol} className="two-col">
                     <div>
-                      <label style={label}>Review type</label>
+                      <FieldLabel source="VA note">Review type</FieldLabel>
                       <select value={draft.review_intent ?? "needs-info-review"} onChange={e => setDraft({ ...draft, review_intent: e.target.value as DealReviewIntent })}>
                         {REVIEW_INTENTS.map(intent => <option key={intent.value} value={intent.value}>{intent.label}</option>)}
                       </select>
                     </div>
                     <div>
-                      <label style={label}>Requested next step</label>
+                      <FieldLabel source="VA note">Requested next step</FieldLabel>
                       <input type="text" value={draft.requested_next_step ?? ""} onChange={e => setDraft({ ...draft, requested_next_step: e.target.value })} placeholder="Vote, answer blocker, request more info, pass" />
                     </div>
                   </div>
@@ -3829,110 +3969,156 @@ export default function VaPage() {
                     )}
                   </div>
                   <div style={{ marginTop: 10 }}>
-                    <label style={label}>VA summary for members</label>
+                    <FieldLabel source="VA note">VA summary for members</FieldLabel>
                     <textarea rows={3} value={draft.submission_summary ?? ""} onChange={e => setDraft({ ...draft, submission_summary: e.target.value })} placeholder="Why this deal is worth member attention and what you found." />
                   </div>
                   <div style={{ marginTop: 10 }}>
-                    <label style={label}>Missing / uncertain items</label>
+                    <FieldLabel source="VA note">Missing / uncertain items</FieldLabel>
                     <textarea rows={2} value={draft.submit_uncertainties ?? ""} onChange={e => setDraft({ ...draft, submit_uncertainties: e.target.value })} placeholder="Open questions, weak comps, contact uncertainty, county records still pending." />
                   </div>
                 </div>
+                <div style={subPanel}>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "baseline", flexWrap: "wrap", marginBottom: 10 }}>
+                    <p style={eyebrowSmall}>Record data</p>
+                    <SourceBadge source={packetSourceLabel} />
+                  </div>
                 <div style={twoCol} className="two-col">
                   <div>
-                    <label style={label}>Address</label>
+                    <FieldLabel source={packetSourceLabel}>Address</FieldLabel>
                     <input type="text" value={draft.address ?? ""} onChange={e => setDraft({ ...draft, address: e.target.value })} />
                   </div>
                   <div>
-                    <label style={label}>Parcel ID</label>
+                    <FieldLabel source={packetSourceLabel}>Parcel ID</FieldLabel>
                     <input type="text" value={draft.parcel_id ?? ""} onChange={e => setDraft({ ...draft, parcel_id: e.target.value })} />
                   </div>
                 </div>
                 <div style={twoCol} className="two-col">
                   <div>
-                    <label style={label}>Primary contact</label>
+                    <FieldLabel source={selectedImportedLead ? "Contact record" : "Manual override"}>Primary contact</FieldLabel>
                     <input type="text" value={draft.seller_name ?? ""} onChange={e => setDraft({ ...draft, seller_name: e.target.value })} />
                   </div>
                   <div>
-                    <label style={label}>Contact phone</label>
+                    <FieldLabel source={selectedImportedLead ? "Contact record" : "Manual override"}>Contact phone</FieldLabel>
                     <input type="text" autoComplete="off" inputMode="tel" value={draft.seller_phone ?? ""} onChange={e => setDraft({ ...draft, seller_phone: e.target.value })} />
                   </div>
                 </div>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10 }} className="number-grid">
-                  <NumberField label="Asking" value={draft.asking_price} onChange={v => setDraft({ ...draft, asking_price: v })} />
-                  <NumberField label={draft.property_type === "land" ? "Exit value" : "ARV/value"} value={draft.arv} onChange={v => setDraft({ ...draft, arv: v })} />
-                  <NumberField label="Repairs/site" value={draft.repair_estimate} onChange={v => setDraft({ ...draft, repair_estimate: v })} />
-                  <NumberField label="Acres" value={draft.acreage} onChange={v => setDraft({ ...draft, acreage: v })} />
+                  <NumberField label="Asking" value={draft.asking_price} onChange={v => setDraft({ ...draft, asking_price: v })} source={packetSourceLabel} />
+                  <NumberField label={draft.property_type === "land" ? "Exit value" : "ARV/value"} value={draft.arv} onChange={v => setDraft({ ...draft, arv: v })} source="Calculator" />
+                  <NumberField label="Repairs/site" value={draft.repair_estimate} onChange={v => setDraft({ ...draft, repair_estimate: v })} source="Calculator" />
+                  <NumberField label="Acres" value={draft.acreage} onChange={v => setDraft({ ...draft, acreage: v })} source={packetSourceLabel} />
+                </div>
+                {draft.property_type === "land" && (
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10, marginTop: 10 }} className="three-col">
+                    <div>
+                      <FieldLabel source={packetSourceLabel}>Zoning</FieldLabel>
+                      <input type="text" value={draft.zoning ?? ""} onChange={e => setDraft({ ...draft, zoning: e.target.value })} />
+                    </div>
+                    <div>
+                      <FieldLabel source={packetSourceLabel}>Road frontage/access</FieldLabel>
+                      <input type="text" value={draft.road_frontage ?? ""} onChange={e => setDraft({ ...draft, road_frontage: e.target.value })} />
+                    </div>
+                    <div>
+                      <FieldLabel source={packetSourceLabel}>Utilities</FieldLabel>
+                      <input type="text" value={draft.utilities ?? ""} onChange={e => setDraft({ ...draft, utilities: e.target.value })} />
+                    </div>
+                  </div>
+                )}
                 </div>
                 <div style={subPanel}>
-                  <p style={eyebrowSmall}>Acquisition + disposition math</p>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "baseline", flexWrap: "wrap", marginBottom: 10 }}>
+                    <p style={eyebrowSmall}>Acquisition + disposition math</p>
+                    <SourceBadge source="Calculator" />
+                  </div>
                   <div style={twoCol} className="two-col">
                     <div>
-                      <label style={label}>Exit strategy</label>
+                      <FieldLabel source="VA note">Exit strategy</FieldLabel>
                       <input value={draft.exit_strategy ?? ""} onChange={e => setDraft({ ...draft, exit_strategy: e.target.value })} placeholder="Assignment, retail resale, neighbor sale, builder exit" />
                     </div>
                     <div>
-                      <label style={label}>Disposition status</label>
+                      <FieldLabel source="VA note">Disposition status</FieldLabel>
                       <select value={draft.disposition_status ?? "not-started"} onChange={e => setDraft({ ...draft, disposition_status: e.target.value as DispositionStatus })}>
                         {DISPOSITION_STATUSES.map(status => <option key={status.value} value={status.value}>{status.label}</option>)}
                       </select>
                     </div>
                   </div>
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, marginTop: 10 }} className="number-grid">
-                    <NumberField label="Target resale" value={draft.target_resale_price} onChange={v => setDraft({ ...draft, target_resale_price: v, arv: v ?? draft.arv })} />
-                    <NumberField label="Minimum sale" value={draft.minimum_acceptable_price} onChange={v => setDraft({ ...draft, minimum_acceptable_price: v })} />
-                    <NumberField label="Best buyer offer" value={draft.best_buyer_offer} onChange={v => setDraft({ ...draft, best_buyer_offer: v })} />
-                    <NumberField label="Target spread" value={draft.desired_minimum_spread} onChange={v => setDraft({ ...draft, desired_minimum_spread: v })} />
-                    <NumberField label="Closing costs" value={draft.closing_costs_estimate} onChange={v => setDraft({ ...draft, closing_costs_estimate: v })} />
-                    <NumberField label="Holding costs" value={draft.holding_costs_estimate} onChange={v => setDraft({ ...draft, holding_costs_estimate: v })} />
-                    <NumberField label="Marketing costs" value={draft.marketing_costs_estimate} onChange={v => setDraft({ ...draft, marketing_costs_estimate: v })} />
-                    <NumberField label="Risk buffer" value={draft.risk_buffer} onChange={v => setDraft({ ...draft, risk_buffer: v })} />
+                    <NumberField label="Target resale" value={draft.target_resale_price} onChange={v => setDraft({ ...draft, target_resale_price: v, arv: v ?? draft.arv })} source="Calculator" />
+                    <NumberField label="Minimum sale" value={draft.minimum_acceptable_price} onChange={v => setDraft({ ...draft, minimum_acceptable_price: v })} source="Calculator" />
+                    <NumberField label="Best buyer offer" value={draft.best_buyer_offer} onChange={v => setDraft({ ...draft, best_buyer_offer: v })} source="Research" />
+                    <NumberField label="Target spread" value={draft.desired_minimum_spread} onChange={v => setDraft({ ...draft, desired_minimum_spread: v })} source="Calculator" />
+                    <NumberField label="Closing costs" value={draft.closing_costs_estimate} onChange={v => setDraft({ ...draft, closing_costs_estimate: v })} source="Calculator" />
+                    <NumberField label="Holding costs" value={draft.holding_costs_estimate} onChange={v => setDraft({ ...draft, holding_costs_estimate: v })} source="Calculator" />
+                    <NumberField label="Marketing costs" value={draft.marketing_costs_estimate} onChange={v => setDraft({ ...draft, marketing_costs_estimate: v })} source="Calculator" />
+                    <NumberField label="Risk buffer" value={draft.risk_buffer} onChange={v => setDraft({ ...draft, risk_buffer: v })} source="Calculator" />
                   </div>
                   <div style={twoCol} className="two-col">
                     <div>
-                      <label style={label}>Target buyer type</label>
+                      <FieldLabel source="VA note">Target buyer type</FieldLabel>
                       <input value={draft.target_buyer_type ?? ""} onChange={e => setDraft({ ...draft, target_buyer_type: e.target.value })} placeholder="Builder, neighbor, investor, developer" />
                     </div>
                     <div>
-                      <label style={label}>Disposition owner</label>
+                      <FieldLabel source="VA note">Disposition owner</FieldLabel>
                       <input value={draft.disposition_owner ?? ""} onChange={e => setDraft({ ...draft, disposition_owner: e.target.value })} placeholder="Member or VA owner" />
                     </div>
                   </div>
                   <div style={{ marginTop: 10 }}>
-                    <label style={label}>Buyer demand evidence</label>
+                    <FieldLabel source="Research">Buyer demand evidence</FieldLabel>
                     <textarea rows={2} value={draft.buyer_demand_evidence ?? ""} onChange={e => setDraft({ ...draft, buyer_demand_evidence: e.target.value })} placeholder="Buyer list, comp support, nearby builders, neighbor interest, active buyer replies." />
                   </div>
                   <div style={{ marginTop: 10 }}>
-                    <label style={label}>Disposition next step / calculator notes</label>
+                    <FieldLabel source="VA note">Disposition next step / calculator notes</FieldLabel>
                     <textarea rows={2} value={draft.disposition_next_step ?? draft.calculator_notes ?? ""} onChange={e => setDraft({ ...draft, disposition_next_step: e.target.value, calculator_notes: e.target.value })} placeholder="What must happen next to validate or execute the exit." />
                   </div>
                 </div>
-                {draft.property_type === "land" && (
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }} className="three-col">
-                    <div>
-                      <label style={label}>Zoning</label>
-                      <input type="text" value={draft.zoning ?? ""} onChange={e => setDraft({ ...draft, zoning: e.target.value })} />
-                    </div>
-                    <div>
-                      <label style={label}>Road frontage/access</label>
-                      <input type="text" value={draft.road_frontage ?? ""} onChange={e => setDraft({ ...draft, road_frontage: e.target.value })} />
-                    </div>
-                    <div>
-                      <label style={label}>Utilities</label>
-                      <input type="text" value={draft.utilities ?? ""} onChange={e => setDraft({ ...draft, utilities: e.target.value })} />
-                    </div>
+                <div style={subPanel}>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "baseline", flexWrap: "wrap", marginBottom: 10 }}>
+                    <p style={eyebrowSmall}>Evidence and notes</p>
+                    <SourceBadge source="Research" />
                   </div>
-                )}
-                <div>
-                  <label style={label}>Links</label>
+                  <FieldLabel source="Research">Links</FieldLabel>
                   <textarea rows={3} value={draft.linksText} onChange={e => setDraft({ ...draft, linksText: e.target.value })} placeholder="One county, portal, comp, map, photo, or document link per line" />
-                </div>
-                <div>
-                  <label style={label}>Contact / research notes</label>
+                  <div style={{ marginTop: 10 }}>
+                  <FieldLabel source="VA note">Contact / research notes</FieldLabel>
                   <textarea rows={5} value={draft.notes ?? ""} onChange={e => setDraft({ ...draft, notes: e.target.value })} placeholder="Contact motivation, timeline, condition, due diligence notes, county calls, concerns, next follow-up" />
+                  </div>
                 </div>
               </div>
 
               <aside style={{ display: "flex", flexDirection: "column", gap: 12, position: "sticky", top: 16, alignSelf: "start", maxHeight: "calc(100vh - 32px)", overflowY: "auto" }} className="va-deal-aside">
+                <div style={{ ...subPanel, background: "var(--surface)" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "baseline", marginBottom: 10 }}>
+                    <p style={eyebrowSmall}>Member packet preview</p>
+                    <span style={submissionReady ? hotPill : pill}>{liveInput.review_intent ? statusLabel(liveInput.review_intent) : "Needs ask"}</span>
+                  </div>
+                  <h3 style={{ fontFamily: DISPLAY_FONT, color: "var(--obsidian)", fontSize: 24, fontWeight: 500, lineHeight: 1.12 }}>
+                    {liveInput.title || "Packet title pending"}
+                  </h3>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 12 }}>
+                    <MiniStat label="Ask" value={liveInput.requested_next_step ? "Set" : "Missing"} />
+                    <MiniStat label="Seller touches" value={sellerTouchCount ? String(sellerTouchCount) : "0"} />
+                    <MiniStat label="Open risks" value={String(packetRiskFlags.length || liveAnalysis.missingInfo.length)} />
+                    <MiniStat label="Evidence" value={String(packetEvidenceCount)} />
+                  </div>
+                  <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
+                    <InfoStack title="Executive summary" source="VA note">
+                      <p>{liveInput.submission_summary || "Add the VA summary members should read first."}</p>
+                    </InfoStack>
+                    <InfoStack title="Property snapshot" source={packetSourceLabel}>
+                      <p>{liveInput.address || liveInput.parcel_id || "Address/APN pending"}</p>
+                      <p>{[liveInput.acreage ? `${formatNumberValue(liveInput.acreage, " ac")}` : null, selectedImportedLead?.county, liveInput.zoning ? `Zoned ${liveInput.zoning}` : null].filter(Boolean).join(" · ") || "Acreage, county, and zoning pending"}</p>
+                      <p>{[liveInput.asking_price ? `Ask ${formatMoneyValue(liveInput.asking_price)}` : null, liveAnalysis.acquisition.maxOffer ? `Max ${formatMoneyValue(liveAnalysis.acquisition.maxOffer)}` : null].filter(Boolean).join(" · ") || "Price model pending"}</p>
+                    </InfoStack>
+                    <InfoStack title="Seller context" source={selectedImportedLead ? "Contact record" : "Manual override"}>
+                      <p>{liveInput.seller_name || "Seller unknown"}</p>
+                      <p>{liveInput.seller_phone || selectedImportedLead?.email || "Contact details pending"}</p>
+                      <p>{liveInput.notes ? liveInput.notes.split("\n").slice(0, 2).join(" ") : "Add motivation, timing, or conversation notes."}</p>
+                    </InfoStack>
+                    <InfoStack title="Risks + mitigations" source="Research">
+                      <RiskMitigationList items={packetRiskMitigations} />
+                    </InfoStack>
+                  </div>
+                </div>
                 <div style={subPanel}>
                   <p style={eyebrowSmall}>Live analysis</p>
                   <h2 style={{ fontFamily: DISPLAY_FONT, color: "var(--obsidian)", fontSize: 26, fontWeight: 500, marginBottom: 8 }}>
@@ -3969,16 +4155,9 @@ export default function VaPage() {
                 <div style={subPanel}>
                   <p style={eyebrowSmall}>Ready to submit?</p>
                   <p style={{ fontSize: 13, color: "var(--muted)", marginBottom: 10 }}>
-                    {readyCount}/{readinessItems.length} quality checks complete. Submission also requires a summary and requested next step.
+                    {readyCount}/{readinessItems.length} quality checks complete.
                   </p>
-                  <div style={{ display: "grid", gap: 8 }}>
-                    {readinessItems.map(item => (
-                      <div key={item.label} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: item.done ? "var(--obsidian)" : "var(--muted)" }}>
-                        <span style={item.done ? readyDot : openDot} />
-                        {item.label}
-                      </div>
-                    ))}
-                  </div>
+                  <PacketReadinessList items={readinessItems} />
                   {selected?.last_review_notification_at && selected.status === "under-review" && (
                     <label style={{ display: "flex", gap: 8, alignItems: "flex-start", fontSize: 12, color: "var(--muted)", marginTop: 12, lineHeight: 1.4 }}>
                       <input
@@ -3990,6 +4169,10 @@ export default function VaPage() {
                       Notify members again about this updated packet.
                     </label>
                   )}
+                </div>
+                <div style={subPanel}>
+                  <p style={eyebrowSmall}>Packet version history</p>
+                  <PacketHistoryTimeline selected={selected} submissionReady={submissionReady} />
                 </div>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 8 }}>
                   {selected && (
@@ -4636,7 +4819,7 @@ export default function VaPage() {
                       <div style={listDrawerSection}>
                         <p style={listDrawerLabel}>Quick Actions</p>
                         <div style={{ display: "grid", gap: 8, gridTemplateColumns: "1fr 1fr" }}>
-                          <button onClick={() => router.push(`/lead/${lead.id}?tab=research`)} style={{ ...compactButton, alignItems: "center", display: "inline-flex", gap: 7, justifyContent: "center" }}>
+                          <button onClick={() => router.push(`/lead/${lead.id}?tab=properties&property=${lead.id}`)} style={{ ...compactButton, alignItems: "center", display: "inline-flex", gap: 7, justifyContent: "center" }}>
                             <Icon name="document" size={13} /> Open Property Record
                           </button>
                           <button onClick={() => router.push(`/contacts/${lead.id}?source=imported&from=lists`)} style={{ ...compactButton, alignItems: "center", display: "inline-flex", gap: 7, justifyContent: "center" }}>
@@ -5507,7 +5690,7 @@ export default function VaPage() {
                         <button type="button" onClick={() => setContactActionMenuOpen(open => !open)} style={actionIconButton} title="More actions">...</button>
                         {contactActionMenuOpen && (
                           <div className="contact-action-menu" style={contactActionMenu}>
-                            <button onClick={() => router.push(`/lead/${selectedImportedLead.id}`)}>Open record</button>
+                            <button onClick={() => router.push(`/lead/${selectedImportedLead.id}?tab=properties&property=${selectedImportedLead.id}`)}>Open record</button>
                             <button onClick={() => void reload(user)}>Refresh</button>
                           </div>
                         )}
@@ -5613,7 +5796,7 @@ export default function VaPage() {
                     <section style={contactQueueSidePanel}>
                       <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "baseline", marginBottom: 10 }}>
                         <p style={eyebrowSmall}>Relationship</p>
-                        <button onClick={() => router.push(`/lead/${selectedImportedLead.id}`)} style={{ background: "transparent", border: "none", color: "var(--brass)", fontWeight: 800, cursor: "pointer" }}>Edit</button>
+                        <button onClick={() => router.push(`/lead/${selectedImportedLead.id}?tab=properties&property=${selectedImportedLead.id}`)} style={{ background: "transparent", border: "none", color: "var(--brass)", fontWeight: 800, cursor: "pointer" }}>Edit</button>
                       </div>
                       <InfoStack title="Primary Contact">
                         <p>{selectedImportedLead.owner_name || "Owner unknown"}</p>
@@ -5629,9 +5812,9 @@ export default function VaPage() {
                     <section style={contactQueueSidePanel}>
                       <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "baseline", marginBottom: 10 }}>
                         <p style={eyebrowSmall}>Linked Records</p>
-                        <button onClick={() => selectedImportedLead.deal_id ? openLinkedDeal(selectedImportedLead.deal_id) : router.push(`/lead/${selectedImportedLead.id}`)} style={{ background: "transparent", border: "none", color: "var(--brass)", fontWeight: 800, cursor: "pointer" }}>View all</button>
+                        <button onClick={() => selectedImportedLead.deal_id ? openLinkedDeal(selectedImportedLead.deal_id) : router.push(`/lead/${selectedImportedLead.id}?tab=properties&property=${selectedImportedLead.id}`)} style={{ background: "transparent", border: "none", color: "var(--brass)", fontWeight: 800, cursor: "pointer" }}>View all</button>
                       </div>
-                      <button onClick={() => selectedImportedLead.deal_id ? openLinkedDeal(selectedImportedLead.deal_id) : router.push(`/lead/${selectedImportedLead.id}`)} style={{ ...contactQueueCard, width: "100%", background: "var(--surface)" }}>
+                      <button onClick={() => selectedImportedLead.deal_id ? openLinkedDeal(selectedImportedLead.deal_id) : router.push(`/lead/${selectedImportedLead.id}?tab=properties&property=${selectedImportedLead.id}`)} style={{ ...contactQueueCard, width: "100%", background: "var(--surface)" }}>
                         <strong style={{ color: "var(--obsidian)", fontSize: 13 }}>{selectedImportedLead.property_address || selectedImportedLead.parcel_id || "Property record"}</strong>
                         <span style={{ display: "block", color: "var(--muted)", fontSize: 12, marginTop: 4 }}>{selectedImportedLead.deal_id ? "Deal packet connected" : "Lead record"}</span>
                       </button>
@@ -6565,10 +6748,10 @@ function BooleanSegmentSelect({
   );
 }
 
-function NumberField({ label: text, value, onChange }: { label: string; value: number | null | undefined; onChange: (value: number | null) => void }) {
+function NumberField({ label: text, value, onChange, source }: { label: string; value: number | null | undefined; onChange: (value: number | null) => void; source?: PacketSource }) {
   return (
     <div>
-      <label style={label}>{text}</label>
+      <FieldLabel source={source}>{text}</FieldLabel>
       <input
         type="text"
         inputMode="decimal"
@@ -6933,6 +7116,98 @@ function MiniStat({ label: text, value, sub, icon }: { label: string; value: str
   );
 }
 
+function SourceBadge({ source }: { source: PacketSource }) {
+  return <span style={sourceBadge}>{source}</span>;
+}
+
+function FieldLabel({ children, source }: { children: React.ReactNode; source?: PacketSource }) {
+  return (
+    <label style={{ ...label, display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
+      <span>{children}</span>
+      {source && <SourceBadge source={source} />}
+    </label>
+  );
+}
+
+function PacketReadinessList({ items }: { items: PacketReadinessItem[] }) {
+  return (
+    <div style={{ display: "grid", gap: 8 }}>
+      {items.map(item => (
+        <div key={item.label} style={{ display: "grid", gridTemplateColumns: "auto 1fr auto", gap: 8, alignItems: "start", fontSize: 13, color: item.done ? "var(--obsidian)" : "var(--muted)" }}>
+          <span style={item.done ? readyDot : openDot} />
+          <span>
+            <strong style={{ display: "block", fontSize: 13 }}>{item.label}</strong>
+            <span style={{ display: "block", fontSize: 11, color: "var(--muted)", lineHeight: 1.35 }}>{item.detail}</span>
+          </span>
+          <SourceBadge source={item.source} />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function RiskMitigationList({ items, empty = "No open risks documented." }: { items: PacketRiskMitigation[]; empty?: string }) {
+  if (!items.length) {
+    return <p style={{ color: "var(--muted)", fontSize: 12 }}>{empty}</p>;
+  }
+  return (
+    <div style={{ display: "grid", gap: 8 }}>
+      {items.slice(0, 6).map(item => (
+        <div key={`${item.risk}-${item.source}`} style={{ border: "1px solid var(--fog)", borderRadius: 8, padding: 10, background: "rgba(255,252,245,0.72)" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", marginBottom: 5 }}>
+            <strong style={{ color: "var(--obsidian)", fontSize: 13 }}>{item.risk}</strong>
+            <span style={item.status === "Blocked" ? hotPill : pill}>{item.status}</span>
+          </div>
+          <p style={{ color: "var(--muted)", fontSize: 11, lineHeight: 1.4 }}>{item.why}</p>
+          <p style={{ color: "var(--ink)", fontSize: 12, lineHeight: 1.45, marginTop: 5 }}>{item.mitigation}</p>
+          <div style={{ marginTop: 8 }}>
+            <SourceBadge source={item.source} />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function PacketHistoryTimeline({ selected, submissionReady }: { selected: Deal | null; submissionReady: boolean }) {
+  const items = [
+    {
+      label: "Draft created",
+      detail: selected?.created_at ? formatDate(selected.created_at) : "Not saved yet",
+      done: !!selected,
+    },
+    {
+      label: "First submitted",
+      detail: selected?.first_submitted_at ? formatDate(selected.first_submitted_at) : "Not submitted yet",
+      done: !!selected?.first_submitted_at,
+    },
+    {
+      label: "Latest packet version",
+      detail: selected?.last_submitted_at ? `${formatDate(selected.last_submitted_at)}${selected.review_round ? ` · Round ${selected.review_round}` : ""}` : submissionReady ? "Ready to submit" : "Waiting on readiness",
+      done: !!selected?.last_submitted_at,
+    },
+    {
+      label: "Member notification",
+      detail: selected?.last_review_notification_at ? formatDate(selected.last_review_notification_at) : "Sends on review submit",
+      done: !!selected?.last_review_notification_at,
+    },
+  ];
+
+  return (
+    <div style={{ display: "grid", gap: 8 }}>
+      {items.map(item => (
+        <div key={item.label} style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: 8, alignItems: "start" }}>
+          <span style={item.done ? readyDot : openDot} />
+          <span>
+            <strong style={{ display: "block", color: "var(--obsidian)", fontSize: 12 }}>{item.label}</strong>
+            <span style={{ color: "var(--muted)", fontSize: 11 }}>{item.detail}</span>
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function StageCard({ label: text, active }: { label: string; active: boolean }) {
   return (
     <div style={{
@@ -6969,10 +7244,13 @@ function FlagRow({ lead }: { lead: Partial<ImportedLandLead> }) {
   );
 }
 
-function InfoStack({ title, children }: { title: string; children: React.ReactNode }) {
+function InfoStack({ title, children, source }: { title: string; children: React.ReactNode; source?: PacketSource }) {
   return (
     <div style={{ border: "1px solid var(--fog)", borderRadius: 8, padding: 10, background: "var(--surface)", color: "var(--muted)", fontSize: 12, lineHeight: 1.55 }}>
-      <p style={miniLabel}>{title}</p>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
+        <p style={miniLabel}>{title}</p>
+        {source && <SourceBadge source={source} />}
+      </div>
       <div style={{ display: "grid", gap: 3, marginTop: 5 }}>{children}</div>
     </div>
   );
@@ -7232,6 +7510,14 @@ const pill: React.CSSProperties = {
   textTransform: "uppercase",
   letterSpacing: "0.1em",
   whiteSpace: "nowrap",
+};
+
+const sourceBadge: React.CSSProperties = {
+  ...pill,
+  borderRadius: 6,
+  fontSize: 9,
+  letterSpacing: "0.08em",
+  padding: "2px 6px",
 };
 
 const hotPill: React.CSSProperties = {

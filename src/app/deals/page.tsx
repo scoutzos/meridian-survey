@@ -38,6 +38,13 @@ import { saveGeneratedMemo } from "@/lib/governance";
 import { supabase } from "@/lib/supabase";
 import { isVaUser } from "@/lib/identity";
 import { fetchCommunicationEvents, type CommunicationEvent } from "@/lib/communications";
+import {
+  buildPacketReadiness,
+  buildPacketRiskMitigations,
+  type PacketReadinessItem,
+  type PacketRiskMitigation,
+  type PacketSource,
+} from "@/lib/deal-packet";
 import ConversationPanel from "@/components/ConversationPanel";
 import { labelForStatus } from "@/lib/status-map";
 import { getDealNextAction, type WorkflowAction } from "@/lib/workflow-actions";
@@ -643,6 +650,22 @@ export default function DealsPage() {
       : selected?.review_intent === "blocked-decision"
         ? "Resolve the blocker before the VA keeps working this lead."
         : "Review the packet and request missing information or a next action.");
+  const memberPacketEvidenceCount = selected ? selected.links.length + attachments.length : 0;
+  const memberPacketRiskMitigations = selected ? buildPacketRiskMitigations({
+    input: selected,
+    analysis: selected.analysis,
+  }) : [];
+  const memberPacketRiskItems = memberPacketRiskMitigations.map(item => item.risk);
+  const memberPacketReadiness = selected ? buildPacketReadiness({
+    input: selected,
+    analysis: selected.analysis,
+    evidenceCount: memberPacketEvidenceCount,
+    sellerTouchCount,
+    propertyLinked: !!(selected.address || selected.parcel_id),
+    contactLinked: !!(selected.seller_name || selected.seller_phone),
+    riskCount: memberPacketRiskMitigations.length,
+  }) : [];
+  const memberPacketReadyCount = memberPacketReadiness.filter(item => item.done).length;
   const conversionBlockReason = () => {
     if (!selected) return "Select a deal before converting it to a project.";
     if (approvalVotes < quorumNeeded) return `This deal needs ${quorumNeeded} Make Offer or Counter votes before it can become a project.`;
@@ -1018,6 +1041,25 @@ export default function DealsPage() {
                 </div>
                 <p style={{ ...comingSoonPill, marginBottom: 12 }}>Branded PDF export coming soon</p>
 
+                <div style={decisionBar} className="member-decision-bar">
+                  <div style={{ minWidth: 190 }}>
+                    <p style={{ ...eyebrowSmall, color: "var(--brass)" }}>Member decision</p>
+                    <h3 style={{ fontFamily: DISPLAY_FONT, color: "var(--bone)", fontSize: 24, fontWeight: 500, lineHeight: 1.12 }}>
+                      {selected.review_intent ? statusLabel(selected.review_intent) : statusLabel(selected.status)}
+                    </h3>
+                    <p style={{ color: "rgba(247,242,232,0.76)", fontSize: 12, lineHeight: 1.45, marginTop: 5 }}>{vaDecisionAsk}</p>
+                  </div>
+                  <div style={decisionMetricGrid} className="member-decision-metrics">
+                    <DecisionMetric label="Max offer" value={money(selected.analysis.acquisition.maxOffer)} source="Calculator" />
+                    <DecisionMetric label="Asking" value={money(selected.asking_price ?? null)} source="Property record" />
+                    <DecisionMetric label="Spread" value={money(selected.analysis.acquisition.projectedSpreadAtAsk)} source="Calculator" />
+                    <DecisionMetric label="Confidence" value={selected.analysis.disposition.exitConfidence} source="System" />
+                  </div>
+                  <button type="button" onClick={() => setActiveDealTab("vote")} style={decisionButton}>
+                    Vote / Respond
+                  </button>
+                </div>
+
                 {vaHandoffVisible && (
                   <div style={handoffPanel}>
                     <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "flex-start", marginBottom: 12 }}>
@@ -1046,6 +1088,58 @@ export default function DealsPage() {
                         <p style={handoffLabel}>Open questions</p>
                         <p style={handoffText}>{selected.submit_uncertainties || selected.analysis.missingInfo.slice(0, 3).join(", ") || "No open questions documented."}</p>
                       </div>
+                    </div>
+                  </div>
+                )}
+
+                {selected && (
+                  <div style={{ ...subPanel, marginBottom: 14 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "baseline", flexWrap: "wrap", marginBottom: 12 }}>
+                      <div>
+                        <p style={eyebrowSmall}>Standard member packet</p>
+                        <h3 style={{ fontFamily: DISPLAY_FONT, color: "var(--obsidian)", fontSize: 26, fontWeight: 500 }}>
+                          Decision view
+                        </h3>
+                      </div>
+                      <span style={selected.review_intent ? hotPill : pill}>{selected.review_intent ? statusLabel(selected.review_intent) : "Needs ask"}</span>
+                    </div>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10 }} className="number-grid">
+                      <Stat label="Ready checks" value={`${memberPacketReadyCount}/${memberPacketReadiness.length}`} />
+                      <Stat label="Seller touches" value={sellerTouchCount ? String(sellerTouchCount) : "0"} />
+                      <Stat label="Open risks" value={String(memberPacketRiskItems.length)} />
+                      <Stat label="Evidence" value={String(memberPacketEvidenceCount)} />
+                    </div>
+                    <div style={{ display: "grid", gridTemplateColumns: "1.15fr 0.85fr", gap: 14, marginTop: 14 }} className="two-col">
+                      <MemberPacketSection title="Recommendation / Ask" source="VA note">
+                        <p>{vaDecisionAsk}</p>
+                      </MemberPacketSection>
+                      <MemberPacketSection title="Executive Summary" source="VA note">
+                        <p>{selected.submission_summary || selected.analysis.summary || "No VA summary submitted yet."}</p>
+                      </MemberPacketSection>
+                      <MemberPacketSection title="Property Snapshot" source="Property record">
+                        <p>{selected.address || selected.parcel_id || "Location pending"}</p>
+                        <p>{[selected.acreage ? `${selected.acreage} ac` : null, selected.zoning ? `Zoned ${selected.zoning}` : null, selected.source].filter(Boolean).join(" · ") || "Property basics pending"}</p>
+                        <p>{[selected.asking_price ? `Ask ${money(selected.asking_price)}` : null, selected.analysis.acquisition.maxOffer ? `Max ${money(selected.analysis.acquisition.maxOffer)}` : null].filter(Boolean).join(" · ") || "Pricing pending"}</p>
+                      </MemberPacketSection>
+                      <MemberPacketSection title="Seller Context" source="Contact record">
+                        <p>{selected.seller_name || "Seller unknown"}</p>
+                        <p>{selected.seller_phone || "Phone pending"}</p>
+                        <p>{selected.notes ? selected.notes.split("\n").slice(0, 2).join(" ") : "No seller/context notes added yet."}</p>
+                      </MemberPacketSection>
+                      <MemberPacketSection title="Numbers" source="Calculator">
+                        <p>Recommended offer: {money(selected.analysis.acquisition.recommendedOffer)}</p>
+                        <p>Target resale: {money(selected.analysis.disposition.targetResale)}</p>
+                        <p>Spread at ask: {money(selected.analysis.acquisition.projectedSpreadAtAsk)}</p>
+                      </MemberPacketSection>
+                      <MemberPacketSection title="Risks + Mitigations" source="Research">
+                        <RiskMitigationList items={memberPacketRiskMitigations} />
+                      </MemberPacketSection>
+                      <MemberPacketSection title="Packet Readiness" source="System">
+                        <PacketReadinessList items={memberPacketReadiness} />
+                      </MemberPacketSection>
+                      <MemberPacketSection title="Version History" source="System">
+                        <PacketHistoryTimeline selected={selected} votes={votes.length} agreementStatus={agreement?.status ?? null} />
+                      </MemberPacketSection>
                     </div>
                   </div>
                 )}
@@ -1526,6 +1620,12 @@ export default function DealsPage() {
           .member-next-action > div:last-child {
             justify-content: flex-start;
           }
+          .member-decision-bar {
+            grid-template-columns: 1fr !important;
+          }
+          .member-decision-metrics {
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+          }
           .deal-detail-tabs {
             position: static !important;
           }
@@ -1537,6 +1637,9 @@ export default function DealsPage() {
           .number-grid,
           .agreement-number-grid,
           .checklist-row {
+            grid-template-columns: 1fr !important;
+          }
+          .member-decision-metrics {
             grid-template-columns: 1fr !important;
           }
         }
@@ -1674,6 +1777,98 @@ function Stat({ label: labelText, value }: { label: string; value: string }) {
   );
 }
 
+function SourceBadge({ source }: { source: PacketSource }) {
+  return <span style={sourceBadge}>{source}</span>;
+}
+
+function DecisionMetric({ label: labelText, value, source }: { label: string; value: string; source: PacketSource }) {
+  return (
+    <div style={decisionMetric}>
+      <p style={{ color: "rgba(247,242,232,0.64)", fontSize: 10, fontWeight: 700, letterSpacing: "0.12em", textTransform: "uppercase" }}>{labelText}</p>
+      <strong style={{ color: "var(--bone)", fontSize: 17 }}>{value}</strong>
+      <SourceBadge source={source} />
+    </div>
+  );
+}
+
+function PacketReadinessList({ items }: { items: PacketReadinessItem[] }) {
+  return (
+    <div style={{ display: "grid", gap: 8 }}>
+      {items.map(item => (
+        <div key={item.label} style={{ display: "grid", gridTemplateColumns: "auto 1fr auto", gap: 8, alignItems: "start" }}>
+          <span style={item.done ? readyDot : openDot} />
+          <span>
+            <strong style={{ display: "block", color: "var(--obsidian)", fontSize: 12 }}>{item.label}</strong>
+            <span style={{ display: "block", color: "var(--muted)", fontSize: 11, lineHeight: 1.35 }}>{item.detail}</span>
+          </span>
+          <SourceBadge source={item.source} />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function RiskMitigationList({ items }: { items: PacketRiskMitigation[] }) {
+  if (!items.length) {
+    return <p style={{ color: "var(--muted)", fontSize: 12 }}>No open risks documented.</p>;
+  }
+  return (
+    <div style={{ display: "grid", gap: 8 }}>
+      {items.slice(0, 6).map(item => (
+        <div key={`${item.risk}-${item.source}`} style={{ border: "1px solid var(--fog)", borderRadius: 8, background: "var(--surface)", padding: 10 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", marginBottom: 5 }}>
+            <strong style={{ color: "var(--obsidian)", fontSize: 13 }}>{item.risk}</strong>
+            <span style={item.status === "Blocked" ? hotPill : pill}>{item.status}</span>
+          </div>
+          <p style={{ color: "var(--muted)", fontSize: 11, lineHeight: 1.4 }}>{item.why}</p>
+          <p style={{ color: "var(--ink)", fontSize: 12, lineHeight: 1.45, marginTop: 5 }}>{item.mitigation}</p>
+          <div style={{ marginTop: 8 }}>
+            <SourceBadge source={item.source} />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function PacketHistoryTimeline({ selected, votes, agreementStatus }: { selected: Deal; votes: number; agreementStatus: DealAgreementStatus | null }) {
+  const items = [
+    { label: "Draft created", detail: formatDate(selected.created_at), done: true },
+    { label: "First submitted", detail: selected.first_submitted_at ? formatDate(selected.first_submitted_at) : "Not submitted yet", done: !!selected.first_submitted_at },
+    { label: "Latest version", detail: selected.last_submitted_at ? `${formatDate(selected.last_submitted_at)}${selected.review_round ? ` · Round ${selected.review_round}` : ""}` : "No submitted version", done: !!selected.last_submitted_at },
+    { label: "Member responses", detail: votes ? `${votes} response${votes === 1 ? "" : "s"} recorded` : "No votes yet", done: votes > 0 },
+    { label: "Agreement", detail: agreementStatus ? statusLabel(agreementStatus) : "Not started", done: agreementStatus === "approved" || agreementStatus === "signed" },
+  ];
+
+  return (
+    <div style={{ display: "grid", gap: 8 }}>
+      {items.map(item => (
+        <div key={item.label} style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: 8, alignItems: "start" }}>
+          <span style={item.done ? readyDot : openDot} />
+          <span>
+            <strong style={{ display: "block", color: "var(--obsidian)", fontSize: 12 }}>{item.label}</strong>
+            <span style={{ color: "var(--muted)", fontSize: 11 }}>{item.detail}</span>
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function MemberPacketSection({ title, children, source }: { title: string; children: React.ReactNode; source?: PacketSource }) {
+  return (
+    <div style={{ borderTop: "1px solid var(--fog)", paddingTop: 10 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", marginBottom: 5 }}>
+        <p style={{ ...eyebrowSmall, marginBottom: 0 }}>{title}</p>
+        {source && <SourceBadge source={source} />}
+      </div>
+      <div style={{ color: "var(--ink)", fontSize: 13, lineHeight: 1.55 }}>
+        {children}
+      </div>
+    </div>
+  );
+}
+
 function HandoffMetric({ label: labelText, value }: { label: string; value: string }) {
   return (
     <div style={handoffMetric}>
@@ -1766,6 +1961,42 @@ const secondaryButton: React.CSSProperties = {
   cursor: "pointer",
 };
 
+const decisionBar: React.CSSProperties = {
+  alignItems: "stretch",
+  background: "linear-gradient(135deg, rgba(20,17,13,0.98), rgba(63,49,33,0.94))",
+  border: "1px solid var(--obsidian)",
+  borderRadius: 10,
+  color: "var(--bone)",
+  display: "grid",
+  gap: 14,
+  gridTemplateColumns: "minmax(220px, 0.9fr) minmax(0, 1.4fr) auto",
+  marginBottom: 14,
+  padding: 14,
+};
+
+const decisionMetricGrid: React.CSSProperties = {
+  display: "grid",
+  gap: 8,
+  gridTemplateColumns: "repeat(4, minmax(120px, 1fr))",
+};
+
+const decisionMetric: React.CSSProperties = {
+  background: "rgba(247,242,232,0.08)",
+  border: "1px solid rgba(237,230,214,0.16)",
+  borderRadius: 8,
+  display: "grid",
+  gap: 4,
+  padding: 10,
+};
+
+const decisionButton: React.CSSProperties = {
+  ...primaryButton,
+  alignSelf: "center",
+  background: "var(--bone)",
+  color: "var(--obsidian)",
+  whiteSpace: "nowrap",
+};
+
 const pill: React.CSSProperties = {
   display: "inline-flex",
   alignItems: "center",
@@ -1778,6 +2009,14 @@ const pill: React.CSSProperties = {
   letterSpacing: "0.08em",
   textTransform: "uppercase",
   whiteSpace: "nowrap",
+};
+
+const sourceBadge: React.CSSProperties = {
+  ...pill,
+  borderRadius: 6,
+  fontSize: 9,
+  letterSpacing: "0.08em",
+  padding: "2px 6px",
 };
 
 const pillLarge: React.CSSProperties = {
@@ -1809,6 +2048,21 @@ const hotPill: React.CSSProperties = {
 const hotPillLarge: React.CSSProperties = {
   ...hotPill,
   padding: "5px 10px",
+};
+
+const readyDot: React.CSSProperties = {
+  background: "var(--brass)",
+  borderRadius: 999,
+  display: "inline-block",
+  height: 8,
+  marginTop: 4,
+  width: 8,
+};
+
+const openDot: React.CSSProperties = {
+  ...readyDot,
+  background: "transparent",
+  border: "1px solid var(--fog)",
 };
 
 const sectionTitle: React.CSSProperties = {
