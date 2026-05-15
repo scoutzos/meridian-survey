@@ -3893,22 +3893,6 @@ export default function VaPage() {
               })}
             </div>
 
-            <div style={{ background: "rgba(255,252,245,0.52)", border: "1px solid var(--fog)", borderRadius: 8, display: "grid", gridTemplateColumns: "repeat(5, minmax(0, 1fr))", marginBottom: 12, overflow: "hidden" }} className="number-grid">
-              {[
-                { label: "Batches", value: String(listKpis.batches), sub: "Uploaded" },
-                { label: "Records", value: listKpis.properties.toLocaleString(), sub: "Imported" },
-                { label: "Contacts", value: listKpis.contacts.toLocaleString(), sub: "Owners" },
-                { label: "Textable", value: listKpis.textable.toLocaleString(), sub: "With phone" },
-                { label: "Packets", value: String(listKpis.packets), sub: "Linked" },
-              ].map((item, index) => (
-                <div key={item.label} style={{ borderLeft: index === 0 ? "none" : "1px solid var(--fog)", minHeight: 62, padding: "10px 14px" }}>
-                  <strong style={{ color: "var(--obsidian)", display: "block", fontFamily: DISPLAY_FONT, fontSize: 22, fontWeight: 500, lineHeight: 1 }}>{item.value}</strong>
-                  <span style={{ color: "var(--obsidian)", display: "block", fontSize: 12, fontWeight: 800, marginTop: 4 }}>{item.label}</span>
-                  <span style={{ color: "var(--muted)", display: "block", fontSize: 11, marginTop: 1 }}>{item.sub}</span>
-                </div>
-              ))}
-            </div>
-
             {linkIntakeOpen && (
             <div style={{ ...subPanel, marginBottom: 12, borderColor: "rgba(176,137,84,0.45)", background: "rgba(255,252,245,0.72)" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12, flexWrap: "wrap", marginBottom: 10 }}>
@@ -4061,40 +4045,49 @@ export default function VaPage() {
             )}
 
             {listsView === "properties" && (
-            <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(320px, 360px)", gap: 12, marginBottom: 12 }} className="va-form-grid">
-              <section style={subPanel}>
-                <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "baseline", flexWrap: "wrap", marginBottom: 12 }}>
-                  <div style={{ alignItems: "baseline", display: "flex", gap: 10 }}>
-                    <h3 style={{ color: "var(--obsidian)", fontFamily: DISPLAY_FONT, fontSize: 22, fontWeight: 500 }}>Property Records</h3>
-                    <span style={{ color: "var(--muted)", fontSize: 12 }}>{propertiesTotal.toLocaleString()} records</span>
+            <div style={{ background: "rgba(255,252,245,0.42)", border: "1px solid var(--fog)", borderRadius: 8, display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(310px, 348px)", marginBottom: 12, overflow: "hidden" }} className="va-form-grid">
+              <section style={{ display: "flex", flexDirection: "column", minWidth: 0 }}>
+                <div style={{ alignItems: "center", borderBottom: "1px solid var(--fog)", display: "flex", gap: 12, justifyContent: "space-between", padding: "12px 14px" }}>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ alignItems: "baseline", display: "flex", flexWrap: "wrap", gap: 10 }}>
+                      <h3 style={{ color: "var(--obsidian)", fontFamily: DISPLAY_FONT, fontSize: 21, fontWeight: 500 }}>Property Records</h3>
+                      <span style={{ color: "var(--muted)", fontSize: 12 }}>{propertiesTotal.toLocaleString()} visible</span>
+                    </div>
+                    <p style={{ color: "var(--muted)", fontSize: 11, lineHeight: 1.45, marginTop: 4 }}>
+                      {listKpis.properties.toLocaleString()} records · {listKpis.batches} batches · {listKpis.contacts.toLocaleString()} contacts · {listKpis.textable.toLocaleString()} textable
+                      {selectedBatch ? ` · ${batchLeads.length} in selected source` : ""}
+                    </p>
                   </div>
-                  {selectedBatch && <span style={hotPill}>{batchLeads.length} in selected batch</span>}
+                  <button onClick={() => setMessage("CSV export is next for this inventory table.")} style={{ ...compactButton, minHeight: 32, padding: "7px 10px", whiteSpace: "nowrap" }}>Export CSV</button>
                 </div>
-                <div style={{ display: "grid", gridTemplateColumns: "minmax(220px, 0.8fr) repeat(3, minmax(132px, 0.45fr)) auto", gap: 8, marginBottom: 8, alignItems: "end" }} className="va-form-grid">
+                <div style={{ borderBottom: "1px solid var(--fog)", display: "grid", gap: 8, padding: 12 }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "minmax(240px, 1fr) minmax(150px, 0.42fr)", gap: 8 }} className="two-col">
+                    <input style={listToolbarControl} value={leadSearch} onChange={e => { setLeadSearch(e.target.value); setPropertiesPage(1); }} placeholder="Search APN, address, owner, phone..." />
+                    <select style={listToolbarControl} value={listRecordSort} onChange={e => { setListRecordSort(e.target.value as ListRecordSort); setPropertiesPage(1); }} aria-label="Sort records">
+                      {LIST_RECORD_SORTS.map(sort => <option key={sort.value} value={sort.value}>{sort.label}</option>)}
+                    </select>
+                  </div>
+                  <div style={{ alignItems: "center", display: "grid", gridTemplateColumns: "minmax(190px, 0.85fr) repeat(3, minmax(126px, 0.45fr)) auto", gap: 8 }} className="va-form-grid">
                   <div>
-                    <label style={{ color: "var(--muted)", display: "block", fontSize: 11, fontWeight: 600, marginBottom: 4 }}>Source List</label>
-                    <select value={selectedBatchId || "all"} onChange={e => { setSelectedBatchId(e.target.value === "all" ? null : e.target.value); setPropertiesPage(1); }}>
+                    <select style={listToolbarControl} value={selectedBatchId || "all"} onChange={e => { setSelectedBatchId(e.target.value === "all" ? null : e.target.value); setPropertiesPage(1); }} aria-label="Source list">
                       <option value="all">All source lists</option>
                       {leadBatches.map(batch => <option key={batch.id} value={batch.id}>{batch.campaign_source || batch.original_filename || batch.source_system}</option>)}
                     </select>
                   </div>
                   <div>
-                    <label style={{ color: "var(--muted)", display: "block", fontSize: 11, fontWeight: 600, marginBottom: 4 }}>County</label>
-                    <select value={countyFilter} onChange={e => { setCountyFilter(e.target.value); setPropertiesPage(1); }}>
+                    <select style={listToolbarControl} value={countyFilter} onChange={e => { setCountyFilter(e.target.value); setPropertiesPage(1); }} aria-label="County">
                       <option value="all">All counties</option>
                       {listFilterOptions.counties.map(c => <option key={c} value={c}>{c}</option>)}
                     </select>
                   </div>
                   <div>
-                    <label style={{ color: "var(--muted)", display: "block", fontSize: 11, fontWeight: 600, marginBottom: 4 }}>State</label>
-                    <select value={stateFilter} onChange={e => { setStateFilter(e.target.value); setPropertiesPage(1); }}>
+                    <select style={listToolbarControl} value={stateFilter} onChange={e => { setStateFilter(e.target.value); setPropertiesPage(1); }} aria-label="State">
                       <option value="all">All states</option>
                       {listFilterOptions.states.map(s => <option key={s} value={s}>{s}</option>)}
                     </select>
                   </div>
                   <div>
-                    <label style={{ color: "var(--muted)", display: "block", fontSize: 11, fontWeight: 600, marginBottom: 4 }}>Contact</label>
-                    <select value={listContactFilter} onChange={e => { setListContactFilter(e.target.value as ListContactFilter); setPropertiesPage(1); }}>
+                    <select style={listToolbarControl} value={listContactFilter} onChange={e => { setListContactFilter(e.target.value as ListContactFilter); setPropertiesPage(1); }} aria-label="Contact">
                       <option value="all">All contact fields</option>
                       <option value="phone">Has phone</option>
                       <option value="email">Has email</option>
@@ -4103,15 +4096,14 @@ export default function VaPage() {
                       <option value="no-contact">No contact fields</option>
                     </select>
                   </div>
-                  <button type="button" onClick={() => setListAdvancedFiltersOpen(open => !open)} style={{ ...compactButton, minHeight: 42, whiteSpace: "nowrap" }}>
+                  <button type="button" onClick={() => setListAdvancedFiltersOpen(open => !open)} style={{ ...compactButton, minHeight: 36, padding: "7px 10px", whiteSpace: "nowrap" }}>
                     {listAdvancedFiltersOpen ? "Hide Filters" : "More Filters"}
                   </button>
                 </div>
                 {listAdvancedFiltersOpen && (
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(132px, 1fr))", gap: 8, marginBottom: 8 }} className="va-form-grid">
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(132px, 1fr))", gap: 8 }} className="va-form-grid">
                     <div>
-                      <label style={{ color: "var(--muted)", display: "block", fontSize: 11, fontWeight: 600, marginBottom: 4 }}>Acres</label>
-                      <select value={acresBucket} onChange={e => { setAcresBucket(e.target.value); setPropertiesPage(1); }}>
+                      <select style={listToolbarControl} value={acresBucket} onChange={e => { setAcresBucket(e.target.value); setPropertiesPage(1); }} aria-label="Acres">
                         <option value="any">Any acreage</option>
                         <option value="lt-1">&lt; 1</option>
                         <option value="1-5">1 – 5</option>
@@ -4120,15 +4112,13 @@ export default function VaPage() {
                       </select>
                     </div>
                     <div>
-                      <label style={{ color: "var(--muted)", display: "block", fontSize: 11, fontWeight: 600, marginBottom: 4 }}>Owner Type</label>
-                      <select value={listOwnerType} onChange={e => { setListOwnerType(e.target.value); setPropertiesPage(1); }}>
+                      <select style={listToolbarControl} value={listOwnerType} onChange={e => { setListOwnerType(e.target.value); setPropertiesPage(1); }} aria-label="Owner type">
                         <option value="all">All owner types</option>
                         {listFilterOptions.ownerTypes.map(ownerType => <option key={ownerType} value={ownerType}>{ownerType}</option>)}
                       </select>
                     </div>
                     <div>
-                      <label style={{ color: "var(--muted)", display: "block", fontSize: 11, fontWeight: 600, marginBottom: 4 }}>Owner Location</label>
-                      <select value={listOwnerLocation} onChange={e => { setListOwnerLocation(e.target.value as ListOwnerLocationFilter); setPropertiesPage(1); }}>
+                      <select style={listToolbarControl} value={listOwnerLocation} onChange={e => { setListOwnerLocation(e.target.value as ListOwnerLocationFilter); setPropertiesPage(1); }} aria-label="Owner location">
                         <option value="all">All locations</option>
                         <option value="out-of-state">Out-of-state</option>
                         <option value="out-of-county">Out-of-county</option>
@@ -4136,8 +4126,7 @@ export default function VaPage() {
                       </select>
                     </div>
                     <div>
-                      <label style={{ color: "var(--muted)", display: "block", fontSize: 11, fontWeight: 600, marginBottom: 4 }}>Ownership</label>
-                      <select value={listOwnershipFilter} onChange={e => { setListOwnershipFilter(e.target.value as ListOwnershipFilter); setPropertiesPage(1); }}>
+                      <select style={listToolbarControl} value={listOwnershipFilter} onChange={e => { setListOwnershipFilter(e.target.value as ListOwnershipFilter); setPropertiesPage(1); }} aria-label="Ownership">
                         <option value="all">All ownership</option>
                         <option value="multi-property">Multi-property</option>
                         <option value="single-property">Single-property</option>
@@ -4145,19 +4134,8 @@ export default function VaPage() {
                     </div>
                   </div>
                 )}
-                <div style={{ display: "grid", gridTemplateColumns: "minmax(220px, 1.4fr) minmax(160px, 0.45fr)", gap: 8, marginBottom: 12 }} className="two-col">
-                  <div>
-                    <label style={{ color: "var(--muted)", display: "block", fontSize: 11, fontWeight: 600, marginBottom: 4 }}>Search</label>
-                    <input value={leadSearch} onChange={e => { setLeadSearch(e.target.value); setPropertiesPage(1); }} placeholder="Search APN, address, owner, phone..." />
-                  </div>
-                  <div>
-                    <label style={{ color: "var(--muted)", display: "block", fontSize: 11, fontWeight: 600, marginBottom: 4 }}>Sort</label>
-                    <select value={listRecordSort} onChange={e => { setListRecordSort(e.target.value as ListRecordSort); setPropertiesPage(1); }}>
-                      {LIST_RECORD_SORTS.map(sort => <option key={sort.value} value={sort.value}>{sort.label}</option>)}
-                    </select>
-                  </div>
                 </div>
-                <div style={{ overflow: "auto", border: "1px solid var(--fog)", borderRadius: 8, background: "var(--surface)", maxHeight: 548 }}>
+                <div style={{ background: "var(--surface)", maxHeight: "min(58vh, 560px)", overflow: "auto" }}>
                   <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, minWidth: 900 }}>
                     <thead>
                       <tr style={{ borderBottom: "1px solid var(--fog)", color: "var(--muted)", textAlign: "left" }}>
@@ -4216,7 +4194,7 @@ export default function VaPage() {
                   </table>
                   {propertiesPageRows.length === 0 && <p style={{ color: "var(--muted)", fontSize: 13, padding: 12 }}>No imported records match this search.</p>}
                 </div>
-                <div style={{ alignItems: "center", display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 12, marginTop: 12 }}>
+                <div style={{ alignItems: "center", borderTop: "1px solid var(--fog)", display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 12, padding: "10px 14px" }}>
                   <span style={{ color: "var(--muted)", fontSize: 12 }}>
                     Showing {propertiesTotal === 0 ? 0 : propertiesPageStart + 1}–{Math.min(propertiesPageStart + propertiesPerPage, propertiesTotal)} of {propertiesTotal.toLocaleString()}
                   </span>
@@ -4233,14 +4211,16 @@ export default function VaPage() {
                     </select>
                   </div>
                 </div>
-                <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 10 }}>
-                  <button onClick={() => setMessage("CSV export is next for this inventory table.")} style={{ ...compactButton, background: "rgba(176,137,84,0.12)", borderColor: "rgba(176,137,84,0.45)", color: "var(--obsidian)" }}>Export CSV</button>
-                </div>
               </section>
 
-              <aside style={{ ...subPanel, alignSelf: "start", maxHeight: "calc(100vh - 120px)", overflowY: "auto", position: "sticky", top: 16 }}>
+              <aside style={{ alignSelf: "stretch", background: "rgba(255,252,245,0.66)", borderLeft: "1px solid var(--fog)", maxHeight: "calc(100vh - 210px)", minWidth: 0, overflowY: "auto", position: "sticky", top: 16 }}>
                 {!listPreviewLead ? (
-                  <p style={{ fontSize: 13, color: "var(--muted)", lineHeight: 1.5 }}>No record is available for this filtered list yet.</p>
+                  <div>
+                    <div style={{ padding: "14px 16px 16px" }}>
+                      <h3 style={{ color: "var(--obsidian)", fontFamily: DISPLAY_FONT, fontSize: 16, fontWeight: 500 }}>Record Preview</h3>
+                    </div>
+                    <p style={{ ...listDrawerSection, color: "var(--muted)", fontSize: 13, lineHeight: 1.5 }}>No record is available for this filtered list yet.</p>
+                  </div>
                 ) : (() => {
                   const lead = listPreviewLead;
                   const sms = checkLeadSmsCompliance(lead);
@@ -4262,7 +4242,7 @@ export default function VaPage() {
                     lead.mail_zip,
                   ].filter(Boolean).join(" ") || "Mailing address missing";
                   const linkedPacketLabel = lead.deal_id ? `Deal-${(lead.deal_id || "").slice(-6).toUpperCase()}` : "Unlinked";
-                  const fieldRow: React.CSSProperties = { display: "grid", gap: 6, gridTemplateColumns: "repeat(3, 1fr)" };
+                  const fieldRow: React.CSSProperties = { ...listDrawerSection, gridTemplateColumns: "repeat(3, 1fr)" };
                   const fieldCell = (label: string, value: React.ReactNode, valueStyle?: React.CSSProperties) => (
                     <div>
                       <p style={{ ...miniLabel, color: "var(--muted)" }}>{label}</p>
@@ -4276,20 +4256,22 @@ export default function VaPage() {
                     </div>
                   );
                   return (
-                    <div style={{ display: "grid", gap: 12 }}>
-                      <div style={{ alignItems: "center", display: "flex", justifyContent: "space-between", gap: 8 }}>
-                        <h3 style={{ color: "var(--obsidian)", fontFamily: DISPLAY_FONT, fontSize: 16, fontWeight: 500 }}>Record Preview</h3>
-                        <button onClick={() => setMessage("Property quick-actions menu is coming next.")} style={{ background: "transparent", border: "none", color: "var(--muted)", cursor: "pointer", fontSize: 16, lineHeight: 1, padding: 4 }} aria-label="More actions">⋯</button>
+                    <div style={{ display: "block" }}>
+                      <div style={{ padding: "14px 16px 16px" }}>
+                        <div style={{ alignItems: "center", display: "flex", justifyContent: "space-between", gap: 8, marginBottom: 12 }}>
+                          <h3 style={{ color: "var(--obsidian)", fontFamily: DISPLAY_FONT, fontSize: 16, fontWeight: 500 }}>Record Preview</h3>
+                          <button onClick={() => setMessage("Property quick-actions menu is coming next.")} style={{ background: "transparent", border: "none", color: "var(--muted)", cursor: "pointer", fontSize: 16, lineHeight: 1, padding: 4 }} aria-label="More actions">⋯</button>
+                        </div>
+                        <div style={{ alignItems: "center", display: "flex", gap: 8, justifyContent: "space-between" }}>
+                          <strong style={{ color: "var(--obsidian)", fontFamily: DISPLAY_FONT, fontSize: 22, fontWeight: 500 }}>{lead.parcel_id || "No APN"}</strong>
+                          <span style={lead.deal_id ? goodPill : mutedPill}>{linkedPacketLabel}</span>
+                        </div>
+                        <p style={{ color: "var(--ink)", fontSize: 13, lineHeight: 1.45, marginTop: 8 }}>
+                          {lead.property_address || "No address"}<br />
+                          {[lead.city, lead.state].filter(Boolean).join(", ")}{lead.zip ? ` ${lead.zip}` : ""}
+                        </p>
                       </div>
-                      <div style={{ alignItems: "center", display: "flex", gap: 8, justifyContent: "space-between" }}>
-                        <strong style={{ color: "var(--obsidian)", fontFamily: DISPLAY_FONT, fontSize: 22, fontWeight: 500 }}>{lead.parcel_id || "No APN"}</strong>
-                        <span style={lead.deal_id ? goodPill : mutedPill}>{linkedPacketLabel}</span>
-                      </div>
-                      <p style={{ color: "var(--ink)", fontSize: 13, lineHeight: 1.4, marginTop: -6 }}>
-                        {lead.property_address || "No address"}<br />
-                        {[lead.city, lead.state].filter(Boolean).join(", ")}{lead.zip ? ` ${lead.zip}` : ""}
-                      </p>
-                      <div style={{ border: "1px solid var(--fog)", borderRadius: 8, display: "grid", gap: 6, padding: 12 }}>
+                      <div style={listDrawerSection}>
                         {detailRow("Source List", sourceName)}
                         {detailRow("Source System", lead.source_system || "Imported")}
                         {detailRow("Added", sourceDate)}
@@ -4309,8 +4291,8 @@ export default function VaPage() {
                         {fieldCell("Owner Location", ownerLocation)}
                         {fieldCell("Last Sale", lastSale)}
                       </div>
-                      <div style={{ border: "1px solid var(--fog)", borderRadius: 8, padding: 12 }}>
-                        <p style={{ ...miniLabel, color: "var(--muted)", marginBottom: 6 }}>Primary Owner / Contact</p>
+                      <div style={listDrawerSection}>
+                        <p style={listDrawerLabel}>Primary Owner / Contact</p>
                         <div style={{ alignItems: "center", display: "flex", gap: 8, justifyContent: "space-between" }}>
                           <strong style={{ color: "var(--obsidian)", fontSize: 14 }}>{lead.owner_name || "Owner unknown"}</strong>
                           <span style={sms.allowed ? goodPill : mutedPill}>{sms.allowed ? "Textable" : "Review"}</span>
@@ -4326,13 +4308,13 @@ export default function VaPage() {
                           <button onClick={() => setListsView("contacts")} style={{ ...compactButton, minHeight: 28, padding: "5px 10px" }}>View Contact</button>
                         </div>
                       </div>
-                      <div style={{ border: "1px solid var(--fog)", borderRadius: 8, display: "grid", gap: 6, padding: 12 }}>
+                      <div style={listDrawerSection}>
                         {detailRow("Phone", phoneLine, Boolean(lead.phone || lead.phone_2))}
                         {detailRow("Email", lead.email || "Missing", Boolean(lead.email))}
                         {detailRow("HOA", hoaLabel)}
                       </div>
-                      <div style={{ border: "1px solid var(--fog)", borderRadius: 8, padding: 12 }}>
-                        <p style={{ ...miniLabel, color: "var(--brass)", marginBottom: 6 }}>Linked Packet</p>
+                      <div style={listDrawerSection}>
+                        <p style={{ ...listDrawerLabel, color: "var(--brass)" }}>Linked Packet</p>
                         {lead.deal_id ? (
                           <div style={{ alignItems: "center", display: "flex", gap: 8, justifyContent: "space-between" }}>
                             <div>
@@ -4345,8 +4327,8 @@ export default function VaPage() {
                           <p style={{ color: "var(--muted)", fontSize: 12 }}>No linked packet yet.</p>
                         )}
                       </div>
-                      <div>
-                        <p style={{ ...miniLabel, color: "var(--muted)", marginBottom: 6 }}>Quick Actions</p>
+                      <div style={listDrawerSection}>
+                        <p style={listDrawerLabel}>Quick Actions</p>
                         <div style={{ display: "grid", gap: 8, gridTemplateColumns: "1fr 1fr" }}>
                           <button onClick={() => router.push(`/lead/${lead.id}?tab=research`)} style={{ ...compactButton, alignItems: "center", display: "inline-flex", gap: 7, justifyContent: "center" }}>
                             <Icon name="document" size={13} /> Open Property Record
@@ -6493,6 +6475,28 @@ const compactButton: React.CSSProperties = {
   background: "transparent",
   color: "var(--obsidian)",
   border: "1px solid var(--fog)",
+};
+
+const listToolbarControl: React.CSSProperties = {
+  minHeight: 36,
+  borderRadius: 6,
+  fontSize: 12,
+  padding: "7px 10px",
+};
+
+const listDrawerSection: React.CSSProperties = {
+  borderTop: "1px solid var(--fog)",
+  display: "grid",
+  gap: 8,
+  padding: "14px 16px",
+};
+
+const listDrawerLabel: React.CSSProperties = {
+  color: "var(--muted)",
+  fontSize: 10,
+  fontWeight: 800,
+  letterSpacing: "0.12em",
+  textTransform: "uppercase",
 };
 
 const actionIconButton: React.CSSProperties = {
