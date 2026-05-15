@@ -616,13 +616,76 @@ function parcelConfigFor(county: string | null, state: string | null): CountyPar
 }
 
 async function queryParcelLayer(config: CountyParcelConfig, params: URLSearchParams): Promise<Record<string, unknown> | null> {
+  const rows = await queryParcelLayerRows(config, params);
+  return rows[0] ?? null;
+}
+
+async function queryParcelLayerRows(config: CountyParcelConfig, params: URLSearchParams): Promise<Array<Record<string, unknown>>> {
   params.set("f", "json");
   params.set("outFields", "*");
   params.set("returnGeometry", "false");
+  params.set("resultRecordCount", params.get("resultRecordCount") || "12");
   const json = await fetchJson(`${config.layerUrl}/query?${params}`) as {
     features?: Array<{ attributes?: Record<string, unknown> }>;
   };
-  return json.features?.[0]?.attributes ?? null;
+  return json.features?.map(feature => feature.attributes).filter((attrs): attrs is Record<string, unknown> => !!attrs) ?? [];
+}
+
+function addressMatchStatus(subjectAddress: string | null | undefined, matchedAddress: string | null): boolean | null {
+  const subject = normalizeKey(subjectAddress);
+  const matched = normalizeKey(matchedAddress);
+  if (!subject || !matched) return null;
+  const subjectPrefix = subject.slice(0, Math.min(12, subject.length));
+  const matchedPrefix = matched.slice(0, Math.min(12, matched.length));
+  return matched.includes(subjectPrefix) || subject.includes(matchedPrefix);
+}
+
+function addressMatchScore(subjectAddress: string, matchedAddress: string | null): number {
+  const subject = normalizeKey(subjectAddress);
+  const matched = normalizeKey(matchedAddress);
+  if (!subject || !matched) return 0;
+  const subjectHouse = subjectAddress.match(/^\s*(\d+)/)?.[1] ?? "";
+  const matchedHouse = matchedAddress?.match(/^\s*(\d+)/)?.[1] ?? "";
+  let score = 0;
+  if (matched === subject) score += 100;
+  if (subjectHouse && matchedHouse && subjectHouse === matchedHouse) score += 45;
+  if (matched.includes(subject.slice(0, Math.min(18, subject.length)))) score += 35;
+  if (matched.includes(subject.replace(/(road|rd|drive|dr|circle|cir|street|st|avenue|ave)/g, ""))) score += 15;
+  return score;
+}
+
+function addressWhereClauses(config: CountyParcelConfig, address: string, broad = false): string[] {
+  const firstLine = address.split(",")[0]?.trim() || address;
+  const firstToken = firstLine.split(/\s+/)[0];
+  const streetHint = firstLine.replace(/^\s*\d+\s+/, "").trim();
+  const clauses = config.addressFields.flatMap(field => [
+    `${field} LIKE '%${sqlText(firstLine)}%'`,
+    firstToken && streetHint ? `(${field} LIKE '%${sqlText(firstToken)}%' AND ${field} LIKE '%${sqlText(streetHint)}%')` : "",
+    broad && streetHint ? `${field} LIKE '%${sqlText(streetHint)}%'` : "",
+    broad && firstToken && /^\d+$/.test(firstToken) ? `${field} LIKE '${sqlText(firstToken)} %'` : "",
+  ]);
+  return clauses.filter(Boolean);
+}
+
+async function queryParcelLayerByAddress(config: CountyParcelConfig, address: string): Promise<Record<string, unknown> | null> {
+  const exactClauses = addressWhereClauses(config, address, false);
+  const subject = normalizeKey(address);
+  if (exactClauses.length) {
+    const rows = await queryParcelLayerRows(config, new URLSearchParams({ where: exactClauses.join(" OR ") }));
+    const best = rows
+      .map(attrs => ({ attrs, score: addressMatchScore(address, pickAttr(attrs, config.addressFields) || joinAttrs(attrs, config.addressFields)) }))
+      .sort((a, b) => b.score - a.score)[0];
+    if (best && best.score > 0) return best.attrs;
+    if (rows.length === 1) return rows[0];
+  }
+
+  const broadClauses = addressWhereClauses(config, address, true);
+  if (!broadClauses.length) return null;
+  const rows = await queryParcelLayerRows(config, new URLSearchParams({ where: broadClauses.join(" OR ") }));
+  return rows.find(attrs => {
+    const matchedAddress = pickAttr(attrs, config.addressFields) || joinAttrs(attrs, config.addressFields);
+    return addressMatchStatus(subject, matchedAddress) === true;
+  }) ?? null;
 }
 
 async function countyParcelMatch(
@@ -648,6 +711,9 @@ async function countyParcelMatch(
         .join(" OR ");
       attrs = await queryParcelLayer(config, new URLSearchParams({ where }));
     }
+    if (!attrs && address) {
+      attrs = await queryParcelLayerByAddress(config, address);
+    }
     if (!attrs && typeof lat === "number" && typeof lon === "number") {
       attrs = await queryParcelLayer(config, new URLSearchParams({
         geometry: `${lon},${lat}`,
@@ -655,16 +721,10 @@ async function countyParcelMatch(
         inSR: "4326",
         spatialRel: "esriSpatialRelIntersects",
       }));
-    }
-    if (!attrs && address) {
-      const firstToken = address.split(/\s+/)[0];
-      const streetHint = address.replace(/^\s*\d+\s+/, "").split(",")[0]?.trim();
-      const clauses = config.addressFields.flatMap(field => [
-        `${field} LIKE '%${sqlText(address.split(",")[0] || address)}%'`,
-        streetHint ? `${field} LIKE '%${sqlText(streetHint)}%'` : "",
-        firstToken && /^\d+$/.test(firstToken) ? `${field} LIKE '${sqlText(firstToken)} %'` : "",
-      ]).filter(Boolean);
-      if (clauses.length) attrs = await queryParcelLayer(config, new URLSearchParams({ where: clauses.join(" OR ") }));
+      const matchedAddress = attrs ? pickAttr(attrs, config.addressFields) || joinAttrs(attrs, config.addressFields) : null;
+      if (attrs && address && addressMatchStatus(address, matchedAddress) === false) {
+        attrs = await queryParcelLayerByAddress(config, address) ?? attrs;
+      }
     }
   } catch (error) {
     warnings.push(`${config.sourceName} parcel lookup failed: ${error instanceof Error ? error.message : "unknown error"}.`);
@@ -674,10 +734,7 @@ async function countyParcelMatch(
   if (!attrs) return null;
   const matchedAddress = pickAttr(attrs, config.addressFields) || joinAttrs(attrs, config.addressFields);
   const subjectAddress = clean(lead.property_address);
-  const addressMatchesSubject = subjectAddress && matchedAddress
-    ? normalizeKey(matchedAddress).includes(normalizeKey(subjectAddress).slice(0, 12))
-      || normalizeKey(subjectAddress).includes(normalizeKey(matchedAddress).slice(0, 12))
-    : null;
+  const addressMatchesSubject = addressMatchStatus(subjectAddress, matchedAddress);
   return {
     sourceName: config.sourceName,
     sourceUrl: config.layerUrl,
