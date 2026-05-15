@@ -241,6 +241,7 @@ export type ManualResearchLeadPatch = Partial<Pick<ImportedLandLead,
   | "land_use"
   | "subdivision"
   | "hoa_status"
+  | "asking_price"
   | "assessed_value"
   | "market_value"
   | "property_tax"
@@ -2296,6 +2297,7 @@ const MANUAL_RESEARCH_FIELD_LABELS: Partial<Record<keyof ManualResearchLeadPatch
   land_use: "Land use",
   subdivision: "Subdivision",
   hoa_status: "HOA",
+  asking_price: "Asking price",
   assessed_value: "Assessed value",
   market_value: "Market value",
   property_tax: "Property tax",
@@ -2336,6 +2338,7 @@ const MANUAL_RESEARCH_NUMBER_FIELDS: Array<keyof ManualResearchLeadPatch> = [
   "longitude",
   "acreage",
   "calculated_acreage",
+  "asking_price",
   "assessed_value",
   "market_value",
   "property_tax",

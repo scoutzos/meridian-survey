@@ -67,52 +67,38 @@ const EMPTY_COMP_DRAFT = {
   confidence: "needs-review" as LandCompConfidence,
 };
 
-const EMPTY_RESEARCH_UPDATE_DRAFT = {
+const EMPTY_FACT_DRAFT = {
+  values: {} as Record<string, string>,
   sourceName: "",
   sourceUrl: "",
-  evidenceNotes: "",
-  parcelId: "",
-  propertyAddress: "",
-  county: "",
-  city: "",
-  state: "",
-  zip: "",
-  latitude: "",
-  longitude: "",
-  acreage: "",
-  calculatedAcreage: "",
-  ownerName: "",
-  mailingAddress: "",
-  zoning: "",
-  landUse: "",
-  subdivision: "",
-  hoaStatus: "",
-  assessedValue: "",
-  marketValue: "",
-  propertyTax: "",
-  taxDelinquent: "",
-  taxDelinquentYears: "",
-  roadFrontageFt: "",
-  isLandLocked: "",
-  floodZonePercent: "",
-  floodZoneType: "",
-  wetlandsPercent: "",
-  minLotSizeAcres: "",
-  parcelLink: "",
-  compingLink: "",
   notes: "",
+  verifyChecklist: true,
+};
+
+type VerifiedFactInputKind = "text" | "number" | "money" | "boolean" | "percent" | "url";
+
+type VerifiedFactField = {
+  key: keyof ManualResearchLeadPatch;
+  label: string;
+  value: string;
+  kind?: VerifiedFactInputKind;
+  placeholder?: string;
 };
 
 type VerifiedFactItem = {
+  id: string;
   label: string;
   value: React.ReactNode;
   category?: LandDueDiligenceCategory;
+  fields: VerifiedFactField[];
 };
 
 type VerifiedFactGroup = {
   title: string;
   items: VerifiedFactItem[];
 };
+
+type FactDraft = typeof EMPTY_FACT_DRAFT;
 
 function parseMoneyValue(value: string): number | null {
   const cleaned = value.replace(/[$,\s]/g, "");
@@ -121,16 +107,26 @@ function parseMoneyValue(value: string): number | null {
   return Number.isFinite(numeric) ? Math.round(numeric * multiplier) : null;
 }
 
-function parseOptionalNumberInput(value: string): number | null {
-  const text = value.trim();
-  if (!text) return null;
-  const numeric = Number(text.replace(/[$,%\s,]/g, ""));
-  return Number.isFinite(numeric) ? numeric : null;
-}
-
 function optionalTextInput(value: string): string | null {
   const text = value.trim();
   return text || null;
+}
+
+function factDraftValue(value: string | number | boolean | null | undefined): string {
+  if (typeof value === "boolean") return value ? "true" : "false";
+  if (typeof value === "number" && Number.isFinite(value)) return String(value);
+  if (typeof value === "string") return value;
+  return "";
+}
+
+function factField(
+  key: keyof ManualResearchLeadPatch,
+  label: string,
+  value: string | number | boolean | null | undefined,
+  kind: VerifiedFactInputKind = "text",
+  placeholder?: string,
+): VerifiedFactField {
+  return { key, label, value: factDraftValue(value), kind, placeholder };
 }
 
 function parseCompListingText(text: string, sourceUrl: string) {
@@ -246,8 +242,8 @@ export default function LeadPage() {
   const [potentialCompRecords, setPotentialCompRecords] = useState<LandCompRecord[]>([]);
   const [compDraft, setCompDraft] = useState(EMPTY_COMP_DRAFT);
   const [expandedCompId, setExpandedCompId] = useState<string | null>(null);
-  const [researchUpdateDraft, setResearchUpdateDraft] = useState(EMPTY_RESEARCH_UPDATE_DRAFT);
-  const [researchUpdateOpen, setResearchUpdateOpen] = useState(false);
+  const [editingFactId, setEditingFactId] = useState<string | null>(null);
+  const [factDraft, setFactDraft] = useState<FactDraft>(EMPTY_FACT_DRAFT);
   const [savingResearch, setSavingResearch] = useState(false);
   const [autoResearchRunning, setAutoResearchRunning] = useState(false);
   const [autoResearchResult, setAutoResearchResult] = useState<AutomatedLandResearchResult | null>(null);
@@ -359,87 +355,64 @@ export default function LeadPage() {
       {
         title: "Parcel Identity",
         items: [
-          { label: "Situs address", value: lead.property_address || "—", category: "gis" },
-          { label: "Parcel ID", value: lead.parcel_id || "—", category: "gis" },
-          { label: "County", value: lead.county || "—", category: "gis" },
-          { label: "City / State / ZIP", value: joinValues([lead.city, lead.state, lead.zip], ", "), category: "gis" },
-          { label: "Coordinates", value: lead.latitude && lead.longitude ? `${lead.latitude.toFixed(5)}, ${lead.longitude.toFixed(5)}` : "—", category: "gis" },
-          { label: "Owner", value: lead.owner_name || "—", category: "ownership" },
-          { label: "Mailing", value: lead.mailing_address || "—", category: "ownership" },
+          { id: "situs-address", label: "Situs address", value: lead.property_address || "—", category: "gis", fields: [factField("property_address", "Situs address", lead.property_address, "text", "Property street address")] },
+          { id: "parcel-id", label: "Parcel ID", value: lead.parcel_id || "—", category: "gis", fields: [factField("parcel_id", "Parcel ID", lead.parcel_id, "text", "Parcel/APN")] },
+          { id: "county", label: "County", value: lead.county || "—", category: "gis", fields: [factField("county", "County", lead.county, "text", "County")] },
+          { id: "city-state-zip", label: "City / State / ZIP", value: joinValues([lead.city, lead.state, lead.zip], ", "), category: "gis", fields: [
+            factField("city", "City", lead.city, "text", "City"),
+            factField("state", "State", lead.state, "text", "GA"),
+            factField("zip", "ZIP", lead.zip, "text", "ZIP"),
+          ] },
+          { id: "coordinates", label: "Coordinates", value: lead.latitude && lead.longitude ? `${lead.latitude.toFixed(5)}, ${lead.longitude.toFixed(5)}` : "—", category: "gis", fields: [
+            factField("latitude", "Latitude", lead.latitude, "number", "Latitude"),
+            factField("longitude", "Longitude", lead.longitude, "number", "Longitude"),
+          ] },
+          { id: "owner", label: "Owner", value: lead.owner_name || "—", category: "ownership", fields: [factField("owner_name", "Owner", lead.owner_name, "text", "Owner name")] },
+          { id: "mailing", label: "Mailing", value: lead.mailing_address || "—", category: "ownership", fields: [factField("mailing_address", "Mailing address", lead.mailing_address, "text", "Mailing address")] },
         ],
       },
       {
         title: "Land And Use",
         items: [
-          { label: "Acreage", value: lead.acreage ? `${numberValue(lead.acreage)} ac` : "—", category: "gis" },
-          { label: "Calculated acreage", value: lead.calculated_acreage ? `${numberValue(lead.calculated_acreage)} ac` : "—", category: "gis" },
-          { label: "Zoning", value: lead.zoning || "—", category: "zoning" },
-          { label: "Land use", value: lead.land_use || "—", category: "zoning" },
-          { label: "Subdivision", value: lead.subdivision || "—", category: "zoning" },
-          { label: "HOA", value: lead.hoa_status || yesNo(lead.in_hoa), category: "zoning" },
-          { label: "Minimum lot size", value: lead.min_lot_size_acres ? `${numberValue(lead.min_lot_size_acres)} ac` : "—", category: "zoning" },
+          { id: "acreage", label: "Acreage", value: lead.acreage ? `${numberValue(lead.acreage)} ac` : "—", category: "gis", fields: [factField("acreage", "Acreage", lead.acreage, "number", "Acres")] },
+          { id: "calculated-acreage", label: "Calculated acreage", value: lead.calculated_acreage ? `${numberValue(lead.calculated_acreage)} ac` : "—", category: "gis", fields: [factField("calculated_acreage", "Calculated acreage", lead.calculated_acreage, "number", "Calculated acres")] },
+          { id: "zoning", label: "Zoning", value: lead.zoning || "—", category: "zoning", fields: [factField("zoning", "Zoning", lead.zoning, "text", "Zoning code")] },
+          { id: "land-use", label: "Land use", value: lead.land_use || "—", category: "zoning", fields: [factField("land_use", "Land use", lead.land_use, "text", "Land use")] },
+          { id: "subdivision", label: "Subdivision", value: lead.subdivision || "—", category: "zoning", fields: [factField("subdivision", "Subdivision", lead.subdivision, "text", "Subdivision")] },
+          { id: "hoa", label: "HOA", value: lead.hoa_status !== null && lead.hoa_status !== undefined && String(lead.hoa_status).trim() ? textValue(lead.hoa_status) : yesNo(lead.in_hoa), category: "zoning", fields: [factField("hoa_status", "HOA", typeof lead.hoa_status === "boolean" ? yesNo(lead.hoa_status) : lead.hoa_status, "text", "HOA status or fee")] },
+          { id: "minimum-lot-size", label: "Minimum lot size", value: lead.min_lot_size_acres ? `${numberValue(lead.min_lot_size_acres)} ac` : "—", category: "zoning", fields: [factField("min_lot_size_acres", "Minimum lot size", lead.min_lot_size_acres, "number", "Minimum acres")] },
         ],
       },
       {
         title: "Value And Tax",
         items: [
-          { label: "Asking price", value: money(lead.asking_price), category: "comps" },
-          { label: "Market value", value: money(lead.market_value), category: "comps" },
-          { label: "Assessed value", value: money(lead.assessed_value), category: "tax" },
-          { label: "Property tax", value: money(lead.property_tax), category: "tax" },
-          { label: "Tax delinquent", value: lead.tax_delinquent ? `Yes${lead.tax_delinquent_years ? ` · ${lead.tax_delinquent_years}y` : ""}` : yesNo(lead.tax_delinquent), category: "tax" },
-          { label: "Median comp PPA", value: compSummary.medianPpa ? `${money(compSummary.medianPpa)}/ac` : "—", category: "comps" },
+          { id: "asking-price", label: "Asking price", value: money(lead.asking_price), category: "comps", fields: [factField("asking_price", "Asking price", lead.asking_price, "money", "Asking price")] },
+          { id: "market-value", label: "Market value", value: money(lead.market_value), category: "comps", fields: [factField("market_value", "Market value", lead.market_value, "money", "Market value")] },
+          { id: "assessed-value", label: "Assessed value", value: money(lead.assessed_value), category: "tax", fields: [factField("assessed_value", "Assessed value", lead.assessed_value, "money", "Assessed value")] },
+          { id: "property-tax", label: "Property tax", value: money(lead.property_tax), category: "tax", fields: [factField("property_tax", "Property tax", lead.property_tax, "money", "Annual tax amount")] },
+          { id: "tax-delinquent", label: "Tax delinquent", value: lead.tax_delinquent ? `Yes${lead.tax_delinquent_years ? ` · ${lead.tax_delinquent_years}y` : ""}` : yesNo(lead.tax_delinquent), category: "tax", fields: [
+            factField("tax_delinquent", "Tax delinquent", lead.tax_delinquent, "boolean"),
+            factField("tax_delinquent_years", "Tax years", lead.tax_delinquent_years, "number", "Years delinquent"),
+          ] },
+          { id: "median-comp-ppa", label: "Median comp PPA", value: compSummary.medianPpa ? `${money(compSummary.medianPpa)}/ac` : "—", category: "comps", fields: [] },
         ],
       },
       {
         title: "Risks And Access",
         items: [
-          { label: "Road frontage", value: lead.road_frontage_ft ? `${numberValue(lead.road_frontage_ft)} ft` : "—", category: "access" },
-          { label: "Landlocked", value: yesNo(lead.is_land_locked), category: "access" },
-          { label: "Flood", value: joinValues([percentValue(lead.flood_zone_percent), lead.flood_zone_type]), category: "flood" },
-          { label: "Wetlands", value: percentValue(lead.wetlands_percent), category: "wetlands" },
-          { label: "Parcel/GIS link", value: lead.parcel_link ? <a href={lead.parcel_link} target="_blank" rel="noreferrer" style={inlineLinkButton}>Open source</a> : "—", category: "gis" },
-          { label: "Comping link", value: lead.comping_link ? <a href={lead.comping_link} target="_blank" rel="noreferrer" style={inlineLinkButton}>Open comps</a> : "—", category: "comps" },
+          { id: "road-frontage", label: "Road frontage", value: lead.road_frontage_ft ? `${numberValue(lead.road_frontage_ft)} ft` : "—", category: "access", fields: [factField("road_frontage_ft", "Road frontage", lead.road_frontage_ft, "number", "Feet")] },
+          { id: "landlocked", label: "Landlocked", value: yesNo(lead.is_land_locked), category: "access", fields: [factField("is_land_locked", "Landlocked", lead.is_land_locked, "boolean")] },
+          { id: "flood", label: "Flood", value: joinValues([percentValue(lead.flood_zone_percent), lead.flood_zone_type]), category: "flood", fields: [
+            factField("flood_zone_percent", "Flood %", lead.flood_zone_percent, "percent", "Flood percent"),
+            factField("flood_zone_type", "Flood type", lead.flood_zone_type, "text", "Zone type"),
+          ] },
+          { id: "wetlands", label: "Wetlands", value: percentValue(lead.wetlands_percent), category: "wetlands", fields: [factField("wetlands_percent", "Wetlands %", lead.wetlands_percent, "percent", "Wetlands percent")] },
+          { id: "parcel-link", label: "Parcel/GIS link", value: lead.parcel_link ? <a href={lead.parcel_link} target="_blank" rel="noreferrer" style={inlineLinkButton}>Open source</a> : "—", category: "gis", fields: [factField("parcel_link", "Parcel/GIS link", lead.parcel_link, "url", "County GIS URL")] },
+          { id: "comping-link", label: "Comping link", value: lead.comping_link ? <a href={lead.comping_link} target="_blank" rel="noreferrer" style={inlineLinkButton}>Open comps</a> : "—", category: "comps", fields: [factField("comping_link", "Comping link", lead.comping_link, "url", "Comp source URL")] },
         ],
       },
     ];
   }, [lead, compSummary.medianPpa]);
-  const researchUpdatePreview = useMemo(() => {
-    if (!lead) return [] as Array<{ label: string; current: string; next: string }>;
-    return [
-      { label: "Parcel ID", current: lead.parcel_id || "—", next: researchUpdateDraft.parcelId },
-      { label: "Address", current: lead.property_address || "—", next: researchUpdateDraft.propertyAddress },
-      { label: "County", current: lead.county || "—", next: researchUpdateDraft.county },
-      { label: "City", current: lead.city || "—", next: researchUpdateDraft.city },
-      { label: "State", current: lead.state || "—", next: researchUpdateDraft.state },
-      { label: "ZIP", current: lead.zip || "—", next: researchUpdateDraft.zip },
-      { label: "Latitude", current: lead.latitude != null ? `${lead.latitude}` : "—", next: researchUpdateDraft.latitude },
-      { label: "Longitude", current: lead.longitude != null ? `${lead.longitude}` : "—", next: researchUpdateDraft.longitude },
-      { label: "Acreage", current: lead.acreage ? `${lead.acreage}` : "—", next: researchUpdateDraft.acreage },
-      { label: "Calculated acreage", current: lead.calculated_acreage ? `${lead.calculated_acreage}` : "—", next: researchUpdateDraft.calculatedAcreage },
-      { label: "Owner", current: lead.owner_name || "—", next: researchUpdateDraft.ownerName },
-      { label: "Mailing", current: lead.mailing_address || "—", next: researchUpdateDraft.mailingAddress },
-      { label: "Zoning", current: lead.zoning || "—", next: researchUpdateDraft.zoning },
-      { label: "Land use", current: lead.land_use || "—", next: researchUpdateDraft.landUse },
-      { label: "Subdivision", current: lead.subdivision || "—", next: researchUpdateDraft.subdivision },
-      { label: "HOA", current: lead.hoa_status || "—", next: researchUpdateDraft.hoaStatus },
-      { label: "Assessed value", current: money(lead.assessed_value), next: researchUpdateDraft.assessedValue },
-      { label: "Market value", current: money(lead.market_value), next: researchUpdateDraft.marketValue },
-      { label: "Property tax", current: money(lead.property_tax), next: researchUpdateDraft.propertyTax },
-      { label: "Tax delinquent", current: lead.tax_delinquent == null ? "—" : lead.tax_delinquent ? "Yes" : "No", next: researchUpdateDraft.taxDelinquent },
-      { label: "Tax years", current: lead.tax_delinquent_years ? `${lead.tax_delinquent_years}` : "—", next: researchUpdateDraft.taxDelinquentYears },
-      { label: "Road frontage", current: lead.road_frontage_ft ? `${lead.road_frontage_ft} ft` : "—", next: researchUpdateDraft.roadFrontageFt },
-      { label: "Landlocked", current: lead.is_land_locked == null ? "—" : lead.is_land_locked ? "Yes" : "No", next: researchUpdateDraft.isLandLocked },
-      { label: "Flood %", current: lead.flood_zone_percent != null ? `${lead.flood_zone_percent}%` : "—", next: researchUpdateDraft.floodZonePercent },
-      { label: "Flood type", current: lead.flood_zone_type || "—", next: researchUpdateDraft.floodZoneType },
-      { label: "Wetlands %", current: lead.wetlands_percent != null ? `${lead.wetlands_percent}%` : "—", next: researchUpdateDraft.wetlandsPercent },
-      { label: "Min lot size", current: lead.min_lot_size_acres ? `${lead.min_lot_size_acres} ac` : "—", next: researchUpdateDraft.minLotSizeAcres },
-      { label: "GIS link", current: lead.parcel_link || "—", next: researchUpdateDraft.parcelLink },
-      { label: "Comping link", current: lead.comping_link || "—", next: researchUpdateDraft.compingLink },
-      { label: "Notes", current: lead.notes || "—", next: researchUpdateDraft.notes },
-    ].filter(row => row.next.trim());
-  }, [lead, researchUpdateDraft]);
-
   const nextActionText = useMemo(() => {
     if (!lead) return "";
     if (compliance?.severity === "compliance") return `Do not contact — ${compliance.blockLabel}.`;
@@ -533,63 +506,69 @@ export default function LeadPage() {
     }
   };
 
-  const applyResearchUpdate = async () => {
-    if (!lead || !user) return;
-    if (researchUpdatePreview.length === 0) {
-      setMessage("Add at least one researched property value before applying an update.");
-      return;
-    }
+  const startFactEdit = (item: VerifiedFactItem) => {
+    if (!item.fields.length) return;
+    const defaultSource = item.category ? researchSources.find(source => source.category === item.category) : null;
+    const sourceUrlFromField = item.fields.find(field => field.kind === "url")?.value || "";
+    setEditingFactId(item.id);
+    setFactDraft({
+      values: Object.fromEntries(item.fields.map(field => [field.key, field.value])),
+      sourceName: defaultSource?.source_name || "",
+      sourceUrl: sourceUrlFromField || defaultSource?.source_url || "",
+      notes: "",
+      verifyChecklist: true,
+    });
+  };
+
+  const updateFactDraftValue = (key: keyof ManualResearchLeadPatch, value: string) => {
+    setFactDraft(prev => ({ ...prev, values: { ...prev.values, [key]: value } }));
+  };
+
+  const cancelFactEdit = () => {
+    setEditingFactId(null);
+    setFactDraft(EMPTY_FACT_DRAFT);
+  };
+
+  const saveFactUpdate = async (item: VerifiedFactItem) => {
+    if (!lead || !user || !item.fields.length) return;
+    const patch = Object.fromEntries(item.fields.map(field => [field.key, factDraft.values[field.key] ?? ""])) as ManualResearchLeadPatch;
+    const evidenceValue = item.fields
+      .map(field => `${field.label}: ${(factDraft.values[field.key] || "").trim() || "—"}`)
+      .join(" · ");
     setSavingResearch(true);
     setMessage("");
     try {
-      const patch = {
-        parcel_id: optionalTextInput(researchUpdateDraft.parcelId),
-        property_address: optionalTextInput(researchUpdateDraft.propertyAddress),
-        county: optionalTextInput(researchUpdateDraft.county),
-        city: optionalTextInput(researchUpdateDraft.city),
-        state: optionalTextInput(researchUpdateDraft.state),
-        zip: optionalTextInput(researchUpdateDraft.zip),
-        latitude: parseOptionalNumberInput(researchUpdateDraft.latitude),
-        longitude: parseOptionalNumberInput(researchUpdateDraft.longitude),
-        acreage: parseOptionalNumberInput(researchUpdateDraft.acreage),
-        calculated_acreage: parseOptionalNumberInput(researchUpdateDraft.calculatedAcreage),
-        owner_name: optionalTextInput(researchUpdateDraft.ownerName),
-        mailing_address: optionalTextInput(researchUpdateDraft.mailingAddress),
-        zoning: optionalTextInput(researchUpdateDraft.zoning),
-        land_use: optionalTextInput(researchUpdateDraft.landUse),
-        subdivision: optionalTextInput(researchUpdateDraft.subdivision),
-        hoa_status: optionalTextInput(researchUpdateDraft.hoaStatus),
-        assessed_value: parseOptionalNumberInput(researchUpdateDraft.assessedValue),
-        market_value: parseOptionalNumberInput(researchUpdateDraft.marketValue),
-        property_tax: parseOptionalNumberInput(researchUpdateDraft.propertyTax),
-        tax_delinquent: researchUpdateDraft.taxDelinquent === "" ? undefined : researchUpdateDraft.taxDelinquent === "true",
-        tax_delinquent_years: parseOptionalNumberInput(researchUpdateDraft.taxDelinquentYears),
-        road_frontage_ft: parseOptionalNumberInput(researchUpdateDraft.roadFrontageFt),
-        is_land_locked: researchUpdateDraft.isLandLocked === "" ? undefined : researchUpdateDraft.isLandLocked === "true",
-        flood_zone_percent: parseOptionalNumberInput(researchUpdateDraft.floodZonePercent),
-        flood_zone_type: optionalTextInput(researchUpdateDraft.floodZoneType),
-        wetlands_percent: parseOptionalNumberInput(researchUpdateDraft.wetlandsPercent),
-        min_lot_size_acres: parseOptionalNumberInput(researchUpdateDraft.minLotSizeAcres),
-        parcel_link: optionalTextInput(researchUpdateDraft.parcelLink),
-        comping_link: optionalTextInput(researchUpdateDraft.compingLink),
-        notes: optionalTextInput(researchUpdateDraft.notes),
-      };
-      const compactPatch = Object.fromEntries(Object.entries(patch).filter(([, value]) => value !== null && value !== undefined));
       const { lead: updatedLead, changedFields, error } = await updateImportedLandLeadFromManualResearch(lead, {
         actor: user,
-        sourceName: researchUpdateDraft.sourceName,
-        sourceUrl: researchUpdateDraft.sourceUrl,
-        notes: researchUpdateDraft.evidenceNotes,
-        patch: compactPatch as ManualResearchLeadPatch,
+        sourceName: factDraft.sourceName,
+        sourceUrl: factDraft.sourceUrl,
+        notes: factDraft.notes,
+        patch,
       });
       if (error) { setMessage(error); return; }
+
+      if (factDraft.verifyChecklist && item.category) {
+        const checklistItem = researchItems.find(row => row.category === item.category);
+        if (checklistItem) {
+          const { error: checklistError } = await saveLandDueDiligenceItem(lead, checklistItem, {
+            status: "verified",
+            result_summary: `${item.label} updated from verified source.`,
+            evidence_value: evidenceValue,
+            source_name: optionalTextInput(factDraft.sourceName),
+            source_url: optionalTextInput(factDraft.sourceUrl),
+            notes: optionalTextInput(factDraft.notes),
+          }, user);
+          if (checklistError) { setMessage(checklistError); return; }
+        }
+      }
+
       if (!changedFields.length) {
-        setMessage("No property values changed.");
-        return;
+        setMessage(factDraft.verifyChecklist ? `${item.label} marked verified.` : "No property values changed.");
+      } else {
+        setMessage(`Updated ${changedFields.join(", ")}.`);
       }
       if (updatedLead) setLead(updatedLead);
-      setResearchUpdateDraft(EMPTY_RESEARCH_UPDATE_DRAFT);
-      setMessage(`Property record updated: ${changedFields.join(", ")}.`);
+      cancelFactEdit();
       await loadAll();
     } finally {
       setSavingResearch(false);
@@ -1239,7 +1218,18 @@ export default function LeadPage() {
                   {researchCompleteCount} of {researchItems.length} checks resolved
                 </span>
               </header>
-              <VerifiedFactBoard groups={verifiedFactGroups} statusByCategory={researchStatusByCategory} />
+              <VerifiedFactBoard
+                groups={verifiedFactGroups}
+                statusByCategory={researchStatusByCategory}
+                editingFactId={editingFactId}
+                factDraft={factDraft}
+                saving={savingResearch}
+                onStartEdit={startFactEdit}
+                onCancelEdit={cancelFactEdit}
+                onDraftValueChange={updateFactDraftValue}
+                onDraftMetaChange={patch => setFactDraft(prev => ({ ...prev, ...patch }))}
+                onSave={saveFactUpdate}
+              />
             </section>
 
             <section style={panel}>
@@ -1317,101 +1307,6 @@ export default function LeadPage() {
                   </div>
                 ))}
               </div>
-            </section>
-
-            <section style={panel}>
-              <header style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "baseline", marginBottom: 12, flexWrap: "wrap" }}>
-                <div>
-                  <p style={eyebrowSmall}>Property correction</p>
-                  <h3 style={{ ...sectionTitle, fontSize: 20 }}>Update the record from a verified source</h3>
-                  <p style={{ color: "var(--muted)", fontSize: 12, lineHeight: 1.45, marginTop: 4 }}>
-                    Use this only when research proves the current property record is missing or wrong.
-                  </p>
-                </div>
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-                  <span style={researchUpdatePreview.length ? goodChip : mutedChip}>{researchUpdatePreview.length} change{researchUpdatePreview.length === 1 ? "" : "s"}</span>
-                  <button
-                    type="button"
-                    onClick={() => researchUpdatePreview.length > 0 ? setResearchUpdateOpen(true) : setResearchUpdateOpen(open => !open)}
-                    style={secondaryButton}
-                  >
-                    {researchUpdatePreview.length > 0 ? "Editing Facts" : researchUpdateOpen ? "Hide Form" : "Update Facts"}
-                  </button>
-                </div>
-              </header>
-              {researchUpdateOpen || researchUpdatePreview.length > 0 ? (
-                <div style={{ ...subPanel, display: "grid", gap: 10 }}>
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 8 }} className="lead-research-update-grid">
-                    <input value={researchUpdateDraft.sourceName} onChange={e => setResearchUpdateDraft({ ...researchUpdateDraft, sourceName: e.target.value })} placeholder="Source name" style={inputStyle} />
-                    <input value={researchUpdateDraft.sourceUrl} onChange={e => setResearchUpdateDraft({ ...researchUpdateDraft, sourceUrl: e.target.value })} placeholder="Source URL" style={inputStyle} />
-                    <input value={researchUpdateDraft.evidenceNotes} onChange={e => setResearchUpdateDraft({ ...researchUpdateDraft, evidenceNotes: e.target.value })} placeholder="Evidence notes" style={inputStyle} />
-                  </div>
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 8 }} className="lead-research-update-grid">
-                  <ResearchUpdateField label="Parcel ID" current={lead.parcel_id} value={researchUpdateDraft.parcelId} onChange={value => setResearchUpdateDraft({ ...researchUpdateDraft, parcelId: value })} />
-                  <ResearchUpdateField label="Address" current={lead.property_address} value={researchUpdateDraft.propertyAddress} onChange={value => setResearchUpdateDraft({ ...researchUpdateDraft, propertyAddress: value })} />
-                  <ResearchUpdateField label="County" current={lead.county} value={researchUpdateDraft.county} onChange={value => setResearchUpdateDraft({ ...researchUpdateDraft, county: value })} />
-                  <ResearchUpdateField label="City" current={lead.city} value={researchUpdateDraft.city} onChange={value => setResearchUpdateDraft({ ...researchUpdateDraft, city: value })} />
-                  <ResearchUpdateField label="State" current={lead.state} value={researchUpdateDraft.state} onChange={value => setResearchUpdateDraft({ ...researchUpdateDraft, state: value })} />
-                  <ResearchUpdateField label="ZIP" current={lead.zip} value={researchUpdateDraft.zip} onChange={value => setResearchUpdateDraft({ ...researchUpdateDraft, zip: value })} />
-                  <ResearchUpdateField label="Latitude" current={lead.latitude} value={researchUpdateDraft.latitude} onChange={value => setResearchUpdateDraft({ ...researchUpdateDraft, latitude: value })} />
-                  <ResearchUpdateField label="Longitude" current={lead.longitude} value={researchUpdateDraft.longitude} onChange={value => setResearchUpdateDraft({ ...researchUpdateDraft, longitude: value })} />
-                  <ResearchUpdateField label="Acreage" current={lead.acreage} value={researchUpdateDraft.acreage} onChange={value => setResearchUpdateDraft({ ...researchUpdateDraft, acreage: value })} />
-                  <ResearchUpdateField label="Calc acres" current={lead.calculated_acreage} value={researchUpdateDraft.calculatedAcreage} onChange={value => setResearchUpdateDraft({ ...researchUpdateDraft, calculatedAcreage: value })} />
-                  <ResearchUpdateField label="Owner" current={lead.owner_name} value={researchUpdateDraft.ownerName} onChange={value => setResearchUpdateDraft({ ...researchUpdateDraft, ownerName: value })} />
-                  <ResearchUpdateField label="Mailing" current={lead.mailing_address} value={researchUpdateDraft.mailingAddress} onChange={value => setResearchUpdateDraft({ ...researchUpdateDraft, mailingAddress: value })} />
-                  <ResearchUpdateField label="Zoning" current={lead.zoning} value={researchUpdateDraft.zoning} onChange={value => setResearchUpdateDraft({ ...researchUpdateDraft, zoning: value })} />
-                  <ResearchUpdateField label="Land use" current={lead.land_use} value={researchUpdateDraft.landUse} onChange={value => setResearchUpdateDraft({ ...researchUpdateDraft, landUse: value })} />
-                  <ResearchUpdateField label="Subdivision" current={lead.subdivision} value={researchUpdateDraft.subdivision} onChange={value => setResearchUpdateDraft({ ...researchUpdateDraft, subdivision: value })} />
-                  <ResearchUpdateField label="HOA" current={lead.hoa_status} value={researchUpdateDraft.hoaStatus} onChange={value => setResearchUpdateDraft({ ...researchUpdateDraft, hoaStatus: value })} />
-                  <ResearchUpdateField label="Assessed value" current={lead.assessed_value} value={researchUpdateDraft.assessedValue} onChange={value => setResearchUpdateDraft({ ...researchUpdateDraft, assessedValue: value })} />
-                  <ResearchUpdateField label="Market value" current={lead.market_value} value={researchUpdateDraft.marketValue} onChange={value => setResearchUpdateDraft({ ...researchUpdateDraft, marketValue: value })} />
-                  <ResearchUpdateField label="Property tax" current={lead.property_tax} value={researchUpdateDraft.propertyTax} onChange={value => setResearchUpdateDraft({ ...researchUpdateDraft, propertyTax: value })} />
-                  <ResearchSelectField label="Tax delinquent" current={lead.tax_delinquent == null ? null : lead.tax_delinquent ? "Yes" : "No"} value={researchUpdateDraft.taxDelinquent} onChange={value => setResearchUpdateDraft({ ...researchUpdateDraft, taxDelinquent: value })} />
-                  <ResearchUpdateField label="Tax years" current={lead.tax_delinquent_years} value={researchUpdateDraft.taxDelinquentYears} onChange={value => setResearchUpdateDraft({ ...researchUpdateDraft, taxDelinquentYears: value })} />
-                  <ResearchUpdateField label="Road frontage" current={lead.road_frontage_ft} value={researchUpdateDraft.roadFrontageFt} onChange={value => setResearchUpdateDraft({ ...researchUpdateDraft, roadFrontageFt: value })} />
-                  <ResearchSelectField label="Landlocked" current={lead.is_land_locked == null ? null : lead.is_land_locked ? "Yes" : "No"} value={researchUpdateDraft.isLandLocked} onChange={value => setResearchUpdateDraft({ ...researchUpdateDraft, isLandLocked: value })} />
-                  <ResearchUpdateField label="Flood %" current={lead.flood_zone_percent} value={researchUpdateDraft.floodZonePercent} onChange={value => setResearchUpdateDraft({ ...researchUpdateDraft, floodZonePercent: value })} />
-                  <ResearchUpdateField label="Flood type" current={lead.flood_zone_type} value={researchUpdateDraft.floodZoneType} onChange={value => setResearchUpdateDraft({ ...researchUpdateDraft, floodZoneType: value })} />
-                  <ResearchUpdateField label="Wetlands %" current={lead.wetlands_percent} value={researchUpdateDraft.wetlandsPercent} onChange={value => setResearchUpdateDraft({ ...researchUpdateDraft, wetlandsPercent: value })} />
-                  <ResearchUpdateField label="Min lot size" current={lead.min_lot_size_acres} value={researchUpdateDraft.minLotSizeAcres} onChange={value => setResearchUpdateDraft({ ...researchUpdateDraft, minLotSizeAcres: value })} />
-                  <ResearchUpdateField label="GIS link" current={lead.parcel_link} value={researchUpdateDraft.parcelLink} onChange={value => setResearchUpdateDraft({ ...researchUpdateDraft, parcelLink: value })} />
-                  <ResearchUpdateField label="Comping link" current={lead.comping_link} value={researchUpdateDraft.compingLink} onChange={value => setResearchUpdateDraft({ ...researchUpdateDraft, compingLink: value })} />
-                  </div>
-                  <textarea
-                  value={researchUpdateDraft.notes}
-                  onChange={e => setResearchUpdateDraft({ ...researchUpdateDraft, notes: e.target.value })}
-                  rows={2}
-                  placeholder={lead.notes || "Property notes"}
-                  style={textareaStyle}
-                />
-                {researchUpdatePreview.length > 0 && (
-                  <div style={{ borderTop: "1px solid var(--fog)", paddingTop: 8 }}>
-                    <p style={{ ...eyebrowSmall, marginBottom: 8 }}>Preview</p>
-                    <dl style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 8, maxHeight: 180, overflow: "auto" }}>
-                      {researchUpdatePreview.map(row => (
-                        <div key={row.label}>
-                          <dt style={{ color: "var(--muted)", fontSize: 10, fontWeight: 800, letterSpacing: "0.1em", textTransform: "uppercase" }}>{row.label}</dt>
-                          <dd style={{ color: "var(--ink)", fontSize: 12, lineHeight: 1.35, margin: "3px 0 0" }}>{row.current} → <strong>{row.next}</strong></dd>
-                        </div>
-                      ))}
-                    </dl>
-                  </div>
-                )}
-                <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-                  <button type="button" onClick={() => { setResearchUpdateDraft(EMPTY_RESEARCH_UPDATE_DRAFT); setResearchUpdateOpen(false); }} style={secondaryButton}>Clear</button>
-                  <button type="button" onClick={applyResearchUpdate} disabled={savingResearch || researchUpdatePreview.length === 0} style={{ ...primaryButton, opacity: savingResearch || researchUpdatePreview.length === 0 ? 0.55 : 1 }}>
-                    Apply To Property Record
-                  </button>
-                </div>
-              </div>
-              ) : (
-                <div style={{ ...subPanel, display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
-                  <p style={{ color: "var(--muted)", fontSize: 12, lineHeight: 1.45 }}>
-                    The current verified facts are shown at the top of this tab. Open this form only when a source gives a better value.
-                  </p>
-                  <button type="button" onClick={() => setResearchUpdateOpen(true)} style={secondaryButton}>Update Facts</button>
-                </div>
-              )}
             </section>
 
             <section style={panel}>
@@ -1562,7 +1457,7 @@ export default function LeadPage() {
       <style jsx>{`
         @media (max-width: 880px) {
           .lead-root { padding-top: 28px !important; }
-          .lead-overview-grid, .lead-conv-grid, .lead-research-grid, .lead-fact-grid, .lead-comp-form, .lead-comp-row, .lead-research-update-grid { grid-template-columns: 1fr !important; }
+          .lead-overview-grid, .lead-conv-grid, .lead-research-grid, .lead-fact-grid, .lead-fact-edit-grid, .lead-comp-form, .lead-comp-row { grid-template-columns: 1fr !important; }
         }
       `}</style>
     </div>
@@ -1651,9 +1546,25 @@ function researchStatusChipStyle(status: LandDueDiligenceStatus | undefined, mis
 function VerifiedFactBoard({
   groups,
   statusByCategory,
+  editingFactId,
+  factDraft,
+  saving,
+  onStartEdit,
+  onCancelEdit,
+  onDraftValueChange,
+  onDraftMetaChange,
+  onSave,
 }: {
   groups: VerifiedFactGroup[];
   statusByCategory: Partial<Record<LandDueDiligenceCategory, LandDueDiligenceStatus>>;
+  editingFactId: string | null;
+  factDraft: FactDraft;
+  saving: boolean;
+  onStartEdit: (item: VerifiedFactItem) => void;
+  onCancelEdit: () => void;
+  onDraftValueChange: (key: keyof ManualResearchLeadPatch, value: string) => void;
+  onDraftMetaChange: (patch: Partial<Omit<FactDraft, "values">>) => void;
+  onSave: (item: VerifiedFactItem) => void;
 }) {
   return (
     <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12 }} className="lead-fact-grid">
@@ -1664,12 +1575,13 @@ function VerifiedFactBoard({
             {group.items.map(item => {
               const status = item.category ? statusByCategory[item.category] : undefined;
               const missing = factValueIsMissing(item.value);
+              const editing = editingFactId === item.id;
               return (
                 <div
-                  key={item.label}
+                  key={item.id}
                   style={{
                     display: "grid",
-                    gridTemplateColumns: "minmax(118px, 0.7fr) minmax(0, 1fr) auto",
+                    gridTemplateColumns: "minmax(118px, 0.7fr) minmax(0, 1fr) auto auto",
                     gap: 9,
                     alignItems: "center",
                     borderBottom: "1px solid var(--fog)",
@@ -1685,6 +1597,52 @@ function VerifiedFactBoard({
                   <span style={researchStatusChipStyle(status, missing)}>
                     {missing ? "Missing" : status ? labelForStatus(status) : "Needs Check"}
                   </span>
+                  {item.fields.length > 0 ? (
+                    <button
+                      type="button"
+                      onClick={() => editing ? onCancelEdit() : onStartEdit(item)}
+                      style={{ ...secondaryButton, minHeight: 30, padding: "6px 8px", fontSize: 10 }}
+                    >
+                      {editing ? "Close" : missing ? "Add" : "Edit"}
+                    </button>
+                  ) : (
+                    <span />
+                  )}
+                  {editing && (
+                    <div style={{ gridColumn: "1 / -1", display: "grid", gap: 9, background: "rgba(255,255,255,0.74)", border: "1px solid var(--fog)", borderRadius: 8, padding: 10 }}>
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 8 }}>
+                        {item.fields.map(field => (
+                          <VerifiedFactInput
+                            key={field.key}
+                            field={field}
+                            value={factDraft.values[field.key] ?? ""}
+                            onChange={value => onDraftValueChange(field.key, value)}
+                          />
+                        ))}
+                      </div>
+                      <div style={{ display: "grid", gridTemplateColumns: "minmax(140px, 0.6fr) minmax(180px, 1fr) minmax(180px, 1fr)", gap: 8 }} className="lead-fact-edit-grid">
+                        <input value={factDraft.sourceName} onChange={event => onDraftMetaChange({ sourceName: event.target.value })} placeholder="Source" style={inputStyle} />
+                        <input value={factDraft.sourceUrl} onChange={event => onDraftMetaChange({ sourceUrl: event.target.value })} placeholder="Source URL" style={inputStyle} />
+                        <input value={factDraft.notes} onChange={event => onDraftMetaChange({ notes: event.target.value })} placeholder="Notes" style={inputStyle} />
+                      </div>
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                        <label style={{ display: "inline-flex", gap: 7, alignItems: "center", color: "var(--muted)", fontSize: 12, fontWeight: 700 }}>
+                          <input
+                            type="checkbox"
+                            checked={factDraft.verifyChecklist}
+                            onChange={event => onDraftMetaChange({ verifyChecklist: event.target.checked })}
+                          />
+                          Verify checklist
+                        </label>
+                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                          <button type="button" onClick={onCancelEdit} disabled={saving} style={{ ...secondaryButton, minHeight: 34, padding: "7px 10px", fontSize: 10, opacity: saving ? 0.55 : 1 }}>Cancel</button>
+                          <button type="button" onClick={() => onSave(item)} disabled={saving} style={{ ...primaryButton, minHeight: 34, padding: "7px 10px", fontSize: 10, opacity: saving ? 0.55 : 1 }}>
+                            Save Update
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               );
             })}
@@ -1695,25 +1653,25 @@ function VerifiedFactBoard({
   );
 }
 
-function ResearchUpdateField({ label, current, value, onChange }: { label: string; current: unknown; value: string; onChange: (value: string) => void }) {
-  const placeholder = current === null || current === undefined || current === "" ? label : `${label}: ${String(current)}`;
+function VerifiedFactInput({ field, value, onChange }: { field: VerifiedFactField; value: string; onChange: (value: string) => void }) {
   return (
     <label style={{ display: "grid", gap: 4 }}>
-      <span style={{ color: "var(--muted)", fontSize: 10, fontWeight: 800, letterSpacing: "0.11em", textTransform: "uppercase" }}>{label}</span>
-      <input value={value} onChange={event => onChange(event.target.value)} placeholder={placeholder} style={inputStyle} />
-    </label>
-  );
-}
-
-function ResearchSelectField({ label, current, value, onChange }: { label: string; current: string | null; value: string; onChange: (value: string) => void }) {
-  return (
-    <label style={{ display: "grid", gap: 4 }}>
-      <span style={{ color: "var(--muted)", fontSize: 10, fontWeight: 800, letterSpacing: "0.11em", textTransform: "uppercase" }}>{label}</span>
-      <select value={value} onChange={event => onChange(event.target.value)} style={inputStyle}>
-        <option value="">{current ? `${label}: ${current}` : label}</option>
-        <option value="true">Yes</option>
-        <option value="false">No</option>
-      </select>
+      <span style={{ color: "var(--muted)", fontSize: 10, fontWeight: 800, letterSpacing: "0.11em", textTransform: "uppercase" }}>{field.label}</span>
+      {field.kind === "boolean" ? (
+        <select value={value} onChange={event => onChange(event.target.value)} style={inputStyle}>
+          <option value="">Unknown</option>
+          <option value="true">Yes</option>
+          <option value="false">No</option>
+        </select>
+      ) : (
+        <input
+          value={value}
+          onChange={event => onChange(event.target.value)}
+          placeholder={field.placeholder || field.label}
+          type={field.kind === "url" ? "url" : "text"}
+          style={inputStyle}
+        />
+      )}
     </label>
   );
 }
