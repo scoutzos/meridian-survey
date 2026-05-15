@@ -223,6 +223,9 @@ const IMPORT_LEAD_SORTS: Array<{ value: ImportedLeadSort; label: string }> = [
 
 type ImportStatusFilter = typeof IMPORT_STATUS_FILTERS[number]["value"];
 type ImportedLeadSort = "score" | "max-offer" | "required-ppa" | "projected-spread" | "best-exit" | "acreage";
+type ListOwnerLocationFilter = "all" | "out-of-state" | "out-of-county" | "local";
+type ListContactFilter = "all" | "phone" | "email" | "phone-or-email" | "mailing-address" | "no-contact";
+type ListOwnershipFilter = "all" | "multi-property" | "single-property";
 type ImportStep = "upload" | "preview" | "importing" | "work";
 type ImportStage = "idle" | "previewing" | "creating-batch" | "saving-leads" | "refreshing" | "done";
 type LinkIntakeDraft = {
@@ -700,6 +703,15 @@ function normalizedPhone(value: string | null | undefined): string | null {
   return value?.startsWith("+") ? value : null;
 }
 
+function listOwnerGroupKey(lead: ImportedLandLead): string {
+  const phone = normalizedPhone(lead.phone || lead.phone_2);
+  if (phone) return `phone:${phone}`;
+  const owner = (lead.owner_name || "unknown").trim().toLowerCase();
+  const mailing = (lead.mailing_address || lead.mail_address || "").trim().toLowerCase();
+  const location = (lead.county || lead.state || "").trim().toLowerCase();
+  return `owner:${owner}|${mailing || location}`;
+}
+
 function communicationPhoneCandidates(event: CommunicationEvent): Array<string | null | undefined> {
   if (event.channel === "voice") {
     return event.direction === "inbound"
@@ -1032,6 +1044,12 @@ export default function VaPage() {
   const [leadFilter, setLeadFilter] = useState<ImportStatusFilter>("all");
   const [leadSort, setLeadSort] = useState<ImportedLeadSort>("score");
   const [listsView, setListsView] = useState<ListsView>("properties");
+  const [listCounty, setListCounty] = useState("all");
+  const [listState, setListState] = useState("all");
+  const [listOwnerType, setListOwnerType] = useState("all");
+  const [listOwnerLocation, setListOwnerLocation] = useState<ListOwnerLocationFilter>("all");
+  const [listContactFilter, setListContactFilter] = useState<ListContactFilter>("all");
+  const [listOwnershipFilter, setListOwnershipFilter] = useState<ListOwnershipFilter>("all");
   const [minAcreage, setMinAcreage] = useState("");
   const [maxAcreage, setMaxAcreage] = useState("");
   const [uploadSource, setUploadSource] = useState("Land Portal");
@@ -1275,6 +1293,62 @@ export default function VaPage() {
   }, [activeTab, recentInboundSms, selectedCommunicationEvent, selectedImportedLead, unmatchedSms]);
   const activeCommunicationThreadKey = activeCommunicationEvent ? threadKeyForCommunicationEvent(activeCommunicationEvent) : null;
   const selectedBatch = useMemo(() => leadBatches.find(batch => batch.id === selectedBatchId) ?? null, [leadBatches, selectedBatchId]);
+  const listOwnerCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const lead of importedLeads) {
+      const key = listOwnerGroupKey(lead);
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+    return counts;
+  }, [importedLeads]);
+  const listFilterOptions = useMemo(() => {
+    const scopedLeads = selectedBatchId ? importedLeads.filter(lead => lead.batch_id === selectedBatchId) : importedLeads;
+    return {
+      counties: uniqueSortedOptions(scopedLeads.map(lead => lead.county)),
+      states: uniqueSortedOptions(scopedLeads.map(lead => lead.state)),
+      ownerTypes: uniqueSortedOptions(scopedLeads.map(lead => lead.owner_type)),
+    };
+  }, [importedLeads, selectedBatchId]);
+  const listFilteredImportedLeads = useMemo(() => {
+    const query = leadSearch.trim().toLowerCase();
+    const min = toNumber(minAcreage);
+    const max = toNumber(maxAcreage);
+    const rows = importedLeads.filter(lead => {
+      if (selectedBatchId && lead.batch_id !== selectedBatchId) return false;
+      if (listCounty !== "all" && lead.county !== listCounty) return false;
+      if (listState !== "all" && lead.state !== listState) return false;
+      if (listOwnerType !== "all" && lead.owner_type !== listOwnerType) return false;
+      if (listOwnerLocation === "out-of-state" && lead.owner_out_of_state !== true) return false;
+      if (listOwnerLocation === "out-of-county" && lead.owner_out_of_county !== true) return false;
+      if (listOwnerLocation === "local" && (lead.owner_out_of_state === true || lead.owner_out_of_county === true)) return false;
+      if (listContactFilter === "phone" && !lead.phone && !lead.phone_2) return false;
+      if (listContactFilter === "email" && !lead.email) return false;
+      if (listContactFilter === "phone-or-email" && !lead.phone && !lead.phone_2 && !lead.email) return false;
+      if (listContactFilter === "mailing-address" && !lead.mailing_address && !lead.mail_address) return false;
+      if (listContactFilter === "no-contact" && (lead.phone || lead.phone_2 || lead.email || lead.mailing_address || lead.mail_address)) return false;
+      const ownerPropertyCount = listOwnerCounts.get(listOwnerGroupKey(lead)) ?? 1;
+      if (listOwnershipFilter === "multi-property" && ownerPropertyCount < 2) return false;
+      if (listOwnershipFilter === "single-property" && ownerPropertyCount > 1) return false;
+      if (min !== null && (lead.acreage ?? 0) < min) return false;
+      if (max !== null && (lead.acreage ?? 0) > max) return false;
+      return importedLeadMatchesQuery(lead, query);
+    });
+    return sortImportedLeadRows(rows, leadSort).slice(0, 120);
+  }, [
+    importedLeads,
+    leadSearch,
+    leadSort,
+    listContactFilter,
+    listCounty,
+    listOwnerCounts,
+    listOwnerLocation,
+    listOwnerType,
+    listOwnershipFilter,
+    listState,
+    maxAcreage,
+    minAcreage,
+    selectedBatchId,
+  ]);
   const filteredImportedLeads = useMemo(() => {
     const query = leadSearch.trim().toLowerCase();
     const min = toNumber(minAcreage);
@@ -3842,24 +3916,54 @@ export default function VaPage() {
                 <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "baseline", flexWrap: "wrap", marginBottom: 10 }}>
                   <div>
                     <h3 style={{ color: "var(--obsidian)", fontSize: 16, fontWeight: 800 }}>Property Records</h3>
-                    <span style={{ color: "var(--muted)", fontSize: 12 }}>{filteredImportedLeads.length} visible · {importedLeads.length} total</span>
+                    <span style={{ color: "var(--muted)", fontSize: 12 }}>{listFilteredImportedLeads.length} visible · {importedLeads.length} total</span>
                   </div>
                   {selectedBatch && <span style={hotPill}>{batchLeads.length} in selected batch</span>}
                 </div>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(5, minmax(120px, 1fr)) minmax(180px, 1.2fr)", gap: 8, marginBottom: 10 }} className="va-form-grid">
-                  <select value={leadFilter} onChange={e => setLeadFilter(e.target.value as ImportStatusFilter)}>
-                    {IMPORT_STATUS_FILTERS.map(filter => <option key={filter.value} value={filter.value}>{filter.label}</option>)}
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(132px, 1fr))", gap: 8, marginBottom: 10 }} className="va-form-grid">
+                  <select value={selectedBatchId || "all"} onChange={e => setSelectedBatchId(e.target.value === "all" ? null : e.target.value)} aria-label="Source list">
+                    <option value="all">Source list: All</option>
+                    {leadBatches.map(batch => <option key={batch.id} value={batch.id}>Source: {batch.campaign_source || batch.original_filename || batch.source_system}</option>)}
+                  </select>
+                  <select value={listCounty} onChange={e => setListCounty(e.target.value)} aria-label="County">
+                    <option value="all">County: All</option>
+                    {listFilterOptions.counties.map(county => <option key={county} value={county}>County: {county}</option>)}
+                  </select>
+                  <select value={listState} onChange={e => setListState(e.target.value)} aria-label="State">
+                    <option value="all">State: All</option>
+                    {listFilterOptions.states.map(state => <option key={state} value={state}>State: {state}</option>)}
+                  </select>
+                  <select value={listOwnerType} onChange={e => setListOwnerType(e.target.value)} aria-label="Owner type">
+                    <option value="all">Owner type: All</option>
+                    {listFilterOptions.ownerTypes.map(ownerType => <option key={ownerType} value={ownerType}>Owner: {ownerType}</option>)}
+                  </select>
+                  <select value={listOwnerLocation} onChange={e => setListOwnerLocation(e.target.value as ListOwnerLocationFilter)} aria-label="Owner location">
+                    <option value="all">Owner location: All</option>
+                    <option value="out-of-state">Out-of-state owners</option>
+                    <option value="out-of-county">Out-of-county owners</option>
+                    <option value="local">Local owners</option>
+                  </select>
+                  <select value={listContactFilter} onChange={e => setListContactFilter(e.target.value as ListContactFilter)} aria-label="Contact availability">
+                    <option value="all">Contact: All</option>
+                    <option value="phone">Has phone</option>
+                    <option value="email">Has email</option>
+                    <option value="phone-or-email">Phone or email</option>
+                    <option value="mailing-address">Has mailing address</option>
+                    <option value="no-contact">No contact fields</option>
+                  </select>
+                  <select value={listOwnershipFilter} onChange={e => setListOwnershipFilter(e.target.value as ListOwnershipFilter)} aria-label="Ownership grouping">
+                    <option value="all">Ownership: All</option>
+                    <option value="multi-property">Multi-property owners</option>
+                    <option value="single-property">Single-property owners</option>
                   </select>
                   <select value={leadSort} onChange={e => setLeadSort(e.target.value as ImportedLeadSort)}>
                     {IMPORT_LEAD_SORTS.map(sort => <option key={sort.value} value={sort.value}>Sort: {sort.label}</option>)}
                   </select>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(110px, 0.55fr)) minmax(220px, 1.4fr)", gap: 8, marginBottom: 10 }} className="va-form-grid">
                   <input value={minAcreage} onChange={e => setMinAcreage(e.target.value)} placeholder="Min acres" />
                   <input value={maxAcreage} onChange={e => setMaxAcreage(e.target.value)} placeholder="Max acres" />
-                  <select value={selectedBatchId || "all"} onChange={e => setSelectedBatchId(e.target.value === "all" ? null : e.target.value)}>
-                    <option value="all">All batches</option>
-                    {leadBatches.map(batch => <option key={batch.id} value={batch.id}>{batch.campaign_source || batch.original_filename || batch.source_system}</option>)}
-                  </select>
-                  <input value={leadSearch} onChange={e => setLeadSearch(e.target.value)} placeholder="Search APN or address..." />
+                  <input value={leadSearch} onChange={e => setLeadSearch(e.target.value)} placeholder="Search APN, address, owner, phone..." />
                 </div>
                 <div style={{ overflow: "auto", border: "1px solid var(--fog)", borderRadius: 8, background: "var(--surface)", maxHeight: 548 }}>
                   <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, minWidth: 1080 }}>
@@ -3867,19 +3971,25 @@ export default function VaPage() {
                       <tr style={{ borderBottom: "1px solid var(--fog)", color: "var(--muted)", textAlign: "left" }}>
                         <th style={th}></th>
                         <th style={th}>APN</th>
-                        <th style={th}>Property Address</th>
+                        <th style={th}>Property</th>
+                        <th style={th}>Owner / Contact</th>
                         <th style={th}>County</th>
                         <th style={th}>Acres</th>
-                        <th style={th}>Score</th>
-                        <th style={th}>Calculator</th>
-                        <th style={th}>Owner / Contact</th>
+                        <th style={th}>Source</th>
+                        <th style={th}>Owner Type</th>
+                        <th style={th}>Contact</th>
                         <th style={th}>Status</th>
                         <th style={th}>Linked Deal</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {filteredImportedLeads.map(lead => {
+                      {listFilteredImportedLeads.map(lead => {
                         const active = selectedImportedLeadId === lead.id;
+                        const contactFields = [
+                          lead.phone || lead.phone_2 ? "Phone" : null,
+                          lead.email ? "Email" : null,
+                          lead.mailing_address || lead.mail_address ? "Mail" : null,
+                        ].filter(Boolean).join(" / ") || "No contact";
                         return (
                           <tr
                             key={lead.id}
@@ -3893,11 +4003,12 @@ export default function VaPage() {
                             <td style={td}><input type="checkbox" checked={active} readOnly /></td>
                             <td style={td}>{lead.parcel_id || "N/A"}</td>
                             <td style={td}><strong style={{ color: "var(--obsidian)" }}>{lead.property_address || "No address"}</strong><br /><span style={{ color: "var(--muted)" }}>{lead.city || ""}{lead.state ? `, ${lead.state}` : ""}</span></td>
+                            <td style={td}>{lead.owner_name || "Owner unknown"}<br /><span style={{ color: "var(--muted)" }}>{lead.phone || lead.phone_2 || lead.email || "No contact value"}</span></td>
                             <td style={td}>{lead.county || "N/A"}</td>
                             <td style={td}>{lead.acreage ?? "N/A"}</td>
-                            <td style={{ ...td, color: (lead.lead_score ?? 0) >= 80 ? "var(--pine)" : "var(--muted)", fontWeight: 800 }}>{lead.lead_score ?? 0}</td>
-                            <td style={{ ...td, minWidth: 220 }}><LandUnderwritingPanel lead={lead} compact /></td>
-                            <td style={td}>{lead.owner_name || "Owner unknown"}<br /><span style={{ color: "var(--muted)" }}>{lead.phone || lead.phone_2 || "No phone"}</span></td>
+                            <td style={td}>{lead.campaign_source || lead.source_system || "Imported list"}<br /><span style={{ color: "var(--muted)" }}>{lead.source_system || "Source pending"}</span></td>
+                            <td style={td}>{lead.owner_type || (lead.owner_occupied ? "Owner occupied" : "N/A")}</td>
+                            <td style={td}>{contactFields}</td>
                             <td style={td}><span style={lead.status === "interested" ? hotPill : pill}>{statusLabel(lead.status)}</span></td>
                             <td style={td}>{lead.deal_id ? <button onClick={event => { event.stopPropagation(); openLinkedDeal(lead.deal_id); }} style={pill}>Open</button> : <span style={{ color: "var(--muted)" }}>—</span>}</td>
                           </tr>
@@ -3905,22 +4016,22 @@ export default function VaPage() {
                       })}
                     </tbody>
                   </table>
-                  {filteredImportedLeads.length === 0 && <p style={{ color: "var(--muted)", fontSize: 13, padding: 12 }}>No imported records match this search.</p>}
+                  {listFilteredImportedLeads.length === 0 && <p style={{ color: "var(--muted)", fontSize: 13, padding: 12 }}>No imported records match this list slice.</p>}
                 </div>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap", marginTop: 10 }}>
-                  <span style={{ color: "var(--muted)", fontSize: 12 }}>Showing 1-{filteredImportedLeads.length} of {importedLeads.length}</span>
+                  <span style={{ color: "var(--muted)", fontSize: 12 }}>{listFilteredImportedLeads.length ? `Showing 1-${listFilteredImportedLeads.length}` : "Showing 0"} of {importedLeads.length}</span>
                   <button onClick={() => setMessage("CSV export is next for this inventory table.")} style={compactButton}>Export CSV</button>
                 </div>
               </section>
 
               <aside style={subPanel}>
                 {!selectedImportedLead ? (
-                  <p style={{ fontSize: 13, color: "var(--muted)", lineHeight: 1.5 }}>Select a property to see record details, contact eligibility, linked packet, and quick actions.</p>
+                  <p style={{ fontSize: 13, color: "var(--muted)", lineHeight: 1.5 }}>Select a property to inspect source list, owner grouping, mapped fields, contact fields, and linked packet status.</p>
                 ) : (
                   <div style={{ display: "grid", gap: 10 }}>
                     <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "start" }}>
                       <div>
-                        <h3 style={{ color: "var(--obsidian)", fontSize: 16, fontWeight: 800 }}>Selected Property</h3>
+                        <h3 style={{ color: "var(--obsidian)", fontSize: 16, fontWeight: 800 }}>Record Preview</h3>
                         <strong style={{ display: "block", color: "var(--obsidian)", fontSize: 18, marginTop: 10 }}>{selectedImportedLead.parcel_id || "No APN"}</strong>
                         <p style={{ color: "var(--ink)", fontSize: 13, lineHeight: 1.4, marginTop: 5 }}>{selectedImportedLead.property_address || "No address"}<br />{selectedImportedLead.city || ""}{selectedImportedLead.state ? `, ${selectedImportedLead.state}` : ""}</p>
                       </div>
@@ -3929,25 +4040,32 @@ export default function VaPage() {
                     <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
                       <MiniStat label="County" value={selectedImportedLead.county || "N/A"} />
                       <MiniStat label="Acres" value={String(selectedImportedLead.acreage ?? "N/A")} />
-                      <MiniStat label="Score" value={String(selectedImportedLead.lead_score ?? 0)} />
+                      <MiniStat label="Linked" value={selectedImportedLead.deal_id ? "Yes" : "No"} />
                     </div>
-                    <LandUnderwritingPanel lead={selectedImportedLead} compact />
+                    <InfoStack title="Source / List">
+                      <p>{selectedPropertyBatch?.campaign_source || selectedPropertyBatch?.original_filename || selectedImportedLead.campaign_source || "Batch unknown"}</p>
+                      <p>{selectedImportedLead.source_system || "Imported source"}</p>
+                      <p>{selectedImportedLead.uploaded_by ? `Uploaded by ${selectedImportedLead.uploaded_by}` : "Uploader pending"}</p>
+                    </InfoStack>
+                    <InfoStack title="Mapped Property Fields">
+                      <p>{selectedImportedLead.land_use || "Land use pending"}</p>
+                      <p>{selectedImportedLead.zoning || "Zoning pending"}</p>
+                      <p>{(selectedImportedLead.market_value ?? selectedImportedLead.total_parcel_value) ? `$${Number(selectedImportedLead.market_value ?? selectedImportedLead.total_parcel_value).toLocaleString()} estimated value` : "Value pending"}</p>
+                    </InfoStack>
                     <InfoStack title="Primary Owner / Contact">
                       <p>{selectedImportedLead.owner_name || "Owner unknown"}</p>
+                      <p>{selectedImportedLead.owner_type || "Owner type pending"}</p>
                       <p>{selectedImportedLead.phone || selectedImportedLead.phone_2 || "Phone missing"}</p>
                       <p>{selectedImportedLead.email || "Email missing"}</p>
                       <p>{selectedContactProperties.length} linked propert{selectedContactProperties.length === 1 ? "y" : "ies"}</p>
                     </InfoStack>
-                    <InfoStack title="Phone Eligibility">
-                      <p>{checkLeadSmsCompliance(selectedImportedLead).allowed ? "Textable" : checkLeadSmsCompliance(selectedImportedLead).blockLabel}</p>
-                      <p>{checkLeadCallCompliance(selectedImportedLead).allowed ? "Callable" : checkLeadCallCompliance(selectedImportedLead).blockLabel}</p>
+                    <InfoStack title="Owner Location">
+                      <p>{selectedImportedLead.mailing_address || selectedImportedLead.mail_address || "Mailing address pending"}</p>
+                      <p>{selectedImportedLead.owner_out_of_state ? "Out-of-state owner" : "In-state or unknown"}</p>
+                      <p>{selectedImportedLead.owner_out_of_county ? "Out-of-county owner" : "In-county or unknown"}</p>
                     </InfoStack>
                     <InfoStack title="Linked Deal Packet">
                       <p>{selectedImportedLead.deal_id || "No linked packet yet"}</p>
-                    </InfoStack>
-                    <InfoStack title="List Batch">
-                      <p>{selectedPropertyBatch?.campaign_source || selectedPropertyBatch?.original_filename || selectedImportedLead.campaign_source || "Batch unknown"}</p>
-                      <p>{selectedImportedLead.source_system || "Imported source"}</p>
                     </InfoStack>
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
                       <button onClick={() => router.push(`/lead/${selectedImportedLead.id}`)} style={compactButton}>Open Property Record</button>

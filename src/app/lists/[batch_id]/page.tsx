@@ -12,32 +12,23 @@ import {
   type ImportedLandLead,
   type LandLeadBatch,
 } from "@/lib/land-leads";
-import { calculateLandUnderwriting, type LandExitType, type LandUnderwritingResult } from "@/lib/land-underwriting";
+import { calculateLandUnderwriting, type LandUnderwritingResult } from "@/lib/land-underwriting";
 import { labelForStatus } from "@/lib/status-map";
 
 type FilterKey =
   | "all"
   | "has-mobile"
-  | "interested"
-  | "no-contact"
-  | "previously-contacted"
+  | "has-email"
+  | "contact-available"
+  | "mailing-address"
   | "tax-delinquent"
   | "out-of-state"
-  | "compliance-clean"
-  | "opted-out"
+  | "out-of-county"
+  | "individual-owner"
+  | "entity-owner"
   | "multi-property"
-  | "underwriting-strong"
-  | "underwriting-possible"
-  | "underwriting-pass"
-  | "best-retail-resale"
-  | "best-neighbor-sale"
-  | "best-land-flip"
-  | "best-assignment"
-  | "best-subdivide"
-  | "max-offer-50k"
-  | "ppa-works"
-  | "needs-comp-check"
-  | "physical-blockers";
+  | "linked-packet"
+  | "unlinked-records";
 
 type SortKey =
   | "score"
@@ -48,35 +39,19 @@ type SortKey =
   | "acreage";
 
 const FILTERS: Array<{ key: FilterKey; label: string; matches: (lead: ImportedLandLead, ctx: FilterCtx) => boolean }> = [
-  { key: "all", label: "All", matches: () => true },
-  { key: "has-mobile", label: "Has mobile", matches: (l) => hasMobile(l) },
-  { key: "interested", label: "Interested", matches: (l) => l.status === "interested" },
-  { key: "no-contact", label: "No prior contact", matches: (l) => !(l.outreach_count && l.outreach_count > 0) },
-  { key: "previously-contacted", label: "Contacted", matches: (l) => !!l.outreach_count && l.outreach_count > 0 },
+  { key: "all", label: "All records", matches: () => true },
+  { key: "has-mobile", label: "Has phone", matches: (l) => hasMobile(l) },
+  { key: "has-email", label: "Has email", matches: (l) => !!l.email },
+  { key: "contact-available", label: "Contact available", matches: (l) => !!(l.phone || l.phone_2 || l.email || l.mailing_address || l.mail_address) },
+  { key: "mailing-address", label: "Mailing address", matches: (l) => !!(l.mailing_address || l.mail_address) },
   { key: "tax-delinquent", label: "Tax delinquent", matches: (l) => l.tax_delinquent === true },
   { key: "out-of-state", label: "Out-of-state owner", matches: (l) => l.owner_out_of_state === true },
-  { key: "compliance-clean", label: "Compliance clean", matches: (l) => !l.dnc && !l.state_dnc && !l.litigator && l.sms_opt_status !== "opted-out" },
-  { key: "opted-out", label: "Opted out", matches: (l) => l.sms_opt_status === "opted-out" },
+  { key: "out-of-county", label: "Out-of-county owner", matches: (l) => l.owner_out_of_county === true },
+  { key: "individual-owner", label: "Individual owner", matches: (l) => (l.owner_type || "").toLowerCase().includes("individual") },
+  { key: "entity-owner", label: "Entity owner", matches: (l) => /(llc|corp|inc|trust|company|lp|llp)/i.test(l.owner_type || l.owner_name || "") },
   { key: "multi-property", label: "Multi-property owner", matches: (l, ctx) => ctx.multiPropertyOwners.has(ownerKey(l)) },
-  { key: "underwriting-strong", label: "Strong deals", matches: (l) => bestUnderwriting(l).status === "strong" },
-  { key: "underwriting-possible", label: "Possible deals", matches: (l) => bestUnderwriting(l).status === "possible" },
-  { key: "underwriting-pass", label: "Pass / blockers", matches: (l) => bestUnderwriting(l).status === "pass" || hasPhysicalBlocker(l) },
-  { key: "best-retail-resale", label: "Best: retail", matches: (l) => bestExit(l, "retail-resale") },
-  { key: "best-neighbor-sale", label: "Best: neighbor", matches: (l) => bestExit(l, "neighbor-sale") },
-  { key: "best-land-flip", label: "Best: flip", matches: (l) => bestExit(l, "land-flip") },
-  { key: "best-assignment", label: "Best: assignment", matches: (l) => bestExit(l, "assignment") },
-  { key: "best-subdivide", label: "Subdivision candidates", matches: (l) => bestExit(l, "subdivide") || !!l.tag_subdivide || !!l.tag_entitlement },
-  { key: "max-offer-50k", label: "Max offer $50k+", matches: (l) => (bestUnderwriting(l).maxOffer ?? 0) >= 50000 },
-  { key: "ppa-works", label: "PPA works", matches: (l) => {
-    const best = bestUnderwriting(l);
-    return best.requiredPpa !== null && best.landInsightsPpa !== null && best.landInsightsPpa >= best.requiredPpa;
-  } },
-  { key: "needs-comp-check", label: "Needs comp check", matches: (l) => {
-    const best = bestUnderwriting(l);
-    const compCount = Number(l.market_value_estimate_comp_count ?? 0);
-    return compCount < 3 || best.requiredPpa === null || best.landInsightsPpa === null || best.landInsightsPpa < best.requiredPpa;
-  } },
-  { key: "physical-blockers", label: "Landlocked / flood / wetlands", matches: (l) => hasPhysicalBlocker(l) },
+  { key: "linked-packet", label: "Linked packet", matches: (l) => !!l.deal_id },
+  { key: "unlinked-records", label: "Unlinked records", matches: (l) => !l.deal_id },
 ];
 
 const SORTS: Array<{ key: SortKey; label: string }> = [
@@ -110,14 +85,6 @@ function hasMobile(lead: ImportedLandLead): boolean {
 
 function bestUnderwriting(lead: ImportedLandLead): LandUnderwritingResult {
   return calculateLandUnderwriting(lead).best;
-}
-
-function bestExit(lead: ImportedLandLead, exitType: LandExitType): boolean {
-  return bestUnderwriting(lead).exitType === exitType;
-}
-
-function hasPhysicalBlocker(lead: ImportedLandLead): boolean {
-  return !!lead.is_land_locked || (lead.wetlands_percent ?? 0) > 25 || (lead.flood_zone_percent ?? 0) > 25 || !!lead.bad_topography;
 }
 
 function sortLeads(leads: ImportedLandLead[], sort: SortKey): ImportedLandLead[] {
@@ -226,26 +193,17 @@ export default function ListDetailPage() {
     const counts: Record<FilterKey, number> = {
       "all": allLeads.length,
       "has-mobile": 0,
-      "interested": 0,
-      "no-contact": 0,
-      "previously-contacted": 0,
+      "has-email": 0,
+      "contact-available": 0,
+      "mailing-address": 0,
       "tax-delinquent": 0,
       "out-of-state": 0,
-      "compliance-clean": 0,
-      "opted-out": 0,
+      "out-of-county": 0,
+      "individual-owner": 0,
+      "entity-owner": 0,
       "multi-property": 0,
-      "underwriting-strong": 0,
-      "underwriting-possible": 0,
-      "underwriting-pass": 0,
-      "best-retail-resale": 0,
-      "best-neighbor-sale": 0,
-      "best-land-flip": 0,
-      "best-assignment": 0,
-      "best-subdivide": 0,
-      "max-offer-50k": 0,
-      "ppa-works": 0,
-      "needs-comp-check": 0,
-      "physical-blockers": 0,
+      "linked-packet": 0,
+      "unlinked-records": 0,
     };
     for (const lead of allLeads) {
       for (const f of FILTERS) {
@@ -344,8 +302,8 @@ export default function ListDetailPage() {
       <section style={{ ...panel, marginBottom: 16 }}>
         <header style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 14, flexWrap: "wrap", gap: 12 }}>
           <div>
-            <p style={eyebrowSmall}>Funnel</p>
-            <h2 style={sectionTitle}>From import to outreach</h2>
+            <p style={eyebrowSmall}>List Slices</p>
+            <h2 style={sectionTitle}>Browse records by source data</h2>
           </div>
           <div style={{ display: "flex", gap: 8, fontSize: 12, color: "var(--muted)" }}>
             <span>{funnel.optedOut} opted out</span>
