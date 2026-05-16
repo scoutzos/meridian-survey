@@ -1360,9 +1360,8 @@ export default function VaPage() {
   const activeCommunicationEvent = useMemo(() => {
     if (selectedImportedLead) return null;
     if (selectedCommunicationEvent) return selectedCommunicationEvent;
-    if (activeTab !== "outreach") return null;
-    return allCommunicationEvents[0] ?? recentInboundSms[0] ?? unmatchedSms[0] ?? null;
-  }, [activeTab, allCommunicationEvents, recentInboundSms, selectedCommunicationEvent, selectedImportedLead, unmatchedSms]);
+    return null;
+  }, [selectedCommunicationEvent, selectedImportedLead]);
   const activeCommunicationThreadKey = activeCommunicationEvent ? threadKeyForCommunicationEvent(activeCommunicationEvent) : null;
   const activeCommunicationIsVoicemail = !!activeCommunicationEvent && isVoicemailEvent(activeCommunicationEvent);
   const activeCommunicationIsMissedCall = !!activeCommunicationEvent && isMissedInboundCallEvent(activeCommunicationEvent);
@@ -1637,14 +1636,18 @@ export default function VaPage() {
       : inboxThreadRows;
   useEffect(() => {
     if (activeTab !== "outreach" || selectedImportedLeadId || selectedCommunicationEventId) return;
-    const firstThread = inboxThreadRows[0] ?? null;
+    const firstThread = contactQueueMode === "voicemails"
+      ? voicemailThreadRows[0] ?? null
+      : contactQueueMode === "callbacks"
+        ? callbackThreadRows[0] ?? null
+        : inboxThreadRows[0] ?? null;
     if (firstThread) {
       setSelectedCommunicationEventId(firstThread.latestEvent.id);
       return;
     }
-    const firstLead = contactQueueRows[0] ?? null;
+    const firstLead = contactQueueMode === "callbacks" ? contactQueueRows[0] ?? null : null;
     if (firstLead) setSelectedImportedLeadId(firstLead.id);
-  }, [activeTab, contactQueueRows, inboxThreadRows, selectedCommunicationEventId, selectedImportedLeadId]);
+  }, [activeTab, callbackThreadRows, contactQueueMode, contactQueueRows, inboxThreadRows, selectedCommunicationEventId, selectedImportedLeadId, voicemailThreadRows]);
   const importStats = useMemo(() => ({
     newRows: importedLeads.filter(lead => lead.status === "new").length,
     contacted: importedLeads.filter(lead => lead.status === "contacted").length,
