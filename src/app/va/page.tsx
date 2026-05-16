@@ -165,7 +165,7 @@ const DISPOSITION_STATUSES: Array<{ value: DispositionStatus; label: string }> =
 ];
 
 type VaTab = "today" | "outreach" | "lists" | "packet" | "brief";
-type ContactQueueMode = "inbox" | "callbacks" | "campaigns" | "unmatched" | "relationships" | "recommended";
+type ContactQueueMode = "inbox" | "voicemails" | "callbacks";
 type ContactThreadFilter = "all" | "unread" | "read" | "needs-matching" | "linked";
 type ListsView = "batches" | "properties" | "contacts" | "segments" | "campaigns";
 
@@ -726,6 +726,10 @@ function communicationCallIds(event: CommunicationEvent): string[] {
     .filter((value): value is string => !!value);
 }
 
+function isVoicemailEvent(event: CommunicationEvent): boolean {
+  return event.channel === "voice" && event.provider_event_type === "call-recording" && /^voicemail\b/i.test(event.body || "");
+}
+
 function phoneForCommunicationEvent(event: CommunicationEvent | null): string | null {
   if (!event) return null;
   for (const value of communicationPhoneCandidates(event)) {
@@ -1182,7 +1186,7 @@ export default function VaPage() {
     setImportedLeads(importRows);
     setLeadBatches(batchRows);
     setUnmatchedSms(smsRows);
-    setRecentInboundSms(recentSmsRows.filter(event => event.direction === "inbound").slice(0, 40));
+    setRecentInboundSms(recentSmsRows.filter(event => event.direction === "inbound" || isVoicemailEvent(event)).slice(0, 40));
     setActiveMemberNames(memberNames);
     setSelectedId(prev => prev && activeRows.some(d => d.id === prev) ? prev : activeRows[0]?.id ?? null);
     setLastRefreshedAt(new Date().toISOString());
@@ -1536,11 +1540,8 @@ export default function VaPage() {
   const campaignReadyLeads = useMemo(() => categorizeForBulkSms(importedLeads).eligible, [importedLeads]);
   const contactQueueRows = useMemo(() => {
     if (contactQueueMode === "callbacks") return leadFollowUpsDue.slice(0, 25);
-    if (contactQueueMode === "campaigns") return campaignReadyLeads.slice(0, 25);
-    if (contactQueueMode === "relationships") return filteredImportedLeads.slice(0, 25);
-    if (contactQueueMode === "recommended") return workdeskLeadRows;
-    return [...interestedLeads, ...leadFollowUpsDue, ...workdeskLeadRows].filter((lead, index, rows) => rows.findIndex(item => item.id === lead.id) === index).slice(0, 25);
-  }, [campaignReadyLeads, contactQueueMode, filteredImportedLeads, interestedLeads, leadFollowUpsDue, workdeskLeadRows]);
+    return [];
+  }, [contactQueueMode, leadFollowUpsDue]);
   const inboxEventRows = useMemo(() => {
     const seen = new Set<string>();
     return [...recentInboundSms, ...unmatchedSms].filter(event => {
@@ -1549,6 +1550,7 @@ export default function VaPage() {
       return true;
     }).slice(0, 35);
   }, [recentInboundSms, unmatchedSms]);
+  const voicemailEventRows = useMemo(() => inboxEventRows.filter(isVoicemailEvent), [inboxEventRows]);
   const filterThreadRows = useCallback((threads: ContactThread[]) => threads.filter(thread => {
     if (contactThreadFilter === "unread" && thread.unreadCount === 0) return false;
     if (contactThreadFilter === "read" && thread.unreadCount > 0) return false;
@@ -1561,11 +1563,11 @@ export default function VaPage() {
       .some(value => String(value).toLowerCase().includes(query));
   }), [contactThreadFilter, leadSearch]);
   const inboxThreadRows = useMemo(() => filterThreadRows(buildContactThreads(inboxEventRows)), [filterThreadRows, inboxEventRows]);
-  const unmatchedThreadRows = useMemo(() => filterThreadRows(buildContactThreads(unmatchedSms)).slice(0, 25), [filterThreadRows, unmatchedSms]);
+  const voicemailThreadRows = useMemo(() => filterThreadRows(buildContactThreads(voicemailEventRows)), [filterThreadRows, voicemailEventRows]);
   const activeCommunicationThread = useMemo(() => {
     if (!activeCommunicationThreadKey) return null;
-    return [...buildContactThreads(inboxEventRows), ...buildContactThreads(unmatchedSms)].find(thread => thread.key === activeCommunicationThreadKey) ?? null;
-  }, [activeCommunicationThreadKey, inboxEventRows, unmatchedSms]);
+    return [...buildContactThreads(inboxEventRows), ...buildContactThreads(voicemailEventRows)].find(thread => thread.key === activeCommunicationThreadKey) ?? null;
+  }, [activeCommunicationThreadKey, inboxEventRows, voicemailEventRows]);
   const activeFilterCount = [
     leadSearch.trim(),
     leadFilter !== "all" ? leadFilter : "",
@@ -1574,13 +1576,10 @@ export default function VaPage() {
     contactThreadFilter !== "all" ? contactThreadFilter : "",
   ].filter(Boolean).length;
   const contactQueueModeCounts = useMemo<Record<ContactQueueMode, number>>(() => ({
-    inbox: inboxThreadRows.length || contactQueueRows.length,
+    inbox: inboxThreadRows.length,
+    voicemails: voicemailThreadRows.length,
     callbacks: leadFollowUpsDue.length,
-    campaigns: campaignReadyLeads.length,
-    unmatched: unmatchedThreadRows.length,
-    relationships: filteredImportedLeads.length,
-    recommended: workdeskLeadRows.length,
-  }), [campaignReadyLeads.length, contactQueueRows.length, filteredImportedLeads.length, inboxThreadRows.length, leadFollowUpsDue.length, unmatchedThreadRows.length, workdeskLeadRows.length]);
+  }), [inboxThreadRows.length, leadFollowUpsDue.length, voicemailThreadRows.length]);
   useEffect(() => {
     if (activeTab !== "outreach" || selectedImportedLeadId || selectedCommunicationEventId) return;
     const firstThread = inboxThreadRows[0] ?? null;
@@ -1833,7 +1832,7 @@ export default function VaPage() {
       fetchCommunicationEvents({ limit: 120 }),
     ]);
     setUnmatchedSms(unmatchedRows);
-    setRecentInboundSms(recentRows.filter(event => event.direction === "inbound").slice(0, 40));
+    setRecentInboundSms(recentRows.filter(event => event.direction === "inbound" || isVoicemailEvent(event)).slice(0, 40));
     if (activeCommunicationEvent && thread.key === threadKeyForCommunicationEvent(activeCommunicationEvent)) {
       await refreshSelectedEventMessages(activeCommunicationEvent);
     }
@@ -2220,7 +2219,7 @@ export default function VaPage() {
     setLeadActivities(activityRows);
     setCommunicationEvents(commRows);
     setUnmatchedSms(unmatchedRows);
-    setRecentInboundSms(recentRows.filter(event => event.direction === "inbound").slice(0, 40));
+    setRecentInboundSms(recentRows.filter(event => event.direction === "inbound" || isVoicemailEvent(event)).slice(0, 40));
   };
 
   const refreshSelectedEventMessages = async (event: CommunicationEvent) => {
@@ -2234,7 +2233,7 @@ export default function VaPage() {
     setCommunicationEvents(commRows.length ? commRows : [event]);
     setEventActivities(dealActivitiesToConversationItems(activityRows));
     setUnmatchedSms(unmatchedRows);
-    setRecentInboundSms(recentRows.filter(row => row.direction === "inbound").slice(0, 40));
+    setRecentInboundSms(recentRows.filter(row => row.direction === "inbound" || isVoicemailEvent(row)).slice(0, 40));
   };
 
   const sendSmsToLead = async () => {
@@ -3009,9 +3008,8 @@ export default function VaPage() {
 
   const contactQueueSubTabs: Array<{ mode: ContactQueueMode; label: string }> = [
     { mode: "inbox", label: "Inbox" },
+    { mode: "voicemails", label: "Voicemails" },
     { mode: "callbacks", label: "Callbacks" },
-    { mode: "campaigns", label: "Campaigns" },
-    { mode: "relationships", label: "Relationships" },
   ];
 
   const renderContactQueueComposer = () => {
@@ -4377,7 +4375,7 @@ export default function VaPage() {
               <div>
                 <h2 style={{ ...sectionTitle, fontSize: 31 }}>Contact Queue</h2>
                 <p style={{ color: "var(--muted)", fontSize: 13, lineHeight: 1.5, marginTop: 4 }}>
-                  Work inbound replies, callbacks, campaigns, and unmatched relationships from one place.
+                  Work inbox replies, voicemails, and callbacks from one place.
                 </p>
               </div>
               <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
@@ -4508,7 +4506,7 @@ export default function VaPage() {
                   )}
                 </div>
                 <div style={{ display: "grid", gap: 7, maxHeight: 720, overflow: "auto", paddingRight: 2 }}>
-                  {contactQueueMode === "inbox" && inboxThreadRows.map(thread => (
+                  {(contactQueueMode === "inbox" ? inboxThreadRows : contactQueueMode === "voicemails" ? voicemailThreadRows : []).map(thread => (
                     <button
                       key={thread.key}
                       onClick={() => openIncomingThread(thread)}
@@ -4543,38 +4541,10 @@ export default function VaPage() {
                       </p>
                     </button>
                   ))}
-                  {contactQueueMode === "unmatched" && unmatchedThreadRows.map(thread => (
-                    <button key={thread.key} onClick={() => openIncomingThread(thread)} style={{ ...contactQueueCard, background: activeCommunicationThreadKey === thread.key ? "rgba(176,137,84,0.18)" : "rgba(176,137,84,0.10)", borderColor: "var(--brass)" }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "start" }}>
-                        <div>
-                          <strong style={{ color: "var(--obsidian)", fontSize: 14 }}>{thread.title}</strong>
-                          <p style={{ color: "var(--muted)", fontSize: 12, marginTop: 3 }}>
-                            {thread.phone || "No phone"} · {formatDate(thread.latestAt)}
-                            {thread.events.length > 1 ? ` · ${thread.events.length} messages` : ""}
-                          </p>
-                        </div>
-                        <span style={hotPill}>Needs matching</span>
-                      </div>
-                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 6 }}>
-                        <span style={thread.unreadCount ? hotPill : pill}>
-                          {thread.unreadCount ? `${thread.unreadCount} unread` : "Read"}
-                        </span>
-                      </div>
-                      <p style={{ color: "var(--ink)", fontSize: 12, lineHeight: 1.45, marginTop: 8 }}>{thread.preview}</p>
-                    </button>
-                  ))}
-                  {((contactQueueMode === "inbox" && inboxThreadRows.length === 0) || (contactQueueMode !== "inbox" && contactQueueMode !== "unmatched")) && contactQueueRows.map(lead => {
+                  {contactQueueMode === "callbacks" && contactQueueRows.map(lead => {
                     const active = selectedImportedLeadId === lead.id;
                     const action = sellerActionState(lead);
-                    const reason = contactQueueMode === "callbacks"
-                      ? `Callback due ${lead.next_follow_up_date || "today"}`
-                      : contactQueueMode === "campaigns"
-                        ? "Eligible for compliant outreach"
-                        : contactQueueMode === "recommended" || contactQueueMode === "inbox"
-                          ? action.primary
-                        : lead.status === "interested"
-                          ? "Interested contact"
-                          : action.primary;
+                    const reason = `Callback due ${lead.next_follow_up_date || "today"} · ${action.primary}`;
                     return (
                       <button
                         key={lead.id}
@@ -4602,9 +4572,9 @@ export default function VaPage() {
                       </button>
                     );
                   })}
-                  {contactQueueMode === "inbox" && inboxThreadRows.length === 0 && contactQueueRows.length === 0 && <p style={{ color: "var(--muted)", fontSize: 13 }}>No replies, missed calls, voicemails, or contacts are waiting.</p>}
-                  {contactQueueMode === "unmatched" && unmatchedThreadRows.length === 0 && <p style={{ color: "var(--muted)", fontSize: 13 }}>No unmatched contacts are waiting.</p>}
-                  {contactQueueMode !== "inbox" && contactQueueMode !== "unmatched" && contactQueueRows.length === 0 && <p style={{ color: "var(--muted)", fontSize: 13 }}>No contacts in this queue yet.</p>}
+                  {contactQueueMode === "inbox" && inboxThreadRows.length === 0 && <p style={{ color: "var(--muted)", fontSize: 13 }}>No replies, missed calls, or voicemails are waiting.</p>}
+                  {contactQueueMode === "voicemails" && voicemailThreadRows.length === 0 && <p style={{ color: "var(--muted)", fontSize: 13 }}>No voicemails are waiting.</p>}
+                  {contactQueueMode === "callbacks" && contactQueueRows.length === 0 && <p style={{ color: "var(--muted)", fontSize: 13 }}>No callbacks are due.</p>}
                 </div>
               </section>
 
@@ -4690,7 +4660,7 @@ export default function VaPage() {
                         {contactActionMenuOpen && (
                           <div className="contact-action-menu" style={contactActionMenu}>
                             <button onClick={() => openCommsThreadForEvent(activeCommunicationEvent)}>Open thread</button>
-                            <button onClick={() => setContactQueueMode("relationships")}>Find match</button>
+                            <button onClick={() => setMessage("Use the relationship match panel on the right to link or create this contact.")}>Find match</button>
                           </div>
                         )}
                       </div>
@@ -4820,7 +4790,7 @@ export default function VaPage() {
                     <section style={contactQueueSidePanel}>
                       <p style={eyebrowSmall}>Linked Records</p>
                       <button
-                        onClick={() => activeCommunicationEvent.matched_deal_id ? openLinkedDeal(activeCommunicationEvent.matched_deal_id) : setContactQueueMode("relationships")}
+                        onClick={() => activeCommunicationEvent.matched_deal_id ? openLinkedDeal(activeCommunicationEvent.matched_deal_id) : setMessage("Use the relationship match panel here to link or create this contact.")}
                         style={{ ...contactQueueCard, width: "100%", background: "var(--surface)" }}
                       >
                         <strong style={{ color: "var(--obsidian)", fontSize: 13 }}>{activeCommunicationEvent.matched_deal_id ? "Deal packet connected" : "No linked property yet"}</strong>
