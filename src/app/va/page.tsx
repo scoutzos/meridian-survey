@@ -1518,27 +1518,6 @@ export default function VaPage() {
     textable: categorizeForBulkSms(importedLeads).eligible.length,
     packets: importedLeads.filter(lead => lead.deal_id || lead.status === "converted").length,
   };
-  const priorityImportedLeads = useMemo(() => filteredImportedLeads
-    .filter(lead => lead.status === "new" || lead.status === "contacted")
-    .sort((a, b) => {
-      const aDue = a.next_follow_up_date && a.next_follow_up_date <= today ? 1000 : 0;
-      const bDue = b.next_follow_up_date && b.next_follow_up_date <= today ? 1000 : 0;
-      const aFresh = a.status === "new" ? 40 : 0;
-      const bFresh = b.status === "new" ? 40 : 0;
-      return ((b.lead_score ?? 0) + bDue + bFresh) - ((a.lead_score ?? 0) + aDue + aFresh);
-    })
-    .slice(0, 12), [filteredImportedLeads, today]);
-  const workdeskLeadRows = useMemo(() => {
-    const seen = new Set<string>();
-    return [...interestedLeads, ...priorityImportedLeads, ...filteredImportedLeads]
-      .filter(lead => {
-        if (seen.has(lead.id)) return false;
-        seen.add(lead.id);
-        return lead.status !== "converted" && lead.status !== "passed";
-      })
-      .slice(0, 10);
-  }, [filteredImportedLeads, interestedLeads, priorityImportedLeads]);
-  const campaignReadyLeads = useMemo(() => categorizeForBulkSms(importedLeads).eligible, [importedLeads]);
   const contactQueueRows = useMemo(() => {
     if (contactQueueMode === "callbacks") return leadFollowUpsDue.slice(0, 25);
     return [];
