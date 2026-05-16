@@ -317,6 +317,7 @@ export default function FloatingSmsWindow({
   const deviceRef = useRef<Device | null>(null);
   const callRef = useRef<Call | null>(null);
   const connectingRef = useRef(false);
+  const composerThreadKeyRef = useRef<string | null>(null);
 
   useEffect(() => {
     try {
@@ -618,6 +619,18 @@ export default function FloatingSmsWindow({
   }, [selectedKey, threads]);
 
   useEffect(() => {
+    const composerKey = showNew ? "__new__" : selectedKey;
+    if (composerThreadKeyRef.current === composerKey) return;
+    composerThreadKeyRef.current = composerKey;
+    setReply("");
+    setReplyMedia([]);
+    setNoteDraft("");
+    setThreadActionsOpen(false);
+    setStatus("");
+    if (!showNew) setComposerMode("text");
+  }, [selectedKey, showNew]);
+
+  useEffect(() => {
     const handleOpenThread = (event: Event) => {
       const detail = (event as CustomEvent<OpenCommsThreadDetail>).detail ?? {};
       const targetPhone = last10(detail.phone);
@@ -742,6 +755,7 @@ export default function FloatingSmsWindow({
   const addMessageMedia = async (files: FileList | null, target: "reply" | "new") => {
     const file = files?.[0];
     if (!file) return;
+    setStatus("");
     const current = target === "reply" ? replyMedia : newMedia;
     if (current.length >= 3) {
       setStatus("MMS is limited to 3 photos per message.");
@@ -1009,7 +1023,7 @@ export default function FloatingSmsWindow({
                     {newMedia.map(item => (
                       <span key={item.url} style={mediaChip}>
                         {item.filename || item.name || "Photo"}
-                        <button type="button" onClick={() => setNewMedia(prev => prev.filter(media => media.url !== item.url))} style={mediaRemove}>x</button>
+                        <button type="button" onClick={() => { setNewMedia(prev => prev.filter(media => media.url !== item.url)); setStatus(""); }} style={mediaRemove}>x</button>
                       </span>
                     ))}
                   </div>
@@ -1132,7 +1146,7 @@ export default function FloatingSmsWindow({
                             {replyMedia.map(item => (
                               <span key={item.url} style={mediaChip}>
                                 {item.filename || item.name || "Photo"}
-                                <button type="button" onClick={() => setReplyMedia(prev => prev.filter(media => media.url !== item.url))} style={mediaRemove}>x</button>
+                                <button type="button" onClick={() => { setReplyMedia(prev => prev.filter(media => media.url !== item.url)); setStatus(""); }} style={mediaRemove}>x</button>
                               </span>
                             ))}
                           </div>
