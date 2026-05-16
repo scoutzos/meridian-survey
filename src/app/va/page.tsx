@@ -1607,7 +1607,7 @@ export default function VaPage() {
   const voicemailThreadRows = useMemo(() => filterThreadRows(buildContactThreads(voicemailEventRows)), [filterThreadRows, voicemailEventRows]);
   const callbackThreadRows = useMemo(() => {
     const callbackThreads = buildContactThreads(inboxEventRows.filter(event => isVoicemailEvent(event) || isMissedInboundCallEvent(event)));
-    return filterThreadRows(callbackThreads);
+    return filterThreadRows(callbackThreads.filter(thread => thread.unreadCount > 0));
   }, [filterThreadRows, inboxEventRows]);
   const activeCommunicationThread = useMemo(() => {
     if (!activeCommunicationThreadKey) return null;
