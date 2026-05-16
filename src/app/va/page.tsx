@@ -731,6 +731,36 @@ function isVoicemailEvent(event: CommunicationEvent): boolean {
   return event.channel === "voice" && event.provider_event_type === "call-recording" && /^voicemail\b/i.test(event.body || "");
 }
 
+function communicationStatus(event: CommunicationEvent): string {
+  return String(event.status || event.raw_payload?.CallStatus || event.raw_payload?.DialCallStatus || event.provider_event_type || "").toLowerCase();
+}
+
+function isMissedInboundCallEvent(event: CommunicationEvent): boolean {
+  if (event.channel !== "voice" || event.provider_event_type === "call-recording" || event.direction !== "inbound") return false;
+  return ["no-answer", "busy", "failed", "canceled", "cancelled", "missed"].includes(communicationStatus(event));
+}
+
+function communicationDuration(event: CommunicationEvent): string | null {
+  const rawDuration = event.raw_payload?.RecordingDuration || event.raw_payload?.CallDuration || event.raw_payload?.DialCallDuration;
+  const duration = typeof rawDuration === "string" && rawDuration.trim() ? rawDuration.trim() : event.body?.match(/·\s*(\d+)s/)?.[1];
+  return duration ? `${duration}s` : null;
+}
+
+function recordingAudioUrl(event: CommunicationEvent): string | null {
+  const recording = event.media.find(item =>
+    item && typeof item === "object" && (item as Record<string, unknown>).type === "recording"
+  ) as Record<string, unknown> | undefined;
+  const mp3Url = typeof recording?.mp3Url === "string" ? recording.mp3Url : null;
+  const url = typeof recording?.url === "string" ? recording.url : null;
+  const rawUrl = mp3Url || url;
+  if (!rawUrl) return null;
+  const recordingSid = typeof recording?.recordingSid === "string" ? recording.recordingSid : rawUrl.match(/\/Recordings\/(RE[a-zA-Z0-9]+)/)?.[1];
+  if (recordingSid && (recording?.provider === "twilio" || rawUrl.includes("api.twilio.com"))) {
+    return `/api/twilio/voice/recording-audio?sid=${encodeURIComponent(recordingSid)}`;
+  }
+  return rawUrl;
+}
+
 function phoneForCommunicationEvent(event: CommunicationEvent | null): string | null {
   if (!event) return null;
   for (const value of communicationPhoneCandidates(event)) {
@@ -1334,6 +1364,14 @@ export default function VaPage() {
     return allCommunicationEvents[0] ?? recentInboundSms[0] ?? unmatchedSms[0] ?? null;
   }, [activeTab, allCommunicationEvents, recentInboundSms, selectedCommunicationEvent, selectedImportedLead, unmatchedSms]);
   const activeCommunicationThreadKey = activeCommunicationEvent ? threadKeyForCommunicationEvent(activeCommunicationEvent) : null;
+  const activeCommunicationIsVoicemail = !!activeCommunicationEvent && isVoicemailEvent(activeCommunicationEvent);
+  const activeCommunicationIsMissedCall = !!activeCommunicationEvent && isMissedInboundCallEvent(activeCommunicationEvent);
+  const activeCommunicationAudioUrl = activeCommunicationEvent ? recordingAudioUrl(activeCommunicationEvent) : null;
+  const activeCommunicationTitle = activeCommunicationIsVoicemail
+    ? "Voicemail"
+    : activeCommunicationIsMissedCall
+      ? "Missed call"
+      : activeCommunicationEvent?.contact_name || activeCommunicationEvent?.contact_number || activeCommunicationEvent?.from_number || "Unmatched contact";
   const selectedBatch = useMemo(() => leadBatches.find(batch => batch.id === selectedBatchId) ?? null, [leadBatches, selectedBatchId]);
   const listOwnerCounts = useMemo(() => {
     const counts = new Map<string, number>();
@@ -1567,10 +1605,14 @@ export default function VaPage() {
   }), [contactThreadFilter, leadSearch]);
   const inboxThreadRows = useMemo(() => filterThreadRows(buildContactThreads(inboxEventRows)), [filterThreadRows, inboxEventRows]);
   const voicemailThreadRows = useMemo(() => filterThreadRows(buildContactThreads(voicemailEventRows)), [filterThreadRows, voicemailEventRows]);
+  const callbackThreadRows = useMemo(() => {
+    const callbackThreads = buildContactThreads(inboxEventRows.filter(event => isVoicemailEvent(event) || isMissedInboundCallEvent(event)));
+    return filterThreadRows(callbackThreads);
+  }, [filterThreadRows, inboxEventRows]);
   const activeCommunicationThread = useMemo(() => {
     if (!activeCommunicationThreadKey) return null;
-    return [...buildContactThreads(inboxEventRows), ...buildContactThreads(voicemailEventRows)].find(thread => thread.key === activeCommunicationThreadKey) ?? null;
-  }, [activeCommunicationThreadKey, inboxEventRows, voicemailEventRows]);
+    return [...buildContactThreads(inboxEventRows), ...buildContactThreads(voicemailEventRows), ...callbackThreadRows].find(thread => thread.key === activeCommunicationThreadKey) ?? null;
+  }, [activeCommunicationThreadKey, callbackThreadRows, inboxEventRows, voicemailEventRows]);
   const activeFilterCount = [
     leadSearch.trim(),
     leadFilter !== "all" ? leadFilter : "",
@@ -1581,8 +1623,18 @@ export default function VaPage() {
   const contactQueueModeCounts = useMemo<Record<ContactQueueMode, number>>(() => ({
     inbox: inboxThreadRows.length,
     voicemails: voicemailThreadRows.length,
-    callbacks: leadFollowUpsDue.length,
-  }), [inboxThreadRows.length, leadFollowUpsDue.length, voicemailThreadRows.length]);
+    callbacks: leadFollowUpsDue.length + callbackThreadRows.length,
+  }), [callbackThreadRows.length, inboxThreadRows.length, leadFollowUpsDue.length, voicemailThreadRows.length]);
+  const contactQueueModeHelpText = contactQueueMode === "voicemails"
+    ? "Listen to seller voicemails, then call back, text, or link the caller to a record."
+    : contactQueueMode === "callbacks"
+      ? "Work scheduled follow-ups plus missed calls and voicemails that need a return call."
+      : "Work active text replies, photos, missed calls, and unmatched conversations.";
+  const contactQueueThreadRows = contactQueueMode === "voicemails"
+    ? voicemailThreadRows
+    : contactQueueMode === "callbacks"
+      ? callbackThreadRows
+      : inboxThreadRows;
   useEffect(() => {
     if (activeTab !== "outreach" || selectedImportedLeadId || selectedCommunicationEventId) return;
     const firstThread = inboxThreadRows[0] ?? null;
@@ -4489,7 +4541,7 @@ export default function VaPage() {
               <div>
                 <h2 style={{ ...sectionTitle, fontSize: 31 }}>Contact Queue</h2>
                 <p style={{ color: "var(--muted)", fontSize: 13, lineHeight: 1.5, marginTop: 4 }}>
-                  Work inbox replies, voicemails, and callbacks from one place.
+                  {contactQueueModeHelpText}
                 </p>
               </div>
               <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
@@ -4620,45 +4672,63 @@ export default function VaPage() {
                   )}
                 </div>
                 <div style={{ display: "grid", gap: 7, maxHeight: 720, overflow: "auto", paddingRight: 2 }}>
-                  {(contactQueueMode === "inbox" ? inboxThreadRows : contactQueueMode === "voicemails" ? voicemailThreadRows : []).map(thread => (
-                    <button
-                      key={thread.key}
-                      onClick={() => openIncomingThread(thread)}
-                      style={{
-                        ...contactQueueCard,
-                        padding: "9px 10px",
-                        textAlign: "left",
-                        cursor: "pointer",
-                        background: activeCommunicationThreadKey === thread.key ? "rgba(176,137,84,0.18)" : thread.statusLabel !== "Needs matching" ? "var(--surface)" : "rgba(176,137,84,0.10)",
-                        borderColor: activeCommunicationThreadKey === thread.key || thread.statusLabel === "Needs matching" ? "var(--brass)" : "var(--fog)",
-                      }}
-                    >
-                      <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "start" }}>
-                        <div>
-                          <strong style={{ color: "var(--obsidian)", fontSize: 13 }}>{thread.title}</strong>
-                          <p style={{ color: "var(--muted)", fontSize: 11, marginTop: 2, lineHeight: 1.25 }}>
-                            {thread.phone || "No phone"} · {formatDate(thread.latestAt)}
-                            {thread.events.length > 1 ? ` · ${thread.events.length} messages` : ""}
-                          </p>
+                  {contactQueueThreadRows.map(thread => {
+                    const voicemail = thread.events.find(isVoicemailEvent);
+                    const missedCall = thread.events.find(isMissedInboundCallEvent);
+                    const duration = voicemail ? communicationDuration(voicemail) : missedCall ? communicationDuration(missedCall) : null;
+                    const rowLabel = contactQueueMode === "voicemails"
+                      ? thread.unreadCount ? "New voicemail" : "Listened"
+                      : contactQueueMode === "callbacks"
+                        ? voicemail ? "Voicemail callback" : "Missed call"
+                        : thread.statusLabel;
+                    const preview = contactQueueMode === "voicemails"
+                      ? `Voicemail received${duration ? ` · ${duration}` : ""}`
+                      : contactQueueMode === "callbacks"
+                        ? voicemail
+                          ? `Return call from voicemail${duration ? ` · ${duration}` : ""}`
+                          : `Return missed call${duration ? ` · ${duration}` : ""}`
+                        : thread.preview;
+                    return (
+                      <button
+                        key={thread.key}
+                        onClick={() => openIncomingThread(thread)}
+                        style={{
+                          ...contactQueueCard,
+                          padding: "9px 10px",
+                          textAlign: "left",
+                          cursor: "pointer",
+                          background: activeCommunicationThreadKey === thread.key ? "rgba(176,137,84,0.18)" : thread.statusLabel !== "Needs matching" ? "var(--surface)" : "rgba(176,137,84,0.10)",
+                          borderColor: activeCommunicationThreadKey === thread.key || thread.statusLabel === "Needs matching" ? "var(--brass)" : "var(--fog)",
+                        }}
+                      >
+                        <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "start" }}>
+                          <div>
+                            <strong style={{ color: "var(--obsidian)", fontSize: 13 }}>{thread.title}</strong>
+                            <p style={{ color: "var(--muted)", fontSize: 11, marginTop: 2, lineHeight: 1.25 }}>
+                              {thread.phone || "No phone"} · {formatDate(thread.latestAt)}
+                              {thread.events.length > 1 ? ` · ${thread.events.length} items` : ""}
+                            </p>
+                          </div>
+                          <span style={rowLabel.includes("New") || rowLabel.includes("callback") || rowLabel === "Needs matching" ? hotPill : pill}>
+                            {rowLabel}
+                          </span>
                         </div>
-                        <span style={thread.statusLabel === "Needs matching" ? hotPill : pill}>
-                          {thread.statusLabel}
-                        </span>
-                      </div>
-                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 6 }}>
-                        <span style={thread.unreadCount ? hotPill : pill}>
-                          {thread.unreadCount ? `${thread.unreadCount} unread` : "Read"}
-                        </span>
-                      </div>
-                      <p style={{ color: "var(--ink)", fontSize: 12, lineHeight: 1.35, marginTop: 6 }}>
-                        {thread.preview}
-                      </p>
-                    </button>
-                  ))}
+                        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 6 }}>
+                          <span style={thread.unreadCount ? hotPill : pill}>
+                            {thread.unreadCount ? `${thread.unreadCount} unread` : "Read"}
+                          </span>
+                          {thread.statusLabel !== rowLabel && <span style={thread.statusLabel === "Needs matching" ? hotPill : pill}>{thread.statusLabel}</span>}
+                        </div>
+                        <p style={{ color: "var(--ink)", fontSize: 12, lineHeight: 1.35, marginTop: 6 }}>
+                          {preview}
+                        </p>
+                      </button>
+                    );
+                  })}
                   {contactQueueMode === "callbacks" && contactQueueRows.map(lead => {
                     const active = selectedImportedLeadId === lead.id;
                     const action = sellerActionState(lead);
-                    const reason = `Callback due ${lead.next_follow_up_date || "today"} · ${action.primary}`;
+                    const reason = `${formatQueueDueReason(lead.next_follow_up_date)} Next: ${action.primary}.`;
                     return (
                       <button
                         key={lead.id}
@@ -4674,10 +4744,10 @@ export default function VaPage() {
                           <div>
                             <strong style={{ color: "var(--obsidian)", fontSize: 14 }}>{lead.owner_name || "Owner unknown"}</strong>
                             <p style={{ color: "var(--muted)", fontSize: 12, marginTop: 3 }}>
-                              {lead.phone || lead.phone_2 || "No phone"} · {lead.county || "County pending"} · {lead.acreage ?? "N/A"} acres
+                              {lead.phone || lead.phone_2 || "No phone"} · Callback due {lead.next_follow_up_date || "today"}
                             </p>
                           </div>
-                          <span style={lead.status === "interested" ? hotPill : pill}>{statusLabel(lead.status)}</span>
+                          <span style={hotPill}>Scheduled</span>
                         </div>
                         <p style={{ color: "var(--ink)", fontSize: 12, lineHeight: 1.45, marginTop: 8 }}>
                           {lead.property_address || lead.parcel_id || "No property detail"}
@@ -4688,7 +4758,7 @@ export default function VaPage() {
                   })}
                   {contactQueueMode === "inbox" && inboxThreadRows.length === 0 && <p style={{ color: "var(--muted)", fontSize: 13 }}>No replies, missed calls, or voicemails are waiting.</p>}
                   {contactQueueMode === "voicemails" && voicemailThreadRows.length === 0 && <p style={{ color: "var(--muted)", fontSize: 13 }}>No voicemails are waiting.</p>}
-                  {contactQueueMode === "callbacks" && contactQueueRows.length === 0 && <p style={{ color: "var(--muted)", fontSize: 13 }}>No callbacks are due.</p>}
+                  {contactQueueMode === "callbacks" && contactQueueRows.length === 0 && callbackThreadRows.length === 0 && <p style={{ color: "var(--muted)", fontSize: 13 }}>No callbacks are due.</p>}
                 </div>
               </section>
 
@@ -4750,7 +4820,7 @@ export default function VaPage() {
                   <>
                     <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "start", marginBottom: 10 }}>
                       <div>
-                        <h3 style={{ ...sectionTitle, fontSize: 23 }}>{activeCommunicationEvent.contact_name || activeCommunicationEvent.contact_number || activeCommunicationEvent.from_number || "Unmatched contact"}</h3>
+                        <h3 style={{ ...sectionTitle, fontSize: 23 }}>{activeCommunicationTitle}</h3>
                         <p style={{ color: "var(--muted)", fontSize: 12, marginTop: 3 }}>
                           {activeCommunicationEvent.contact_number || activeCommunicationEvent.from_number || "No phone"} · {activeCommunicationEvent.matched_deal_id ? "Deal linked" : "Needs matching"}
                         </p>
@@ -4791,6 +4861,35 @@ export default function VaPage() {
                         {activeCommunicationEvent.matched_deal_id ? "Open Packet" : "Create Packet"}
                       </button>
                     </div>
+                    {(activeCommunicationIsVoicemail || activeCommunicationIsMissedCall) && (
+                      <div style={{ border: "1px solid var(--fog)", borderRadius: 8, padding: 10, background: "rgba(176,137,84,0.08)", marginBottom: 10, display: "grid", gap: 8 }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "baseline", flexWrap: "wrap" }}>
+                          <div>
+                            <p style={eyebrowSmall}>{activeCommunicationIsVoicemail ? "Voicemail" : "Return call"}</p>
+                            <strong style={{ color: "var(--obsidian)", fontSize: 15 }}>
+                              {activeCommunicationIsVoicemail ? "Listen, then call back or text." : "Missed inbound call. Return it or mark handled."}
+                            </strong>
+                          </div>
+                          <span style={activeCommunicationThread?.unreadCount ? hotPill : pill}>
+                            {activeCommunicationThread?.unreadCount ? "Needs review" : "Reviewed"}
+                          </span>
+                        </div>
+                        {activeCommunicationAudioUrl && (
+                          <audio controls preload="none" src={activeCommunicationAudioUrl} style={{ width: "100%", maxWidth: 360 }} />
+                        )}
+                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                          <TwilioCallButton
+                            toNumber={activeCommunicationEvent.contact_number || activeCommunicationEvent.from_number || activeCommunicationEvent.to_number}
+                            dealId={activeCommunicationEvent.matched_deal_id}
+                            compact
+                          />
+                          <button onClick={() => openCommsThreadForEvent(activeCommunicationEvent)} style={compactButton}>Text Back</button>
+                          {activeCommunicationThread && (
+                            <button onClick={() => void markContactThreadReadState(activeCommunicationThread, true)} style={compactButton}>Mark Reviewed</button>
+                          )}
+                        </div>
+                      </div>
+                    )}
                     <ConversationPanel
                       eyebrow="Conversation"
                       title="Conversation"
