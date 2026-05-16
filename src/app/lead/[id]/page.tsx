@@ -6,6 +6,7 @@ import OperatingHeader from "@/components/OperatingHeader";
 import ConversationPanel from "@/components/ConversationPanel";
 import LandUnderwritingMatrix from "@/components/LandUnderwritingMatrix";
 import LandUnderwritingPanel from "@/components/LandUnderwritingPanel";
+import ParsedListingFacts from "@/components/ParsedListingFacts";
 import { checkLeadSmsCompliance, renderMessageForRecipient } from "@/lib/bulk-sms";
 import {
   createLandCompRecord,
@@ -1161,6 +1162,7 @@ export default function LeadPage() {
                       ["Google map", prop.google_map_url ? <a href={prop.google_map_url} target="_blank" rel="noreferrer" style={inlineLinkButton}>Open map</a> : "—"],
                       ["Google Earth", prop.google_earth_url ? <a href={prop.google_earth_url} target="_blank" rel="noreferrer" style={inlineLinkButton}>Open Earth</a> : "—"],
                     ]} columns={2} />
+                    <ParsedListingFacts rawData={prop.raw_data} sourceUrl={prop.property_url} title="Parsed Listing Facts" />
                     {propRawEntries.length > 0 && (
                       <details style={subPanel}>
                         <summary style={{ color: "var(--obsidian)", cursor: "pointer", fontSize: 11, fontWeight: 800, letterSpacing: "0.12em", textTransform: "uppercase" }}>
@@ -1694,6 +1696,7 @@ function CompDetails({ comp }: { comp: LandCompRecord }) {
           Open comp source →
         </a>
       )}
+      <ParsedListingFacts rawData={comp.raw_data} listingText={comp.listing_text} sourceUrl={comp.source_url} title="Comp Parsed Listing Facts" />
       {rawEntries.length > 0 && (
         <div style={{ borderTop: "1px solid var(--fog)", maxHeight: 260, overflow: "auto", paddingTop: 8 }}>
           <p style={{ ...eyebrowSmall, marginBottom: 8 }}>Captured listing fields</p>

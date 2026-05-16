@@ -83,6 +83,7 @@ import {
 } from "@/lib/va-time";
 import ConversationPanel, { type ConversationActivity } from "@/components/ConversationPanel";
 import LandUnderwritingPanel from "@/components/LandUnderwritingPanel";
+import { CompactParsedListingFacts } from "@/components/ParsedListingFacts";
 import { labelForStatus } from "@/lib/status-map";
 import { getLeadNextAction, type WorkflowTone } from "@/lib/workflow-actions";
 import { calculateLandUnderwriting, type LandExitType, type LandUnderwritingResult } from "@/lib/land-underwriting";
@@ -4811,6 +4812,7 @@ export default function VaPage() {
                         ["Delinquent Since", lead.taxed_delinquent_since || fieldValue(lead.tax_delinquent_starting_year)],
                         ["Delinquent Years", fieldValue(lead.tax_delinquent_years)],
                       ])}
+                      <CompactParsedListingFacts rawData={lead.raw_data} sourceUrl={lead.property_url} title="Parsed Listing" />
                       {compactSection("Land & Development", [
                         ["Road Frontage", formatNumberValue(lead.road_frontage_ft, " ft")],
                         ["Landlocked", formatYesNo(lead.is_land_locked)],
