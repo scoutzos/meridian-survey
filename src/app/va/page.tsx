@@ -2221,8 +2221,8 @@ export default function VaPage() {
       setMessage("Photos must be JPG, PNG, or GIF.");
       return null;
     }
-    if (file.size > 500 * 1024) {
-      setMessage("Photos must be 500 KB or smaller for MMS deliverability.");
+    if (file.size > 4 * 1024 * 1024) {
+      setMessage("Photos must be 4 MB or smaller for MMS deliverability.");
       return null;
     }
     const formData = new FormData();
@@ -2266,7 +2266,7 @@ export default function VaPage() {
     }
     const toNumber = compliance.phone!.number;
     const body = smsDraft.trim();
-    if (!body) { setMessage("Write a text message before sending."); return; }
+    if (!body && smsMedia.length === 0) { setMessage("Write a text message or attach a photo before sending."); return; }
     setSmsSending(true);
     setMessage("");
     try {
@@ -2306,7 +2306,7 @@ export default function VaPage() {
     const toNumber = phoneForCommunicationEvent(activeCommunicationEvent);
     if (!toNumber) { setMessage("This contact does not have a usable phone number."); return; }
     const body = smsDraft.trim();
-    if (!body) { setMessage("Write a text message before sending."); return; }
+    if (!body && smsMedia.length === 0) { setMessage("Write a text message or attach a photo before sending."); return; }
     setSmsSending(true);
     setMessage("");
     try {
@@ -3092,8 +3092,8 @@ export default function VaPage() {
               </div>
             )}
             <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", marginTop: 8 }}>
-              <label style={{ ...compactButton, cursor: canText && smsMedia.length < 3 ? "pointer" : "not-allowed", opacity: canText && smsMedia.length < 3 ? 1 : 0.55 }}>
-                Add Photo
+              <label style={{ ...compactButton, background: "rgba(255,255,255,0.72)", borderColor: "rgba(176,137,84,0.55)", cursor: canText && smsMedia.length < 3 ? "pointer" : "not-allowed", opacity: canText && smsMedia.length < 3 ? 1 : 0.55 }}>
+                + Add Photo
                 <input
                   type="file"
                   accept="image/jpeg,image/png,image/gif"

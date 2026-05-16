@@ -712,8 +712,8 @@ export default function FloatingSmsWindow({
       setStatus("Photos must be JPG, PNG, or GIF.");
       return null;
     }
-    if (file.size > 500 * 1024) {
-      setStatus("Photos must be 500 KB or smaller for MMS deliverability.");
+    if (file.size > 4 * 1024 * 1024) {
+      setStatus("Photos must be 4 MB or smaller for MMS deliverability.");
       return null;
     }
     const formData = new FormData();
@@ -749,7 +749,7 @@ export default function FloatingSmsWindow({
     if (!canSend) { setStatus("You can review conversation history, but sending is limited to VA/admin users."); return; }
     const body = message.trim();
     if (!last10(toNumber)) { setStatus("Add a phone number first."); return; }
-    if (!body) { setStatus("Write a message before sending."); return; }
+    if (!body && media.length === 0) { setStatus("Write a message or attach a photo before sending."); return; }
     const leadForCompliance = leadId ? leads.find(l => l.id === leadId) : null;
     if (leadForCompliance) {
       const compliance = checkLeadSmsCompliance(leadForCompliance);
@@ -1002,8 +1002,8 @@ export default function FloatingSmsWindow({
                     ))}
                   </div>
                 )}
-                <label style={{ ...compactAction, cursor: newMedia.length < 3 ? "pointer" : "not-allowed", opacity: newMedia.length < 3 ? 1 : 0.55 }}>
-                  Add Photo
+                <label style={{ ...attachPhotoButton, cursor: newMedia.length < 3 ? "pointer" : "not-allowed", opacity: newMedia.length < 3 ? 1 : 0.55 }}>
+                  + Add Photo
                   <input
                     type="file"
                     accept="image/jpeg,image/png,image/gif"
@@ -1126,8 +1126,8 @@ export default function FloatingSmsWindow({
                           </div>
                         )}
                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
-                          <label style={{ ...compactAction, cursor: !replyBlocked && replyMedia.length < 3 ? "pointer" : "not-allowed", opacity: !replyBlocked && replyMedia.length < 3 ? 1 : 0.55 }}>
-                            Add Photo
+                          <label style={{ ...attachPhotoButton, cursor: !replyBlocked && replyMedia.length < 3 ? "pointer" : "not-allowed", opacity: !replyBlocked && replyMedia.length < 3 ? 1 : 0.55 }}>
+                            + Add Photo
                             <input
                               type="file"
                               accept="image/jpeg,image/png,image/gif"
@@ -1137,7 +1137,7 @@ export default function FloatingSmsWindow({
                             />
                           </label>
                           <span style={counter}>{reply.trim().length}/1200</span>
-                          <button type="button" onClick={() => sendText(selectedPhone, reply, selectedLead?.id ?? null, replyMedia)} disabled={sending || !reply.trim() || replyBlocked} style={{ ...sendButton, opacity: sending || !reply.trim() || replyBlocked ? 0.55 : 1 }}>
+                          <button type="button" onClick={() => sendText(selectedPhone, reply, selectedLead?.id ?? null, replyMedia)} disabled={sending || (!reply.trim() && replyMedia.length === 0) || replyBlocked} style={{ ...sendButton, opacity: sending || (!reply.trim() && replyMedia.length === 0) || replyBlocked ? 0.55 : 1 }}>
                             {sending ? "Sending..." : "Send Reply"}
                           </button>
                         </div>
@@ -1591,6 +1591,23 @@ const mediaChipRow: CSSProperties = {
   flexWrap: "wrap",
   gap: 6,
   marginTop: 7,
+};
+
+const attachPhotoButton: CSSProperties = {
+  alignItems: "center",
+  background: "rgba(255,255,255,0.72)",
+  border: "1px solid rgba(176,137,84,0.55)",
+  borderRadius: 8,
+  color: "var(--obsidian)",
+  display: "inline-flex",
+  fontSize: 12,
+  fontWeight: 900,
+  justifyContent: "center",
+  letterSpacing: "0.08em",
+  minHeight: 40,
+  padding: "8px 12px",
+  textTransform: "uppercase",
+  whiteSpace: "nowrap",
 };
 
 const mediaChip: CSSProperties = {

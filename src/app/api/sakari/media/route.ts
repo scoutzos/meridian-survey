@@ -5,7 +5,7 @@ export const runtime = "nodejs";
 export const maxDuration = 30;
 
 const BUCKET = process.env.SAKARI_MEDIA_BUCKET || "message-media";
-const MAX_BYTES = 500 * 1024;
+const MAX_BYTES = 4 * 1024 * 1024;
 const ALLOWED_TYPES = new Set(["image/jpeg", "image/png", "image/gif"]);
 
 function safeName(name: string): string {
@@ -23,11 +23,16 @@ export async function POST(req: NextRequest) {
   const file = formData.get("file");
   if (!(file instanceof File)) return NextResponse.json({ error: "Missing image file." }, { status: 400 });
   if (!ALLOWED_TYPES.has(file.type)) return NextResponse.json({ error: "MMS images must be JPG, PNG, or GIF." }, { status: 400 });
-  if (file.size > MAX_BYTES) return NextResponse.json({ error: "MMS images must be 500 KB or smaller." }, { status: 400 });
+  if (file.size > MAX_BYTES) return NextResponse.json({ error: "MMS images must be 4 MB or smaller." }, { status: 400 });
 
   const supabase = createClient(supabaseUrl, serviceKey, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
+  await supabase.storage.updateBucket(BUCKET, {
+    public: true,
+    allowedMimeTypes: Array.from(ALLOWED_TYPES),
+    fileSizeLimit: MAX_BYTES,
+  }).catch(() => null);
   const ext = file.type === "image/png" ? "png" : file.type === "image/gif" ? "gif" : "jpg";
   const path = `${new Date().toISOString().slice(0, 10)}/${Date.now()}-${safeName(file.name || `image.${ext}`)}`;
   let { error } = await supabase.storage
