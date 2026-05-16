@@ -86,7 +86,9 @@ interface ResearchResponse {
     longitude: number | null;
     matched_address: string | null;
     county: string | null;
+    city: string | null;
     state: string | null;
+    zip: string | null;
     geocoder: string;
   };
   parcel_match: CountyParcelMatch | null;
@@ -289,6 +291,36 @@ function searchUrl(query: string): string {
   return `https://www.google.com/search?q=${encodeURIComponent(query)}`;
 }
 
+function cityStateZipFromAddress(value: string | null | undefined): { city: string | null; state: string | null; zip: string | null } {
+  const text = clean(value);
+  if (!text) return { city: null, state: null, zip: null };
+  const parts = text.split(",").map(part => part.trim()).filter(Boolean);
+  const last = parts[parts.length - 1] || "";
+  const zipOnly = last.match(/^(\d{5})(?:-\d{4})?$/);
+  const stateOnly = parts[parts.length - 2]?.match(/^([A-Z]{2})$/i);
+  if (zipOnly && stateOnly) {
+    return {
+      city: parts.length >= 3 ? parts[parts.length - 3] || null : null,
+      state: stateOnly[1]?.toUpperCase() || null,
+      zip: zipOnly[1] || null,
+    };
+  }
+  const stateZip = last.match(/\b([A-Z]{2})\s+(\d{5})(?:-\d{4})?\b/i);
+  if (stateZip) {
+    return {
+      city: parts.length >= 2 ? parts[parts.length - 2] || null : null,
+      state: stateZip[1]?.toUpperCase() || null,
+      zip: stateZip[2] || null,
+    };
+  }
+  const combined = text.match(/,\s*([^,]+),\s*([A-Z]{2})\s+(\d{5})(?:-\d{4})?\b/i);
+  return {
+    city: combined?.[1]?.trim() || null,
+    state: combined?.[2]?.toUpperCase() || null,
+    zip: combined?.[3] || null,
+  };
+}
+
 function googleAddressComponent(
   components: Array<{ long_name?: string; short_name?: string; types?: string[] }> | undefined,
   type: string,
@@ -346,7 +378,9 @@ async function geocode(lead: ResearchLeadPayload, warnings: string[]) {
       longitude: lead.longitude,
       matched_address: oneLineAddress(lead) || null,
       county: lead.county || null,
+      city: lead.city || null,
       state: lead.state || null,
+      zip: lead.zip || null,
       geocoder: "Imported coordinates",
     };
   }
@@ -354,7 +388,7 @@ async function geocode(lead: ResearchLeadPayload, warnings: string[]) {
   const address = oneLineAddress(lead);
   if (!address) {
     warnings.push("No address or coordinates were available for automatic geocoding.");
-    return { latitude: null, longitude: null, matched_address: null, county: lead.county || null, state: lead.state || null, geocoder: "None" };
+    return { latitude: null, longitude: null, matched_address: null, county: lead.county || null, city: lead.city || null, state: lead.state || null, zip: lead.zip || null, geocoder: "None" };
   }
 
   try {
@@ -376,12 +410,15 @@ async function geocode(lead: ResearchLeadPayload, warnings: string[]) {
       };
       if (json.status === "OK") {
         const match = json.results?.[0];
+        const parsed = cityStateZipFromAddress(match?.formatted_address || address);
         return {
           latitude: typeof match?.geometry?.location?.lat === "number" ? match.geometry.location.lat : null,
           longitude: typeof match?.geometry?.location?.lng === "number" ? match.geometry.location.lng : null,
           matched_address: match?.formatted_address || address,
           county: googleAddressComponent(match?.address_components, "administrative_area_level_2")?.replace(/\s+county$/i, "") || lead.county || null,
+          city: googleAddressComponent(match?.address_components, "locality") || googleAddressComponent(match?.address_components, "postal_town") || parsed.city || lead.city || null,
           state: googleAddressComponent(match?.address_components, "administrative_area_level_1", true) || lead.state || null,
+          zip: googleAddressComponent(match?.address_components, "postal_code", true) || parsed.zip || lead.zip || null,
           geocoder: "Google Maps Geocoding API",
         };
       }
@@ -394,11 +431,13 @@ async function geocode(lead: ResearchLeadPayload, warnings: string[]) {
         addressMatches?: Array<{
           matchedAddress?: string;
           coordinates?: { x?: number; y?: number };
+          addressComponents?: { city?: string; state?: string; zip?: string };
           geographies?: Record<string, Array<Record<string, string>>>;
         }>;
       };
     };
     const match = json.result?.addressMatches?.[0];
+    const parsed = cityStateZipFromAddress(match?.matchedAddress || address);
     const county = match?.geographies?.Counties?.[0]?.NAME || lead.county || null;
     const state = match?.geographies?.States?.[0]?.STUSAB || lead.state || null;
     return {
@@ -406,12 +445,15 @@ async function geocode(lead: ResearchLeadPayload, warnings: string[]) {
       longitude: typeof match?.coordinates?.x === "number" ? match.coordinates.x : null,
       matched_address: match?.matchedAddress || address,
       county,
+      city: clean(match?.addressComponents?.city) || parsed.city || lead.city || null,
       state,
+      zip: clean(match?.addressComponents?.zip) || parsed.zip || lead.zip || null,
       geocoder: "U.S. Census Geocoder",
     };
   } catch (error) {
     warnings.push(`Census geocoder did not return a usable match: ${error instanceof Error ? error.message : "unknown error"}.`);
-    return { latitude: null, longitude: null, matched_address: address, county: lead.county || null, state: lead.state || null, geocoder: "U.S. Census Geocoder" };
+    const parsed = cityStateZipFromAddress(address);
+    return { latitude: null, longitude: null, matched_address: address, county: lead.county || null, city: lead.city || parsed.city || null, state: lead.state || parsed.state || null, zip: lead.zip || parsed.zip || null, geocoder: "U.S. Census Geocoder" };
   }
 }
 
@@ -1032,7 +1074,9 @@ export async function POST(req: NextRequest) {
       longitude: lon,
       matched_address: location.matched_address,
       county: location.county || county || null,
+      city: location.city || lead.city || null,
       state,
+      zip: location.zip || lead.zip || null,
       geocoder: location.geocoder,
     },
     parcel_match: parcelMatch,

@@ -629,6 +629,48 @@ function fillDraftNumber(current: string, value: number | null | undefined): str
   return current.trim() || value === null || value === undefined ? current : String(value);
 }
 
+const AUTO_RESEARCH_VISIBLE_FIELDS: Array<[keyof ImportedLandLead, string]> = [
+  ["county", "county"],
+  ["city", "city"],
+  ["state", "state"],
+  ["zip", "ZIP"],
+  ["latitude", "coordinates"],
+  ["longitude", "coordinates"],
+  ["parcel_id", "parcel ID"],
+  ["property_address", "site address"],
+  ["owner_name", "owner"],
+  ["mailing_address", "mailing address"],
+  ["acreage", "acreage"],
+  ["calculated_acreage", "calculated acreage"],
+  ["zoning", "zoning"],
+  ["land_use", "land use"],
+  ["assessed_value", "assessed value"],
+  ["property_tax", "property tax"],
+  ["parcel_link", "parcel link"],
+  ["flood_zone_percent", "flood"],
+  ["flood_zone_type", "flood"],
+  ["wetlands_percent", "wetlands"],
+  ["is_land_locked", "access"],
+  ["avg_elevation", "elevation"],
+  ["topography", "topography"],
+  ["google_map_url", "map link"],
+];
+
+function hasMessageValue(value: unknown): boolean {
+  if (value === null || value === undefined) return false;
+  if (typeof value === "number") return Number.isFinite(value);
+  if (typeof value === "boolean") return true;
+  return String(value).trim().length > 0;
+}
+
+function researchUpdatedFieldLabels(before: ImportedLandLead, after: ImportedLandLead | null): string[] {
+  if (!after) return [];
+  const labels = AUTO_RESEARCH_VISIBLE_FIELDS
+    .filter(([key]) => JSON.stringify(before[key] ?? null) !== JSON.stringify(after[key] ?? null) && hasMessageValue(after[key]))
+    .map(([, label]) => label);
+  return Array.from(new Set(labels));
+}
+
 function bestUnderwriting(lead: ImportedLandLead): LandUnderwritingResult {
   return calculateLandUnderwriting(lead).best;
 }
@@ -2571,9 +2613,13 @@ export default function VaPage() {
         const research = await runAutomatedLandResearch(savedLead, researchItems, user || "VA");
         const findingCount = research.result?.findings.length ?? 0;
         const blockerCount = research.result?.findings.filter(finding => finding.status === "blocked").length ?? 0;
+        const updatedFields = researchUpdatedFieldLabels(savedLead, research.lead);
+        const updatedMessage = updatedFields.length
+          ? ` Updated ${updatedFields.slice(0, 8).join(", ")}${updatedFields.length > 8 ? ", and more" : ""}.`
+          : " Research evidence was saved; no visible property fields changed.";
         researchMessage = research.error
           ? `Property saved, but auto research needs review: ${research.error}`
-          : `Property saved and auto research ran. ${findingCount} finding${findingCount === 1 ? "" : "s"} saved${blockerCount ? `, ${blockerCount} blocker${blockerCount === 1 ? "" : "s"} flagged` : ""}.`;
+          : `Property saved and enriched. ${findingCount} finding${findingCount === 1 ? "" : "s"} saved${blockerCount ? `, ${blockerCount} blocker${blockerCount === 1 ? "" : "s"} flagged` : ""}.${updatedMessage}`;
       } catch (error) {
         researchMessage = `Property saved, but auto research did not finish: ${error instanceof Error ? error.message : "unknown error"}.`;
       }

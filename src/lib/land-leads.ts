@@ -609,7 +609,9 @@ export interface AutomatedLandResearchResult {
     longitude: number | null;
     matched_address: string | null;
     county: string | null;
+    city: string | null;
     state: string | null;
+    zip: string | null;
     geocoder: string;
   };
   parcel_match: AutomatedLandParcelMatch | null;
@@ -2202,17 +2204,89 @@ function countyDisplayName(value: string | null | undefined): string | null {
   return /county$/i.test(county) ? titleCaseAddressPart(county) : `${titleCaseAddressPart(county)} County`;
 }
 
+function leadFieldHasValue(value: unknown): boolean {
+  if (value === null || value === undefined) return false;
+  if (typeof value === "number") return Number.isFinite(value);
+  if (typeof value === "boolean") return true;
+  const text = clean(value);
+  if (!text) return false;
+  return !["?", "-", "--", "n/a", "na", "none", "unknown"].includes(text.toLowerCase());
+}
+
+function shouldFillLeadField(lead: ImportedLandLead, key: keyof ImportedLandLead): boolean {
+  const current = lead[key];
+  if (key === "owner_name") return !hasImportedLeadOwnerIdentity(current as string | null | undefined);
+  if (key === "county") {
+    const county = normalizeText(current as string | null | undefined);
+    return !county || county === "ga" || county === "georgia";
+  }
+  return !leadFieldHasValue(current);
+}
+
+function setLeadPatchValue<K extends keyof ImportedLandLead>(
+  patch: Partial<ImportedLandLead>,
+  lead: ImportedLandLead,
+  key: K,
+  value: ImportedLandLead[K] | null | undefined,
+) {
+  if (!leadFieldHasValue(value)) return;
+  if (!shouldFillLeadField(lead, key)) return;
+  patch[key] = value as ImportedLandLead[K];
+}
+
+function firstResearchFinding(result: AutomatedLandResearchResult, category: LandDueDiligenceCategory, sourceName?: string): AutomatedLandResearchFinding | null {
+  return result.findings.find(finding =>
+    finding.category === category && (!sourceName || finding.source_name.toLowerCase().includes(sourceName.toLowerCase())),
+  ) ?? result.findings.find(finding => finding.category === category) ?? null;
+}
+
+function numericEvidence(value: string | null | undefined): number | null {
+  const match = clean(value)?.match(/-?\d+(?:\.\d+)?/);
+  if (!match) return null;
+  const parsed = Number(match[0]);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function researchFindingSnapshot(finding: AutomatedLandResearchFinding | null): Record<string, unknown> | null {
+  if (!finding) return null;
+  return {
+    title: finding.title,
+    status: finding.status,
+    result: finding.result_summary,
+    evidence: finding.evidence_value,
+    sourceName: finding.source_name,
+    sourceUrl: finding.source_url,
+    confidence: finding.confidence,
+    blocker: finding.blocker ?? null,
+  };
+}
+
 function researchLeadPatch(lead: ImportedLandLead, result: AutomatedLandResearchResult): Partial<ImportedLandLead> | null {
   const match = result.parcel_match;
+  const flood = firstResearchFinding(result, "flood", "FEMA");
+  const wetlands = firstResearchFinding(result, "wetlands", "NWI");
+  const access = firstResearchFinding(result, "access", "OpenStreetMap");
+  const elevation = result.findings.find(finding => finding.title.toLowerCase().includes("elevation")) ?? null;
+  const soil = result.findings.find(finding => finding.title.toLowerCase().includes("soil")) ?? null;
   const rawData = {
     ...(lead.raw_data || {}),
+    "Automatic research": {
+      checkedAt: result.checked_at,
+      location: result.location,
+      parcelMatch: match,
+      findings: result.findings,
+      sourceLinks: result.source_links,
+      warnings: result.warnings,
+    },
     "Location research": {
       checkedAt: result.checked_at,
       latitude: result.location.latitude,
       longitude: result.location.longitude,
       matchedAddress: result.location.matched_address,
       county: result.location.county,
+      city: result.location.city,
       state: result.location.state,
+      zip: result.location.zip,
       geocoder: result.location.geocoder,
     },
     ...(match ? { "County parcel research": {
@@ -2231,30 +2305,62 @@ function researchLeadPatch(lead: ImportedLandLead, result: AutomatedLandResearch
       addressMatchesSubject: match.addressMatchesSubject,
       raw: match.raw,
     } } : {}),
+    ...(flood ? { "FEMA flood research": researchFindingSnapshot(flood) } : {}),
+    ...(wetlands ? { "USFWS wetlands research": researchFindingSnapshot(wetlands) } : {}),
+    ...(access ? { "OSM access research": researchFindingSnapshot(access) } : {}),
+    ...(elevation ? { "USGS elevation research": researchFindingSnapshot(elevation) } : {}),
+    ...(soil ? { "USDA soil research": researchFindingSnapshot(soil) } : {}),
   };
   const patch: Partial<ImportedLandLead> = {
     raw_data: rawData,
   };
   const county = countyDisplayName(result.location.county);
-  if (county && !lead.county) patch.county = county;
-  if (result.location.state && !lead.state) patch.state = result.location.state;
-  if (typeof result.location.latitude === "number" && !lead.latitude) patch.latitude = result.location.latitude;
-  if (typeof result.location.longitude === "number" && !lead.longitude) patch.longitude = result.location.longitude;
-
-  if (!match || match.addressMatchesSubject === false) return patch;
-  if (match.parcelId && !lead.parcel_id) patch.parcel_id = match.parcelId;
-  if (match.address && !lead.property_address) patch.property_address = match.address;
-  if (match.owner && !lead.owner_name) patch.owner_name = match.owner;
-  if (match.mailingAddress && !lead.mailing_address) patch.mailing_address = match.mailingAddress;
-  if (match.acreage !== null && match.acreage !== undefined) {
-    if (!lead.acreage) patch.acreage = match.acreage;
-    if (!lead.calculated_acreage) patch.calculated_acreage = match.acreage;
+  setLeadPatchValue(patch, lead, "county", county);
+  setLeadPatchValue(patch, lead, "city", result.location.city);
+  setLeadPatchValue(patch, lead, "state", result.location.state);
+  setLeadPatchValue(patch, lead, "zip", result.location.zip);
+  setLeadPatchValue(patch, lead, "latitude", result.location.latitude);
+  setLeadPatchValue(patch, lead, "longitude", result.location.longitude);
+  if (typeof result.location.latitude === "number" && typeof result.location.longitude === "number") {
+    setLeadPatchValue(patch, lead, "google_map_url", `https://www.google.com/maps/search/${result.location.latitude},${result.location.longitude}`);
   }
-  if (match.zoning && !lead.zoning) patch.zoning = match.zoning;
-  if (match.landUse && !lead.land_use) patch.land_use = match.landUse;
-  if (match.assessedValue !== null && match.assessedValue !== undefined && !lead.assessed_value) patch.assessed_value = match.assessedValue;
-  if (match.propertyTax !== null && match.propertyTax !== undefined && !lead.property_tax) patch.property_tax = match.propertyTax;
-  if (match.sourceUrl && !lead.parcel_link) patch.parcel_link = match.sourceUrl;
+
+  if (match && match.addressMatchesSubject !== false) {
+    setLeadPatchValue(patch, lead, "parcel_id", match.parcelId);
+    setLeadPatchValue(patch, lead, "property_address", match.address);
+    setLeadPatchValue(patch, lead, "owner_name", match.owner);
+    setLeadPatchValue(patch, lead, "mailing_address", match.mailingAddress);
+    setLeadPatchValue(patch, lead, "acreage", match.acreage);
+    setLeadPatchValue(patch, lead, "calculated_acreage", match.acreage);
+    setLeadPatchValue(patch, lead, "zoning", match.zoning);
+    setLeadPatchValue(patch, lead, "land_use", match.landUse);
+    setLeadPatchValue(patch, lead, "assessed_value", match.assessedValue);
+    setLeadPatchValue(patch, lead, "property_tax", match.propertyTax);
+    setLeadPatchValue(patch, lead, "parcel_link", match.sourceUrl);
+  }
+
+  if (flood?.evidence_value) {
+    if (/no point intersection/i.test(flood.evidence_value)) {
+      setLeadPatchValue(patch, lead, "flood_zone_percent", 0);
+      setLeadPatchValue(patch, lead, "flood_zone_type", "No FEMA point intersection");
+    } else {
+      setLeadPatchValue(patch, lead, "flood_zone_type", flood.evidence_value);
+    }
+  }
+  if (wetlands?.evidence_value && /no point intersection/i.test(wetlands.evidence_value)) {
+    setLeadPatchValue(patch, lead, "wetlands_percent", 0);
+  }
+  if (access?.evidence_value && (lead.is_land_locked === null || lead.is_land_locked === undefined)) {
+    if (/no road within/i.test(access.evidence_value || "")) patch.is_land_locked = true;
+    if (/nearby osm road|road feature/i.test(access.evidence_value || "")) patch.is_land_locked = false;
+  }
+  const elevationFt = numericEvidence(elevation?.evidence_value);
+  if (elevationFt !== null) setLeadPatchValue(patch, lead, "avg_elevation", elevationFt);
+  const topographyParts = [
+    elevation?.evidence_value ? `USGS point elevation: ${elevation.evidence_value}` : null,
+    soil?.evidence_value ? `USDA soil: ${soil.evidence_value}` : null,
+  ].filter(Boolean);
+  if (topographyParts.length) setLeadPatchValue(patch, lead, "topography", topographyParts.join(" · "));
   return patch;
 }
 
@@ -3313,6 +3419,16 @@ export async function runAutomatedLandResearch(
   const updated = await updateImportedLandLeadFromResearch(lead, payload);
   if (updated.error) {
     return { result: payload, items: nextItems, lead, error: updated.error };
+  }
+  if (updated.lead) {
+    const fieldRows = await insertFieldValueRowsInChunks([updated.lead], [updated.lead]);
+    if (fieldRows.error) {
+      return { result: payload, items: nextItems, lead: updated.lead, error: fieldRows.error.message ?? "Automatic research saved, but source fields were not refreshed." };
+    }
+    const underwriting = await upsertLandUnderwritingForLeads([updated.lead]);
+    if (underwriting.error) {
+      return { result: payload, items: nextItems, lead: updated.lead, error: underwriting.error };
+    }
   }
 
   return { result: payload, items: nextItems.sort((a, b) => a.sort_order - b.sort_order), lead: updated.lead, error: null };
