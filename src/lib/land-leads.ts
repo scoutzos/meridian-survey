@@ -1071,10 +1071,10 @@ function normalizeLead(row: Record<string, string>, sourceSystem: string, campai
     total_parcel_value: parseNumber(pick(row, ["total parcel value"])),
     market_land_value: parseNumber(pick(row, ["market land value"])),
     market_improvement_value: parseNumber(pick(row, ["market improvement value"])),
-    tax_year: parseNumber(pick(row, ["tax year"])),
+    tax_year: parseNumber(pick(row, ["tax year", "listing tax year"])),
     tax_delinquent_starting_year: parseNumber(pick(row, ["tax delinquent starting year"])),
-    last_sale_date: pick(row, ["last sale date"]),
-    last_sale_price: parseNumber(pick(row, ["last sale price"])),
+    last_sale_date: pick(row, ["last sale date", "listing last sale date"]),
+    last_sale_price: parseNumber(pick(row, ["last sale price", "listing last sale price"])),
     previous_owners: pick(row, ["previous owner(s)", "previous owners"]),
     previous_owner_1: pick(row, ["previous owner 1"]),
     previous_owner_2: pick(row, ["previous owner 2"]),
@@ -1089,7 +1089,7 @@ function normalizeLead(row: Record<string, string>, sourceSystem: string, campai
     owner_type: pick(row, ["owner type"]),
     owner_occupied: boolish(pick(row, ["owner occupied"])),
     do_not_mail: boolish(pick(row, ["do not mail"])),
-    in_hoa: boolish(pick(row, ["in hoa", "hoa", "hoa flag"])),
+    in_hoa: boolish(pick(row, ["in hoa", "hoa", "hoa flag", "has hoa"])),
     family_transfer: boolish(pick(row, ["family transfer"])),
     google_map_url: googleMap,
     google_earth_url: googleEarth,
@@ -1129,14 +1129,14 @@ function normalizeLead(row: Record<string, string>, sourceSystem: string, campai
     road_frontage_ft: parseNumber(pick(row, ["road frontage ft", "road frontage"])),
     is_land_locked: boolish(pick(row, ["land locked", "tag land locked"])),
     flood_zone_percent: parseNumber(pick(row, ["flood zone percent", "flood zone", "flood"])),
-    flood_zone_type: pick(row, ["flood zone type", "flood zone"]),
+    flood_zone_type: pick(row, ["flood zone type", "flood zone", "listing flood zone"]),
     wetlands_percent: parseNumber(pick(row, ["wetlands percent", "wetlands", "tag wetlands"])),
-    topography: pick(row, ["topography", "slope"]),
+    topography: pick(row, ["topography", "slope", "lot features", "listing lot features"]),
     bad_topography: boolish(pick(row, ["tag bad topography", "bad topography"])),
     tax_delinquent: boolish(pick(row, ["tax delinquent", "delinquent taxes"])),
     tax_delinquent_years: parseNumber(pick(row, ["years delinquent", "tax delinquent years"])),
     mineral_rights_status: pick(row, ["mineral rights", "minerals"]),
-    hoa_status: pick(row, ["in hoa", "hoa", "hoa flag", "poa"]),
+    hoa_status: pick(row, ["in hoa", "hoa", "hoa flag", "has hoa", "listing hoa fee", "listing hoa monthly display", "poa"]),
     min_lot_size_acres: parseNumber(pick(row, ["min lot size", "minimum lot size"])),
     market_value_estimate_ppa: parseNumber(pick(row, ["market value estimate ppa"])),
     market_value_estimate_comp_count: parseNumber(pick(row, ["market value estimate comp count"])),
@@ -1299,6 +1299,10 @@ function singleLinkRawData(input: SingleLinkLandLeadInput): Record<string, strin
     if (value !== null && value !== undefined && String(value).trim()) acc[`Listing ${key}`] = String(value);
     return acc;
   }, {});
+  const listingFloodZone = clean(input.listingDetails?.["Flood Zone"]);
+  const listingTopography = topographyFromListingDetails(input.listingDetails);
+  const latestSold = latestSoldPriceHistory(input.listingDetails);
+  const latestTax = latestPublicTaxHistory(input.listingDetails);
   return {
     "Source URL": input.sourceUrl.trim(),
     "Listing URL": input.sourceUrl.trim(),
@@ -1317,6 +1321,11 @@ function singleLinkRawData(input: SingleLinkLandLeadInput): Record<string, strin
     "Market Value Estimate": input.marketValue === null || input.marketValue === undefined ? "" : String(input.marketValue),
     "Tax Assessed Value": input.assessedValue === null || input.assessedValue === undefined ? "" : String(input.assessedValue),
     "Property Tax": input.propertyTax === null || input.propertyTax === undefined ? "" : String(input.propertyTax),
+    "Flood Zone Type": listingFloodZone || "",
+    "Topography": listingTopography || "",
+    "Last Sale Date": latestSold?.date || "",
+    "Last Sale Price": latestSold?.price || "",
+    "Tax Year": latestTax?.year || "",
     "Zoning": input.zoning?.trim() || "",
     "Land Use": input.landUse?.trim() || "",
     "Subdivision": input.subdivision?.trim() || "",
@@ -1386,8 +1395,19 @@ function listingSummaryNotes(hints: ListingUrlHints): string | null {
     hints.hoaStatus ? `HOA: ${hints.hoaStatus}` : "",
     details["HOA Fee"] ? `HOA fee: ${details["HOA Fee"]}` : "",
     details["Waterfront"] ? `Waterfront: ${details["Waterfront"]}` : "",
+    details["Waterfront Features"] ? `Waterfront features: ${details["Waterfront Features"]}` : "",
+    details["Waterfront Frontage"] ? `Waterfront frontage: ${details["Waterfront Frontage"]}` : "",
+    details["Body Of Water"] ? `Body of water: ${details["Body Of Water"]}` : "",
+    details["Lot Features"] ? `Lot features: ${details["Lot Features"]}` : "",
+    details["Special Conditions"] ? `Special conditions: ${details["Special Conditions"]}` : "",
+    details["Listing Terms"] ? `Listing terms: ${details["Listing Terms"]}` : "",
     details["Flood Zone"] ? `Flood zone: ${details["Flood Zone"]}` : "",
     details["Buildability Note"] ? `Buildability: ${details["Buildability Note"]}` : "",
+    details["Days On Zillow"] ? `Days on Zillow: ${details["Days On Zillow"]}` : "",
+    details["Views"] ? `Zillow views: ${details["Views"]}` : "",
+    details["Saves"] ? `Zillow saves: ${details["Saves"]}` : "",
+    details["Listing Agent"] ? `Listing agent: ${details["Listing Agent"]}${details["Listing Agent Phone"] ? ` ${details["Listing Agent Phone"]}` : ""}` : "",
+    details["Listing Brokerage"] ? `Listing brokerage: ${details["Listing Brokerage"]}` : "",
     hints.water ? `Water: ${hints.water}` : "",
     hints.sewer ? `Sewer: ${hints.sewer}` : "",
     hints.utilities ? `Utilities: ${hints.utilities}` : "",
@@ -1461,6 +1481,48 @@ function parseListingSource(value: string | null): { source: string | null; mls:
   if (!text) return { source: null, mls: null };
   const mls = text.match(/MLS#:\s*([A-Za-z0-9-]+)/i)?.[1] || null;
   return { source: text.replace(/,\s*MLS#:.*/i, "").trim() || text, mls };
+}
+
+function parsedListingJsonRows(value: string | number | null | undefined): Array<Record<string, string>> {
+  const text = clean(value);
+  if (!text) return [];
+  try {
+    const parsed = JSON.parse(text);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((row): row is Record<string, string> =>
+      !!row && typeof row === "object" && !Array.isArray(row),
+    );
+  } catch {
+    return [];
+  }
+}
+
+function latestSoldPriceHistory(details: ListingDetails | null | undefined): { date: string; price: string } | null {
+  const rows = parsedListingJsonRows(details?.["Price History"]);
+  const sold = rows.find(row => /sold/i.test(row.event || "") && moneyText(row.price));
+  return sold?.date && sold.price ? { date: sold.date, price: sold.price } : null;
+}
+
+function latestPublicTaxHistory(details: ListingDetails | null | undefined): { year: string; propertyTaxes: string; taxAssessment: string } | null {
+  const rows = parsedListingJsonRows(details?.["Public Tax History"]);
+  const latest = rows.find(row => row.year || row.propertyTaxes || row.taxAssessment);
+  return latest
+    ? {
+      year: latest.year || "",
+      propertyTaxes: latest.propertyTaxes || "",
+      taxAssessment: latest.taxAssessment || "",
+    }
+    : null;
+}
+
+function topographyFromListingDetails(details: ListingDetails | null | undefined): string | null {
+  const lotFeatures = clean(details?.["Lot Features"]);
+  if (!lotFeatures) return null;
+  const topoTerms = lotFeatures
+    .split(",")
+    .map(part => part.trim())
+    .filter(part => /slope|sloped|steep|level|rolling|hilly|wooded|corner/i.test(part));
+  return topoTerms.length ? topoTerms.join(", ") : null;
 }
 
 function parseListingAgent(mainLines: string[]): { name: string | null; phone: string | null; brokerage: string | null } {
@@ -1585,7 +1647,7 @@ export function listingTextHints(listingText: string): ListingUrlHints {
   const sourceLine = extractLineValue("Source")?.replace(/\s*MLS Logo.*$/i, "").trim() || null;
   const specialIndex = mainLines.findIndex(line => /^what'?s special$/i.test(line));
   const specialEnd = specialIndex >= 0
-    ? mainLines.findIndex((line, index) => index > specialIndex && /^(show more|\d+\s+days|stay connected|listing updated|listed by:|source:|facts & features)$/i.test(line))
+    ? mainLines.findIndex((line, index) => index > specialIndex && /^(show more|hide|\d+\s+days|stay connected|listing updated|listed by:|source:|facts & features)$/i.test(line))
     : -1;
   const listingDescription = specialIndex >= 0
     ? mainLines.slice(specialIndex + 1, specialEnd > specialIndex ? specialEnd : Math.min(mainLines.length, specialIndex + 5)).join(" ").slice(0, 1000)
