@@ -27,6 +27,14 @@ export interface CommunicationEvent {
   read_by: string | null;
 }
 
+export type MessageMediaAttachment = {
+  url: string;
+  type?: string | null;
+  name?: string | null;
+  filename?: string | null;
+  contentType?: string | null;
+};
+
 interface SakariWebhookBody {
   accountId?: string;
   eventType?: string;
@@ -353,6 +361,7 @@ export async function sendSakariSms(args: {
   actor: string;
   leadId?: string | null;
   dealId?: string | null;
+  media?: MessageMediaAttachment[];
 }): Promise<{ event: CommunicationEvent | null; error: string | null }> {
   const accountId = process.env.SAKARI_ACCOUNT_ID;
   if (!accountId) return { event: null, error: "Missing SAKARI_ACCOUNT_ID in Vercel." };
@@ -360,11 +369,20 @@ export async function sendSakariSms(args: {
   if (tokenError || !token) return { event: null, error: tokenError ?? "Could not authenticate with Sakari." };
 
   const groupId = process.env.SAKARI_GROUP_ID;
+  const media = (args.media ?? []).filter(item => item.url);
   const body: Record<string, unknown> = {
     contacts: [{ mobile: { number: args.toNumber, country: "US" } }],
     template: args.message,
-    type: "SMS",
+    type: media.length ? "MMS" : "SMS",
   };
+  if (media.length) {
+    body.media = media.map(item => ({
+      url: item.url,
+      type: item.type || item.contentType || "image",
+      name: item.name || item.filename || "image",
+      filename: item.filename || item.name || "image",
+    }));
+  }
   if (groupId) body.phoneNumberFilter = { group: { id: groupId } };
 
   const response = await fetch(`https://api.sakari.io/v1/accounts/${accountId}/messages`, {
@@ -394,7 +412,7 @@ export async function sendSakariSms(args: {
     contact_name: null,
     body: args.message,
     status: text(message?.status) || "sent",
-    media: [],
+    media: media.length ? media : (Array.isArray(message?.media) ? message.media : []),
     raw_payload: {
       ...(data as Record<string, unknown>),
       meridian_actor: args.actor,

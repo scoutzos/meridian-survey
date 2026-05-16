@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import { Call, Device } from "@twilio/voice-sdk";
 import type { CommunicationEvent } from "@/lib/communications";
+import type { MessageMediaAttachment } from "@/lib/communications";
 import { fetchCommunicationEvents } from "@/lib/communications";
 import { createImportedLandLeadActivity, type ImportedLandLead } from "@/lib/land-leads";
 import { createDealActivity } from "@/lib/deals";
@@ -176,6 +177,22 @@ function recordingUrl(event: CommunicationEvent): string | null {
   return rawUrl;
 }
 
+function imageMedia(event: CommunicationEvent): Array<{ url: string; label: string }> {
+  return event.media
+    .map(item => item && typeof item === "object" ? item as Record<string, unknown> : null)
+    .filter((item): item is Record<string, unknown> => !!item)
+    .filter(item => item.type !== "recording")
+    .map(item => {
+      const url = [item.url, item.mediaUrl, item.media_url, item.href]
+        .find(value => typeof value === "string" && value) as string | undefined;
+      const contentType = String(item.contentType || item.content_type || item.mimeType || item.type || "");
+      const label = String(item.name || item.filename || "Photo");
+      if (!url || (contentType && !contentType.includes("image") && !/\.(jpe?g|png|gif)(\?|$)/i.test(url))) return null;
+      return { url, label };
+    })
+    .filter((item): item is { url: string; label: string } => !!item);
+}
+
 type ReadState = Record<string, string>;
 type PhoneState = "offline" | "connecting" | "online" | "ringing" | "in-call" | "error";
 
@@ -262,8 +279,10 @@ export default function FloatingSmsWindow({
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [threadEvents, setThreadEvents] = useState<CommunicationEvent[]>([]);
   const [reply, setReply] = useState("");
+  const [replyMedia, setReplyMedia] = useState<MessageMediaAttachment[]>([]);
   const [newPhone, setNewPhone] = useState("");
   const [newBody, setNewBody] = useState("");
+  const [newMedia, setNewMedia] = useState<MessageMediaAttachment[]>([]);
   const [newSearch, setNewSearch] = useState("");
   const [showNew, setShowNew] = useState(false);
   const [unreadOnly, setUnreadOnly] = useState(false);
@@ -677,7 +696,45 @@ export default function FloatingSmsWindow({
     if (dragRef.current.pointerId === event.pointerId) setDragging(false);
   };
 
-  const sendText = async (toNumber: string, message: string, leadId?: string | null) => {
+  const uploadMessageMedia = async (file: File): Promise<MessageMediaAttachment | null> => {
+    if (!["image/jpeg", "image/png", "image/gif"].includes(file.type)) {
+      setStatus("Photos must be JPG, PNG, or GIF.");
+      return null;
+    }
+    if (file.size > 500 * 1024) {
+      setStatus("Photos must be 500 KB or smaller for MMS deliverability.");
+      return null;
+    }
+    const formData = new FormData();
+    formData.append("file", file);
+    const response = await fetch("/api/sakari/media", { method: "POST", body: formData });
+    const result = await response.json().catch(() => ({})) as { media?: MessageMediaAttachment; error?: string };
+    if (!response.ok || !result.media) {
+      setStatus(`Photo upload failed: ${result.error || response.statusText}`);
+      return null;
+    }
+    return result.media;
+  };
+
+  const addMessageMedia = async (files: FileList | null, target: "reply" | "new") => {
+    const file = files?.[0];
+    if (!file) return;
+    const current = target === "reply" ? replyMedia : newMedia;
+    if (current.length >= 3) {
+      setStatus("MMS is limited to 3 photos per message.");
+      return;
+    }
+    try {
+      setSending(true);
+      const media = await uploadMessageMedia(file);
+      if (media && target === "reply") setReplyMedia(prev => [...prev, media].slice(0, 3));
+      if (media && target === "new") setNewMedia(prev => [...prev, media].slice(0, 3));
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const sendText = async (toNumber: string, message: string, leadId?: string | null, media: MessageMediaAttachment[] = []) => {
     if (!canSend) { setStatus("You can review conversation history, but sending is limited to VA/admin users."); return; }
     const body = message.trim();
     if (!last10(toNumber)) { setStatus("Add a phone number first."); return; }
@@ -702,6 +759,7 @@ export default function FloatingSmsWindow({
           message: body,
           actor: user,
           leadId: leadId ?? null,
+          media,
         }),
       });
       const result = await response.json().catch(() => ({})) as { error?: string };
@@ -710,7 +768,9 @@ export default function FloatingSmsWindow({
         return;
       }
       setReply("");
+      setReplyMedia([]);
       setNewBody("");
+      setNewMedia([]);
       setShowNew(false);
       setStatus("SMS sent.");
       window.dispatchEvent(new CustomEvent("meridian-comms-sent", {
@@ -921,7 +981,27 @@ export default function FloatingSmsWindow({
                 </div>
                 <input value={newPhone} onChange={event => setNewPhone(event.target.value)} placeholder="Phone number" style={input} />
                 <textarea value={newBody} onChange={event => setNewBody(event.target.value)} rows={4} placeholder="Write the first text..." style={textarea} />
-                <button type="button" onClick={() => sendText(newPhone, newBody, leadSuggestions.find(lead => last10(lead.phone) === last10(newPhone) || last10(lead.phone_2) === last10(newPhone))?.id ?? null)} disabled={sending} style={sendButton}>
+                {newMedia.length > 0 && (
+                  <div style={mediaChipRow}>
+                    {newMedia.map(item => (
+                      <span key={item.url} style={mediaChip}>
+                        {item.filename || item.name || "Photo"}
+                        <button type="button" onClick={() => setNewMedia(prev => prev.filter(media => media.url !== item.url))} style={mediaRemove}>x</button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+                <label style={{ ...compactAction, cursor: newMedia.length < 3 ? "pointer" : "not-allowed", opacity: newMedia.length < 3 ? 1 : 0.55 }}>
+                  Add Photo
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/png,image/gif"
+                    onChange={event => void addMessageMedia(event.target.files, "new").finally(() => { event.currentTarget.value = ""; })}
+                    disabled={sending || newMedia.length >= 3}
+                    style={{ display: "none" }}
+                  />
+                </label>
+                <button type="button" onClick={() => sendText(newPhone, newBody, leadSuggestions.find(lead => last10(lead.phone) === last10(newPhone) || last10(lead.phone_2) === last10(newPhone))?.id ?? null, newMedia)} disabled={sending} style={sendButton}>
                   {sending ? "Sending..." : "Send Text"}
                 </button>
               </div>
@@ -974,11 +1054,21 @@ export default function FloatingSmsWindow({
                     .sort((a, b) => eventTime(a).localeCompare(eventTime(b)))
                     .map(event => {
                       const audioUrl = recordingUrl(event);
+                      const images = imageMedia(event);
                       return (
                       <div key={event.id} style={{ ...bubble, ...(event.direction === "outbound" ? outgoing : event.channel === "voice" ? callBubble : incoming) }}>
                         <strong style={messageLabel}>{eventLabel(event)}</strong>
                         <p style={{ margin: "4px 0 0" }}>{eventBody(event)}</p>
                         {audioUrl && <audio controls preload="none" src={audioUrl} style={recordingPlayer} />}
+                        {images.length > 0 && (
+                          <div style={messageImageGrid}>
+                            {images.map(image => (
+                              <a key={image.url} href={image.url} target="_blank" rel="noreferrer" style={messageImageLink}>
+                                <img src={image.url} alt={image.label} style={messageImage} />
+                              </a>
+                            ))}
+                          </div>
+                        )}
                         <span style={bubbleTime}>
                           {formatTime(eventTime(event))}
                           {sentByLabel(event) ? ` · Sent by ${sentByLabel(event)}` : event.direction === "outbound" ? " · Sent from Meridian" : ""}
@@ -1014,9 +1104,29 @@ export default function FloatingSmsWindow({
                     {composerMode === "text" ? (
                       <>
                         <textarea value={reply} onChange={event => setReply(event.target.value)} rows={3} placeholder={replyBlocked ? "SMS disabled for this record." : "Reply to this contact..."} disabled={replyBlocked} style={textarea} />
+                        {replyMedia.length > 0 && (
+                          <div style={mediaChipRow}>
+                            {replyMedia.map(item => (
+                              <span key={item.url} style={mediaChip}>
+                                {item.filename || item.name || "Photo"}
+                                <button type="button" onClick={() => setReplyMedia(prev => prev.filter(media => media.url !== item.url))} style={mediaRemove}>x</button>
+                              </span>
+                            ))}
+                          </div>
+                        )}
                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                          <label style={{ ...compactAction, cursor: !replyBlocked && replyMedia.length < 3 ? "pointer" : "not-allowed", opacity: !replyBlocked && replyMedia.length < 3 ? 1 : 0.55 }}>
+                            Add Photo
+                            <input
+                              type="file"
+                              accept="image/jpeg,image/png,image/gif"
+                              onChange={event => void addMessageMedia(event.target.files, "reply").finally(() => { event.currentTarget.value = ""; })}
+                              disabled={sending || replyBlocked || replyMedia.length >= 3}
+                              style={{ display: "none" }}
+                            />
+                          </label>
                           <span style={counter}>{reply.trim().length}/1200</span>
-                          <button type="button" onClick={() => sendText(selectedPhone, reply, selectedLead?.id ?? null)} disabled={sending || !reply.trim() || replyBlocked} style={{ ...sendButton, opacity: sending || !reply.trim() || replyBlocked ? 0.55 : 1 }}>
+                          <button type="button" onClick={() => sendText(selectedPhone, reply, selectedLead?.id ?? null, replyMedia)} disabled={sending || !reply.trim() || replyBlocked} style={{ ...sendButton, opacity: sending || !reply.trim() || replyBlocked ? 0.55 : 1 }}>
                             {sending ? "Sending..." : "Send Reply"}
                           </button>
                         </div>
@@ -1462,6 +1572,56 @@ const recordingPlayer: CSSProperties = {
   display: "block",
   marginTop: 7,
   maxWidth: "100%",
+  width: "100%",
+};
+
+const mediaChipRow: CSSProperties = {
+  display: "flex",
+  flexWrap: "wrap",
+  gap: 6,
+  marginTop: 7,
+};
+
+const mediaChip: CSSProperties = {
+  alignItems: "center",
+  background: "rgba(176,137,84,0.14)",
+  border: "1px solid rgba(176,137,84,0.45)",
+  borderRadius: 999,
+  color: "var(--obsidian)",
+  display: "inline-flex",
+  fontSize: 11,
+  fontWeight: 800,
+  gap: 4,
+  padding: "5px 8px",
+};
+
+const mediaRemove: CSSProperties = {
+  background: "transparent",
+  border: "none",
+  color: "var(--obsidian)",
+  cursor: "pointer",
+  fontWeight: 900,
+  padding: 0,
+};
+
+const messageImageGrid: CSSProperties = {
+  display: "grid",
+  gap: 6,
+  gridTemplateColumns: "repeat(auto-fit, minmax(96px, 1fr))",
+  marginTop: 7,
+};
+
+const messageImageLink: CSSProperties = {
+  border: "1px solid var(--fog)",
+  borderRadius: 7,
+  display: "block",
+  overflow: "hidden",
+};
+
+const messageImage: CSSProperties = {
+  aspectRatio: "4 / 3",
+  display: "block",
+  objectFit: "cover",
   width: "100%",
 };
 

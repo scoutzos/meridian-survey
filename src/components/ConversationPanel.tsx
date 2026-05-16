@@ -89,6 +89,22 @@ function recordingUrl(event: CommunicationEvent): string | null {
   return rawUrl;
 }
 
+function imageMedia(event: CommunicationEvent): Array<{ url: string; label: string }> {
+  return event.media
+    .map(item => item && typeof item === "object" ? item as Record<string, unknown> : null)
+    .filter((item): item is Record<string, unknown> => !!item)
+    .filter(item => item.type !== "recording")
+    .map(item => {
+      const url = [item.url, item.mediaUrl, item.media_url, item.href]
+        .find(value => typeof value === "string" && value) as string | undefined;
+      const contentType = String(item.contentType || item.content_type || item.mimeType || item.type || "");
+      const label = String(item.name || item.filename || "Photo");
+      if (!url || (contentType && !contentType.includes("image") && !/\.(jpe?g|png|gif)(\?|$)/i.test(url))) return null;
+      return { url, label };
+    })
+    .filter((item): item is { url: string; label: string } => !!item);
+}
+
 export default function ConversationPanel({
   title = "Conversation",
   eyebrow = "Communication",
@@ -109,6 +125,7 @@ export default function ConversationPanel({
       body: event.channel === "voice" ? voiceBody(event) : event.body || event.status || event.provider_event_type,
       meta: event.status || event.provider_event_type,
       recording: recordingUrl(event),
+      images: imageMedia(event),
     })),
     ...activities.map(activity => ({
       id: `activity-${activity.id}`,
@@ -118,6 +135,7 @@ export default function ConversationPanel({
       body: activity.body,
       meta: activity.meta || undefined,
       recording: null,
+      images: [],
     })),
   ].sort((a, b) => a.date.localeCompare(b.date));
 
@@ -151,6 +169,15 @@ export default function ConversationPanel({
             {item.recording && (
               <div style={recordingShell}>
                 <audio controls preload="none" src={item.recording} style={recordingPlayer} />
+              </div>
+            )}
+            {item.images.length > 0 && (
+              <div style={imageGrid}>
+                {item.images.map(image => (
+                  <a key={image.url} href={image.url} target="_blank" rel="noreferrer" style={imageLink}>
+                    <img src={image.url} alt={image.label} style={imagePreview} />
+                  </a>
+                ))}
               </div>
             )}
             {item.meta && <p style={bubbleMeta}>{item.meta}</p>}
@@ -285,6 +312,27 @@ const recordingShell: CSSProperties = {
   borderRadius: 8,
   marginTop: 8,
   padding: 7,
+};
+
+const imageGrid: CSSProperties = {
+  display: "grid",
+  gap: 8,
+  gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))",
+  marginTop: 8,
+};
+
+const imageLink: CSSProperties = {
+  border: "1px solid var(--fog)",
+  borderRadius: 8,
+  display: "block",
+  overflow: "hidden",
+};
+
+const imagePreview: CSSProperties = {
+  aspectRatio: "4 / 3",
+  display: "block",
+  objectFit: "cover",
+  width: "100%",
 };
 
 const emptyStyle: CSSProperties = {

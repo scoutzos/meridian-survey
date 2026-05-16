@@ -48,7 +48,7 @@ import {
   type LandLeadBatch,
   type LandLeadImportPreview,
 } from "@/lib/land-leads";
-import { attachCommunicationEventToDeal, fetchCommunicationEvents, markCommunicationEventsRead, type CommunicationEvent } from "@/lib/communications";
+import { attachCommunicationEventToDeal, fetchCommunicationEvents, markCommunicationEventsRead, type CommunicationEvent, type MessageMediaAttachment } from "@/lib/communications";
 import {
   createVaDailyBrief,
   fetchVaDailyBriefs,
@@ -1077,6 +1077,7 @@ export default function VaPage() {
   const [activityDraft, setActivityDraft] = useState<{ activityType: ImportedLandLeadActivity["activity_type"]; summary: string; nextFollowUpDate: string }>({ activityType: "called", summary: "", nextFollowUpDate: "" });
   const [dispositionDraft, setDispositionDraft] = useState<{ disposition: LeadDisposition; note: string; nextFollowUpDate: string }>({ disposition: "no-answer", note: "", nextFollowUpDate: "" });
   const [smsDraft, setSmsDraft] = useState("");
+  const [smsMedia, setSmsMedia] = useState<MessageMediaAttachment[]>([]);
   const [contactComposerMode, setContactComposerMode] = useState<ContactComposerMode>("text");
   const [bulkTextModalOpen, setBulkTextModalOpen] = useState(false);
   const [bulkTextStep, setBulkTextStep] = useState<BulkTextStep>("audience");
@@ -2236,6 +2237,42 @@ export default function VaPage() {
     setRecentInboundSms(recentRows.filter(row => row.direction === "inbound" || isVoicemailEvent(row)).slice(0, 40));
   };
 
+  const uploadSmsMedia = async (file: File): Promise<MessageMediaAttachment | null> => {
+    if (!["image/jpeg", "image/png", "image/gif"].includes(file.type)) {
+      setMessage("Photos must be JPG, PNG, or GIF.");
+      return null;
+    }
+    if (file.size > 500 * 1024) {
+      setMessage("Photos must be 500 KB or smaller for MMS deliverability.");
+      return null;
+    }
+    const formData = new FormData();
+    formData.append("file", file);
+    const response = await fetch("/api/sakari/media", { method: "POST", body: formData });
+    const result = await response.json().catch(() => ({})) as { media?: MessageMediaAttachment; error?: string };
+    if (!response.ok || !result.media) {
+      setMessage(`Photo upload failed: ${result.error || response.statusText}`);
+      return null;
+    }
+    return result.media;
+  };
+
+  const addSmsMedia = async (files: FileList | null) => {
+    const file = files?.[0];
+    if (!file) return;
+    if (smsMedia.length >= 3) {
+      setMessage("MMS is limited to 3 photos per message.");
+      return;
+    }
+    try {
+      setSmsSending(true);
+      const media = await uploadSmsMedia(file);
+      if (media) setSmsMedia(prev => [...prev, media].slice(0, 3));
+    } finally {
+      setSmsSending(false);
+    }
+  };
+
   const sendSmsToLead = async () => {
     if (!selectedImportedLead) { setMessage("Select an imported lead first."); return; }
     const compliance = checkLeadSmsCompliance(selectedImportedLead);
@@ -2262,6 +2299,7 @@ export default function VaPage() {
           message: body,
           actor: user,
           leadId: selectedImportedLead.id,
+          media: smsMedia,
         }),
       });
       const result = await response.json().catch(() => ({})) as { error?: string };
@@ -2270,6 +2308,7 @@ export default function VaPage() {
         return;
       }
       setSmsDraft("");
+      setSmsMedia([]);
       await refreshSelectedLeadMessages(selectedImportedLead.id);
       addToDailyBrief(`SMS sent to ${leadLabel(selectedImportedLead)}: ${body}`, {
         outreach_sent: (briefDraft.outreach_sent ?? 0) + 1,
@@ -2300,6 +2339,7 @@ export default function VaPage() {
           message: body,
           actor: user,
           dealId: activeCommunicationEvent.matched_deal_id,
+          media: smsMedia,
         }),
       });
       const result = await response.json().catch(() => ({})) as { error?: string };
@@ -2308,6 +2348,7 @@ export default function VaPage() {
         return;
       }
       setSmsDraft("");
+      setSmsMedia([]);
       await refreshSelectedEventMessages(activeCommunicationEvent);
       addToDailyBrief(`SMS sent to ${toNumber}: ${body}`, {
         outreach_sent: (briefDraft.outreach_sent ?? 0) + 1,
@@ -3055,7 +3096,33 @@ export default function VaPage() {
               placeholder={textPlaceholder}
               disabled={!canText}
             />
+            {smsMedia.length > 0 && (
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
+                {smsMedia.map(item => (
+                  <span key={item.url} style={pill}>
+                    {item.filename || item.name || "Photo"}
+                    <button
+                      type="button"
+                      onClick={() => setSmsMedia(prev => prev.filter(media => media.url !== item.url))}
+                      style={{ marginLeft: 6, background: "transparent", border: "none", cursor: "pointer", fontWeight: 900 }}
+                    >
+                      x
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
             <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", marginTop: 8 }}>
+              <label style={{ ...compactButton, cursor: canText && smsMedia.length < 3 ? "pointer" : "not-allowed", opacity: canText && smsMedia.length < 3 ? 1 : 0.55 }}>
+                Add Photo
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/gif"
+                  onChange={event => void addSmsMedia(event.target.files).finally(() => { event.currentTarget.value = ""; })}
+                  disabled={!canText || smsSending || smsMedia.length >= 3}
+                  style={{ display: "none" }}
+                />
+              </label>
               <span style={{ color: "var(--muted)", fontSize: 12 }}>{smsDraft.trim().length}/1200</span>
               <button
                 onClick={activeLead ? sendSmsToLead : sendSmsToSelectedEvent}
