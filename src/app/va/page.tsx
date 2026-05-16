@@ -43,6 +43,7 @@ import {
   fetchImportedLandLeadListMetrics,
   hasImportedLeadOwnerIdentity,
   inferLandLeadSourceFromUrl,
+  importedLeadDealPropertyType,
   importedLeadContactIdentityKey,
   leadToDealDraft,
   listingTextHints,
@@ -2607,21 +2608,26 @@ export default function VaPage() {
     const savedLead = result.leads[0];
     let researchMessage = "Automatic research was queued, but no saved property record came back.";
     if (savedLead) {
-      setMessage("Property saved. Running first-pass research now.");
-      try {
-        const researchItems = await fetchLandDueDiligenceItems(savedLead);
-        const research = await runAutomatedLandResearch(savedLead, researchItems, user || "VA");
-        const findingCount = research.result?.findings.length ?? 0;
-        const blockerCount = research.result?.findings.filter(finding => finding.status === "blocked").length ?? 0;
-        const updatedFields = researchUpdatedFieldLabels(savedLead, research.lead);
-        const updatedMessage = updatedFields.length
-          ? ` Updated ${updatedFields.slice(0, 8).join(", ")}${updatedFields.length > 8 ? ", and more" : ""}.`
-          : " Research evidence was saved; no visible property fields changed.";
-        researchMessage = research.error
-          ? `Property saved, but auto research needs review: ${research.error}`
-          : `Property saved and enriched. ${findingCount} finding${findingCount === 1 ? "" : "s"} saved${blockerCount ? `, ${blockerCount} blocker${blockerCount === 1 ? "" : "s"} flagged` : ""}.${updatedMessage}`;
-      } catch (error) {
-        researchMessage = `Property saved, but auto research did not finish: ${error instanceof Error ? error.message : "unknown error"}.`;
+      const savedPropertyType = importedLeadDealPropertyType(savedLead);
+      if (savedPropertyType !== "land") {
+        researchMessage = `Property saved as a ${savedPropertyType} listing. Zillow facts were captured; vacant-land auto research was skipped.`;
+      } else {
+        setMessage("Property saved. Running first-pass research now.");
+        try {
+          const researchItems = await fetchLandDueDiligenceItems(savedLead);
+          const research = await runAutomatedLandResearch(savedLead, researchItems, user || "VA");
+          const findingCount = research.result?.findings.length ?? 0;
+          const blockerCount = research.result?.findings.filter(finding => finding.status === "blocked").length ?? 0;
+          const updatedFields = researchUpdatedFieldLabels(savedLead, research.lead);
+          const updatedMessage = updatedFields.length
+            ? ` Updated ${updatedFields.slice(0, 8).join(", ")}${updatedFields.length > 8 ? ", and more" : ""}.`
+            : " Research evidence was saved; no visible property fields changed.";
+          researchMessage = research.error
+            ? `Property saved, but auto research needs review: ${research.error}`
+            : `Property saved and enriched. ${findingCount} finding${findingCount === 1 ? "" : "s"} saved${blockerCount ? `, ${blockerCount} blocker${blockerCount === 1 ? "" : "s"} flagged` : ""}.${updatedMessage}`;
+        } catch (error) {
+          researchMessage = `Property saved, but auto research did not finish: ${error instanceof Error ? error.message : "unknown error"}.`;
+        }
       }
     }
     const [leadRows, batchRows, metrics] = await Promise.all([
