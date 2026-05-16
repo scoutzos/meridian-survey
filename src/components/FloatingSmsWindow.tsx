@@ -116,6 +116,24 @@ function contactPhoneFor(event: CommunicationEvent): string {
   return firstPhoneCandidate([event.contact_number, event.direction === "inbound" ? event.from_number : event.to_number, event.from_number, event.to_number]);
 }
 
+function hasMedia(event: CommunicationEvent): boolean {
+  return Array.isArray(event.media) && event.media.length > 0;
+}
+
+function isThreadableEvent(event: CommunicationEvent, inferredPhone = ""): boolean {
+  const channel = String(event.channel || "").toLowerCase();
+  if (!["sms", "mms", "voice"].includes(channel)) return false;
+  const hasRoute = !!(contactPhoneFor(event) || inferredPhone || event.matched_lead_id || event.matched_deal_id);
+  if (!hasRoute) return false;
+  if (channel === "voice") return true;
+
+  const eventType = String(event.provider_event_type || "").toLowerCase();
+  const body = String(event.body || "").trim();
+  if (["contact-created", "contact-updated", "conversation-started"].includes(eventType) && !body && !hasMedia(event)) return false;
+  if (event.direction === "status" && !body && !hasMedia(event)) return false;
+  return event.direction === "inbound" || event.direction === "outbound" || !!body || hasMedia(event);
+}
+
 function sentByLabel(event: CommunicationEvent): string | null {
   if (event.direction !== "outbound") return null;
   const payload = event.raw_payload ?? {};
@@ -243,10 +261,9 @@ function buildThreads(events: CommunicationEvent[], leads: ImportedLandLead[], r
     if (!phone) return;
     callIdsForEvent(event).forEach(id => phoneByCallId.set(id, phone));
   });
-  events
-    .filter(event => event.channel === "sms" || event.channel === "voice" || event.provider === "sakari" || event.provider === "twilio")
-    .forEach(event => {
+  events.forEach(event => {
       const phone = contactPhoneFor(event) || callIdsForEvent(event).map(id => phoneByCallId.get(id)).find(Boolean) || "";
+      if (!isThreadableEvent(event, phone)) return;
       const key = event.matched_lead_id ? `lead:${event.matched_lead_id}` : event.matched_deal_id ? `deal:${event.matched_deal_id}` : phone ? `phone:${phone}` : `event:${event.id}`;
       groups.set(key, [...(groups.get(key) ?? []), event]);
     });

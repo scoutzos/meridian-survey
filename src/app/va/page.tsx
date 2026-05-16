@@ -740,6 +740,24 @@ function phoneForCommunicationEvent(event: CommunicationEvent | null): string | 
   return null;
 }
 
+function communicationHasMedia(event: CommunicationEvent): boolean {
+  return Array.isArray(event.media) && event.media.length > 0;
+}
+
+function isThreadableCommunicationEvent(event: CommunicationEvent, inferredPhone: string | null = null): boolean {
+  const channel = String(event.channel || "").toLowerCase();
+  if (!["sms", "mms", "voice"].includes(channel)) return false;
+  const hasRoute = !!(phoneForCommunicationEvent(event) || inferredPhone || event.matched_lead_id || event.matched_deal_id);
+  if (!hasRoute) return false;
+  if (channel === "voice") return true;
+
+  const eventType = String(event.provider_event_type || "").toLowerCase();
+  const body = String(event.body || "").trim();
+  if (["contact-created", "contact-updated", "conversation-started"].includes(eventType) && !body && !communicationHasMedia(event)) return false;
+  if (event.direction === "status" && !body && !communicationHasMedia(event)) return false;
+  return event.direction === "inbound" || event.direction === "outbound" || !!body || communicationHasMedia(event);
+}
+
 type ConversationItem = {
   id: string;
   kind: "sms-in" | "sms-out" | "activity";
@@ -786,6 +804,7 @@ function buildContactThreads(events: CommunicationEvent[]): ContactThread[] {
   });
   events.forEach(event => {
     const inferredPhone = communicationCallIds(event).map(id => phoneByCallId.get(id)).find(Boolean) ?? null;
+    if (!isThreadableCommunicationEvent(event, inferredPhone)) return;
     const key = phoneForCommunicationEvent(event) || !inferredPhone
       ? threadKeyForCommunicationEvent(event)
       : `phone:${inferredPhone.replace(/\D/g, "").slice(-10)}`;
