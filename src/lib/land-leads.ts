@@ -1587,15 +1587,84 @@ function parseListingCards(lines: string[], start: RegExp, end: RegExp[]): strin
   for (let index = 0; index < rows.length; index += 1) {
     const price = moneyText(rows[index]) || (rows[index] === "$--" ? "$--" : null);
     if (!price) continue;
-    const window = rows.slice(index + 1, index + 12);
+    const window = rows.slice(index + 1, index + 16);
     const address = window.find(line => fullAddressPattern.test(line)) || "";
     if (!address) continue;
-    const size = window.find(line => /acre|square feet|sqft/i.test(line)) || "";
-    const status = window.find(line => /^(Active|Lot \/ Land|Lot\/Land|For Sale|Off Market|Sold|Auction|Pending)$/i.test(line)) || "";
-    const source = window.find(line => /MLS ID|GAMLS|FMLS|Hive MLS/i.test(line)) || "";
-    cards.push({ price, size, address, status, source });
+    const summary = window.find(line => /\bacres?\b|\bSquare Feet\b|\bsqft\b|\bbd\b|\bba\b/i.test(line)) || "";
+    const status = clean(summary.match(/\b(Active|Lot \/ Land for sale|Lot\/Land|For Sale|For Sale By Owner|Off Market|Sold|Auction|Pending|New Construction)\b/i)?.[1])
+      || window.find(line => /^(Active|Lot \/ Land for sale|Lot\/Land|For Sale|For Sale By Owner|Off Market|Sold|Auction|Pending|New Construction)$/i.test(line))
+      || "";
+    const source = window.find(line =>
+      !fullAddressPattern.test(line)
+      && !/^More$/i.test(line)
+      && !/^(Previous photo|Next photo|Save)$/i.test(line)
+      && /MLS ID|GAMLS|FMLS|Hive MLS|REALT|REALTY|PROPERTIES|GROUP|COMMUNITIES|BROKER|ESTATE|KELLER|EXP|COLDWELL|NORMAN|HESTER|RIGHT PATH/i.test(line),
+    ) || "";
+    const noteIndex = window.findIndex(line => /^More$/i.test(line));
+    const note = noteIndex >= 0 ? clean(window[noteIndex + 1]) || "" : "";
+    cards.push({ price, summary, address, status, source, note });
   }
   return cards.length ? JSON.stringify(cards.slice(0, 30)) : null;
+}
+
+function parsePaymentBreakdown(lines: string[]): string | null {
+  const rows = sectionLines(lines, /^Monthly payment$/i, [/^Climate risks$/i, /^Neighborhood:/i, /^Street View$/i]);
+  if (!rows.length) return null;
+  const labels = [
+    "Estimated monthly payment",
+    "Principal & interest",
+    "Mortgage insurance",
+    "Property taxes",
+    "Home insurance",
+    "HOA fees",
+    "Utilities",
+  ];
+  const labelSet = new Set(labels.map(label => label.toLowerCase()));
+  const values = labels.reduce<Record<string, string>>((acc, label) => {
+    const index = rows.findIndex(line => line.toLowerCase() === label.toLowerCase());
+    if (index < 0) return acc;
+    const value = clean(rows[index + 1]);
+    if (value && !labelSet.has(value.toLowerCase())) acc[label] = value;
+    return acc;
+  }, {});
+  return Object.keys(values).length ? JSON.stringify(values) : null;
+}
+
+function parseFooterValueRows(lines: string[], start: RegExp, end: RegExp[]): string | null {
+  const rows = sectionLines(lines, start, end);
+  const values: Array<Record<string, string>> = [];
+  for (let index = 0; index < rows.length; index += 1) {
+    if (!/Homes for Sale$/i.test(rows[index])) continue;
+    const value = clean(rows[index + 1]);
+    if (!value || !/^[$-]/.test(value)) continue;
+    values.push({ area: rows[index].replace(/\s+Homes for Sale$/i, ""), value });
+  }
+  return values.length ? JSON.stringify(values.slice(0, 60)) : null;
+}
+
+function parseListingLabelValues(lines: string[]): string | null {
+  const pairs = lines.flatMap(line => {
+    const match = line.match(/^([^:]{2,90}):\s*(.+)$/);
+    if (!match) return [];
+    return [{ label: match[1].trim(), value: match[2].trim() }];
+  });
+  return pairs.length ? JSON.stringify(pairs.slice(0, 120)) : null;
+}
+
+function parseListingSectionSnapshot(lines: string[]): string | null {
+  const heading = /^(Facts & features|Property|Features|Lot|Details|Utilities & green energy|Community & HOA|Community|HOA|Location|Financial & listing details|Services availability|Offer Insights|Price history|Public tax history|Monthly payment|Climate risks|Nearby schools|Nearby homes|Local experts|Similar homes|Homes for you|For Sale|Choose Homes by Amenity|Select Property Type|Popular Searches|Nearby .* Homes|.* Neighborhood Homes|.* Homes by Zip Code|More to Explore|Have You Considered Renting\?)$/i;
+  const sections: Array<{ title: string; lines: string[] }> = [];
+  let current: { title: string; lines: string[] } = { title: "Page header", lines: [] };
+  for (const line of lines) {
+    if (heading.test(line)) {
+      if (current.lines.length) sections.push(current);
+      current = { title: line, lines: [] };
+    } else {
+      current.lines.push(line);
+    }
+  }
+  if (current.lines.length) sections.push(current);
+  return sections.length ? JSON.stringify(sections.slice(0, 80)) : null;
 }
 
 export function listingTextHints(listingText: string): ListingUrlHints {
@@ -1669,12 +1738,30 @@ export function listingTextHints(listingText: string): ListingUrlHints {
   const nearbyHomes = parseListingCards(lines, /^Nearby homes$/i, [/^Local experts/i, /^Similar homes$/i]);
   const similarHomes = parseListingCards(lines, /^Similar homes$/i, [/^Homes for you$/i, /^Skip carousel$/i]);
   const homesForYou = parseListingCards(lines, /^Homes for you$/i, [/^The data relating/i, /^For Sale$/i]);
+  const searchResultListings = parseListingCards(lines, /^Sort: Homes for You$/i, [/^Save this search$/i, /^Listings identified/i]);
+  const paymentBreakdown = parsePaymentBreakdown(lines);
+  const nearbyCityValues = parseFooterValueRows(lines, /^Nearby .* Homes$/i, [/^.* Neighborhood Homes$/i, /^.* Homes by Zip Code$/i]);
+  const neighborhoodValues = parseFooterValueRows(lines, /^.* Neighborhood Homes$/i, [/^.* Homes by Zip Code$/i, /^Estimate Your Home Sale Proceeds$/i]);
+  const zipValues = parseFooterValueRows(lines, /^.* Homes by Zip Code$/i, [/^Estimate Your Home Sale Proceeds$/i, /^More to Explore/i]);
+  const listingLabelValues = parseListingLabelValues(lines);
+  const listingSectionSnapshot = parseListingSectionSnapshot(lines);
+  const paymentValues = paymentBreakdown ? JSON.parse(paymentBreakdown) as Record<string, string> : {};
+  const landSearchIndex = lines.findIndex((line, index) => /\bLand$/i.test(line) && /^\d[\d,]*\s+results$/i.test(lines[index + 1] || ""));
   const details: ListingDetails = {
+    "Paste Line Count": lines.length,
+    "Listing Status": statusLine || null,
+    "Listing Photo Count": mainText.match(/See all\s+([\d,]+)\s+photos/i)?.[1] || null,
+    "Headline Price": priceLine || null,
+    "Primary Address": addressLine || null,
     "Bedrooms": valueBeforeLine(mainLines, /^beds$/i),
     "Bathrooms": valueBeforeLine(mainLines, /^baths$/i),
+    "Acreage Display": acresFromSplitLines ? `${acresFromSplitLines} Acres` : acresMatch?.[0] || null,
+    "Property Type": landUseLine || null,
     "Lot Size Text": mainLines.find(line => /\bAcres? Lot\b|\bsqft lot\b|\bSquare Feet\b/i.test(line)) || null,
     "Built In": mainText.match(/Built in\s+([^\s]+)/i)?.[1] || null,
     "Zestimate": lineAfter(lines, /^Zestimate®?$/i),
+    "Estimated Sales Range": lineAfter(lines, /^Estimated sales range$/i),
+    "Rent Zestimate": lineAfter(lines, /^Rent Zestimate®?$/i),
     "Price Per Sqft": mainLines.find(line => /^\$[\d,.-]+\/sqft$/i.test(line)) || null,
     "HOA Monthly Display": monthlyHoa,
     "What's Special": specialIndex >= 0 ? clean(mainLines[specialIndex + 1]) : null,
@@ -1700,12 +1787,15 @@ export function listingTextHints(listingText: string): ListingUrlHints {
     "Listing Agreement": colonValue(mainLines, "Listing agreement"),
     "Listing Terms": colonValue(mainLines, "Listing terms"),
     "Electric Utility On Property": colonValue(mainLines, "Electric utility on property"),
-    "Monthly Estimated Payment": lineAfter(lines, /^Estimated monthly payment$/i),
-    "Monthly Principal And Interest": lineAfter(lines, /^Principal & interest$/i),
-    "Monthly Mortgage Insurance": lineAfter(lines, /^Mortgage insurance$/i),
-    "Monthly Property Taxes": lineAfter(lines, /^Property taxes$/i),
-    "Monthly Home Insurance": lineAfter(lines, /^Home insurance$/i),
-    "Monthly HOA Fees": lineAfter(lines, /^HOA fees$/i),
+    "Offer Insights": lineAfter(lines, /^Offer Insights$/i),
+    "Payment Breakdown": paymentBreakdown,
+    "Monthly Estimated Payment": paymentValues["Estimated monthly payment"] || null,
+    "Monthly Principal And Interest": paymentValues["Principal & interest"] || null,
+    "Monthly Mortgage Insurance": paymentValues["Mortgage insurance"] || null,
+    "Monthly Property Taxes": paymentValues["Property taxes"] || null,
+    "Monthly Home Insurance": paymentValues["Home insurance"] || null,
+    "Monthly HOA Fees": paymentValues["HOA fees"] || null,
+    "Monthly Utilities": paymentValues["Utilities"] || null,
     "Flood Zone": floodZone,
     "Neighborhood": neighborhood,
     "Walk Score": walk.score,
@@ -1718,6 +1808,14 @@ export function listingTextHints(listingText: string): ListingUrlHints {
     "Nearby Homes": nearbyHomes,
     "Similar Homes": similarHomes,
     "Homes For You": homesForYou,
+    "Search Result Title": landSearchIndex >= 0 ? lines[landSearchIndex] : null,
+    "Search Result Count": landSearchIndex >= 0 ? lines[landSearchIndex + 1] : null,
+    "Search Result Listings": searchResultListings,
+    "Nearby City Values": nearbyCityValues,
+    "Neighborhood Values": neighborhoodValues,
+    "Zip Values": zipValues,
+    "Listing Label Values": listingLabelValues,
+    "Listing Section Snapshot": listingSectionSnapshot,
     "Buildability Note": /non-buildable|not buildable/i.test(mainText) ? "Non-buildable lot mentioned in listing copy" : null,
     "Recreational Use Mentioned": /recreational use|boating|fishing/i.test(mainText) ? "Yes" : null,
   };
