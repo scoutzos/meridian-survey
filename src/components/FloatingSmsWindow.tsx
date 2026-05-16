@@ -8,6 +8,7 @@ import { fetchCommunicationEvents, markCommunicationEventsRead } from "@/lib/com
 import { createImportedLandLeadActivity, type ImportedLandLead } from "@/lib/land-leads";
 import { createDealActivity } from "@/lib/deals";
 import { checkLeadCallCompliance, checkLeadSmsCompliance } from "@/lib/bulk-sms";
+import { prepareMmsImage } from "@/lib/mms-image";
 
 type SmsThread = {
   key: string;
@@ -720,16 +721,15 @@ export default function FloatingSmsWindow({
   };
 
   const uploadMessageMedia = async (file: File): Promise<MessageMediaAttachment | null> => {
-    if (!["image/jpeg", "image/png", "image/gif"].includes(file.type)) {
-      setStatus("Photos must be JPG, PNG, or GIF.");
-      return null;
-    }
-    if (file.size > 4 * 1024 * 1024) {
-      setStatus("Photos must be 4 MB or smaller for MMS deliverability.");
+    let sendableFile: File;
+    try {
+      sendableFile = await prepareMmsImage(file);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Could not prepare photo for MMS.");
       return null;
     }
     const formData = new FormData();
-    formData.append("file", file);
+    formData.append("file", sendableFile);
     const response = await fetch("/api/sakari/media", { method: "POST", body: formData });
     const result = await response.json().catch(() => ({})) as { media?: MessageMediaAttachment; error?: string };
     if (!response.ok || !result.media) {
