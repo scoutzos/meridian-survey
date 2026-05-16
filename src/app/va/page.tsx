@@ -1075,6 +1075,7 @@ export default function VaPage() {
   const [eventActivities, setEventActivities] = useState<ConversationActivity[]>([]);
   const [unmatchedSms, setUnmatchedSms] = useState<CommunicationEvent[]>([]);
   const [recentInboundSms, setRecentInboundSms] = useState<CommunicationEvent[]>([]);
+  const [allCommunicationEvents, setAllCommunicationEvents] = useState<CommunicationEvent[]>([]);
   const [importPreview, setImportPreview] = useState<LandLeadImportPreview | null>(null);
   const [importStep, setImportStep] = useState<ImportStep>("work");
   const [importStage, setImportStage] = useState<ImportStage>("idle");
@@ -1172,8 +1173,8 @@ export default function VaPage() {
       memberName ? fetchOpenVaTimeEntry(memberName) : Promise.resolve(null),
       fetchImportedLandLeads(500),
       fetchLandLeadBatches(),
-      fetchCommunicationEvents({ unmatched: true, limit: 25 }),
-      fetchCommunicationEvents({ limit: 120 }),
+      fetchCommunicationEvents({ unmatched: true, limit: 100 }),
+      fetchCommunicationEvents({ limit: 500 }),
       fetchActionItems(),
       fetchActiveMemberNames(),
     ]);
@@ -1208,6 +1209,7 @@ export default function VaPage() {
     setImportedLeads(importRows);
     setLeadBatches(batchRows);
     setUnmatchedSms(smsRows);
+    setAllCommunicationEvents(recentSmsRows);
     setRecentInboundSms(recentSmsRows.filter(event => event.direction === "inbound" || isVoicemailEvent(event)).slice(0, 40));
     setActiveMemberNames(memberNames);
     setSelectedId(prev => prev && activeRows.some(d => d.id === prev) ? prev : activeRows[0]?.id ?? null);
@@ -1323,14 +1325,14 @@ export default function VaPage() {
   const selectedImportedLead = useMemo(() => importedLeads.find(lead => lead.id === selectedImportedLeadId) ?? null, [importedLeads, selectedImportedLeadId]);
   const selectedCommunicationEvent = useMemo(() => {
     if (!selectedCommunicationEventId) return null;
-    return [...recentInboundSms, ...unmatchedSms].find(event => event.id === selectedCommunicationEventId) ?? null;
-  }, [recentInboundSms, selectedCommunicationEventId, unmatchedSms]);
+    return [...allCommunicationEvents, ...recentInboundSms, ...unmatchedSms].find(event => event.id === selectedCommunicationEventId) ?? null;
+  }, [allCommunicationEvents, recentInboundSms, selectedCommunicationEventId, unmatchedSms]);
   const activeCommunicationEvent = useMemo(() => {
     if (selectedImportedLead) return null;
     if (selectedCommunicationEvent) return selectedCommunicationEvent;
     if (activeTab !== "outreach") return null;
-    return recentInboundSms[0] ?? unmatchedSms[0] ?? null;
-  }, [activeTab, recentInboundSms, selectedCommunicationEvent, selectedImportedLead, unmatchedSms]);
+    return allCommunicationEvents[0] ?? recentInboundSms[0] ?? unmatchedSms[0] ?? null;
+  }, [activeTab, allCommunicationEvents, recentInboundSms, selectedCommunicationEvent, selectedImportedLead, unmatchedSms]);
   const activeCommunicationThreadKey = activeCommunicationEvent ? threadKeyForCommunicationEvent(activeCommunicationEvent) : null;
   const selectedBatch = useMemo(() => leadBatches.find(batch => batch.id === selectedBatchId) ?? null, [leadBatches, selectedBatchId]);
   const listOwnerCounts = useMemo(() => {
@@ -1545,12 +1547,12 @@ export default function VaPage() {
   }, [contactQueueMode, leadFollowUpsDue]);
   const inboxEventRows = useMemo(() => {
     const seen = new Set<string>();
-    return [...recentInboundSms, ...unmatchedSms].filter(event => {
+    return [...allCommunicationEvents, ...unmatchedSms].filter(event => {
       if (seen.has(event.id)) return false;
       seen.add(event.id);
       return true;
-    }).slice(0, 35);
-  }, [recentInboundSms, unmatchedSms]);
+    });
+  }, [allCommunicationEvents, unmatchedSms]);
   const voicemailEventRows = useMemo(() => inboxEventRows.filter(isVoicemailEvent), [inboxEventRows]);
   const filterThreadRows = useCallback((threads: ContactThread[]) => threads.filter(thread => {
     if (contactThreadFilter === "unread" && thread.unreadCount === 0) return false;
@@ -1829,10 +1831,11 @@ export default function VaPage() {
       return;
     }
     const [unmatchedRows, recentRows] = await Promise.all([
-      fetchCommunicationEvents({ unmatched: true, limit: 25 }),
-      fetchCommunicationEvents({ limit: 120 }),
+      fetchCommunicationEvents({ unmatched: true, limit: 100 }),
+      fetchCommunicationEvents({ limit: 500 }),
     ]);
     setUnmatchedSms(unmatchedRows);
+    setAllCommunicationEvents(recentRows);
     setRecentInboundSms(recentRows.filter(event => event.direction === "inbound" || isVoicemailEvent(event)).slice(0, 40));
     if (activeCommunicationEvent && thread.key === threadKeyForCommunicationEvent(activeCommunicationEvent)) {
       await refreshSelectedEventMessages(activeCommunicationEvent);
@@ -2008,7 +2011,13 @@ export default function VaPage() {
     if (draftCommunicationEventId) {
       await attachCommunicationEventToDeal(draftCommunicationEventId, result.data.id, user);
       setDraftCommunicationEventId(null);
-      setUnmatchedSms(await fetchCommunicationEvents({ unmatched: true, limit: 25 }));
+      const [unmatchedRows, recentRows] = await Promise.all([
+        fetchCommunicationEvents({ unmatched: true, limit: 100 }),
+        fetchCommunicationEvents({ limit: 500 }),
+      ]);
+      setUnmatchedSms(unmatchedRows);
+      setAllCommunicationEvents(recentRows);
+      setRecentInboundSms(recentRows.filter(event => event.direction === "inbound" || isVoicemailEvent(event)).slice(0, 40));
     }
     if (status === "under-review") {
       if (shouldNotifyMembers) {
@@ -2213,13 +2222,14 @@ export default function VaPage() {
       fetchImportedLandLeads(500),
       fetchImportedLandLeadActivities(leadId),
       fetchCommunicationEvents({ leadId, limit: 80 }),
-      fetchCommunicationEvents({ unmatched: true, limit: 25 }),
-      fetchCommunicationEvents({ limit: 120 }),
+      fetchCommunicationEvents({ unmatched: true, limit: 100 }),
+      fetchCommunicationEvents({ limit: 500 }),
     ]);
     setImportedLeads(leadRows);
     setLeadActivities(activityRows);
     setCommunicationEvents(commRows);
     setUnmatchedSms(unmatchedRows);
+    setAllCommunicationEvents(recentRows);
     setRecentInboundSms(recentRows.filter(event => event.direction === "inbound" || isVoicemailEvent(event)).slice(0, 40));
   };
 
@@ -2227,13 +2237,14 @@ export default function VaPage() {
     const phone = phoneForCommunicationEvent(event);
     const [commRows, unmatchedRows, recentRows, activityRows] = await Promise.all([
       fetchCommunicationEvents({ phone, dealId: event.matched_deal_id, limit: 80 }),
-      fetchCommunicationEvents({ unmatched: true, limit: 25 }),
-      fetchCommunicationEvents({ limit: 120 }),
+      fetchCommunicationEvents({ unmatched: true, limit: 100 }),
+      fetchCommunicationEvents({ limit: 500 }),
       event.matched_deal_id ? fetchDealActivity(event.matched_deal_id) : Promise.resolve([]),
     ]);
     setCommunicationEvents(commRows.length ? commRows : [event]);
     setEventActivities(dealActivitiesToConversationItems(activityRows));
     setUnmatchedSms(unmatchedRows);
+    setAllCommunicationEvents(recentRows);
     setRecentInboundSms(recentRows.filter(row => row.direction === "inbound" || isVoicemailEvent(row)).slice(0, 40));
   };
 
@@ -2385,12 +2396,15 @@ export default function VaPage() {
       return { error: errorMessage };
     }
     const sentCount = result.sent ?? recipients.length;
-    const [leadRows, unmatchedRows] = await Promise.all([
+    const [leadRows, unmatchedRows, recentRows] = await Promise.all([
       fetchImportedLandLeads(1500),
-      fetchCommunicationEvents({ unmatched: true, limit: 25 }),
+      fetchCommunicationEvents({ unmatched: true, limit: 100 }),
+      fetchCommunicationEvents({ limit: 500 }),
     ]);
     setImportedLeads(leadRows);
     setUnmatchedSms(unmatchedRows);
+    setAllCommunicationEvents(recentRows);
+    setRecentInboundSms(recentRows.filter(event => event.direction === "inbound" || isVoicemailEvent(event)).slice(0, 40));
     setBriefDraft(prev => ({
       ...prev,
       outreach_sent: (prev.outreach_sent ?? 0) + sentCount,
