@@ -159,7 +159,8 @@ function eventBody(event: CommunicationEvent): string {
     if (event.direction === "outbound") return `Outbound call ${event.status || "updated"}${suffix}`;
     return event.body || event.status || "Call update";
   }
-  return event.body || event.status || "SMS update";
+  const images = imageMedia(event);
+  return event.body || (images.length ? "Photo received" : event.status || "SMS update");
 }
 
 function recordingUrl(event: CommunicationEvent): string | null {
@@ -177,6 +178,16 @@ function recordingUrl(event: CommunicationEvent): string | null {
   return rawUrl;
 }
 
+function displayMediaUrl(url: string): string {
+  try {
+    const parsed = new URL(url);
+    if (parsed.hostname === "api.sakari.io") return `/api/sakari/media-proxy?url=${encodeURIComponent(url)}`;
+  } catch {
+    return url;
+  }
+  return url;
+}
+
 function imageMedia(event: CommunicationEvent): Array<{ url: string; label: string }> {
   return event.media
     .map(item => item && typeof item === "object" ? item as Record<string, unknown> : null)
@@ -188,7 +199,7 @@ function imageMedia(event: CommunicationEvent): Array<{ url: string; label: stri
       const contentType = String(item.contentType || item.content_type || item.mimeType || item.type || "");
       const label = String(item.name || item.filename || "Photo");
       if (!url || (contentType && !contentType.includes("image") && !/\.(jpe?g|png|gif)(\?|$)/i.test(url))) return null;
-      return { url, label };
+      return { url: displayMediaUrl(url), label };
     })
     .filter((item): item is { url: string; label: string } => !!item);
 }
