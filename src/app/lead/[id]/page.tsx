@@ -1232,24 +1232,28 @@ export default function LeadPage() {
               />
             </section>
 
-            <section style={panel}>
-              <header style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "baseline", marginBottom: 12, flexWrap: "wrap" }}>
-                <div>
-                  <p style={eyebrowSmall}>Verification checklist</p>
-                  <h3 style={{ ...sectionTitle, fontSize: 20 }}>Research tasks and evidence</h3>
-                  <p style={{ color: "var(--muted)", fontSize: 12, lineHeight: 1.45, marginTop: 4 }}>
-                    These rows track whether each source was checked. The verified facts above are the property record values.
-                  </p>
-                </div>
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-                  <span style={compSummary.trusted ? goodChip : warnChip}>
-                    {compSummary.trusted ? "Comp support ready" : "Needs 3 sold comps"}
-                  </span>
-                  <button onClick={runAutoResearch} disabled={autoResearchRunning} style={{ ...primaryButton, opacity: autoResearchRunning ? 0.55 : 1 }}>
-                    {autoResearchRunning ? "Running..." : "Run Auto Research"}
-                  </button>
-                </div>
-              </header>
+            <details style={panel}>
+              <summary style={{ cursor: "pointer", listStyle: "none" }}>
+                <header style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "baseline", flexWrap: "wrap" }}>
+                  <div>
+                    <p style={eyebrowSmall}>Evidence log</p>
+                    <h3 style={{ ...sectionTitle, fontSize: 20 }}>Checklist and saved source results</h3>
+                    <p style={{ color: "var(--muted)", fontSize: 12, lineHeight: 1.45, marginTop: 4 }}>
+                      Open this only when you need to review source history or manually change a checklist status.
+                    </p>
+                  </div>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                    <span style={mutedChip}>{researchCompleteCount} of {researchItems.length} saved</span>
+                    <span style={compSummary.trusted ? goodChip : warnChip}>
+                      {compSummary.trusted ? "Comp support ready" : "Needs 3 sold comps"}
+                    </span>
+                    <button onClick={runAutoResearch} disabled={autoResearchRunning} style={{ ...primaryButton, opacity: autoResearchRunning ? 0.55 : 1 }}>
+                      {autoResearchRunning ? "Running..." : "Run Auto Research"}
+                    </button>
+                  </div>
+                </header>
+              </summary>
+              <div style={{ display: "grid", gap: 12, marginTop: 12 }}>
               {autoResearchResult && (
                 <div style={{ ...subPanel, marginBottom: 12 }}>
                   <p style={eyebrowSmall}>Last automatic research run</p>
@@ -1307,7 +1311,8 @@ export default function LeadPage() {
                   </div>
                 ))}
               </div>
-            </section>
+              </div>
+            </details>
 
             <section style={panel}>
               <header style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "baseline", marginBottom: 12, flexWrap: "wrap" }}>
@@ -1428,19 +1433,6 @@ export default function LeadPage() {
           </div>
 
           <aside style={{ display: "grid", gap: 16, alignContent: "start" }}>
-            <section style={panel}>
-              <p style={eyebrowSmall}>Research sources</p>
-              <h3 style={{ ...sectionTitle, fontSize: 18 }}>{lead.county || "County"} source list</h3>
-              <div style={{ display: "grid", gap: 8, marginTop: 10 }}>
-                {researchSources.map(source => (
-                  <a key={`${source.category}-${source.source_name}`} href={source.source_url} target="_blank" rel="noreferrer" style={{ ...subPanel, textDecoration: "none" }}>
-                    <strong style={{ display: "block", color: "var(--obsidian)", fontSize: 13 }}>{source.source_name}</strong>
-                    <span style={{ display: "block", color: "var(--muted)", fontSize: 11, marginTop: 3 }}>{source.instructions}</span>
-                  </a>
-                ))}
-              </div>
-            </section>
-
             <section style={panel}>
               <p style={eyebrowSmall}>Decision rule</p>
               <div style={{ display: "grid", gap: 8, marginTop: 8 }}>
@@ -1626,14 +1618,21 @@ function VerifiedFactBoard({
                         <input value={factDraft.notes} onChange={event => onDraftMetaChange({ notes: event.target.value })} placeholder="Notes" style={inputStyle} />
                       </div>
                       <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-                        <label style={{ display: "inline-flex", gap: 7, alignItems: "center", color: "var(--muted)", fontSize: 12, fontWeight: 700 }}>
-                          <input
-                            type="checkbox"
-                            checked={factDraft.verifyChecklist}
-                            onChange={event => onDraftMetaChange({ verifyChecklist: event.target.checked })}
-                          />
-                          Verify checklist
-                        </label>
+                        <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                          <label style={{ display: "inline-flex", gap: 7, alignItems: "center", color: "var(--muted)", fontSize: 12, fontWeight: 700 }}>
+                            <input
+                              type="checkbox"
+                              checked={factDraft.verifyChecklist}
+                              onChange={event => onDraftMetaChange({ verifyChecklist: event.target.checked })}
+                            />
+                            Save evidence
+                          </label>
+                          {factDraft.sourceUrl && (
+                            <a href={factDraft.sourceUrl} target="_blank" rel="noreferrer" style={inlineLinkButton}>
+                              Open Source →
+                            </a>
+                          )}
+                        </div>
                         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                           <button type="button" onClick={onCancelEdit} disabled={saving} style={{ ...secondaryButton, minHeight: 34, padding: "7px 10px", fontSize: 10, opacity: saving ? 0.55 : 1 }}>Cancel</button>
                           <button type="button" onClick={() => onSave(item)} disabled={saving} style={{ ...primaryButton, minHeight: 34, padding: "7px 10px", fontSize: 10, opacity: saving ? 0.55 : 1 }}>
