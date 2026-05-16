@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, 
 import { Call, Device } from "@twilio/voice-sdk";
 import type { CommunicationEvent } from "@/lib/communications";
 import type { MessageMediaAttachment } from "@/lib/communications";
-import { fetchCommunicationEvents } from "@/lib/communications";
+import { fetchCommunicationEvents, markCommunicationEventsRead } from "@/lib/communications";
 import { createImportedLandLeadActivity, type ImportedLandLead } from "@/lib/land-leads";
 import { createDealActivity } from "@/lib/deals";
 import { checkLeadCallCompliance, checkLeadSmsCompliance } from "@/lib/bulk-sms";
@@ -266,7 +266,11 @@ function buildThreads(events: CommunicationEvent[], leads: ImportedLandLead[], r
       lead,
       events: sorted,
       lastAt: eventTime(first),
-      unread: sorted.filter(event => event.direction === "inbound" && eventTime(event) > (readState[key] ?? "")).length,
+      unread: sorted.filter(event => {
+        if (event.direction !== "inbound") return false;
+        if (readState[key] === "__unread__") return true;
+        return !event.read_at && eventTime(event) > (readState[key] ?? "");
+      }).length,
     };
   }).sort((a, b) => b.lastAt.localeCompare(a.lastAt));
 }
@@ -422,8 +426,12 @@ export default function FloatingSmsWindow({
   const markSelectedThreadUnread = () => {
     if (!selectedThread) return;
     setThreadActionsOpen(false);
+    const eventIds = selectedThread.events.filter(event => event.direction === "inbound").map(event => event.id);
+    void markCommunicationEventsRead(eventIds, user, false).then(({ error }) => {
+      if (error) setStatus(error);
+    });
     setReadState(prev => {
-      const next = { ...prev, [selectedThread.key]: "" };
+      const next = { ...prev, [selectedThread.key]: "__unread__" };
       localStorage.setItem(readStorageKey(user), JSON.stringify(next));
       return next;
     });
@@ -431,6 +439,10 @@ export default function FloatingSmsWindow({
   };
   const markThreadRead = useCallback((thread: SmsThread) => {
     if (!thread.unread) return;
+    const eventIds = thread.events.filter(event => event.direction === "inbound").map(event => event.id);
+    void markCommunicationEventsRead(eventIds, user, true).then(({ error }) => {
+      if (error) setStatus(error);
+    });
     setReadState(prev => {
       const next = { ...prev, [thread.key]: thread.lastAt };
       localStorage.setItem(readStorageKey(user), JSON.stringify(next));
