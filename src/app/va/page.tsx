@@ -721,6 +721,11 @@ function communicationPhoneCandidates(event: CommunicationEvent): Array<string |
   return [event.contact_number, event.direction === "inbound" ? event.from_number : event.to_number, event.from_number, event.to_number];
 }
 
+function communicationCallIds(event: CommunicationEvent): string[] {
+  return [event.provider_message_id, event.provider_conversation_id, event.provider_contact_id]
+    .filter((value): value is string => !!value);
+}
+
 function phoneForCommunicationEvent(event: CommunicationEvent | null): string | null {
   if (!event) return null;
   for (const value of communicationPhoneCandidates(event)) {
@@ -768,15 +773,24 @@ function threadKeyForCommunicationEvent(event: CommunicationEvent): string {
 
 function buildContactThreads(events: CommunicationEvent[]): ContactThread[] {
   const groups = new Map<string, CommunicationEvent[]>();
+  const phoneByCallId = new Map<string, string>();
   events.forEach(event => {
-    const key = threadKeyForCommunicationEvent(event);
+    const phone = phoneForCommunicationEvent(event);
+    if (!phone) return;
+    communicationCallIds(event).forEach(id => phoneByCallId.set(id, phone));
+  });
+  events.forEach(event => {
+    const inferredPhone = communicationCallIds(event).map(id => phoneByCallId.get(id)).find(Boolean) ?? null;
+    const key = phoneForCommunicationEvent(event) || !inferredPhone
+      ? threadKeyForCommunicationEvent(event)
+      : `phone:${inferredPhone.replace(/\D/g, "").slice(-10)}`;
     groups.set(key, [...(groups.get(key) ?? []), event]);
   });
 
   return Array.from(groups.entries()).map(([key, rows]) => {
     const sorted = rows.slice().sort((a, b) => communicationEventDate(b).localeCompare(communicationEventDate(a)));
     const latestEvent = sorted[0];
-    const phone = phoneForCommunicationEvent(latestEvent);
+    const phone = phoneForCommunicationEvent(latestEvent) || rows.map(event => phoneForCommunicationEvent(event)).find(Boolean) || null;
     const statusLabel: ContactThread["statusLabel"] = latestEvent.matched_deal_id ? "Deal linked" : latestEvent.matched_lead_id ? "Lead linked" : "Needs matching";
     const unreadCount = sorted.filter(event => event.direction === "inbound" && !event.read_at).length;
     return {

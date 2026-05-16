@@ -100,6 +100,11 @@ function eventTime(event: CommunicationEvent): string {
   return event.provider_created_at || event.created_at;
 }
 
+function callIdsForEvent(event: CommunicationEvent): string[] {
+  return [event.provider_message_id, event.provider_conversation_id, event.provider_contact_id]
+    .filter((value): value is string => !!value);
+}
+
 function contactPhoneFor(event: CommunicationEvent): string {
   if (event.channel === "voice") {
     return event.direction === "inbound"
@@ -122,10 +127,14 @@ function normalizedStatus(event: CommunicationEvent): string {
     .toLowerCase();
 }
 
+function isVoicemailRecording(event: CommunicationEvent): boolean {
+  return event.provider_event_type === "call-recording" && /^voicemail\b/i.test(event.body || "");
+}
+
 function eventLabel(event: CommunicationEvent): string {
   if (event.channel === "voice") {
     const status = normalizedStatus(event);
-    if (event.provider_event_type === "call-recording") return "Recording";
+    if (event.provider_event_type === "call-recording") return isVoicemailRecording(event) ? "Voicemail" : "Recording";
     if (event.direction === "inbound" && ["no-answer", "busy", "failed", "canceled", "cancelled", "missed"].includes(status)) return "Missed call";
     if (event.direction === "inbound") return "Inbound call";
     if (event.direction === "outbound") return "Outbound call";
@@ -143,7 +152,7 @@ function eventBody(event: CommunicationEvent): string {
     const duration = event.raw_payload?.CallDuration || event.raw_payload?.DialCallDuration;
     const seconds = typeof duration === "string" && duration.trim() ? duration.trim() : event.body?.match(/·\s*(\d+)s/)?.[1];
     const suffix = seconds ? ` · ${seconds}s` : "";
-    if (event.provider_event_type === "call-recording") return event.body || `Recording ${event.status || "saved"}`;
+    if (event.provider_event_type === "call-recording") return event.body || `${isVoicemailRecording(event) ? "Voicemail" : "Recording"} ${event.status || "saved"}`;
     if (event.direction === "inbound" && ["no-answer", "busy", "failed", "canceled", "cancelled", "missed"].includes(status)) return `Missed inbound call${suffix}`;
     if (event.direction === "inbound") return `Inbound call ${event.status || "updated"}${suffix}`;
     if (event.direction === "outbound") return `Outbound call ${event.status || "updated"}${suffix}`;
@@ -199,10 +208,16 @@ function buildThreads(events: CommunicationEvent[], leads: ImportedLandLead[], r
   });
 
   const groups = new Map<string, CommunicationEvent[]>();
+  const phoneByCallId = new Map<string, string>();
+  events.forEach(event => {
+    const phone = contactPhoneFor(event);
+    if (!phone) return;
+    callIdsForEvent(event).forEach(id => phoneByCallId.set(id, phone));
+  });
   events
     .filter(event => event.channel === "sms" || event.channel === "voice" || event.provider === "sakari" || event.provider === "twilio")
     .forEach(event => {
-      const phone = contactPhoneFor(event);
+      const phone = contactPhoneFor(event) || callIdsForEvent(event).map(id => phoneByCallId.get(id)).find(Boolean) || "";
       const key = event.matched_lead_id ? `lead:${event.matched_lead_id}` : event.matched_deal_id ? `deal:${event.matched_deal_id}` : phone ? `phone:${phone}` : `event:${event.id}`;
       groups.set(key, [...(groups.get(key) ?? []), event]);
     });
@@ -210,7 +225,7 @@ function buildThreads(events: CommunicationEvent[], leads: ImportedLandLead[], r
   return Array.from(groups.entries()).map(([key, rows]) => {
     const sorted = [...rows].sort((a, b) => eventTime(b).localeCompare(eventTime(a)));
     const first = sorted[0];
-    const phone = contactPhoneFor(first);
+    const phone = contactPhoneFor(first) || rows.map(event => contactPhoneFor(event)).find(Boolean) || "";
     const lead = first.matched_lead_id ? leadById.get(first.matched_lead_id) ?? null : leadByPhone.get(phone) ?? null;
     const dealId = first.matched_deal_id || lead?.deal_id || null;
     return {

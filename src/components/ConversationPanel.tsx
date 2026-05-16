@@ -36,9 +36,13 @@ function normalizedStatus(event: CommunicationEvent): string {
     .toLowerCase();
 }
 
+function isVoicemailRecording(event: CommunicationEvent): boolean {
+  return event.provider_event_type === "call-recording" && /^voicemail\b/i.test(event.body || "");
+}
+
 function voiceLabel(event: CommunicationEvent): string {
   const status = normalizedStatus(event);
-  if (event.provider_event_type === "call-recording") return "Recording";
+  if (event.provider_event_type === "call-recording") return isVoicemailRecording(event) ? "Voicemail" : "Recording";
   if (event.direction === "inbound" && ["no-answer", "busy", "failed", "canceled", "cancelled", "missed"].includes(status)) return "Missed call";
   if (event.direction === "inbound") return "Inbound call";
   if (event.direction === "outbound") return "Outbound call";
@@ -53,7 +57,7 @@ function voiceBody(event: CommunicationEvent): string {
   const duration = event.raw_payload?.CallDuration || event.raw_payload?.DialCallDuration;
   const seconds = typeof duration === "string" && duration.trim() ? duration.trim() : event.body?.match(/·\s*(\d+)s/)?.[1];
   const suffix = seconds ? ` · ${seconds}s` : "";
-  if (event.provider_event_type === "call-recording") return event.body || `Recording ${event.status || "saved"}`;
+  if (event.provider_event_type === "call-recording") return event.body || `${isVoicemailRecording(event) ? "Voicemail" : "Recording"} ${event.status || "saved"}`;
   if (event.direction === "inbound" && ["no-answer", "busy", "failed", "canceled", "cancelled", "missed"].includes(status)) return `Missed inbound call${suffix}`;
   if (event.direction === "inbound") return `Inbound call ${event.status || "updated"}${suffix}`;
   if (event.direction === "outbound") return `Outbound call ${event.status || "updated"}${suffix}`;
@@ -145,7 +149,9 @@ export default function ConversationPanel({
             </div>
             <p style={bubbleBody}>{item.body}</p>
             {item.recording && (
-              <audio controls preload="none" src={item.recording} style={recordingPlayer} />
+              <div style={recordingShell}>
+                <audio controls preload="none" src={item.recording} style={recordingPlayer} />
+              </div>
             )}
             {item.meta && <p style={bubbleMeta}>{item.meta}</p>}
           </div>
@@ -269,9 +275,16 @@ const bubbleMeta: CSSProperties = {
 
 const recordingPlayer: CSSProperties = {
   display: "block",
-  marginTop: 8,
   maxWidth: "100%",
   width: "100%",
+};
+
+const recordingShell: CSSProperties = {
+  background: "rgba(255,255,255,0.72)",
+  border: "1px solid var(--fog)",
+  borderRadius: 8,
+  marginTop: 8,
+  padding: 7,
 };
 
 const emptyStyle: CSSProperties = {
