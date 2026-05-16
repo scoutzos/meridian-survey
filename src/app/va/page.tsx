@@ -1144,6 +1144,7 @@ export default function VaPage() {
   const [smsSending, setSmsSending] = useState(false);
   const [saving, setSaving] = useState(false);
   const [briefSaving, setBriefSaving] = useState(false);
+  const [briefSubmitStatus, setBriefSubmitStatus] = useState("");
   const [importing, setImporting] = useState(false);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
@@ -2866,31 +2867,65 @@ export default function VaPage() {
   };
 
   const submitDailyBrief = async () => {
+    if (!briefDraft.work_date) {
+      const text = "Work date is required.";
+      setBriefSubmitStatus(text);
+      setMessage(text);
+      return;
+    }
+    if (!briefDraft.activities_completed.trim()) {
+      const text = "Add activities completed before submitting the daily brief.";
+      setBriefSubmitStatus(text);
+      setMessage(text);
+      return;
+    }
     setBriefSaving(true);
     setMessage("");
-    const { data, error } = editingBriefId
-      ? await updateVaDailyBrief(editingBriefId, briefDraft, user, briefRevisionNote)
-      : await createVaDailyBrief(briefDraft, user);
-    setBriefSaving(false);
-    if (error) { setMessage(error); return; }
-    if (data) {
-      await Promise.all(activeMemberNames.map(member => createNotification({
-        title: editingBriefId ? `VA daily brief updated: ${data.submitted_by}` : `VA daily brief ready: ${data.submitted_by}`,
-        body: `${data.work_date} · ${data.hours_worked ?? 0} hours · ${data.leads_added ?? 0} leads added · ${data.deals_submitted ?? 0} deals submitted`,
-        priority: data.blockers ? "high" : "normal",
-        assigned_to: member,
-        href: "/operations",
-        source_table: "meridian_va_daily_briefs",
-        source_id: data.id,
-        notification_type: editingBriefId ? "va-daily-brief-update" : "va-daily-brief",
-      }, user)));
+    setBriefSubmitStatus(editingBriefId ? "Updating daily brief..." : "Submitting daily brief...");
+    try {
+      const wasEditing = !!editingBriefId;
+      const { data, error } = editingBriefId
+        ? await updateVaDailyBrief(editingBriefId, briefDraft, user, briefRevisionNote)
+        : await createVaDailyBrief(briefDraft, user);
+      if (error) {
+        setMessage(error);
+        setBriefSubmitStatus(error);
+        return;
+      }
+      if (!data) {
+        const text = "Daily brief did not return a saved record. Try again.";
+        setMessage(text);
+        setBriefSubmitStatus(text);
+        return;
+      }
+      const notificationResults = await Promise.allSettled(activeMemberNames.map(member => createNotification({
+          title: wasEditing ? `VA daily brief updated: ${data.submitted_by}` : `VA daily brief ready: ${data.submitted_by}`,
+          body: `${data.work_date} · ${data.hours_worked ?? 0} hours · ${data.leads_added ?? 0} leads added · ${data.deals_submitted ?? 0} deals submitted`,
+          priority: data.blockers ? "high" : "normal",
+          assigned_to: member,
+          href: "/operations",
+          source_table: "meridian_va_daily_briefs",
+          source_id: data.id,
+          notification_type: wasEditing ? "va-daily-brief-update" : "va-daily-brief",
+        }, user)));
       setBriefs(prev => editingBriefId
         ? prev.map(brief => brief.id === data.id ? data : brief)
         : [data, ...prev].slice(0, 8));
       setBriefDraft(EMPTY_BRIEF());
       setEditingBriefId(null);
       setBriefRevisionNote("");
-      setMessage(editingBriefId ? "Daily brief updated for member review." : "Daily brief submitted for member review.");
+      const notificationFailed = notificationResults.some(result => result.status === "rejected" || (result.status === "fulfilled" && result.value.error));
+      const text = notificationFailed
+        ? "Daily brief saved, but one or more member notifications failed."
+        : wasEditing ? "Daily brief updated for member review." : "Daily brief submitted for member review.";
+      setMessage(text);
+      setBriefSubmitStatus(text);
+    } catch (error) {
+      const text = `Daily brief failed: ${error instanceof Error ? error.message : "Unknown error"}`;
+      setMessage(text);
+      setBriefSubmitStatus(text);
+    } finally {
+      setBriefSaving(false);
     }
   };
 
@@ -5187,6 +5222,11 @@ export default function VaPage() {
             <button onClick={submitDailyBrief} disabled={briefSaving} style={{ ...primaryButton, marginTop: 12, opacity: briefSaving ? 0.6 : 1 }}>
               {briefSaving ? "Saving..." : editingBriefId ? "Update Daily Brief" : "Submit Daily Brief"}
             </button>
+            {briefSubmitStatus && (
+              <p style={{ color: briefSubmitStatus.includes("submitted") || briefSubmitStatus.includes("updated") || briefSubmitStatus.includes("saved") ? "var(--pine)" : "var(--ink)", fontSize: 13, lineHeight: 1.45, marginTop: 8 }}>
+                {briefSubmitStatus}
+              </p>
+            )}
 
             <div style={{ marginTop: 18 }}>
               <h3 style={{ ...sectionTitle, fontSize: 20 }}>Recent briefs</h3>
