@@ -254,6 +254,21 @@ export async function saveTwilioRecordingEvent(formData: FormData): Promise<void
   const dealId = text(formData.get("dealId"));
   if (!recordingSid || !callSid) return;
 
+  const { data: relatedRows } = await supabase
+    .from("meridian_communication_events")
+    .select("from_number, to_number, contact_number, matched_lead_id, matched_deal_id, direction")
+    .eq("provider", "twilio")
+    .or(`provider_message_id.eq.${callSid},provider_conversation_id.eq.${callSid}`)
+    .limit(5);
+  const relatedCall = (relatedRows as Array<{
+    from_number: string | null;
+    to_number: string | null;
+    contact_number: string | null;
+    matched_lead_id: string | null;
+    matched_deal_id: string | null;
+    direction: VoiceDirection;
+  }> | null)?.find(row => row.direction === "inbound" || row.direction === "outbound") ?? null;
+  const recordingKind = relatedCall?.direction === "inbound" ? "Voicemail" : "Recording";
   const media = recordingUrl ? [{
     type: "recording",
     provider: "twilio",
@@ -275,18 +290,18 @@ export async function saveTwilioRecordingEvent(formData: FormData): Promise<void
       provider_conversation_id: callSid,
       direction: "system",
       channel: "voice",
-      from_number: text(formData.get("From")),
-      to_number: text(formData.get("To")),
-      contact_number: null,
+      from_number: text(formData.get("From")) || relatedCall?.from_number || null,
+      to_number: text(formData.get("To")) || relatedCall?.to_number || null,
+      contact_number: relatedCall?.contact_number || null,
       contact_name: null,
       body: recordingDuration
-        ? `Recording ${recordingStatus ?? "updated"} · ${recordingDuration}s`
-        : `Recording ${recordingStatus ?? "updated"}`,
+        ? `${recordingKind} ${recordingStatus ?? "updated"} · ${recordingDuration}s`
+        : `${recordingKind} ${recordingStatus ?? "updated"}`,
       status: recordingStatus,
       media,
       raw_payload: raw,
-      matched_lead_id: leadId,
-      matched_deal_id: dealId,
+      matched_lead_id: leadId || relatedCall?.matched_lead_id || null,
+      matched_deal_id: dealId || relatedCall?.matched_deal_id || null,
       provider_created_at: text(formData.get("RecordingStartTime")) || new Date().toISOString(),
     }, { onConflict: "provider,provider_message_id,provider_event_type" });
 }
@@ -313,6 +328,7 @@ export function outboundDialTwiMl(args: { to: string; leadId?: string | null; de
 
 export function inboundDialTwiMl(baseUrl: string, leadId?: string | null, dealId?: string | null): string {
   const callback = new URL("/api/twilio/voice/status", baseUrl);
+  const voicemailCallback = recordingCallbackUrl(baseUrl, leadId, dealId);
   if (leadId) callback.searchParams.set("leadId", leadId);
   if (dealId) callback.searchParams.set("dealId", dealId);
   return [
@@ -322,7 +338,9 @@ export function inboundDialTwiMl(baseUrl: string, leadId?: string | null, dealId
     `<Dial timeout="24" answerOnBridge="true"${dialRecordingAttrs(baseUrl, leadId, dealId)}>`,
     `<Client statusCallback="${escapeXml(callback.toString())}" statusCallbackEvent="initiated ringing answered completed" statusCallbackMethod="POST">${CLIENT_IDENTITY}</Client>`,
     "</Dial>",
-    "<Say>Thanks for calling Meridian. We missed you, but your call has been logged and someone will follow up shortly.</Say>",
+    "<Say>Thanks for calling Meridian. We missed you. Please leave a message after the tone.</Say>",
+    `<Record playBeep="true" maxLength="120" trim="trim-silence" recordingStatusCallback="${escapeXml(voicemailCallback.toString())}" recordingStatusCallbackMethod="POST" />`,
+    "<Say>Thanks. Your message has been saved and someone will follow up shortly.</Say>",
     "</Response>",
   ].join("");
 }

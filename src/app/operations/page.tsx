@@ -45,7 +45,7 @@ import {
 } from "@/lib/va-time";
 import {
   fetchLandLeadBatches,
-  fetchImportedLandLeads,
+  fetchRecentlyUpdatedImportedLandLeads,
   type ImportedLandLead,
   type LandLeadBatch,
 } from "@/lib/land-leads";
@@ -66,6 +66,26 @@ const DISPLAY_FONT = "var(--font-display)";
 
 type OperationsTab = "overview" | "escalations" | "va-briefs" | "time" | "lead-ops" | "finance" | "calendar" | "scenarios";
 const OPERATIONS_TABS: OperationsTab[] = ["overview", "escalations", "va-briefs", "time", "lead-ops", "finance", "calendar", "scenarios"];
+type LeadOpsViewFilter = "all" | "updated" | "no-packet" | "new" | "interested" | "converted" | "passed";
+type LeadOpsDateBasis = "updated" | "added";
+type LeadOpsDateRange = "all" | "today" | "7-days" | "30-days";
+
+const LEAD_OPS_VIEW_FILTERS: Array<{ value: LeadOpsViewFilter; label: string }> = [
+  { value: "all", label: "All leads" },
+  { value: "updated", label: "Updated" },
+  { value: "no-packet", label: "No packet yet" },
+  { value: "new", label: "New" },
+  { value: "interested", label: "Interested" },
+  { value: "converted", label: "Converted" },
+  { value: "passed", label: "Passed" },
+];
+
+const LEAD_OPS_DATE_RANGES: Array<{ value: LeadOpsDateRange; label: string }> = [
+  { value: "all", label: "All dates" },
+  { value: "today", label: "Today" },
+  { value: "7-days", label: "Last 7 days" },
+  { value: "30-days", label: "Last 30 days" },
+];
 
 function money(n: number | null | undefined): string {
   if (typeof n !== "number" || !Number.isFinite(n)) return "$0";
@@ -89,6 +109,60 @@ function fmtDate(iso: string | null): string {
 
 function fmtDateTime(iso: string | null): string {
   return formatVaDateTime(iso);
+}
+
+function dateInputKey(iso: string): string {
+  if (!iso) return "";
+  const date = new Date(iso.includes("T") ? iso : `${iso}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return iso.slice(0, 10);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function leadTouchDate(lead: ImportedLandLead): string {
+  return lead.last_activity_at || lead.updated_at || lead.created_at;
+}
+
+function leadTouchLabel(lead: ImportedLandLead): string {
+  if (lead.last_activity_type) return labelize(lead.last_activity_type);
+  if (lead.status !== "new") return labelize(lead.status);
+  return "Added";
+}
+
+function leadDisplayTitle(lead: ImportedLandLead): string {
+  return lead.property_address || lead.parcel_id || lead.owner_name || "Property address pending";
+}
+
+function leadDisplayMeta(lead: ImportedLandLead): string {
+  return [
+    lead.owner_name || "Owner unknown",
+    lead.phone || lead.phone_2 || "No phone",
+    lead.county || lead.city || lead.state || "",
+  ].filter(Boolean).join(" · ");
+}
+
+function leadOpsDateValue(lead: ImportedLandLead, basis: LeadOpsDateBasis): string {
+  return basis === "added" ? lead.created_at : leadTouchDate(lead);
+}
+
+function leadMatchesOpsFilter(lead: ImportedLandLead, filter: LeadOpsViewFilter): boolean {
+  if (filter === "all") return true;
+  if (filter === "updated") return Boolean(lead.last_activity_at) || lead.status !== "new";
+  if (filter === "no-packet") return !lead.deal_id && lead.status !== "converted";
+  return lead.status === filter;
+}
+
+function leadWithinDateRange(iso: string, range: LeadOpsDateRange): boolean {
+  if (range === "all") return true;
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return false;
+  const start = new Date();
+  start.setHours(0, 0, 0, 0);
+  if (range === "7-days") start.setDate(start.getDate() - 6);
+  if (range === "30-days") start.setDate(start.getDate() - 29);
+  return date >= start;
 }
 
 function addMinutesToInput(value: string, minutes: number): string {
@@ -148,6 +222,10 @@ export default function OperationsPage() {
   const [distributionDraft, setDistributionDraft] = useState({ distribution_date: "", total_amount: "", reason: "", project_id: "" });
   const [scenarioDraft, setScenarioDraft] = useState({ name: "", strategy: "flip", purchase_price: "", rehab_or_site_cost: "", closing_costs: "", holding_costs: "", financing_costs: "", exit_value: "", expected_rent: "", notes: "", project_id: "" });
   const [activeTab, setActiveTab] = useState<OperationsTab>("overview");
+  const [leadOpsViewFilter, setLeadOpsViewFilter] = useState<LeadOpsViewFilter>("all");
+  const [leadOpsDateBasis, setLeadOpsDateBasis] = useState<LeadOpsDateBasis>("updated");
+  const [leadOpsDateRange, setLeadOpsDateRange] = useState<LeadOpsDateRange>("all");
+  const [leadOpsExactDate, setLeadOpsExactDate] = useState("");
   const [message, setMessage] = useState("");
 
   useEffect(() => {
@@ -170,7 +248,7 @@ export default function OperationsPage() {
       fetchVaTimeEntries(120),
       fetchVaTimeChangeRequests(100),
       fetchLandLeadBatches(12),
-      fetchImportedLandLeads(250),
+      fetchRecentlyUpdatedImportedLandLeads(500),
       fetchActionItems(),
     ]).then(([projectRows, eventRows, reimbursementRows, distributionRows, scenarioRows, briefRows, timeRows, timeRequestRows, batchRows, leadRows, actionRows]) => {
       setProjects(projectRows);
@@ -191,11 +269,34 @@ export default function OperationsPage() {
 
   const leadReviewStats = useMemo(() => ({
     imported: importedLeads.length,
+    updated: importedLeads.filter(lead => Boolean(lead.last_activity_at) || lead.status !== "new").length,
+    notPacketReady: importedLeads.filter(lead => !lead.deal_id && lead.status !== "converted").length,
     interested: importedLeads.filter(lead => lead.status === "interested").length,
     converted: importedLeads.filter(lead => lead.status === "converted").length,
-    duplicates: importedLeads.filter(lead => lead.duplicate_status && lead.duplicate_status !== "new").length,
     averageScore: importedLeads.length ? Math.round(importedLeads.reduce((sum, lead) => sum + (lead.lead_score ?? 0), 0) / importedLeads.length) : 0,
   }), [importedLeads]);
+  const batchById = useMemo(() => {
+    const out: Record<string, LandLeadBatch> = {};
+    landLeadBatches.forEach(batch => { out[batch.id] = batch; });
+    return out;
+  }, [landLeadBatches]);
+  const leadOpsRows = useMemo(() => importedLeads
+    .filter(lead =>
+      leadMatchesOpsFilter(lead, leadOpsViewFilter)
+      && (leadOpsExactDate
+        ? dateInputKey(leadOpsDateValue(lead, leadOpsDateBasis)) === leadOpsExactDate
+        : leadWithinDateRange(leadOpsDateValue(lead, leadOpsDateBasis), leadOpsDateRange))
+    )
+    .sort((a, b) => leadOpsDateValue(b, leadOpsDateBasis).localeCompare(leadOpsDateValue(a, leadOpsDateBasis))),
+    [importedLeads, leadOpsDateBasis, leadOpsDateRange, leadOpsExactDate, leadOpsViewFilter],
+  );
+  const recentLeadUpdates = useMemo(() => leadOpsRows.slice(0, 8), [leadOpsRows]);
+  const recentBatchRows = useMemo(() => landLeadBatches.slice(0, 5).map(batch => {
+    const primaryLead = leadOpsRows
+      .filter(lead => lead.batch_id === batch.id)
+      .sort((a, b) => leadOpsDateValue(b, leadOpsDateBasis).localeCompare(leadOpsDateValue(a, leadOpsDateBasis)))[0] ?? null;
+    return { batch, primaryLead };
+  }).filter(row => row.primaryLead || leadOpsViewFilter === "all" && leadOpsDateRange === "all" && !leadOpsExactDate), [landLeadBatches, leadOpsDateBasis, leadOpsDateRange, leadOpsExactDate, leadOpsRows, leadOpsViewFilter]);
 
   const vaPayPeriods = useMemo(() => summarizeVaPayPeriods(vaTimeEntries), [vaTimeEntries]);
   const vaSubmittedHours = useMemo(() => vaTimeEntries.reduce((sum, entry) => sum + ((entry.status === "submitted" || entry.status === "approved") ? (entry.duration_minutes ?? 0) : 0), 0) / 60, [vaTimeEntries]);
@@ -806,40 +907,95 @@ export default function OperationsPage() {
           </div>
           <span style={comingSoonPill}>Member review</span>
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 10, marginBottom: 14 }} className="stat-grid">
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 10, marginBottom: 14 }} className="stat-grid">
           <MiniStat label="Imported" value={String(leadReviewStats.imported)} />
+          <MiniStat label="Updated" value={String(leadReviewStats.updated)} />
+          <MiniStat label="No packet yet" value={String(leadReviewStats.notPacketReady)} />
           <MiniStat label="Interested" value={String(leadReviewStats.interested)} />
           <MiniStat label="Converted" value={String(leadReviewStats.converted)} />
-          <MiniStat label="Duplicates" value={String(leadReviewStats.duplicates)} />
           <MiniStat label="Avg score" value={String(leadReviewStats.averageScore)} />
+        </div>
+        <div style={{ background: "var(--surface)", border: "1px solid var(--fog)", borderRadius: 8, display: "grid", gridTemplateColumns: "repeat(5, minmax(0, 1fr))", gap: 10, marginBottom: 14, padding: 10 }} className="lead-ops-filters">
+          <label style={{ display: "grid", gap: 5 }}>
+            <span style={briefLabel}>Show</span>
+            <select value={leadOpsViewFilter} onChange={e => setLeadOpsViewFilter(e.target.value as LeadOpsViewFilter)}>
+              {LEAD_OPS_VIEW_FILTERS.map(filter => <option key={filter.value} value={filter.value}>{filter.label}</option>)}
+            </select>
+          </label>
+          <label style={{ display: "grid", gap: 5 }}>
+            <span style={briefLabel}>When</span>
+            <select
+              value={leadOpsDateRange}
+              onChange={e => {
+                setLeadOpsDateRange(e.target.value as LeadOpsDateRange);
+                setLeadOpsExactDate("");
+              }}
+            >
+              {LEAD_OPS_DATE_RANGES.map(range => <option key={range.value} value={range.value}>{range.label}</option>)}
+            </select>
+          </label>
+          <label style={{ display: "grid", gap: 5 }}>
+            <span style={briefLabel}>On date</span>
+            <input type="date" value={leadOpsExactDate} onChange={e => setLeadOpsExactDate(e.target.value)} />
+          </label>
+          <label style={{ display: "grid", gap: 5 }}>
+            <span style={briefLabel}>By</span>
+            <select value={leadOpsDateBasis} onChange={e => setLeadOpsDateBasis(e.target.value as LeadOpsDateBasis)}>
+              <option value="updated">Updated date</option>
+              <option value="added">Added date</option>
+            </select>
+          </label>
+          <div style={{ background: "var(--bone)", border: "1px solid var(--fog)", borderRadius: 8, padding: 10 }}>
+            <p style={briefLabel}>Matching</p>
+            <strong style={{ color: "var(--obsidian)", fontSize: 18 }}>{leadOpsRows.length}</strong>
+          </div>
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 0.9fr) minmax(0, 1.1fr)", gap: 12 }} className="brief-grid">
           <div>
-            <p style={briefLabel}>Recent batches</p>
+            <p style={briefLabel}>Recent additions</p>
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {landLeadBatches.slice(0, 5).map(batch => (
-                <div key={batch.id} style={{ background: "var(--bone)", border: "1px solid var(--fog)", borderRadius: 8, padding: 10 }}>
-                  <strong style={{ color: "var(--obsidian)", fontSize: 13 }}>{batch.campaign_source || batch.original_filename || batch.source_system}</strong>
-                  <p style={rowMeta}>{batch.row_count} rows · {labelize(batch.status || "not-started")} · {batch.assigned_to || batch.uploaded_by || "Unassigned"}</p>
-                </div>
+              {recentBatchRows.map(({ batch, primaryLead }) => (
+                <button
+                  key={batch.id}
+                  onClick={() => router.push(primaryLead ? `/lead/${primaryLead.id}` : `/lists/${batch.id}`)}
+                  style={{ background: "var(--bone)", border: "1px solid var(--fog)", borderRadius: 8, padding: 10, textAlign: "left", cursor: "pointer", width: "100%" }}
+                >
+                  <strong style={{ color: "var(--obsidian)", fontSize: 13 }}>
+                    {primaryLead ? leadDisplayTitle(primaryLead) : batch.campaign_source || batch.original_filename || batch.source_system}
+                  </strong>
+                  <p style={rowMeta}>
+                    {primaryLead ? leadDisplayMeta(primaryLead) : `${batch.row_count} rows · ${batch.assigned_to || batch.uploaded_by || "Unassigned"}`}
+                  </p>
+                  <p style={rowMeta}>
+                    {primaryLead ? `${leadOpsDateBasis === "added" ? "Added" : leadTouchLabel(primaryLead)} ${fmtDate(leadOpsDateValue(primaryLead, leadOpsDateBasis))} · ` : ""}
+                    {batch.row_count} row{batch.row_count === 1 ? "" : "s"} · {labelize(batch.status || "not-started")}
+                  </p>
+                </button>
               ))}
               {landLeadBatches.length === 0 && <p style={{ color: "var(--muted)", fontSize: 13 }}>No imported land batches yet.</p>}
             </div>
           </div>
           <div>
-            <p style={briefLabel}>Interested sellers</p>
+            <p style={briefLabel}>Recent property updates</p>
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {importedLeads.filter(lead => lead.status === "interested").slice(0, 6).map(lead => (
-                <div key={lead.id} style={{ background: "var(--bone)", border: "1px solid var(--fog)", borderRadius: 8, padding: 10 }}>
+              {recentLeadUpdates.map(lead => {
+                const batch = lead.batch_id ? batchById[lead.batch_id] : null;
+                return (
+                <button key={lead.id} onClick={() => router.push(`/lead/${lead.id}`)} style={{ background: "var(--bone)", border: "1px solid var(--fog)", borderRadius: 8, padding: 10, textAlign: "left", cursor: "pointer", width: "100%" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
-                    <strong style={{ color: "var(--obsidian)", fontSize: 13 }}>{lead.owner_name || "Owner unknown"}</strong>
-                    <span style={smallPill}>Score {lead.lead_score ?? 0}</span>
+                    <strong style={{ color: "var(--obsidian)", fontSize: 13 }}>{leadDisplayTitle(lead)}</strong>
+                    <span style={smallPill}>{labelize(lead.status)}</span>
                   </div>
-                  <p style={rowMeta}>{lead.property_address || lead.parcel_id || "No address"} · {lead.phone || lead.phone_2 || "No phone"}</p>
-                  <p style={rowMeta}>{lead.last_activity_type ? `Last touch: ${labelize(lead.last_activity_type)}` : "No outreach logged"}{lead.deal_id ? " · Deal packet created" : ""}</p>
-                </div>
-              ))}
-              {importedLeads.filter(lead => lead.status === "interested").length === 0 && <p style={{ color: "var(--muted)", fontSize: 13 }}>No interested imported sellers yet.</p>}
+                  <p style={rowMeta}>{leadDisplayMeta(lead)}</p>
+                  <p style={rowMeta}>
+                    {leadOpsDateBasis === "added" ? "Added" : leadTouchLabel(lead)} · {fmtDate(leadOpsDateValue(lead, leadOpsDateBasis))} · Score {lead.lead_score ?? 0}
+                    {batch ? ` · ${batch.row_count} row${batch.row_count === 1 ? "" : "s"}` : ""}
+                    {lead.deal_id ? " · Deal packet created" : ""}
+                  </p>
+                </button>
+              );
+              })}
+              {recentLeadUpdates.length === 0 && <p style={{ color: "var(--muted)", fontSize: 13 }}>No imported property updates yet.</p>}
             </div>
           </div>
         </div>
@@ -1020,7 +1176,7 @@ export default function OperationsPage() {
           scrollbar-width: thin;
         }
         @media (max-width: 900px) {
-          .ops-grid, .brief-grid { grid-template-columns: 1fr !important; }
+          .ops-grid, .brief-grid, .lead-ops-filters { grid-template-columns: 1fr !important; }
         }
         @media (max-width: 680px) {
           .operations-root { padding-top: 28px !important; }

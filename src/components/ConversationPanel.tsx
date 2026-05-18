@@ -36,9 +36,13 @@ function normalizedStatus(event: CommunicationEvent): string {
     .toLowerCase();
 }
 
+function isVoicemailRecording(event: CommunicationEvent): boolean {
+  return event.provider_event_type === "call-recording" && /^voicemail\b/i.test(event.body || "");
+}
+
 function voiceLabel(event: CommunicationEvent): string {
   const status = normalizedStatus(event);
-  if (event.provider_event_type === "call-recording") return "Recording";
+  if (event.provider_event_type === "call-recording") return isVoicemailRecording(event) ? "Voicemail" : "Recording";
   if (event.direction === "inbound" && ["no-answer", "busy", "failed", "canceled", "cancelled", "missed"].includes(status)) return "Missed call";
   if (event.direction === "inbound") return "Inbound call";
   if (event.direction === "outbound") return "Outbound call";
@@ -53,7 +57,7 @@ function voiceBody(event: CommunicationEvent): string {
   const duration = event.raw_payload?.CallDuration || event.raw_payload?.DialCallDuration;
   const seconds = typeof duration === "string" && duration.trim() ? duration.trim() : event.body?.match(/·\s*(\d+)s/)?.[1];
   const suffix = seconds ? ` · ${seconds}s` : "";
-  if (event.provider_event_type === "call-recording") return event.body || `Recording ${event.status || "saved"}`;
+  if (event.provider_event_type === "call-recording") return event.body || `${isVoicemailRecording(event) ? "Voicemail" : "Recording"} ${event.status || "saved"}`;
   if (event.direction === "inbound" && ["no-answer", "busy", "failed", "canceled", "cancelled", "missed"].includes(status)) return `Missed inbound call${suffix}`;
   if (event.direction === "inbound") return `Inbound call ${event.status || "updated"}${suffix}`;
   if (event.direction === "outbound") return `Outbound call ${event.status || "updated"}${suffix}`;
@@ -85,6 +89,32 @@ function recordingUrl(event: CommunicationEvent): string | null {
   return rawUrl;
 }
 
+function displayMediaUrl(url: string): string {
+  try {
+    const parsed = new URL(url);
+    if (parsed.hostname === "api.sakari.io") return `/api/sakari/media-proxy?url=${encodeURIComponent(url)}`;
+  } catch {
+    return url;
+  }
+  return url;
+}
+
+function imageMedia(event: CommunicationEvent): Array<{ url: string; label: string }> {
+  return event.media
+    .map(item => item && typeof item === "object" ? item as Record<string, unknown> : null)
+    .filter((item): item is Record<string, unknown> => !!item)
+    .filter(item => item.type !== "recording")
+    .map(item => {
+      const url = [item.url, item.mediaUrl, item.media_url, item.href]
+        .find(value => typeof value === "string" && value) as string | undefined;
+      const contentType = String(item.contentType || item.content_type || item.mimeType || item.type || "");
+      const label = String(item.name || item.filename || "Photo");
+      if (!url || (contentType && !contentType.includes("image") && !/\.(jpe?g|png|gif)(\?|$)/i.test(url))) return null;
+      return { url: displayMediaUrl(url), label };
+    })
+    .filter((item): item is { url: string; label: string } => !!item);
+}
+
 export default function ConversationPanel({
   title = "Conversation",
   eyebrow = "Communication",
@@ -97,15 +127,19 @@ export default function ConversationPanel({
   composer,
 }: ConversationPanelProps) {
   const items = [
-    ...communications.map(event => ({
-      id: `comm-${event.id}`,
-      kind: event.direction === "inbound" ? "inbound" as const : event.direction === "outbound" ? "outbound" as const : "system" as const,
-      title: labelForEvent(event),
-      date: event.provider_created_at || event.created_at,
-      body: event.channel === "voice" ? voiceBody(event) : event.body || event.status || event.provider_event_type,
-      meta: event.status || event.provider_event_type,
-      recording: recordingUrl(event),
-    })),
+    ...communications.map(event => {
+      const images = imageMedia(event);
+      return {
+        id: `comm-${event.id}`,
+        kind: event.direction === "inbound" ? "inbound" as const : event.direction === "outbound" ? "outbound" as const : "system" as const,
+        title: labelForEvent(event),
+        date: event.provider_created_at || event.created_at,
+        body: event.channel === "voice" ? voiceBody(event) : event.body || (images.length ? "Photo received" : event.status || event.provider_event_type),
+        meta: event.status || event.provider_event_type,
+        recording: recordingUrl(event),
+        images,
+      };
+    }),
     ...activities.map(activity => ({
       id: `activity-${activity.id}`,
       kind: "activity" as const,
@@ -114,6 +148,7 @@ export default function ConversationPanel({
       body: activity.body,
       meta: activity.meta || undefined,
       recording: null,
+      images: [],
     })),
   ].sort((a, b) => a.date.localeCompare(b.date));
 
@@ -145,7 +180,18 @@ export default function ConversationPanel({
             </div>
             <p style={bubbleBody}>{item.body}</p>
             {item.recording && (
-              <audio controls preload="none" src={item.recording} style={recordingPlayer} />
+              <div style={recordingShell}>
+                <audio controls preload="none" src={item.recording} style={recordingPlayer} />
+              </div>
+            )}
+            {item.images.length > 0 && (
+              <div style={imageGrid}>
+                {item.images.map(image => (
+                  <a key={image.url} href={image.url} target="_blank" rel="noreferrer" style={imageLink}>
+                    <img src={image.url} alt={image.label} style={imagePreview} />
+                  </a>
+                ))}
+              </div>
             )}
             {item.meta && <p style={bubbleMeta}>{item.meta}</p>}
           </div>
@@ -269,8 +315,36 @@ const bubbleMeta: CSSProperties = {
 
 const recordingPlayer: CSSProperties = {
   display: "block",
-  marginTop: 8,
   maxWidth: "100%",
+  width: "100%",
+};
+
+const recordingShell: CSSProperties = {
+  background: "rgba(255,255,255,0.72)",
+  border: "1px solid var(--fog)",
+  borderRadius: 8,
+  marginTop: 8,
+  padding: 7,
+};
+
+const imageGrid: CSSProperties = {
+  display: "grid",
+  gap: 8,
+  gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))",
+  marginTop: 8,
+};
+
+const imageLink: CSSProperties = {
+  border: "1px solid var(--fog)",
+  borderRadius: 8,
+  display: "block",
+  overflow: "hidden",
+};
+
+const imagePreview: CSSProperties = {
+  aspectRatio: "4 / 3",
+  display: "block",
+  objectFit: "cover",
   width: "100%",
 };
 

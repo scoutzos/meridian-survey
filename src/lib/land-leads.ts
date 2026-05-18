@@ -2510,6 +2510,24 @@ export async function fetchImportedLandLeadListMetrics(): Promise<ImportedLandLe
   };
 }
 
+export async function fetchRecentlyUpdatedImportedLandLeads(limit = 500): Promise<ImportedLandLead[]> {
+  if (!supabase) {
+    return localGet<ImportedLandLead[]>(LOCAL_LEADS, [])
+      .sort((a, b) =>
+        (b.last_activity_at || b.updated_at || b.created_at)
+          .localeCompare(a.last_activity_at || a.updated_at || a.created_at)
+      )
+      .slice(0, limit);
+  }
+  const { data, error } = await supabase
+    .from("meridian_imported_land_leads")
+    .select("*")
+    .order("updated_at", { ascending: false })
+    .limit(limit);
+  if (error || !data) return [];
+  return data as ImportedLandLead[];
+}
+
 export async function fetchImportedLandLeadFieldValues(leadId: string): Promise<ImportedLandLeadFieldValue[]> {
   if (!supabase) {
     return localGet<ImportedLandLeadFieldValue[]>(LOCAL_FIELD_VALUES, [])
