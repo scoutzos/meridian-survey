@@ -45,7 +45,7 @@ import {
 } from "@/lib/va-time";
 import {
   fetchLandLeadBatches,
-  fetchImportedLandLeads,
+  fetchRecentlyUpdatedImportedLandLeads,
   type ImportedLandLead,
   type LandLeadBatch,
 } from "@/lib/land-leads";
@@ -89,6 +89,16 @@ function fmtDate(iso: string | null): string {
 
 function fmtDateTime(iso: string | null): string {
   return formatVaDateTime(iso);
+}
+
+function leadTouchDate(lead: ImportedLandLead): string {
+  return lead.last_activity_at || lead.updated_at || lead.created_at;
+}
+
+function leadTouchLabel(lead: ImportedLandLead): string {
+  if (lead.last_activity_type) return labelize(lead.last_activity_type);
+  if (lead.status !== "new") return labelize(lead.status);
+  return "Added";
 }
 
 function addMinutesToInput(value: string, minutes: number): string {
@@ -170,7 +180,7 @@ export default function OperationsPage() {
       fetchVaTimeEntries(120),
       fetchVaTimeChangeRequests(100),
       fetchLandLeadBatches(12),
-      fetchImportedLandLeads(250),
+      fetchRecentlyUpdatedImportedLandLeads(500),
       fetchActionItems(),
     ]).then(([projectRows, eventRows, reimbursementRows, distributionRows, scenarioRows, briefRows, timeRows, timeRequestRows, batchRows, leadRows, actionRows]) => {
       setProjects(projectRows);
@@ -191,11 +201,21 @@ export default function OperationsPage() {
 
   const leadReviewStats = useMemo(() => ({
     imported: importedLeads.length,
+    updated: importedLeads.filter(lead => Boolean(lead.last_activity_at) || lead.status !== "new").length,
+    notPacketReady: importedLeads.filter(lead => !lead.deal_id && lead.status !== "converted").length,
     interested: importedLeads.filter(lead => lead.status === "interested").length,
     converted: importedLeads.filter(lead => lead.status === "converted").length,
-    duplicates: importedLeads.filter(lead => lead.duplicate_status && lead.duplicate_status !== "new").length,
     averageScore: importedLeads.length ? Math.round(importedLeads.reduce((sum, lead) => sum + (lead.lead_score ?? 0), 0) / importedLeads.length) : 0,
   }), [importedLeads]);
+  const batchById = useMemo(() => {
+    const out: Record<string, LandLeadBatch> = {};
+    landLeadBatches.forEach(batch => { out[batch.id] = batch; });
+    return out;
+  }, [landLeadBatches]);
+  const recentLeadUpdates = useMemo(() => importedLeads
+    .slice()
+    .sort((a, b) => leadTouchDate(b).localeCompare(leadTouchDate(a)))
+    .slice(0, 8), [importedLeads]);
 
   const vaPayPeriods = useMemo(() => summarizeVaPayPeriods(vaTimeEntries), [vaTimeEntries]);
   const vaSubmittedHours = useMemo(() => vaTimeEntries.reduce((sum, entry) => sum + ((entry.status === "submitted" || entry.status === "approved") ? (entry.duration_minutes ?? 0) : 0), 0) / 60, [vaTimeEntries]);
@@ -806,11 +826,12 @@ export default function OperationsPage() {
           </div>
           <span style={comingSoonPill}>Member review</span>
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 10, marginBottom: 14 }} className="stat-grid">
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 10, marginBottom: 14 }} className="stat-grid">
           <MiniStat label="Imported" value={String(leadReviewStats.imported)} />
+          <MiniStat label="Updated" value={String(leadReviewStats.updated)} />
+          <MiniStat label="No packet yet" value={String(leadReviewStats.notPacketReady)} />
           <MiniStat label="Interested" value={String(leadReviewStats.interested)} />
           <MiniStat label="Converted" value={String(leadReviewStats.converted)} />
-          <MiniStat label="Duplicates" value={String(leadReviewStats.duplicates)} />
           <MiniStat label="Avg score" value={String(leadReviewStats.averageScore)} />
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 0.9fr) minmax(0, 1.1fr)", gap: 12 }} className="brief-grid">
@@ -827,19 +848,26 @@ export default function OperationsPage() {
             </div>
           </div>
           <div>
-            <p style={briefLabel}>Interested sellers</p>
+            <p style={briefLabel}>Recent property updates</p>
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {importedLeads.filter(lead => lead.status === "interested").slice(0, 6).map(lead => (
-                <div key={lead.id} style={{ background: "var(--bone)", border: "1px solid var(--fog)", borderRadius: 8, padding: 10 }}>
+              {recentLeadUpdates.map(lead => {
+                const batch = lead.batch_id ? batchById[lead.batch_id] : null;
+                return (
+                <button key={lead.id} onClick={() => router.push(`/lead/${lead.id}`)} style={{ background: "var(--bone)", border: "1px solid var(--fog)", borderRadius: 8, padding: 10, textAlign: "left", cursor: "pointer", width: "100%" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
                     <strong style={{ color: "var(--obsidian)", fontSize: 13 }}>{lead.owner_name || "Owner unknown"}</strong>
-                    <span style={smallPill}>Score {lead.lead_score ?? 0}</span>
+                    <span style={smallPill}>{labelize(lead.status)}</span>
                   </div>
                   <p style={rowMeta}>{lead.property_address || lead.parcel_id || "No address"} · {lead.phone || lead.phone_2 || "No phone"}</p>
-                  <p style={rowMeta}>{lead.last_activity_type ? `Last touch: ${labelize(lead.last_activity_type)}` : "No outreach logged"}{lead.deal_id ? " · Deal packet created" : ""}</p>
-                </div>
-              ))}
-              {importedLeads.filter(lead => lead.status === "interested").length === 0 && <p style={{ color: "var(--muted)", fontSize: 13 }}>No interested imported sellers yet.</p>}
+                  <p style={rowMeta}>
+                    {leadTouchLabel(lead)} · {fmtDate(leadTouchDate(lead))} · Score {lead.lead_score ?? 0}
+                    {batch ? ` · ${batch.campaign_source || batch.original_filename || batch.source_system}` : ""}
+                    {lead.deal_id ? " · Deal packet created" : ""}
+                  </p>
+                </button>
+              );
+              })}
+              {recentLeadUpdates.length === 0 && <p style={{ color: "var(--muted)", fontSize: 13 }}>No imported property updates yet.</p>}
             </div>
           </div>
         </div>
