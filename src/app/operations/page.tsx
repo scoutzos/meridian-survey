@@ -111,6 +111,16 @@ function fmtDateTime(iso: string | null): string {
   return formatVaDateTime(iso);
 }
 
+function dateInputKey(iso: string): string {
+  if (!iso) return "";
+  const date = new Date(iso.includes("T") ? iso : `${iso}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return iso.slice(0, 10);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 function leadTouchDate(lead: ImportedLandLead): string {
   return lead.last_activity_at || lead.updated_at || lead.created_at;
 }
@@ -215,6 +225,7 @@ export default function OperationsPage() {
   const [leadOpsViewFilter, setLeadOpsViewFilter] = useState<LeadOpsViewFilter>("all");
   const [leadOpsDateBasis, setLeadOpsDateBasis] = useState<LeadOpsDateBasis>("updated");
   const [leadOpsDateRange, setLeadOpsDateRange] = useState<LeadOpsDateRange>("all");
+  const [leadOpsExactDate, setLeadOpsExactDate] = useState("");
   const [message, setMessage] = useState("");
 
   useEffect(() => {
@@ -272,10 +283,12 @@ export default function OperationsPage() {
   const leadOpsRows = useMemo(() => importedLeads
     .filter(lead =>
       leadMatchesOpsFilter(lead, leadOpsViewFilter)
-      && leadWithinDateRange(leadOpsDateValue(lead, leadOpsDateBasis), leadOpsDateRange)
+      && (leadOpsExactDate
+        ? dateInputKey(leadOpsDateValue(lead, leadOpsDateBasis)) === leadOpsExactDate
+        : leadWithinDateRange(leadOpsDateValue(lead, leadOpsDateBasis), leadOpsDateRange))
     )
     .sort((a, b) => leadOpsDateValue(b, leadOpsDateBasis).localeCompare(leadOpsDateValue(a, leadOpsDateBasis))),
-    [importedLeads, leadOpsDateBasis, leadOpsDateRange, leadOpsViewFilter],
+    [importedLeads, leadOpsDateBasis, leadOpsDateRange, leadOpsExactDate, leadOpsViewFilter],
   );
   const recentLeadUpdates = useMemo(() => leadOpsRows.slice(0, 8), [leadOpsRows]);
   const recentBatchRows = useMemo(() => landLeadBatches.slice(0, 5).map(batch => {
@@ -283,7 +296,7 @@ export default function OperationsPage() {
       .filter(lead => lead.batch_id === batch.id)
       .sort((a, b) => leadOpsDateValue(b, leadOpsDateBasis).localeCompare(leadOpsDateValue(a, leadOpsDateBasis)))[0] ?? null;
     return { batch, primaryLead };
-  }).filter(row => row.primaryLead || leadOpsViewFilter === "all" && leadOpsDateRange === "all"), [landLeadBatches, leadOpsDateBasis, leadOpsDateRange, leadOpsRows, leadOpsViewFilter]);
+  }).filter(row => row.primaryLead || leadOpsViewFilter === "all" && leadOpsDateRange === "all" && !leadOpsExactDate), [landLeadBatches, leadOpsDateBasis, leadOpsDateRange, leadOpsExactDate, leadOpsRows, leadOpsViewFilter]);
 
   const vaPayPeriods = useMemo(() => summarizeVaPayPeriods(vaTimeEntries), [vaTimeEntries]);
   const vaSubmittedHours = useMemo(() => vaTimeEntries.reduce((sum, entry) => sum + ((entry.status === "submitted" || entry.status === "approved") ? (entry.duration_minutes ?? 0) : 0), 0) / 60, [vaTimeEntries]);
@@ -902,7 +915,7 @@ export default function OperationsPage() {
           <MiniStat label="Converted" value={String(leadReviewStats.converted)} />
           <MiniStat label="Avg score" value={String(leadReviewStats.averageScore)} />
         </div>
-        <div style={{ background: "var(--surface)", border: "1px solid var(--fog)", borderRadius: 8, display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 10, marginBottom: 14, padding: 10 }} className="lead-ops-filters">
+        <div style={{ background: "var(--surface)", border: "1px solid var(--fog)", borderRadius: 8, display: "grid", gridTemplateColumns: "repeat(5, minmax(0, 1fr))", gap: 10, marginBottom: 14, padding: 10 }} className="lead-ops-filters">
           <label style={{ display: "grid", gap: 5 }}>
             <span style={briefLabel}>Show</span>
             <select value={leadOpsViewFilter} onChange={e => setLeadOpsViewFilter(e.target.value as LeadOpsViewFilter)}>
@@ -911,9 +924,19 @@ export default function OperationsPage() {
           </label>
           <label style={{ display: "grid", gap: 5 }}>
             <span style={briefLabel}>When</span>
-            <select value={leadOpsDateRange} onChange={e => setLeadOpsDateRange(e.target.value as LeadOpsDateRange)}>
+            <select
+              value={leadOpsDateRange}
+              onChange={e => {
+                setLeadOpsDateRange(e.target.value as LeadOpsDateRange);
+                setLeadOpsExactDate("");
+              }}
+            >
               {LEAD_OPS_DATE_RANGES.map(range => <option key={range.value} value={range.value}>{range.label}</option>)}
             </select>
+          </label>
+          <label style={{ display: "grid", gap: 5 }}>
+            <span style={briefLabel}>On date</span>
+            <input type="date" value={leadOpsExactDate} onChange={e => setLeadOpsExactDate(e.target.value)} />
           </label>
           <label style={{ display: "grid", gap: 5 }}>
             <span style={briefLabel}>By</span>
