@@ -76,10 +76,12 @@ import {
 import ConversationPanel, { type ConversationActivity } from "@/components/ConversationPanel";
 import LandUnderwritingPanel from "@/components/LandUnderwritingPanel";
 import BuildDealAnalysisPanel from "@/components/BuildDealAnalysisPanel";
+import DealAiAnalysisPanel from "@/components/DealAiAnalysisPanel";
 import { labelForStatus } from "@/lib/status-map";
 import { getLeadNextAction, type WorkflowTone } from "@/lib/workflow-actions";
 import { calculateLandUnderwriting, type LandExitType, type LandUnderwritingResult } from "@/lib/land-underwriting";
 import { calculateBuildAnalysis, createDefaultBuildAnalysis } from "@/lib/build-underwriting";
+import type { DealAiAnalysisResult } from "@/lib/deal-ai";
 import OperatingHeader from "@/components/OperatingHeader";
 import TwilioCallButton from "@/components/TwilioCallButton";
 import {
@@ -1196,6 +1198,9 @@ export default function VaPage() {
   const [message, setMessage] = useState("");
   const [activeTab, setActiveTab] = useState<VaTab>("today");
   const [lastRefreshedAt, setLastRefreshedAt] = useState<string | null>(null);
+  const [dealAiAnalysis, setDealAiAnalysis] = useState<DealAiAnalysisResult | null>(null);
+  const [dealAiAnalyzing, setDealAiAnalyzing] = useState(false);
+  const [dealAiError, setDealAiError] = useState("");
   const [commsStatus, setCommsStatus] = useState<{
     phoneState: "offline" | "connecting" | "online" | "ringing" | "in-call" | "error";
     phoneMessage: string;
@@ -1344,6 +1349,43 @@ export default function VaPage() {
   const liveAnalysis = useMemo(() => calculateDealAnalysis(liveInput), [liveInput]);
   const liveBuildAnalysis = useMemo(() => calculateBuildAnalysis(liveInput.build_analysis, liveInput), [liveInput]);
   const liveChecklist = useMemo(() => generateDueDiligenceChecklist(liveInput), [liveInput]);
+  const runDealAiAnalysis = useCallback(async () => {
+    setDealAiAnalyzing(true);
+    setDealAiError("");
+    try {
+      const response = await fetch("/api/deals/ai-analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ deal: liveInput }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || data.error) throw new Error(data.error || response.statusText || "AI analysis failed.");
+      setDealAiAnalysis(data as DealAiAnalysisResult);
+      if (data.note) setMessage(String(data.note));
+    } catch (error) {
+      const text = error instanceof Error ? error.message : "AI analysis failed.";
+      setDealAiError(text);
+      setMessage(text);
+    } finally {
+      setDealAiAnalyzing(false);
+    }
+  }, [liveInput]);
+  const applyDealAiSuggestions = useCallback(() => {
+    if (!dealAiAnalysis) return;
+    const suggestions = dealAiAnalysis.field_suggestions;
+    setDraft(prev => ({
+      ...prev,
+      submission_summary: suggestions.submission_summary || prev.submission_summary,
+      requested_next_step: suggestions.requested_next_step || prev.requested_next_step,
+      submit_uncertainties: suggestions.submit_uncertainties || prev.submit_uncertainties,
+      buyer_demand_evidence: suggestions.buyer_demand_evidence || prev.buyer_demand_evidence,
+      exit_strategy: suggestions.exit_strategy || prev.exit_strategy,
+      target_buyer_type: suggestions.target_buyer_type || prev.target_buyer_type,
+      calculator_notes: suggestions.calculator_notes || prev.calculator_notes,
+      disposition_next_step: suggestions.requested_next_step || prev.disposition_next_step,
+    }));
+    setMessage("AI suggestions applied to the draft. Review them before saving or submitting.");
+  }, [dealAiAnalysis]);
   const today = useMemo(() => new Date().toISOString().slice(0, 10), []);
   const todaysSubmittedMinutes = useMemo(() => timeEntries
     .filter(entry => vaDateKey(entry.clock_in_at) === briefDraft.work_date && entry.duration_minutes)
@@ -1735,10 +1777,14 @@ export default function VaPage() {
       setAttachments([]);
       setDraft(EMPTY_DRAFT);
       setDraftCommunicationEventId(null);
+      setDealAiAnalysis(null);
+      setDealAiError("");
       return;
     }
     setDraft(draftFromDeal(selected));
     setDraftCommunicationEventId(null);
+    setDealAiAnalysis(null);
+    setDealAiError("");
     void Promise.all([fetchDealChecklist(selected.id), fetchDealAttachments(selected.id)]).then(([items, files]) => {
       setChecklist(items);
       setAttachments(files);
@@ -1989,6 +2035,8 @@ export default function VaPage() {
     setDraft(EMPTY_DRAFT);
     setAttachmentDraft(EMPTY_ATTACHMENT());
     setDraftCommunicationEventId(null);
+    setDealAiAnalysis(null);
+    setDealAiError("");
     setMessage("");
     setActiveTab("packet");
     setNotifyReviewUpdate(false);
@@ -1998,6 +2046,8 @@ export default function VaPage() {
     setSelectedImportedLeadId(null);
     setSelectedCommunicationEventId(null);
     setSelectedId(deal.id);
+    setDealAiAnalysis(null);
+    setDealAiError("");
     setMessage("");
     setActiveTab("packet");
   };
@@ -2267,6 +2317,8 @@ export default function VaPage() {
     setChecklist([]);
     setAttachments([]);
     setDraftCommunicationEventId(null);
+    setDealAiAnalysis(null);
+    setDealAiError("");
     setDraft({
       ...EMPTY_DRAFT,
       ...imported,
@@ -3813,6 +3865,15 @@ export default function VaPage() {
               </div>
 
               <aside style={{ display: "flex", flexDirection: "column", gap: 12, position: "sticky", top: 16, alignSelf: "start", maxHeight: "calc(100vh - 32px)", overflowY: "auto" }} className="va-deal-aside">
+                <DealAiAnalysisPanel
+                  result={dealAiAnalysis}
+                  loading={dealAiAnalyzing}
+                  error={dealAiError}
+                  onAnalyze={runDealAiAnalysis}
+                  onApply={applyDealAiSuggestions}
+                  canApply={!!dealAiAnalysis}
+                  compact
+                />
                 <div style={subPanel}>
                   <p style={eyebrowSmall}>Live analysis</p>
                   <h2 style={{ fontFamily: DISPLAY_FONT, color: "var(--obsidian)", fontSize: 26, fontWeight: 500, marginBottom: 8 }}>
