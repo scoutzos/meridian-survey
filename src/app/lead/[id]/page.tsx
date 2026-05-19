@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import OperatingHeader from "@/components/OperatingHeader";
+import BuildDealAnalysisPanel from "@/components/BuildDealAnalysisPanel";
 import ConversationPanel from "@/components/ConversationPanel";
 import LandUnderwritingMatrix from "@/components/LandUnderwritingMatrix";
 import LandUnderwritingPanel from "@/components/LandUnderwritingPanel";
@@ -19,6 +20,7 @@ import {
   getCountyResearchSources,
   inferLandLeadSourceFromUrl,
   importedLeadContactIdentityKey,
+  leadToDealDraft,
   linkLandCompToLead,
   listingTextHints,
   listingUrlHints,
@@ -414,6 +416,8 @@ export default function LeadPage() {
       },
     ];
   }, [lead, compSummary.medianPpa]);
+  const buildPreviewDeal = useMemo(() => lead ? leadToDealDraft(lead) : null, [lead]);
+
   const nextActionText = useMemo(() => {
     if (!lead) return "";
     if (compliance?.severity === "compliance") return `Do not contact — ${compliance.blockLabel}.`;
@@ -732,8 +736,10 @@ export default function LeadPage() {
           <>
             <button onClick={() => router.push("/va?tab=outreach")} style={secondaryButton}>Back to Contact Queue</button>
             <button onClick={() => router.push(`/va?tab=packet&lead=${lead.id}`)} style={secondaryButton}>Build Packet</button>
+            <button onClick={() => router.push(`/analyze?lead=${lead.id}`)} style={primaryButton}>Analyze Property</button>
+            {lead.deal_id && <button onClick={() => router.push(`/opportunity?deal=${lead.deal_id}`)} style={secondaryButton}>Open Deal File</button>}
             {lead.status !== "interested" && (
-              <button onClick={() => logDisposition("interested", "Marked interested from Lead Page", "interested")} style={primaryButton}>
+              <button onClick={() => logDisposition("interested", "Marked interested from Lead Page", "interested")} style={secondaryButton}>
                 Mark Interested
               </button>
             )}
@@ -780,6 +786,7 @@ export default function LeadPage() {
               </button>
               <button onClick={() => setTab("conversation")} style={secondaryButton}>Open Conversation</button>
               <button onClick={() => setTab("properties")} style={secondaryButton}>Open Properties</button>
+              <button onClick={() => router.push(`/analyze?lead=${lead.id}`)} style={secondaryButton}>Analyze Property</button>
             </div>
           </div>
 
@@ -863,6 +870,19 @@ export default function LeadPage() {
                       <span key={s.label} style={s.tone === "warn" ? warnChip : s.tone === "good" ? goodChip : mutedChip}>{s.label}</span>
                     ))}
                   </div>
+                </section>
+              )}
+
+              {buildPreviewDeal && (
+                <section style={panel}>
+                  <header style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 10, marginBottom: 10 }}>
+                    <div>
+                      <p style={eyebrowSmall}>Build breakdown preview</p>
+                      <h3 style={{ ...sectionTitle, fontSize: 18 }}>Land build analysis</h3>
+                    </div>
+                    <button onClick={() => router.push(`/analyze?lead=${lead.id}`)} style={inlineLinkButton}>Analyze →</button>
+                  </header>
+                  <BuildDealAnalysisPanel value={buildPreviewDeal.build_analysis} deal={buildPreviewDeal} compact />
                 </section>
               )}
 
@@ -1191,6 +1211,8 @@ export default function LeadPage() {
                     )}
                     <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                       <button onClick={() => openPropertyRecord(prop.id)} style={primaryButton}>Open Record →</button>
+                      <button onClick={() => router.push(`/analyze?lead=${prop.id}`)} style={secondaryButton}>Analyze Property</button>
+                      {prop.deal_id && <button onClick={() => router.push(`/opportunity?deal=${prop.deal_id}`)} style={secondaryButton}>Open Deal File</button>}
                       {prop.status !== "passed" && (
                         <button onClick={async () => {
                           await updateImportedLandLeadStatus(prop.id, "passed", prop.deal_id);
