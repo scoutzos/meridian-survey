@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { CSSProperties } from "react";
 import { useRouter } from "next/navigation";
+import BuildDealAnalysisPanel from "@/components/BuildDealAnalysisPanel";
 import DealAiAnalysisPanel from "@/components/DealAiAnalysisPanel";
 import { createActionItem } from "@/lib/action-items";
 import type { DealAiAnalysisResult } from "@/lib/deal-ai";
@@ -22,7 +23,13 @@ import {
   type DealUrgency,
 } from "@/lib/deals";
 import { getCurrentMeridianUser, isVaUser } from "@/lib/identity";
-import { createImportedLandLeadActivity, updateImportedLandLeadStatus } from "@/lib/land-leads";
+import {
+  createImportedLandLeadActivity,
+  fetchImportedLandLeads,
+  leadToDealDraft,
+  updateImportedLandLeadStatus,
+  type ImportedLandLead,
+} from "@/lib/land-leads";
 import { fetchActiveMemberNames } from "@/lib/members";
 import { createNotification } from "@/lib/operations";
 
@@ -103,6 +110,64 @@ function confidenceLabel(match: DealIntakeMatch): string {
   return "Possible match";
 }
 
+function stringFromNumber(value: number | null | undefined): string {
+  return typeof value === "number" && Number.isFinite(value) ? String(value) : "";
+}
+
+function matchFromLead(lead: ImportedLandLead): DealIntakeMatch {
+  return {
+    id: lead.id,
+    source: "va-lead",
+    confidence: "exact",
+    score: 100,
+    label: lead.property_address || lead.parcel_id || lead.owner_name || "VA property record",
+    address: lead.property_address,
+    parcel_id: lead.parcel_id,
+    county: lead.county,
+    city: lead.city,
+    state: lead.state,
+    acreage: lead.acreage,
+    asking_price: lead.asking_price,
+    market_value: lead.market_value ?? lead.total_parcel_value ?? null,
+    zoning: lead.zoning,
+    land_use: lead.land_use,
+    status: lead.status,
+    deal_id: lead.deal_id,
+    href: lead.deal_id ? `/opportunity?deal=${lead.deal_id}` : `/lead/${lead.id}`,
+    source_label: "VA property record",
+    reasons: ["opened from property record"],
+  };
+}
+
+function formFromLead(lead: ImportedLandLead): IntakeForm {
+  const draft = leadToDealDraft(lead);
+  const location = [lead.property_address, lead.city, lead.state, lead.zip].filter(Boolean).join(", ");
+  return {
+    ...EMPTY_FORM,
+    query: [
+      lead.property_address,
+      lead.parcel_id ? `Parcel/APN: ${lead.parcel_id}` : "",
+      lead.owner_name ? `Owner: ${lead.owner_name}` : "",
+      lead.county ? `County: ${lead.county}` : "",
+      lead.land_use ? `Land use: ${lead.land_use}` : "",
+    ].filter(Boolean).join("\n"),
+    property_type: "land",
+    address: String(draft.address || location || lead.property_address || ""),
+    parcel_id: String(draft.parcel_id || lead.parcel_id || ""),
+    seller_name: String(draft.seller_name || lead.owner_name || ""),
+    seller_phone: String(draft.seller_phone || lead.phone || lead.phone_2 || ""),
+    listing_url: lead.property_url || lead.parcel_link || lead.google_map_url || "",
+    asking_price: stringFromNumber(draft.asking_price ?? lead.asking_price),
+    acreage: stringFromNumber(draft.acreage ?? lead.acreage),
+    target_resale_price: stringFromNumber(draft.target_resale_price ?? draft.arv),
+    exit_strategy: draft.exit_strategy || EMPTY_FORM.exit_strategy,
+    target_buyer_type: draft.target_buyer_type || EMPTY_FORM.target_buyer_type,
+    buyer_demand_evidence: draft.buyer_demand_evidence || "",
+    notes: draft.notes || "",
+    urgency: draft.urgency || "routine",
+  };
+}
+
 export default function AnalyzeDealPage() {
   const router = useRouter();
   const [user, setUser] = useState<string | null>(null);
@@ -117,6 +182,13 @@ export default function AnalyzeDealPage() {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
   const [createdDeal, setCreatedDeal] = useState<Deal | null>(null);
+  const [requestedLeadId, setRequestedLeadId] = useState<string | null>(null);
+  const [prefilledLeadId, setPrefilledLeadId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    setRequestedLeadId(params.get("lead") || params.get("leadId"));
+  }, []);
 
   useEffect(() => {
     const current = getCurrentMeridianUser();
@@ -130,6 +202,30 @@ export default function AnalyzeDealPage() {
     }
     setUser(current);
   }, [router]);
+
+  useEffect(() => {
+    if (!user || !requestedLeadId || prefilledLeadId === requestedLeadId) return;
+    let cancelled = false;
+    void fetchImportedLandLeads(5000).then(rows => {
+      if (cancelled) return;
+      const lead = rows.find(row => row.id === requestedLeadId);
+      if (!lead) {
+        setMessage("I could not find that property record. You can still paste the property details here.");
+        setPrefilledLeadId(requestedLeadId);
+        return;
+      }
+      const match = matchFromLead(lead);
+      setForm(formFromLead(lead));
+      setMatches([match]);
+      setSelectedMatch(match);
+      setAnalysis(null);
+      setAiError("");
+      setCreatedDeal(null);
+      setMessage("Property record loaded into the analyzer. Run AI Analysis to review the build assumptions.");
+      setPrefilledLeadId(requestedLeadId);
+    });
+    return () => { cancelled = true; };
+  }, [prefilledLeadId, requestedLeadId, user]);
 
   const updateField = useCallback(<K extends keyof IntakeForm>(field: K, value: IntakeForm[K]) => {
     setForm(prev => ({ ...prev, [field]: value }));
@@ -570,6 +666,13 @@ export default function AnalyzeDealPage() {
               </div>
             )}
           </section>
+
+          {liveDraft.property_type === "land" && (
+            <BuildDealAnalysisPanel
+              value={liveDraft.build_analysis}
+              deal={liveDraft}
+            />
+          )}
 
           <DealAiAnalysisPanel
             result={analysis}
