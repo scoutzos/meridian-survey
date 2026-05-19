@@ -84,9 +84,11 @@ import {
 import ConversationPanel, { type ConversationActivity } from "@/components/ConversationPanel";
 import LandUnderwritingPanel from "@/components/LandUnderwritingPanel";
 import { CompactParsedListingFacts } from "@/components/ParsedListingFacts";
+import BuildDealAnalysisPanel from "@/components/BuildDealAnalysisPanel";
 import { labelForStatus } from "@/lib/status-map";
 import { getLeadNextAction, type WorkflowTone } from "@/lib/workflow-actions";
 import { calculateLandUnderwriting, type LandExitType, type LandUnderwritingResult } from "@/lib/land-underwriting";
+import { calculateBuildAnalysis, createDefaultBuildAnalysis } from "@/lib/build-underwriting";
 import OperatingHeader from "@/components/OperatingHeader";
 import TwilioCallButton from "@/components/TwilioCallButton";
 import {
@@ -590,6 +592,7 @@ const EMPTY_DRAFT: DealInput & { linksText: string } = {
   desired_minimum_spread: null,
   risk_buffer: null,
   calculator_notes: "",
+  build_analysis: createDefaultBuildAnalysis(),
   linksText: "",
 };
 
@@ -752,6 +755,16 @@ function emptyLinkIntakeDraft(): LinkIntakeDraft {
 
 function statusLabel(value: string): string {
   return labelForStatus(value);
+}
+
+function formatMoney(value: number | null | undefined): string {
+  if (typeof value !== "number" || !Number.isFinite(value)) return "N/A";
+  return value.toLocaleString(undefined, { style: "currency", currency: "USD", maximumFractionDigits: 0 });
+}
+
+function formatPct(value: number | null | undefined): string {
+  if (typeof value !== "number" || !Number.isFinite(value)) return "N/A";
+  return `${Math.round(value * 1000) / 10}%`;
 }
 
 function addDays(days: number): string {
@@ -1080,6 +1093,7 @@ function draftFromDeal(deal: Deal): DealInput & { linksText: string } {
     desired_minimum_spread: deal.desired_minimum_spread ?? null,
     risk_buffer: deal.risk_buffer ?? null,
     calculator_notes: deal.calculator_notes ?? "",
+    build_analysis: deal.build_analysis ?? createDefaultBuildAnalysis(deal),
     linksText: deal.links.join("\n"),
   };
 }
@@ -1132,6 +1146,7 @@ function buildPayload(draft: DealInput & { linksText: string }, status: DealStat
     desired_minimum_spread: draft.desired_minimum_spread ?? null,
     risk_buffer: draft.risk_buffer ?? null,
     calculator_notes: draft.calculator_notes?.trim() || null,
+    build_analysis: draft.build_analysis ?? createDefaultBuildAnalysis(draft),
     links: draft.linksText.split(/\r?\n/).map(l => l.trim()).filter(Boolean),
   };
 }
@@ -1462,6 +1477,7 @@ export default function VaPage() {
   const selected = useMemo(() => deals.find(deal => deal.id === selectedId) ?? null, [deals, selectedId]);
   const liveInput = useMemo(() => buildPayload(draft, draft.status ?? "lead"), [draft]);
   const liveAnalysis = useMemo(() => calculateDealAnalysis(liveInput), [liveInput]);
+  const liveBuildAnalysis = useMemo(() => calculateBuildAnalysis(liveInput.build_analysis, liveInput), [liveInput]);
   const liveChecklist = useMemo(() => generateDueDiligenceChecklist(liveInput), [liveInput]);
   const today = useMemo(() => new Date().toISOString().slice(0, 10), []);
   const todaysSubmittedMinutes = useMemo(() => timeEntries
@@ -1949,15 +1965,27 @@ export default function VaPage() {
     analysis: liveAnalysis,
     extraFlags: packetRiskFlags,
   }), [liveAnalysis, liveInput, packetRiskFlags]);
-  const readinessItems = useMemo(() => buildPacketReadiness({
-    input: liveInput,
-    analysis: liveAnalysis,
-    evidenceCount: packetEvidenceCount,
-    sellerTouchCount,
-    propertyLinked: !!selectedImportedLead,
-    contactLinked: !!(selectedImportedLead && (hasImportedLeadOwnerIdentity(selectedImportedLead.owner_name) || selectedImportedLead.phone || selectedImportedLead.email)),
-    riskCount: packetRiskMitigations.length,
-  }), [liveAnalysis, liveInput, packetEvidenceCount, packetRiskMitigations.length, selectedImportedLead, sellerTouchCount]);
+  const readinessItems = useMemo(() => {
+    const baseItems = buildPacketReadiness({
+      input: liveInput,
+      analysis: liveAnalysis,
+      evidenceCount: packetEvidenceCount,
+      sellerTouchCount,
+      propertyLinked: !!selectedImportedLead,
+      contactLinked: !!(selectedImportedLead && (hasImportedLeadOwnerIdentity(selectedImportedLead.owner_name) || selectedImportedLead.phone || selectedImportedLead.email)),
+      riskCount: packetRiskMitigations.length,
+    });
+    if (liveInput.property_type !== "land") return baseItems;
+    return [
+      ...baseItems,
+      {
+        label: "Build analysis",
+        detail: liveBuildAnalysis.missingInfo.length <= 3 ? "Build assumptions are ready for member review." : "Add the core new-build inputs before review.",
+        source: "Calculator" as PacketSource,
+        done: liveBuildAnalysis.missingInfo.length <= 3,
+      },
+    ];
+  }, [liveAnalysis, liveBuildAnalysis.missingInfo.length, liveInput, packetEvidenceCount, packetRiskMitigations.length, selectedImportedLead, sellerTouchCount]);
   const readyCount = readinessItems.filter(item => item.done).length;
   const missingReadyItems = readinessItems.filter(item => !item.done).map(item => item.label);
   const submissionReady = readyCount === readinessItems.length;
@@ -4124,6 +4152,14 @@ export default function VaPage() {
                     <textarea rows={2} value={draft.disposition_next_step ?? draft.calculator_notes ?? ""} onChange={e => setDraft({ ...draft, disposition_next_step: e.target.value, calculator_notes: e.target.value })} placeholder="What must happen next to validate or execute the exit." />
                   </div>
                 </div>
+                {draft.property_type === "land" && (
+                  <BuildDealAnalysisPanel
+                    editable
+                    value={draft.build_analysis}
+                    deal={liveInput}
+                    onChange={build_analysis => setDraft({ ...draft, build_analysis })}
+                  />
+                )}
                 <div style={subPanel}>
                   <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "baseline", flexWrap: "wrap", marginBottom: 10 }}>
                     <p style={eyebrowSmall}>Evidence and notes</p>
@@ -4205,6 +4241,22 @@ export default function VaPage() {
                     {liveAnalysis.disposition.exitStrategy || "Exit strategy pending"} · {liveAnalysis.disposition.targetBuyerType || "Buyer type pending"}
                   </p>
                 </div>
+                {draft.property_type === "land" && (
+                  <div style={subPanel}>
+                    <p style={eyebrowSmall}>Build/new construction</p>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                      <MiniStat label="Project cost" value={formatMoney(liveBuildAnalysis.totalProjectCost)} />
+                      <MiniStat label="Target ARV" value={formatMoney(liveBuildAnalysis.targetArv)} />
+                      <MiniStat label="Base profit" value={formatMoney(liveBuildAnalysis.baseNetProfit)} />
+                      <MiniStat label="Base ROI" value={formatPct(liveBuildAnalysis.baseRoi)} />
+                      <MiniStat label="Cash required" value={formatMoney(liveBuildAnalysis.cashRequiredFromGroup)} />
+                      <MiniStat label="Break-even" value={formatMoney(liveBuildAnalysis.breakEvenSalePrice)} />
+                    </div>
+                    <p style={{ fontSize: 12, color: "var(--muted)", lineHeight: 1.5, marginTop: 10 }}>
+                      {liveBuildAnalysis.missingInfo.length ? `Build inputs still needed: ${liveBuildAnalysis.missingInfo.slice(0, 3).join(", ")}.` : "Build analysis has the core inputs needed for review."}
+                    </p>
+                  </div>
+                )}
                 <div style={subPanel}>
                   <p style={eyebrowSmall}>Ready to submit?</p>
                   <p style={{ fontSize: 13, color: "var(--muted)", marginBottom: 10 }}>

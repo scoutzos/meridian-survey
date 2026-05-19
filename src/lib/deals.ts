@@ -1,4 +1,5 @@
 import { supabase, supabasePrototypeAnon } from "./supabase";
+import { normalizeBuildAnalysis, type BuildAnalysisInput } from "./build-underwriting";
 
 export type DealPropertyType = "land" | "house" | "rental" | "commercial" | "other";
 export type DealStatus = "lead" | "under-review" | "offer-made" | "under-contract" | "due-diligence" | "closed" | "active-project" | "stabilized" | "sold" | "passed";
@@ -57,6 +58,7 @@ export interface DealInput {
   desired_minimum_spread?: number | null;
   risk_buffer?: number | null;
   calculator_notes?: string | null;
+  build_analysis?: BuildAnalysisInput | null;
 }
 
 export interface Deal extends DealInput {
@@ -384,6 +386,7 @@ function normalizeDeal(row: Record<string, unknown>): Deal {
   return {
     ...(row as unknown as Deal),
     links: Array.isArray(row.links) ? row.links as string[] : [],
+    build_analysis: normalizeBuildAnalysis(row.build_analysis, row as unknown as DealInput),
     analysis: calculateDealAnalysis(row as unknown as DealInput),
   };
 }
@@ -429,6 +432,7 @@ function cleanDealInput(input: DealInput): DealInput {
     desired_minimum_spread: num(input.desired_minimum_spread),
     risk_buffer: num(input.risk_buffer),
     calculator_notes: input.calculator_notes?.trim() || null,
+    build_analysis: normalizeBuildAnalysis(input.build_analysis, input),
   };
 }
 
@@ -520,6 +524,7 @@ function diffDeal(before: Deal | null, after: DealInput): Record<string, { befor
     "disposition_status", "exit_strategy", "target_buyer_type", "target_resale_price", "minimum_acceptable_price",
     "best_buyer_offer", "buyer_demand_evidence", "disposition_owner", "disposition_next_step", "closing_costs_estimate",
     "holding_costs_estimate", "marketing_costs_estimate", "desired_minimum_spread", "risk_buffer", "calculator_notes",
+    "build_analysis",
   ];
   return keys.reduce<Record<string, { before: unknown; after: unknown }>>((acc, key) => {
     const left = before[key] ?? null;
@@ -643,7 +648,7 @@ export async function fetchDealAgreement(dealId: string): Promise<DealAgreement 
 
 export async function createDeal(input: DealInput, actor: string): Promise<{ data: Deal | null; error: string | null }> {
   const clean = cleanDealInput({ ...input, submitted_by: input.submitted_by ?? actor, assigned_to: input.assigned_to ?? actor });
-  const analysis = calculateDealAnalysis(input);
+  const analysis = calculateDealAnalysis(clean);
   const links = (input.links ?? []).map(l => l.trim()).filter(Boolean);
   if (!supabase) {
     const now = new Date().toISOString();

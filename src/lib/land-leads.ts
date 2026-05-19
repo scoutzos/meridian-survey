@@ -2,6 +2,7 @@ import { supabase } from "./supabase";
 import type { DealInput, DealPropertyType } from "./deals";
 import { buildSourceFieldValues, type SourceFieldCategory, type SourceFieldType } from "./land-insights-fields";
 import { calculateLandUnderwriting, type LandExitType, type LandUnderwritingStatus } from "./land-underwriting";
+import { createDefaultBuildAnalysis } from "./build-underwriting";
 
 export interface LandLeadBatch {
   id: string;
@@ -3953,6 +3954,14 @@ export function leadToDealDraft(lead: ImportedLandLead): Partial<DealInput> & { 
     calculator_notes: calculatorNotes,
     disposition_next_step: best.nextStep,
     buyer_demand_evidence: best.keyAssumption,
+    build_analysis: createDefaultBuildAnalysis({
+      asking_price: lead.asking_price ?? best.maxOffer,
+      arv: best.requiredResaleValue ?? best.landInsightsValue ?? lead.market_value ?? lead.assessed_value,
+      target_resale_price: best.requiredResaleValue ?? best.landInsightsValue ?? null,
+      acreage: lead.acreage,
+      zoning: lead.zoning,
+      address: location || lead.property_address || "",
+    }),
     review_intent: best.status === "pass" ? "blocked-decision" : "needs-info-review",
     requested_next_step: best.nextStep,
     submit_uncertainties: best.blocker || retail?.keyAssumption.includes("must be verified")
