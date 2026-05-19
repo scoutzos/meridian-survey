@@ -131,6 +131,7 @@ export default function NavBar() {
 
   const memberLinks = [
     { href: "/dashboard",  label: "Home" },
+    { href: "/analyze",    label: "Analyze" },
     { href: "/actions",    label: "Tasks" },
     { href: "/deals",      label: "Deal Reviews" },
     { href: "/crm",        label: "CRM" },
@@ -276,7 +277,7 @@ export default function NavBar() {
             </>
           )}
           {!(isVaUser(user) && pathname === "/va" && vaTab === "outreach") && (
-            <button className={isVaUser(user) && pathname === "/va" ? "va-top-create" : undefined} onClick={() => router.push(isVaUser(user) ? "/va?tab=packet" : "/va")} style={crmCreateButton}>{isVaUser(user) ? "+ Deal Brief" : "+ Create"}</button>
+            <button className={isVaUser(user) && pathname === "/va" ? "va-top-create" : undefined} onClick={() => router.push(isVaUser(user) ? "/va?tab=packet" : "/analyze")} style={crmCreateButton}>{isVaUser(user) ? "+ Deal Brief" : "+ Analyze"}</button>
           )}
           <span className={isVaUser(user) && pathname === "/va" ? "va-top-dot" : undefined} style={{ color: "var(--fog)", fontSize: 12 }}>●</span>
           <div className={isVaUser(user) && pathname === "/va" ? "va-top-user" : undefined} style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -409,8 +410,8 @@ export default function NavBar() {
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 16, flexShrink: 0 }}>
         {!isVaUser(user) && (
-          <button onClick={() => router.push("/va")} style={crmCreateButton}>
-            New Deal Brief
+          <button onClick={() => router.push("/analyze")} style={crmCreateButton}>
+            Analyze Deal
           </button>
         )}
         <span style={{

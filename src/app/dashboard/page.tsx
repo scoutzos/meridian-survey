@@ -555,6 +555,7 @@ export default function DashboardPage() {
     }] : []),
   ].slice(0, 10);
   const secondaryTools = [
+    { label: "Analyze Deal", detail: "Paste address/APN/link for AI review", href: "/analyze", count: 0 },
     { label: "Documents", detail: "Agreements, runbooks, and records", href: "/documents", count: 0 },
     { label: "Meetings", detail: nextMeeting?.meeting_date ? formatMeetingDate(nextMeeting.meeting_date) || "Scheduled" : "Agenda and notes", href: "/meetings", count: nextMeeting?.meeting_date ? 1 : 0 },
     { label: "Applications", detail: "Candidate/member reviews", href: firstPendingCandidate ? `/members/candidates?candidate=${firstPendingCandidate.id}` : "/members/candidates", count: pendingCandidateVotes.length },
@@ -635,6 +636,23 @@ export default function DashboardPage() {
           actions={
             <>
             <button
+              onClick={() => router.push("/analyze")}
+              style={{
+                background: obsidian,
+                color: bone,
+                border: "none",
+                borderRadius: 8,
+                padding: "12px 16px",
+                fontSize: 11,
+                fontWeight: 800,
+                letterSpacing: "0.14em",
+                textTransform: "uppercase",
+                cursor: "pointer",
+              }}
+            >
+              Analyze Deal
+            </button>
+            <button
               onClick={() => router.push("/actions?new=va")}
               style={{
                 background: "transparent",
@@ -654,9 +672,9 @@ export default function DashboardPage() {
             <button
               onClick={() => router.push("/actions")}
               style={{
-                background: obsidian,
-                color: bone,
-                border: "none",
+                background: "transparent",
+                color: obsidian,
+                border: `1px solid ${fog}`,
                 borderRadius: 8,
                 padding: "12px 16px",
                 fontSize: 11,
@@ -730,6 +748,30 @@ export default function DashboardPage() {
           </Panel>
 
           <div className="dashboard-side-stack">
+            <Panel title="Analyze A Deal" cta={{ label: "Start", onClick: () => router.push("/analyze") }}>
+              <p style={{ fontSize: 13, color: ink, opacity: 0.66, lineHeight: 1.45 }}>
+                Members can enter an address, APN, listing link, or pasted property notes. Meridian will match internal records, draft the packet, run the AI analyst, and submit it into review.
+              </p>
+              <button
+                onClick={() => router.push("/analyze")}
+                style={{
+                  background: obsidian,
+                  color: bone,
+                  border: "none",
+                  borderRadius: 8,
+                  padding: "11px 13px",
+                  fontSize: 11,
+                  fontWeight: 800,
+                  letterSpacing: "0.12em",
+                  textTransform: "uppercase",
+                  cursor: "pointer",
+                  width: "fit-content",
+                }}
+              >
+                Open Analyzer
+              </button>
+            </Panel>
+
             <Panel title="Deal Review Queue" cta={{ label: "Deal reviews", onClick: () => router.push("/deals") }}>
               {pendingDealVotes.length === 0 && hotDeals.length === 0 ? (
                 <EmptyText>No deal packets need member review right now.</EmptyText>
