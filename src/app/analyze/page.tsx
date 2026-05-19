@@ -401,7 +401,6 @@ export default function AnalyzeDealPage() {
         priority: deal.urgency === "hot" ? "urgent" : "high",
         source_table: "meridian_deals",
         source_id: deal.id,
-        expected_outcome: "Decide whether this member-submitted deal needs more research, should be passed, or should move toward a vote.",
       }, user || "Member"),
     ]));
     return results.map(result => result.error).filter((error): error is string => !!error);
