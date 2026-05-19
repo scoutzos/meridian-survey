@@ -39,9 +39,11 @@ import { supabase } from "@/lib/supabase";
 import { isVaUser } from "@/lib/identity";
 import { fetchCommunicationEvents, type CommunicationEvent } from "@/lib/communications";
 import ConversationPanel from "@/components/ConversationPanel";
+import BuildDealAnalysisPanel from "@/components/BuildDealAnalysisPanel";
 import { labelForStatus } from "@/lib/status-map";
 import { getDealNextAction, type WorkflowAction } from "@/lib/workflow-actions";
 import { fetchActiveMemberNames } from "@/lib/members";
+import { createDefaultBuildAnalysis } from "@/lib/build-underwriting";
 
 const DISPLAY_FONT = "var(--font-display)";
 
@@ -147,6 +149,7 @@ const EMPTY_DRAFT: DealInput & { linksText: string } = {
   desired_minimum_spread: null,
   risk_buffer: null,
   calculator_notes: "",
+  build_analysis: createDefaultBuildAnalysis(),
   linksText: "",
 };
 
@@ -245,6 +248,7 @@ function draftFromDeal(deal: Deal): DealInput & { linksText: string } {
     desired_minimum_spread: deal.desired_minimum_spread ?? null,
     risk_buffer: deal.risk_buffer ?? null,
     calculator_notes: deal.calculator_notes ?? "",
+    build_analysis: deal.build_analysis ?? createDefaultBuildAnalysis(deal),
     linksText: deal.links.join("\n"),
   };
 }
@@ -846,6 +850,14 @@ export default function DealsPage() {
                   </div>
                 </div>
               )}
+              {draft.property_type === "land" && (
+                <BuildDealAnalysisPanel
+                  editable
+                  value={draft.build_analysis}
+                  deal={liveInput}
+                  onChange={build_analysis => setDraft({ ...draft, build_analysis })}
+                />
+              )}
               <div>
                 <label style={label}>Links</label>
                 <textarea rows={3} value={draft.linksText} onChange={e => setDraft({ ...draft, linksText: e.target.value })} placeholder="One county, portal, comp, or map link per line" />
@@ -1100,6 +1112,16 @@ export default function DealsPage() {
                     </div>
                   </div>
                 </div>
+
+                {selected.property_type === "land" && (
+                  <div style={{ marginTop: 14 }}>
+                    <BuildDealAnalysisPanel
+                      value={selected.build_analysis}
+                      deal={selected}
+                      compact
+                    />
+                  </div>
+                )}
 
                 {(selected.submission_summary || selected.requested_next_step || selected.review_intent || selected.submit_uncertainties) && (
                   <div style={{ ...subPanel, marginTop: 14 }}>

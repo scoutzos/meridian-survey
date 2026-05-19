@@ -35,6 +35,7 @@ import { fetchCrmDashboardData, type BuyerOffer, type CrmBuyer, type Disposition
 import ConversationPanel from "@/components/ConversationPanel";
 import LandUnderwritingMatrix from "@/components/LandUnderwritingMatrix";
 import LandUnderwritingPanel from "@/components/LandUnderwritingPanel";
+import BuildDealAnalysisPanel from "@/components/BuildDealAnalysisPanel";
 import { labelForStatus } from "@/lib/status-map";
 import { getDealNextAction, getLeadNextAction } from "@/lib/workflow-actions";
 import { calculateLandUnderwriting } from "@/lib/land-underwriting";
@@ -604,6 +605,11 @@ function OpportunityContent() {
                   <MiniStat label="Exit confidence" value={analysis?.disposition.exitConfidence || "N/A"} />
                   <MiniStat label="Status" value={statusLabel(selectedDeal?.disposition_status)} />
                 </div>
+                {selectedDeal?.property_type === "land" && (
+                  <div style={{ marginTop: 12 }}>
+                    <BuildDealAnalysisPanel value={selectedDeal.build_analysis} deal={selectedDeal} compact />
+                  </div>
+                )}
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 12 }} className="two-col">
                   <InfoBlock title="Missing or risky">
                     {landUnderwriting?.best.blocker && <p style={bodyText}>• {landUnderwriting.best.blocker}</p>}
