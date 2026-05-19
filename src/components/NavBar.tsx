@@ -172,6 +172,7 @@ export default function NavBar() {
 
   const memberLinks = [
     { href: "/dashboard",  label: "Home" },
+    { href: "/analyze",    label: "Analyze" },
     { href: "/actions",    label: "Tasks" },
     { href: "/deals",      label: "Deal Reviews" },
     { href: "/crm",        label: "CRM" },
@@ -240,6 +241,12 @@ export default function NavBar() {
     openVaTab("packet");
   };
 
+  const openAnalyzeDeal = () => {
+    setCreateMenuOpen(false);
+    setMoreOpen(false);
+    router.push("/analyze");
+  };
+
   const globalCreateMenu = (
     <div style={createMenuPanel}>
       <button
@@ -283,6 +290,20 @@ export default function NavBar() {
       >
         <span style={createMenuLabel}>Deal brief</span>
         <span style={createMenuHint}>Start the existing deal packet workflow.</span>
+      </button>
+      <button
+        type="button"
+        onClick={openAnalyzeDeal}
+        onMouseEnter={(event) => {
+          event.currentTarget.style.background = "rgba(215, 180, 124, 0.14)";
+        }}
+        onMouseLeave={(event) => {
+          event.currentTarget.style.background = "transparent";
+        }}
+        style={createMenuItem}
+      >
+        <span style={createMenuLabel}>Analyze deal</span>
+        <span style={createMenuHint}>Open the AI-assisted deal analyzer.</span>
       </button>
     </div>
   );
