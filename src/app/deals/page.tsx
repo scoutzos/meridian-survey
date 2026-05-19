@@ -47,10 +47,12 @@ import {
 } from "@/lib/deal-packet";
 import ConversationPanel from "@/components/ConversationPanel";
 import BuildDealAnalysisPanel from "@/components/BuildDealAnalysisPanel";
+import DealAiAnalysisPanel from "@/components/DealAiAnalysisPanel";
 import { labelForStatus } from "@/lib/status-map";
 import { getDealNextAction, type WorkflowAction } from "@/lib/workflow-actions";
 import { fetchActiveMemberNames } from "@/lib/members";
 import { createDefaultBuildAnalysis } from "@/lib/build-underwriting";
+import type { DealAiAnalysisResult } from "@/lib/deal-ai";
 
 const DISPLAY_FONT = "var(--font-display)";
 
@@ -285,6 +287,9 @@ export default function DealsPage() {
   const [editingDealId, setEditingDealId] = useState<string | null>(null);
   const [activeDealTab, setActiveDealTab] = useState<DealDetailTab>("packet");
   const [activeMemberNames, setActiveMemberNames] = useState<string[]>([]);
+  const [dealAiAnalysis, setDealAiAnalysis] = useState<DealAiAnalysisResult | null>(null);
+  const [dealAiAnalyzing, setDealAiAnalyzing] = useState(false);
+  const [dealAiError, setDealAiError] = useState("");
   const [message, setMessage] = useState("");
 
   const reload = useCallback(async () => {
@@ -316,8 +321,12 @@ export default function DealsPage() {
       setCommunicationEvents([]);
       setAgreement(null);
       setAgreementDraft(emptyAgreementDraft());
+      setDealAiAnalysis(null);
+      setDealAiError("");
       return;
     }
+    setDealAiAnalysis(null);
+    setDealAiError("");
     void fetchDealChecklist(selected.id).then(setChecklist);
     void fetchDealVotes(selected.id).then(setVotes);
     void fetchDealActivity(selected.id).then(setActivity);
@@ -335,6 +344,43 @@ export default function DealsPage() {
   }), [draft]);
   const liveAnalysis = useMemo(() => calculateDealAnalysis(liveInput), [liveInput]);
   const liveChecklist = useMemo(() => generateDueDiligenceChecklist(liveInput), [liveInput]);
+  const runDealAiAnalysis = useCallback(async () => {
+    setDealAiAnalyzing(true);
+    setDealAiError("");
+    try {
+      const response = await fetch("/api/deals/ai-analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ deal: liveInput }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || data.error) throw new Error(data.error || response.statusText || "AI analysis failed.");
+      setDealAiAnalysis(data as DealAiAnalysisResult);
+      if (data.note) setMessage(String(data.note));
+    } catch (error) {
+      const text = error instanceof Error ? error.message : "AI analysis failed.";
+      setDealAiError(text);
+      setMessage(text);
+    } finally {
+      setDealAiAnalyzing(false);
+    }
+  }, [liveInput]);
+  const applyDealAiSuggestions = useCallback(() => {
+    if (!dealAiAnalysis) return;
+    const suggestions = dealAiAnalysis.field_suggestions;
+    setDraft(prev => ({
+      ...prev,
+      submission_summary: suggestions.submission_summary || prev.submission_summary,
+      requested_next_step: suggestions.requested_next_step || prev.requested_next_step,
+      submit_uncertainties: suggestions.submit_uncertainties || prev.submit_uncertainties,
+      buyer_demand_evidence: suggestions.buyer_demand_evidence || prev.buyer_demand_evidence,
+      exit_strategy: suggestions.exit_strategy || prev.exit_strategy,
+      target_buyer_type: suggestions.target_buyer_type || prev.target_buyer_type,
+      calculator_notes: suggestions.calculator_notes || prev.calculator_notes,
+      disposition_next_step: suggestions.requested_next_step || prev.disposition_next_step,
+    }));
+    setMessage("AI suggestions applied to the draft. Review them before saving.");
+  }, [dealAiAnalysis]);
 
   if (!user) return null;
 
@@ -412,6 +458,8 @@ export default function DealsPage() {
       }
     }
     setDraft(EMPTY_DRAFT);
+    setDealAiAnalysis(null);
+    setDealAiError("");
     setEditingDealId(null);
     setShowNew(false);
     await reload();
@@ -422,6 +470,8 @@ export default function DealsPage() {
     setDraft(draftFromDeal(deal));
     setEditingDealId(deal.id);
     setShowNew(true);
+    setDealAiAnalysis(null);
+    setDealAiError("");
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
@@ -751,6 +801,8 @@ export default function DealsPage() {
             setShowNew(s => !s);
             setEditingDealId(null);
             setDraft(EMPTY_DRAFT);
+            setDealAiAnalysis(null);
+            setDealAiError("");
           }}
           style={showNew ? secondaryButton : primaryButton}
         >
@@ -892,6 +944,15 @@ export default function DealsPage() {
             </div>
 
             <aside style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              <DealAiAnalysisPanel
+                result={dealAiAnalysis}
+                loading={dealAiAnalyzing}
+                error={dealAiError}
+                onAnalyze={runDealAiAnalysis}
+                onApply={applyDealAiSuggestions}
+                canApply={!!dealAiAnalysis}
+                compact
+              />
               <AnalysisCard analysis={liveAnalysis} />
               <div style={subPanel}>
                 <p style={eyebrowSmall}>Generated diligence</p>

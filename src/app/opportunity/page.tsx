@@ -36,9 +36,11 @@ import ConversationPanel from "@/components/ConversationPanel";
 import LandUnderwritingMatrix from "@/components/LandUnderwritingMatrix";
 import LandUnderwritingPanel from "@/components/LandUnderwritingPanel";
 import BuildDealAnalysisPanel from "@/components/BuildDealAnalysisPanel";
+import DealAiAnalysisPanel from "@/components/DealAiAnalysisPanel";
 import { labelForStatus } from "@/lib/status-map";
 import { getDealNextAction, getLeadNextAction } from "@/lib/workflow-actions";
 import { calculateLandUnderwriting } from "@/lib/land-underwriting";
+import type { DealAiAnalysisResult } from "@/lib/deal-ai";
 
 const DISPLAY_FONT = "var(--font-display)";
 
@@ -103,6 +105,9 @@ function OpportunityContent() {
   const [smsDraft, setSmsDraft] = useState("");
   const [smsSending, setSmsSending] = useState(false);
   const [smsMessage, setSmsMessage] = useState("");
+  const [dealAiAnalysis, setDealAiAnalysis] = useState<DealAiAnalysisResult | null>(null);
+  const [dealAiAnalyzing, setDealAiAnalyzing] = useState(false);
+  const [dealAiError, setDealAiError] = useState("");
   const [activeSection, setActiveSection] = useState<OpportunitySection>("overview");
 
   useEffect(() => {
@@ -204,6 +209,37 @@ function OpportunityContent() {
     if (selectedLead) return getLeadNextAction(selectedLead);
     return null;
   }, [agreement, checklist, communications, selectedDeal, selectedLead, user, votes]);
+
+  useEffect(() => {
+    setDealAiAnalysis(null);
+    setDealAiError("");
+  }, [selectedDeal?.id]);
+
+  const runDealAiAnalysis = useCallback(async () => {
+    if (!selectedDeal) {
+      setDealAiError("Convert this lead to a deal packet before running AI analysis.");
+      return;
+    }
+    setDealAiAnalyzing(true);
+    setDealAiError("");
+    try {
+      const response = await fetch("/api/deals/ai-analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ deal: selectedDeal }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || data.error) throw new Error(data.error || response.statusText || "AI analysis failed.");
+      setDealAiAnalysis(data as DealAiAnalysisResult);
+      if (data.note) setNoteMessage(String(data.note));
+    } catch (error) {
+      const text = error instanceof Error ? error.message : "AI analysis failed.";
+      setDealAiError(text);
+      setNoteMessage(text);
+    } finally {
+      setDealAiAnalyzing(false);
+    }
+  }, [selectedDeal]);
 
   const loadFileDetails = useCallback(async () => {
     if (!selectedLead && !selectedDeal) return;
@@ -610,6 +646,15 @@ function OpportunityContent() {
                     <BuildDealAnalysisPanel value={selectedDeal.build_analysis} deal={selectedDeal} compact />
                   </div>
                 )}
+                <div style={{ marginTop: 12 }}>
+                  <DealAiAnalysisPanel
+                    result={dealAiAnalysis}
+                    loading={dealAiAnalyzing}
+                    error={dealAiError}
+                    onAnalyze={runDealAiAnalysis}
+                    compact
+                  />
+                </div>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 12 }} className="two-col">
                   <InfoBlock title="Missing or risky">
                     {landUnderwriting?.best.blocker && <p style={bodyText}>• {landUnderwriting.best.blocker}</p>}
