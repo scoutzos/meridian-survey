@@ -3,122 +3,190 @@ import type { Survey } from "./surveys";
 export const tiebreakerSurvey: Survey = {
   id: "tiebreaker-decisions",
   title: "Operating Agreement Tiebreaker",
-  description: "Resolve the remaining operating agreement choices with clear, final terms the attorney can drop into the agreement.",
+  description:
+    "Resolve only the operating agreement items still open after recalculating the survey for the current four members: Courtney, Aaliyah, Odessa, and Tiffany.",
   categories: [
     {
-      id: "tb-capital-tax",
-      name: "Capital, Tax & Year-1 Exposure",
-      description: "Set the money rules before the company starts approving deals.",
+      id: "tb-four-member-governance",
+      name: "Decision Authority & Voting",
+      description:
+        "Set who can decide what, when a vote is required, and how fast members must respond.",
       questions: [
         {
-          id: "tb-q1",
-          text: "What initial contribution structure should Meridian adopt for all six members?",
-          context: "Section 4.1. The agreement needs a clear starting contribution rule that supports equal membership while respecting different financial capacity.",
+          id: "tb-4m-q1",
+          text: "Who should serve as Co-Managing Member(s) now that the membership is four people?",
+          context:
+            "Section 5.1. The prior structure included Courtney, Aaliyah, and a former member. The current members need to confirm the new management structure before signing.",
           priority: "critical",
           singleSelect: true,
           options: [
-            "Require $5,000 from each member within 30 days; keep equal membership interests.",
-            "Require $5,000 minimum from each member within 30 days; allow optional extra capital with preferred return but no extra voting power.",
-            "Allow variable starting contributions by member capacity; keep equal membership interests and track differences only in capital accounts.",
-            "Pause final contribution amount until the first approved deal; collect only deal-specific capital when needed.",
+            "Courtney and Aaliyah serve as the two Co-Managing Members for the first year.",
+            "Courtney, Aaliyah, and one additional current member elected by majority vote serve as three Co-Managing Members.",
+            "One Managing Member serves with one backup signer/administrator elected by majority vote.",
+            "All four members share management, with duties assigned in writing and reviewed monthly.",
           ],
         },
         {
-          id: "tb-q5",
-          text: "How should the company handle tax distributions for K-1 income?",
-          context: "Section 6.6. Members may owe taxes on allocated income even if cash is retained for projects.",
+          id: "tb-4m-q2",
+          text: "What decisions can Co-Managing Member(s) make without a separate member vote?",
+          context:
+            "Sections 5.2, 5.4, and 5.5. All four current survey responses selected group approval for expenditures, so this should distinguish routine administration from commitments that need member approval.",
           priority: "critical",
           singleSelect: true,
           options: [
-            "Make annual tax distributions when cash is available, before issuing K-1s.",
-            "Make quarterly estimated tax distributions when cash is available.",
-            "No mandatory tax distributions; each member handles their own taxes.",
-            "Tax distributions require majority approval each year after reviewing available cash and project needs.",
+            "Routine administration only: scheduling, document collection, advisor coordination, filings, and executing items already approved by the members.",
+            "Routine administration plus previously approved budgeted spending up to $2,500; no new unbudgeted expense without member approval.",
+            "Routine administration plus previously approved budgeted spending up to $5,000; no new unbudgeted expense without member approval.",
+            "Co-Managing Member(s) may approve day-to-day expenses within an annual operating budget approved by the members.",
           ],
         },
         {
-          id: "tb-q6",
+          id: "tb-4m-q3",
+          text: "Which decisions should always require a formal member vote or written consent?",
+          context:
+            "This gives the agreement a practical rule for knowing what needs a vote instead of leaving it to judgment each time.",
+          priority: "critical",
+          singleSelect: true,
+          options: [
+            "Any expenditure, deal offer, acquisition, debt, guarantee, member loan, capital call, outside investor, budget overrun, sale, refinance, new member, removal, amendment, or dissolution.",
+            "Only unbudgeted expenditures, deal offers, acquisitions, debt, guarantees, capital calls, outside investors, sale/refinance decisions, new members, removal, amendments, and dissolution.",
+            "Only major decisions: real estate acquisitions, debt, guarantees, outside investors, new members, removal, amendments, and dissolution; routine approved-budget spending is delegated.",
+            "All decisions with financial impact require a vote; non-financial operations are delegated to the Co-Managing Member(s).",
+          ],
+        },
+        {
+          id: "tb-4m-q4",
+          text: "What voting thresholds should apply while Meridian has four members?",
+          context:
+            "Section 5.4. With four members, both majority and 75% supermajority can mean 3 of 4 unless the agreement creates special categories.",
+          priority: "critical",
+          singleSelect: true,
+          options: [
+            "3 of 4 for ordinary operations and major decisions; 4 of 4 only for core rights such as ownership changes, transfers, amendments to core provisions, and voluntary dissolution.",
+            "3 of 4 for ordinary operations; 4 of 4 for acquisitions, debt, guarantees, capital calls, outside investors, amendments, and dissolution.",
+            "Simple majority of members who respond by the deadline for routine operations; 3 of 4 for major decisions; 4 of 4 for core rights.",
+            "Unanimous approval for all deal approvals, debt, guarantees, amendments, new members, and dissolution; 3 of 4 for routine operations.",
+          ],
+        },
+        {
+          id: "tb-4m-q5",
+          text: "What signature and payment-processing rule should apply after a decision is approved?",
+          context:
+            "Sections 5.5 and 10.2. This is not the spending approval rule; it controls who can sign or release funds after approval.",
+          priority: "critical",
+          singleSelect: true,
+          options: [
+            "One authorized signer may process previously approved budgeted payments under $2,500; two signatures for $2,500-$10,000; all-member written approval above $10,000 or unbudgeted.",
+            "Two authorized signatures are required for every payment, contract, wire, or bank document.",
+            "Any two current members may sign after the expense or deal has been approved in writing.",
+            "All four members are signers; all four must approve bank documents, contracts, wires, and payments.",
+          ],
+        },
+        {
+          id: "tb-4m-q6",
+          text: "How long should members have to respond to written decision notices?",
+          context:
+            "New Section 5.7A. This addresses Aaliyah's request for parameters around decision timing and waiting periods.",
+          priority: "critical",
+          singleSelect: true,
+          options: [
+            "48 hours for routine decisions; 24 hours for urgent deal decisions; non-response counts as abstention if the notice includes the consequence.",
+            "72 hours for routine decisions; 48 hours for urgent deal decisions; non-response counts as abstention if the notice includes the consequence.",
+            "24 hours for all deal-related decisions; non-response counts as a no vote.",
+            "No automatic response deadline; decisions wait until all four members respond or meet live.",
+          ],
+        },
+        {
+          id: "tb-4m-q7",
+          text: "What information must be included before a written vote can be valid?",
+          context:
+            "New Section 5.7A. The vote notice should prevent members from being asked to approve vague or incomplete decisions.",
+          priority: "critical",
+          singleSelect: true,
+          options: [
+            "Decision requested, dollar impact, affected deal, required threshold, response deadline, consequence of non-response, and whether any member cash/credit/guarantee is affected.",
+            "Decision requested, dollar impact, response deadline, and required threshold only.",
+            "Decision requested and deadline only; supporting details can be provided later.",
+            "No formal notice requirements; email or text approval is enough if the required number of members agrees.",
+          ],
+        },
+      ],
+    },
+    {
+      id: "tb-four-member-capital-risk",
+      name: "Capital, Credit & Tax Roles",
+      description:
+        "Confirm the limits on required money, optional deal capacity, guarantees, and tax representation.",
+      questions: [
+        {
+          id: "tb-4m-q8",
+          text: "How should Year-1 required capital exposure be capped for each member?",
+          context:
+            "Section 24.2. Current documented capacity is Aaliyah: $45,000 cash + $5,000 credit; Courtney: $10,000 cash; Odessa: $5,000 cash + $5,000 credit; Tiffany: $5,000 cash + $5,000 credit. The agreement must separate required exposure from voluntary deal-specific capacity.",
+          priority: "critical",
+          singleSelect: true,
+          options: [
+            "$5,000 required cap per member in Year 1; anything above that is optional and deal-specific.",
+            "$10,000 required cap per member in Year 1; anything above that is optional and deal-specific.",
+            "No fixed required cap; each deal sets its own capital need and each member opts in or out in writing.",
+            "Use each member's Schedule A capacity as the maximum Year-1 exposure, but no amount is committed without that member's written deal approval.",
+          ],
+        },
+        {
+          id: "tb-4m-q9",
+          text: "How should Aaliyah's updated $50,000 capacity be treated in the agreement?",
+          context:
+            "This reflects the updated breakdown: $45,000 cash and $5,000 credit. The main issue is whether it is mandatory capital or voluntary capacity.",
+          priority: "critical",
+          singleSelect: true,
+          options: [
+            "Treat it as voluntary single-deal capacity only; no obligation unless Aaliyah signs a Deal Approval Memo or written capital commitment.",
+            "Treat $5,000 as required initial contribution and the remaining $45,000 as optional deal-specific capacity.",
+            "Treat the full $50,000 as Aaliyah's required initial contribution due after signing.",
+            "Treat $45,000 cash as a member loan commitment and $5,000 credit as guarantee capacity, both optional by deal.",
+          ],
+        },
+        {
+          id: "tb-4m-q10",
+          text: "What personal guarantee rule should apply when lenders require guarantees?",
+          context:
+            "Section 9.2. Three current members selected equal guarantee exposure in the survey, but no member's personal guarantee should be imposed without written approval.",
+          priority: "critical",
+          singleSelect: true,
+          options: [
+            "No member is required to guarantee unless they approve in writing; if guarantees are used, exposure should be equalized as much as lender requirements allow.",
+            "All qualifying members must guarantee equally if the deal is approved by the required vote.",
+            "Only members who volunteer to guarantee do so, and guarantors receive a premium or larger deal participation interest.",
+            "Avoid personal guarantees unless all four members unanimously approve the specific guarantee terms.",
+          ],
+        },
+        {
+          id: "tb-4m-q11",
           text: "Who should serve as Partnership Representative for IRS matters?",
-          context: "Section 7.2. This person or advisor represents the LLC in partnership-level tax proceedings.",
+          context:
+            "Section 7.2. The Partnership Representative is the LLC's point of contact for partnership-level tax proceedings.",
           priority: "critical",
           singleSelect: true,
           options: [
-            "Designate the primary Managing Member, with required notice to all members before tax positions are taken.",
+            "Designate the primary Co-Managing Member, with required notice to all members before tax positions are taken.",
             "Designate an outside CPA or tax attorney, paid by the company.",
-            "Rotate annually among Co-Managing Members, with outside CPA support as needed.",
-            "Require member vote each tax year to appoint the representative.",
-          ],
-        },
-        {
-          id: "tb-q19",
-          text: "What is the maximum required out-of-pocket capital exposure per member during Year 1?",
-          context: "Section 24.2. This cap should protect members from surprise capital calls while allowing the company to act on real opportunities.",
-          priority: "critical",
-          singleSelect: true,
-          options: [
-            "$5,000 required cap per member in Year 1; anything above that is optional.",
-            "$10,000 required cap per member in Year 1, including initial contribution and capital calls.",
-            "$5,000 required minimum, plus optional additional capital up to $10,000 with preferred return.",
-            "No fixed Year-1 cap; each approved deal sets its own capital requirement before members opt in.",
+            "Designate a current member with finance/admin responsibility, supported by the CPA.",
+            "Appoint the representative each tax year by member vote.",
           ],
         },
       ],
     },
     {
-      id: "tb-governance",
-      name: "Governance, Voting & Authority",
-      description: "Decide how six members move quickly without losing accountability.",
+      id: "tb-four-member-exit-life-events",
+      name: "Exit, Buyout & Life Events",
+      description:
+        "Set the unresolved timing and representative rules for transfers, incapacity, disability, and dissolution.",
       questions: [
         {
-          id: "tb-q2",
-          text: "How should votes be counted for company decisions?",
-          context: "Section 5.3. The draft already leans toward equal membership; this decides whether money-weighted voting ever applies.",
-          priority: "critical",
-          singleSelect: true,
-          options: [
-            "One member, one vote for all company decisions.",
-            "One member, one vote for governance and operations; deal economics are handled separately in Deal Approval Memos.",
-            "One member, one vote for operations; weighted by committed capital only for deal-specific financial decisions over $25,000.",
-            "Weighted voting by Membership Interest or capital account for all financial decisions.",
-          ],
-        },
-        {
-          id: "tb-q3",
-          text: "Which voting thresholds should apply?",
-          context: "Section 5.4. This should match the practical reality of six members while protecting core decisions.",
-          priority: "critical",
-          singleSelect: true,
-          options: [
-            "Majority (4 of 6) for normal operations; supermajority (4 of 6) for major decisions; unanimous for amendments, new members, and dissolution.",
-            "Majority (4 of 6) for normal operations; supermajority (5 of 6) for major financial decisions; unanimous for amendments and dissolution.",
-            "Simple majority of those voting for operations; 4 of 6 for major decisions; unanimous only for amendments.",
-            "Unanimous for all major decisions; day-to-day items delegated to Managing Member authority.",
-          ],
-        },
-        {
-          id: "tb-q4",
-          text: "Who should have authority to sign checks, bank documents, contracts, and deal documents?",
-          context: "Section 5.5. This should balance speed with internal controls.",
-          priority: "critical",
-          singleSelect: true,
-          options: [
-            "Three Co-Managing Members are signers; one signer up to approved limits, two signers above limits.",
-            "All six members are authorized signers; two signatures required above approved limits.",
-            "Primary Managing Member plus one backup signer; group approval required for unbudgeted commitments.",
-            "Any two Co-Managing Members may sign after the deal or expense has been approved in the portal.",
-          ],
-        },
-      ],
-    },
-    {
-      id: "tb-transitions",
-      name: "Member Transitions & Life Events",
-      description: "Set predictable rules for transfer, death, incapacity, and disability.",
-      questions: [
-        {
-          id: "tb-q7",
+          id: "tb-4m-q12",
           text: "How long should Meridian have to exercise a right of first refusal on a member interest?",
-          context: "Section 8.4. The timeline should be long enough to evaluate the transfer but short enough not to trap a member indefinitely.",
+          context:
+            "Section 8.4. Two of four current members selected 30 days; the remaining responses split across other options.",
           priority: "critical",
           singleSelect: true,
           options: [
@@ -129,160 +197,131 @@ export const tiebreakerSurvey: Survey = {
           ],
         },
         {
-          id: "tb-q8",
-          text: "What should happen to a member's interest if that member dies?",
-          context: "Section 8.7. The group needs to protect family economics without giving operating control to someone the members did not choose.",
+          id: "tb-4m-q13",
+          text: "If a member is temporarily incapacitated, what voting authority should their designated representative have?",
+          context:
+            "Section 8.8. The representative is a POA holder or named representative, not automatically a member of the LLC.",
           priority: "critical",
           singleSelect: true,
           options: [
-            "Heirs receive economic rights only; remaining members may approve full membership later.",
-            "Mandatory company or member buyout at fair market value.",
-            "Estate inherits full membership rights unless remaining members object by supermajority vote.",
-            "Estate receives economic rights during a 12-month transition, then mandatory buyout if not admitted as a member.",
-          ],
-        },
-        {
-          id: "tb-q9",
-          text: "If a member is temporarily incapacitated, what voting authority should their representative have?",
-          context: "Section 8.8a. This decides whether the company can keep operating while protecting major decisions.",
-          priority: "critical",
-          singleSelect: true,
-          options: [
-            "Representative may vote on routine operations only; major decisions wait or follow deadlock rules.",
-            "Representative may vote on all matters for up to 180 days.",
+            "Economic/protective matters only; operational, strategic, new-deal, amendment, and dissolution votes proceed without that member's vote.",
+            "Full voting rights for up to six months, as if the incapacitated member voted directly.",
+            "Routine operational votes only; major decisions wait or use deadlock rules.",
             "No representative voting; the member's vote is treated as absent until capacity returns.",
-            "Representative may vote only if named in writing before incapacity and approved by the members.",
           ],
         },
         {
-          id: "tb-q10",
-          text: "How should long-term disability buyouts be funded?",
-          context: "Section 8.8b. This determines whether the company plans ahead or handles disability case by case.",
+          id: "tb-4m-q14",
+          text: "How should disability buy-sell insurance be handled?",
+          context:
+            "Section 8.8. Disability buyout obligations can create cash pressure if the company does not plan for funding.",
           priority: "critical",
           singleSelect: true,
           options: [
-            "Company explores disability buy-sell insurance and buys coverage only if premiums are reasonable.",
-            "Each member is responsible for personal coverage; the company retains a buyout right.",
-            "No insurance requirement; buyout terms are funded through installments if triggered.",
-            "Mandatory company-funded disability buy-sell policy as soon as coverage is available.",
-          ],
-        },
-      ],
-    },
-    {
-      id: "tb-conflicts-ops",
-      name: "Conflicts, Records & Compliance",
-      description: "Set standards for member-vendor work, commissions, records, spouses, and duties.",
-      questions: [
-        {
-          id: "tb-q11",
-          text: "What approval rule should apply when a member or member-owned business wants to be paid as a vendor?",
-          context: "Section 11.2. Meridian will likely use member skills, but the agreement needs a clean conflict rule.",
-          priority: "critical",
-          singleSelect: true,
-          options: [
-            "Allowed with written disclosure, recusal of interested member, and majority approval of disinterested members.",
-            "Allowed only after at least two competitive bids, with approval by disinterested members.",
-            "Allowed only at or below market rate with unanimous approval.",
-            "Not allowed unless the members approve an exception for a specific project.",
+            "Required after the first company deal closes; obtain quotes within 60 days and vote on coverage within 30 days.",
+            "Required immediately after signing if coverage is available at reasonable premiums.",
+            "Recommended, not required; review annually with the insurance broker.",
+            "No disability insurance requirement; disability buyouts are paid over time if triggered.",
           ],
         },
         {
-          id: "tb-q12",
-          text: "How should real estate commissions from LLC transactions be handled?",
-          context: "Section 12.1. This applies when a licensed member or affiliated brokerage earns a commission on a company deal.",
-          priority: "critical",
-          singleSelect: true,
-          options: [
-            "Commission belongs to the company when the lead or transaction is company-sourced.",
-            "Licensed member keeps the commission but must disclose it before deal approval.",
-            "Commission is split 50/50 between the licensed member and the company.",
-            "Deal Approval Memo decides commission treatment before the offer is made.",
-          ],
-        },
-        {
-          id: "tb-q13",
-          text: "What bookkeeping and records setup should the company use?",
-          context: "Section 13.1. Members need real-time trust around money, documents, and approvals.",
-          priority: "critical",
-          singleSelect: true,
-          options: [
-            "Professional bookkeeper plus shared accounting software access for all members.",
-            "Designated member keeps books in shared software; outside CPA reviews quarterly.",
-            "Professional bookkeeper only; members may inspect records on 48-hour notice.",
-            "Managing Member maintains records until the company has enough activity to hire a bookkeeper.",
-          ],
-        },
-        {
-          id: "tb-q14",
-          text: "Should married members provide spousal consent or acknowledgment?",
-          context: "Section 18.1. This helps prevent later claims to voting or management rights through divorce or marital property disputes.",
-          priority: "critical",
-          singleSelect: true,
-          options: [
-            "Require spousal consent/acknowledgment for all married beneficial owners.",
-            "Require spousal consent only when a member owns their LLC interest jointly or with marital funds.",
-            "Recommend but do not require spousal consent.",
-            "No spousal consent requirement; rely on transfer restrictions in the agreement.",
-          ],
-        },
-        {
-          id: "tb-q15",
-          text: "What fiduciary standard should apply among members?",
-          context: "Section 19.1. The company needs trust while still allowing members to pursue outside real estate work.",
-          priority: "critical",
-          singleSelect: true,
-          options: [
-            "Care, loyalty, good faith, and fair dealing, with outside real estate allowed after disclosure.",
-            "Full fiduciary duties with strict limits on outside real estate activity.",
-            "Modified duties: no self-dealing, disclose conflicts, but outside deals are freely allowed.",
-            "Duty of care only; business opportunity restrictions handled by conflict disclosures.",
-          ],
-        },
-      ],
-    },
-    {
-      id: "tb-dissolution-amendments",
-      name: "Deadlock, Dissolution & Amendments",
-      description: "Choose what happens when the group cannot agree or needs to change the rules.",
-      questions: [
-        {
-          id: "tb-q16",
-          text: "What should happen when the group deadlocks on a critical decision?",
-          context: "Section 20.2. The process needs to preserve relationships without letting the company freeze forever.",
-          priority: "critical",
-          singleSelect: true,
-          options: [
-            "Cooling-off period, then mediation, then non-binding advisor recommendation, then member vote again.",
-            "Mandatory mediation only; members must still reach the required threshold.",
-            "Independent advisor makes a binding decision for the specific deadlocked issue.",
-            "If unresolved after 120 days, any member may trigger buyout or dissolution procedures.",
-          ],
-        },
-        {
-          id: "tb-q17",
+          id: "tb-4m-q15",
           text: "What vote should be required for voluntary dissolution?",
-          context: "Section 21.2. The threshold should prevent impulsive shutdown but allow an exit if the partnership is no longer viable.",
+          context:
+            "Section 21.2. Current responses did not produce a clean 3-of-4 majority, but most favored unanimous or near-unanimous consent.",
           priority: "critical",
           singleSelect: true,
           options: [
-            "Unanimous approval of all 6 members.",
-            "5 of 6 members.",
-            "4 of 6 members, but only after completing or safely exiting active deals.",
-            "4 of 6 members at any time.",
+            "Unanimous approval of all four members, except forced dissolution under the deadlock process.",
+            "3 of 4 members, but only after completing or safely exiting active deals.",
+            "3 of 4 members at any time, with debts paid and capital returned before final distributions.",
+            "Unanimous approval while active deals exist; 3 of 4 if there are no active deals.",
+          ],
+        },
+      ],
+    },
+    {
+      id: "tb-four-member-conflicts-records",
+      name: "Conflicts, Commissions & Records",
+      description:
+        "Resolve the remaining operating standards that prevent money, licensing, and conflict disputes.",
+      questions: [
+        {
+          id: "tb-4m-q16",
+          text: "What approval rule should apply when a member or member-owned business wants to be paid as a vendor?",
+          context:
+            "Section 11.2. Current responses split between at-or-below-market with unanimous approval and competitive bids.",
+          priority: "critical",
+          singleSelect: true,
+          options: [
+            "Competitive bids from at least two qualified outside vendors, disclosure, interested-member recusal, and approval by disinterested members.",
+            "At or below market rate, written disclosure, interested-member recusal, and unanimous approval by the other members.",
+            "Competitive bids and at-or-below-market pricing, with approval by disinterested members.",
+            "Member-vendor transactions are not allowed unless all four members approve an exception for a specific project.",
           ],
         },
         {
-          id: "tb-q18",
-          text: "How should the operating agreement be amended after signing?",
-          context: "Section 22.1. The group needs flexibility for ordinary updates while protecting core member rights.",
+          id: "tb-4m-q17",
+          text: "How should real estate commissions from company transactions be handled?",
+          context:
+            "Section 12.1. Current responses support overlapping concepts: commission to the LLC, split with the licensed member, and deal-by-deal treatment.",
           priority: "critical",
           singleSelect: true,
           options: [
-            "Scheduled semi-annual review; 4 of 6 may amend standard provisions, unanimous required for core rights.",
-            "Event-triggered amendments only; unanimous consent required.",
-            "4 of 6 may amend any provision except ownership percentages, transfers, dissolution, and member duties.",
-            "Annual review only; amendments require 5 of 6 members.",
+            "Commission belongs to the LLC as company revenue when the lead or transaction is company-sourced.",
+            "Commission is split 50/50 between the licensed member and the LLC unless a Deal Approval Memo says otherwise.",
+            "Deal Approval Memo decides commission treatment before the offer is made.",
+            "Licensed member keeps the commission personally after full written disclosure before deal approval.",
+          ],
+        },
+        {
+          id: "tb-4m-q18",
+          text: "What bookkeeping and records setup should the company use?",
+          context:
+            "Section 13.1. Current responses split between a designated member with shared accounting software and outside professional bookkeeping/CPA support.",
+          priority: "critical",
+          singleSelect: true,
+          options: [
+            "Designated member keeps books in shared software; outside bookkeeper or CPA performs monthly reconciliation.",
+            "Professional bookkeeper maintains records; all members have real-time or 48-hour inspection access.",
+            "CPA firm maintains records, monthly reports, and open access for all members.",
+            "Co-Managing Member maintains records until the company has enough activity to hire a bookkeeper.",
+          ],
+        },
+      ],
+    },
+    {
+      id: "tb-four-member-legal-standards",
+      name: "Legal Standards & Member Protections",
+      description:
+        "Set the remaining protective provisions counsel should finalize before execution.",
+      questions: [
+        {
+          id: "tb-4m-q19",
+          text: "Should married members provide spousal consent or acknowledgment before signing?",
+          context:
+            "Section 18.1. Current responses did not produce a clean 3-of-4 majority.",
+          priority: "critical",
+          singleSelect: true,
+          options: [
+            "Require spousal consent/acknowledgment for all married beneficial owners before signing.",
+            "Require spousal consent only when a member's LLC interest is owned jointly or funded with marital assets.",
+            "Recommend but do not require spousal consent.",
+            "No spousal consent requirement; rely on transfer restrictions and divorce provisions.",
+          ],
+        },
+        {
+          id: "tb-4m-q20",
+          text: "What fiduciary duty standard should apply among members?",
+          context:
+            "Section 19.1. Current responses remain split between duty of care only and letting Georgia counsel define the framework.",
+          priority: "critical",
+          singleSelect: true,
+          options: [
+            "Duty of care, duty of loyalty, good faith, and fair dealing, modified to allow outside real estate activity with disclosure.",
+            "Duty of care only; no duty of loyalty, with conflicts handled by written disclosure and approval rules.",
+            "Duty of care and limited duty of loyalty; no self-dealing and no misuse of company opportunities, but outside deals are allowed with disclosure.",
+            "Let Georgia counsel define the fiduciary standard after reviewing the final management and outside-deal rules.",
           ],
         },
       ],
