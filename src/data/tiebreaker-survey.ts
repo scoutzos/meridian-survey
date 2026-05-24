@@ -2,77 +2,21 @@ import type { Survey } from "./surveys";
 
 export const tiebreakerSurvey: Survey = {
   id: "tiebreaker-decisions",
-  title: "Operating Agreement Tiebreaker",
+  title: "Operating Agreement Final Open Questions",
   description:
-    "Resolve only the operating agreement items still open after recalculating the survey for the current four members: Courtney, Aaliyah, Odessa, and Tiffany.",
+    "Answer only the remaining operating agreement items that are not already settled by the decision-tier framework, current four-member structure, or deal approval rules.",
   categories: [
     {
       id: "tb-four-member-governance",
-      name: "Decision Authority & Voting",
+      name: "Final Decision Mechanics",
       description:
-        "Set who can decide what, when a vote is required, and how fast members must respond.",
+        "Set only the remaining mechanics that the approved decision tiers left open.",
       questions: [
         {
-          id: "tb-4m-q1",
-          text: "Who should serve as Co-Managing Member(s) now that the membership is four people?",
-          context:
-            "Section 5.1. The prior structure included Courtney, Aaliyah, and a former member. The current members need to confirm the new management structure before signing.",
-          priority: "critical",
-          singleSelect: true,
-          options: [
-            "Courtney and Aaliyah serve as the two Co-Managing Members for the first year.",
-            "Courtney, Aaliyah, and one additional current member elected by majority vote serve as three Co-Managing Members.",
-            "One Managing Member serves with one backup signer/administrator elected by majority vote.",
-            "All four members share management, with duties assigned in writing and reviewed monthly.",
-          ],
-        },
-        {
-          id: "tb-4m-q2",
-          text: "What decisions can Co-Managing Member(s) make without a separate member vote?",
-          context:
-            "Sections 5.2, 5.4, and 5.5. All four current survey responses selected group approval for expenditures, so this should distinguish routine administration from commitments that need member approval.",
-          priority: "critical",
-          singleSelect: true,
-          options: [
-            "Routine administration only: scheduling, document collection, advisor coordination, filings, and executing items already approved by the members.",
-            "Routine administration plus previously approved budgeted spending up to $2,500; no new unbudgeted expense without member approval.",
-            "Routine administration plus previously approved budgeted spending up to $5,000; no new unbudgeted expense without member approval.",
-            "Co-Managing Member(s) may approve day-to-day expenses within an annual operating budget approved by the members.",
-          ],
-        },
-        {
-          id: "tb-4m-q3",
-          text: "Which decisions should always require a formal member vote or written consent?",
-          context:
-            "This gives the agreement a practical rule for knowing what needs a vote instead of leaving it to judgment each time.",
-          priority: "critical",
-          singleSelect: true,
-          options: [
-            "Any expenditure, deal offer, acquisition, debt, guarantee, member loan, capital call, outside investor, budget overrun, sale, refinance, new member, removal, amendment, or dissolution.",
-            "Only unbudgeted expenditures, deal offers, acquisitions, debt, guarantees, capital calls, outside investors, sale/refinance decisions, new members, removal, amendments, and dissolution.",
-            "Only major decisions: real estate acquisitions, debt, guarantees, outside investors, new members, removal, amendments, and dissolution; routine approved-budget spending is delegated.",
-            "All decisions with financial impact require a vote; non-financial operations are delegated to the Co-Managing Member(s).",
-          ],
-        },
-        {
-          id: "tb-4m-q4",
-          text: "What voting thresholds should apply while Meridian has four members?",
-          context:
-            "Section 5.4. With four members, both majority and 75% supermajority can mean 3 of 4 unless the agreement creates special categories.",
-          priority: "critical",
-          singleSelect: true,
-          options: [
-            "3 of 4 for ordinary operations and major decisions; 4 of 4 only for core rights such as ownership changes, transfers, amendments to core provisions, and voluntary dissolution.",
-            "3 of 4 for ordinary operations; 4 of 4 for acquisitions, debt, guarantees, capital calls, outside investors, amendments, and dissolution.",
-            "Simple majority of members who respond by the deadline for routine operations; 3 of 4 for major decisions; 4 of 4 for core rights.",
-            "Unanimous approval for all deal approvals, debt, guarantees, amendments, new members, and dissolution; 3 of 4 for routine operations.",
-          ],
-        },
-        {
           id: "tb-4m-q5",
-          text: "What signature and payment-processing rule should apply after a decision is approved?",
+          text: "What signature and payment-processing thresholds should apply after a decision is already approved?",
           context:
-            "Sections 5.5 and 10.2. This is not the spending approval rule; it controls who can sign or release funds after approval.",
+            "The decision tiers already say what needs approval. This question only finalizes who can sign or release funds after approval.",
           priority: "critical",
           singleSelect: true,
           options: [
@@ -84,9 +28,9 @@ export const tiebreakerSurvey: Survey = {
         },
         {
           id: "tb-4m-q6",
-          text: "How long should members have to respond to written decision notices?",
+          text: "What response windows should apply to written decision notices?",
           context:
-            "New Section 5.7A. This addresses Aaliyah's request for parameters around decision timing and waiting periods.",
+            "The decision-tier framework already requires written notice and says non-response cannot commit personal risk. This question only finalizes the timing.",
           priority: "critical",
           singleSelect: true,
           options: [
@@ -94,20 +38,6 @@ export const tiebreakerSurvey: Survey = {
             "72 hours for routine decisions; 48 hours for urgent deal decisions; non-response counts as abstention if the notice includes the consequence.",
             "24 hours for all deal-related decisions; non-response counts as a no vote.",
             "No automatic response deadline; decisions wait until all four members respond or meet live.",
-          ],
-        },
-        {
-          id: "tb-4m-q7",
-          text: "What information must be included before a written vote can be valid?",
-          context:
-            "New Section 5.7A. The vote notice should prevent members from being asked to approve vague or incomplete decisions.",
-          priority: "critical",
-          singleSelect: true,
-          options: [
-            "Decision requested, dollar impact, affected deal, required threshold, response deadline, consequence of non-response, and whether any member cash/credit/guarantee is affected.",
-            "Decision requested, dollar impact, response deadline, and required threshold only.",
-            "Decision requested and deadline only; supporting details can be provided later.",
-            "No formal notice requirements; email or text approval is enough if the required number of members agrees.",
           ],
         },
       ],
@@ -172,6 +102,70 @@ export const tiebreakerSurvey: Survey = {
             "Designate an outside CPA or tax attorney, paid by the company.",
             "Designate a current member with finance/admin responsibility, supported by the CPA.",
             "Appoint the representative each tax year by member vote.",
+          ],
+        },
+      ],
+    },
+    {
+      id: "tb-four-member-deal-metrics",
+      name: "Deal Metrics & Budget Triggers",
+      description:
+        "Finalize the deal-specific numbers the operating agreement should require before offers, material changes, and exits.",
+      questions: [
+        {
+          id: "tb-4m-q21",
+          text: "What budget variance should trigger a new member vote?",
+          context:
+            "The deal framework says material budget changes require a Tier 3 vote, but the operating agreement still needs a specific dollar or percentage trigger.",
+          priority: "critical",
+          singleSelect: true,
+          options: [
+            "More than $5,000 or more than 10% above the approved budget, whichever is lower.",
+            "More than $5,000 or more than 10% above the approved budget, whichever is higher.",
+            "More than $2,500 above the approved budget for any deal.",
+            "Set the variance trigger separately in each Deal Approval Memo.",
+          ],
+        },
+        {
+          id: "tb-4m-q22",
+          text: "What minimum projected profit or margin should be required before Meridian approves a deal offer?",
+          context:
+            "The framework requires the expected profit to justify the time, capital, and risk, but the group still needs a starting rule for deal approval.",
+          priority: "critical",
+          singleSelect: true,
+          options: [
+            "Minimum $15,000 projected profit or 15% margin, unless members approve a written exception.",
+            "Minimum $20,000 projected profit or 20% margin, unless members approve a written exception.",
+            "Minimum profit/margin is set by deal type in each Deal Approval Memo.",
+            "No fixed minimum; members decide case-by-case using the Deal Approval Memo.",
+          ],
+        },
+        {
+          id: "tb-4m-q23",
+          text: "What reserve should each Deal Approval Memo require?",
+          context:
+            "The operating agreement should say whether every deal must include a reserve before Meridian commits capital, credit, debt, or guarantees.",
+          priority: "critical",
+          singleSelect: true,
+          options: [
+            "At least 10% of the approved project budget.",
+            "The greater of $5,000 or 10% of the approved project budget.",
+            "Reserve amount is set case-by-case in each Deal Approval Memo.",
+            "No required reserve unless the members require one for a specific deal.",
+          ],
+        },
+        {
+          id: "tb-4m-q24",
+          text: "What project timeline rule should trigger renewed member review?",
+          context:
+            "The framework says timeline changes should trigger exit review, but the operating agreement still needs a practical standard.",
+          priority: "critical",
+          singleSelect: true,
+          options: [
+            "Renewed review if the project is more than 30 days beyond the Deal Approval Memo timeline.",
+            "Renewed review at 90 days for every active deal, then every 30 days until exit.",
+            "Use default timelines by strategy: 90 days wholesale/assignment, 6 months rehab/flip, 12 months build, and deal-specific timelines for holds/refinances.",
+            "Timeline review is set case-by-case in each Deal Approval Memo.",
           ],
         },
       ],
