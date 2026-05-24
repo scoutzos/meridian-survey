@@ -90,8 +90,10 @@ export const MEMBER_COUNT: number = MEMBERS.length;
 
 export function activeTrackerMembers(profiles: MemberProfile[]): { name: string; llcName: string }[] {
   const rows = new Map<string, { name: string; llcName: string }>();
+  const active = new Set<string>(MEMBERS);
   for (const member of MEMBERS) rows.set(member, { name: member, llcName: member });
   for (const profile of profiles) {
+    if (!active.has(profile.member_name)) continue;
     rows.set(profile.member_name, {
       name: profile.member_name,
       llcName: profile.llc_name || profile.member_name,

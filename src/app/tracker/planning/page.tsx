@@ -117,6 +117,7 @@ function resolveRule(args: {
   cadence: Cadence;
   memberCount: number;
 }): { approvalRule: string; minimumApprovals: number; requiredApprovals: number } {
+  const majority = Math.max(1, Math.floor(args.memberCount / 2) + 1);
   if (args.amount > 10000) {
     return {
       approvalRule: "All-member written consent required: proposed spend is over the $10,000 signature-authority working default.",
@@ -127,14 +128,14 @@ function resolveRule(args: {
   if (!args.isBudgeted) {
     return {
       approvalRule: `All-member written consent required: this is ${args.cadence !== "one_time" ? "recurring " : ""}unbudgeted spend that affects member contributions.`,
-      minimumApprovals: 4,
-      requiredApprovals: 6,
+      minimumApprovals: args.memberCount,
+      requiredApprovals: args.memberCount,
     };
   }
   return {
     approvalRule: "Majority approval required: ordinary budgeted operations or administrative spending.",
-    minimumApprovals: 4,
-    requiredApprovals: 4,
+    minimumApprovals: majority,
+    requiredApprovals: majority,
   };
 }
 

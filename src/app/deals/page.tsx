@@ -5,16 +5,32 @@ import { useRouter } from "next/navigation";
 import {
   calculateDealAnalysis,
   buildDealAgreementMemo,
+  createDealBudgetVersion,
+  createDealCloseoutPacket,
+  createDealDecision,
+  createDealExitMemo,
+  createDealMemberCommitment,
   createDeal,
   fetchDealActivity,
   fetchDealAttachments,
+  fetchDealBudgetBundle,
+  fetchDealCloseoutPackets,
   fetchDealChecklist,
+  fetchDealDecisionVotes,
+  fetchDealDecisions,
   fetchDealAgreement,
+  fetchDealExitMemos,
+  fetchDealMemberCommitments,
   fetchDeals,
   fetchDealVotes,
   generateDueDiligenceChecklist,
+  DEAL_STAGE_LABELS,
+  DEAL_STAGES,
   updateChecklistItemStatus,
   updateDeal,
+  updateDealMemberCommitmentConsent,
+  updateDealStage,
+  upsertDealDecisionVote,
   upsertDealAgreement,
   upsertDealVote,
   type ChecklistStatus,
@@ -24,9 +40,31 @@ import {
   type DealAgreement,
   type DealAgreementInput,
   type DealAgreementStatus,
+  type DealBudgetLine,
+  type DealBudgetLineInput,
+  type DealBudgetStatus,
+  type DealBudgetVersion,
+  type DealBudgetVersionInput,
+  type DealCloseoutPacket,
+  type DealCloseoutPacketInput,
+  type DealCloseoutStatus,
+  type DealCommitmentConsentStatus,
+  type DealCommitmentType,
+  type DealDecision,
+  type DealDecisionInput,
+  type DealDecisionStatus,
+  type DealDecisionType,
+  type DealDecisionVote,
+  type DealDecisionVoteChoice,
   type DealDueDiligenceItem,
+  type DealExitMemo,
+  type DealExitMemoInput,
+  type DealExitMemoStatus,
   type DealInput,
+  type DealMemberCommitment,
+  type DealMemberCommitmentInput,
   type DealPropertyType,
+  type DealStage,
   type DealUrgency,
   type DealVote,
   type DealVoteOption,
@@ -49,7 +87,7 @@ import type { DealAiAnalysisResult } from "@/lib/deal-ai";
 
 const DISPLAY_FONT = "var(--font-display)";
 
-type DealDetailTab = "packet" | "communications" | "agreement" | "vote" | "diligence";
+type DealDetailTab = "packet" | "communications" | "agreement" | "budget" | "decisions" | "vote" | "diligence" | "exit" | "closeout";
 
 function actionTargetToDealTab(target: WorkflowAction["target"]): DealDetailTab {
   if (target === "communications") return "communications";
@@ -98,6 +136,75 @@ const AGREEMENT_STATUSES: Array<{ value: DealAgreementStatus; label: string }> =
   { value: "superseded", label: "Superseded" },
 ];
 
+const BUDGET_STATUSES: Array<{ value: DealBudgetStatus; label: string }> = [
+  { value: "draft", label: "Draft" },
+  { value: "review", label: "Review" },
+  { value: "approved", label: "Approved" },
+  { value: "superseded", label: "Superseded" },
+  { value: "final-actuals", label: "Final Actuals" },
+];
+
+const DECISION_TYPES: Array<{ value: DealDecisionType; label: string }> = [
+  { value: "general", label: "General" },
+  { value: "offer-approval", label: "Offer Approval" },
+  { value: "due-diligence-go-no-go", label: "Diligence Go/No-Go" },
+  { value: "budget-change", label: "Budget Change" },
+  { value: "capital-call", label: "Capital Call" },
+  { value: "active-project-change", label: "Project Change" },
+  { value: "exit-decision", label: "Exit Decision" },
+  { value: "closeout-approval", label: "Closeout Approval" },
+];
+
+const DECISION_STATUSES: Array<{ value: DealDecisionStatus; label: string }> = [
+  { value: "draft", label: "Draft" },
+  { value: "open", label: "Open" },
+  { value: "approved", label: "Approved" },
+  { value: "rejected", label: "Rejected" },
+  { value: "revision-needed", label: "Revision Needed" },
+  { value: "closed", label: "Closed" },
+  { value: "cancelled", label: "Cancelled" },
+];
+
+const DECISION_VOTES: Array<{ value: DealDecisionVoteChoice; label: string }> = [
+  { value: "approve", label: "Approve" },
+  { value: "request_changes", label: "Request Changes" },
+  { value: "abstain", label: "Abstain" },
+  { value: "reject", label: "Reject" },
+];
+
+const COMMITMENT_TYPES: Array<{ value: DealCommitmentType; label: string }> = [
+  { value: "cash", label: "Cash" },
+  { value: "credit", label: "Credit" },
+  { value: "guarantee", label: "Guarantee" },
+  { value: "member-loan", label: "Member Loan" },
+  { value: "collateral", label: "Collateral" },
+  { value: "deal-specific-capital", label: "Deal Capital" },
+  { value: "other", label: "Other" },
+];
+
+const EXIT_MEMO_STATUSES: Array<{ value: DealExitMemoStatus; label: string }> = [
+  { value: "draft", label: "Draft" },
+  { value: "ready-for-review", label: "Ready for Review" },
+  { value: "approved", label: "Approved" },
+  { value: "superseded", label: "Superseded" },
+];
+
+const CLOSEOUT_STATUSES: Array<{ value: DealCloseoutStatus; label: string }> = [
+  { value: "draft", label: "Draft" },
+  { value: "ready-for-review", label: "Ready for Review" },
+  { value: "final", label: "Final" },
+];
+
+const STAGE_DETAILS: Record<DealStage, string> = {
+  "intake": "Create or receive the packet.",
+  "initial-screen": "Screen facts, risks, and buyer/exit confidence.",
+  "offer-approval": "Approve price, capital, risk, and authority.",
+  "due-diligence-go-no-go": "Verify documents and decide go/no-go.",
+  "active-project-change": "Manage approved budget changes and scope.",
+  "exit-execution": "Approve sale, hold, refinance, or other exit.",
+  "closeout": "Finalize actuals, distributions, and tax follow-up.",
+};
+
 const LEAD_TEMPERATURES: Array<{ value: NonNullable<DealInput["lead_temperature"]>; label: string }> = [
   { value: "cold", label: "Cold" },
   { value: "warm", label: "Warm" },
@@ -110,6 +217,7 @@ const EMPTY_DRAFT: DealInput & { linksText: string } = {
   source: "Land portal",
   property_type: "land",
   strategy: "land resale",
+  deal_stage: "intake",
   urgency: "routine",
   address: "",
   parcel_id: "",
@@ -173,6 +281,87 @@ const emptyAgreementDraft = (dealId = ""): DealAgreementInput => ({
   notes: "",
 });
 
+const defaultBudgetLines = (): DealBudgetLineInput[] => [
+  { category: "Acquisition", description: "Offer / purchase price authority", estimated_amount: null, approved_amount: null, actual_amount: null, source_of_funds: "Member cash or approved financing", sort_order: 10 },
+  { category: "Diligence", description: "Title, survey, inspection, legal, utility/buildability checks", estimated_amount: null, approved_amount: null, actual_amount: null, source_of_funds: "Operating cash", sort_order: 20 },
+  { category: "Closing", description: "Earnest money, closing costs, transfer costs", estimated_amount: null, approved_amount: null, actual_amount: null, source_of_funds: "Operating cash", sort_order: 30 },
+  { category: "Project", description: "Repairs, site work, permits, contractor scope", estimated_amount: null, approved_amount: null, actual_amount: null, source_of_funds: "Deal budget", sort_order: 40 },
+  { category: "Holding", description: "Taxes, insurance, utilities, reserves", estimated_amount: null, approved_amount: null, actual_amount: null, source_of_funds: "Deal budget", sort_order: 50 },
+];
+
+const emptyBudgetDraft = (dealId = "", stage: DealStage = "initial-screen"): DealBudgetVersionInput => ({
+  deal_id: dealId,
+  stage,
+  label: "Initial deal budget",
+  status: "draft",
+  change_summary: "",
+  source_of_funds: "",
+  material_variance_threshold_amount: 2500,
+  material_variance_threshold_percent: 10,
+  vote_required: true,
+});
+
+const emptyDecisionDraft = (dealId = "", stage: DealStage = "initial-screen", requiredApprovals = 3): DealDecisionInput => ({
+  deal_id: dealId,
+  decision_type: "general",
+  stage,
+  status: "open",
+  decision_requested: "",
+  affected_matter: "",
+  dollar_impact: null,
+  source_of_funds: "",
+  approval_threshold: "Tier 3 Majority approval",
+  required_approvals: requiredApprovals,
+  response_deadline: "",
+  non_response_consequence: "Non-response counts as abstention, not approval.",
+  personal_risk_summary: "",
+  supporting_documents: [],
+});
+
+const emptyCommitmentDraft = (dealId = "", memberName = ""): DealMemberCommitmentInput => ({
+  deal_id: dealId,
+  member_name: memberName,
+  commitment_type: "cash",
+  amount: null,
+  description: "",
+  source_of_funds: "",
+  decision_id: null,
+  budget_version_id: null,
+  consent_status: "pending",
+  consent_note: "",
+});
+
+const emptyExitMemoDraft = (dealId = ""): DealExitMemoInput => ({
+  deal_id: dealId,
+  status: "draft",
+  recommended_exit: "",
+  current_budget_to_actual: "",
+  debt_payoff: null,
+  closing_costs: null,
+  expected_net_proceeds: null,
+  return_of_capital: null,
+  preferred_return_or_guarantee_premium: null,
+  reserves_to_hold_back: null,
+  estimated_member_distributions: "",
+  risks: "",
+  alternatives_considered: "",
+  supporting_documents: [],
+});
+
+const emptyCloseoutDraft = (dealId = ""): DealCloseoutPacketInput => ({
+  deal_id: dealId,
+  status: "draft",
+  exit_memo_id: null,
+  settlement_statement_url: "",
+  refinance_statement_url: "",
+  final_budget_variance: "",
+  final_profit_loss: null,
+  capital_return: "",
+  distribution_calculation: "",
+  lessons_learned: "",
+  tax_followups: "",
+});
+
 function toNumber(value: string): number | null {
   if (!value.trim()) return null;
   const parsed = Number(value.replace(/[$,]/g, ""));
@@ -209,6 +398,7 @@ function draftFromDeal(deal: Deal): DealInput & { linksText: string } {
     property_type: deal.property_type,
     strategy: deal.strategy,
     status: deal.status,
+    deal_stage: deal.deal_stage,
     urgency: deal.urgency,
     address: deal.address ?? "",
     parcel_id: deal.parcel_id ?? "",
@@ -267,6 +457,26 @@ export default function DealsPage() {
   const [communicationEvents, setCommunicationEvents] = useState<CommunicationEvent[]>([]);
   const [agreement, setAgreement] = useState<DealAgreement | null>(null);
   const [agreementDraft, setAgreementDraft] = useState<DealAgreementInput>(emptyAgreementDraft());
+  const [budgetVersions, setBudgetVersions] = useState<DealBudgetVersion[]>([]);
+  const [budgetLines, setBudgetLines] = useState<DealBudgetLine[]>([]);
+  const [budgetDraft, setBudgetDraft] = useState<DealBudgetVersionInput>(emptyBudgetDraft());
+  const [budgetLineDrafts, setBudgetLineDrafts] = useState<DealBudgetLineInput[]>(defaultBudgetLines());
+  const [budgetSaving, setBudgetSaving] = useState(false);
+  const [decisions, setDecisions] = useState<DealDecision[]>([]);
+  const [decisionVotes, setDecisionVotes] = useState<DealDecisionVote[]>([]);
+  const [decisionDraft, setDecisionDraft] = useState<DealDecisionInput>(emptyDecisionDraft());
+  const [decisionSaving, setDecisionSaving] = useState(false);
+  const [decisionVoteNote, setDecisionVoteNote] = useState("");
+  const [commitments, setCommitments] = useState<DealMemberCommitment[]>([]);
+  const [commitmentDraft, setCommitmentDraft] = useState<DealMemberCommitmentInput>(emptyCommitmentDraft());
+  const [commitmentSaving, setCommitmentSaving] = useState(false);
+  const [commitmentConsentNote, setCommitmentConsentNote] = useState("");
+  const [exitMemos, setExitMemos] = useState<DealExitMemo[]>([]);
+  const [exitMemoDraft, setExitMemoDraft] = useState<DealExitMemoInput>(emptyExitMemoDraft());
+  const [exitMemoSaving, setExitMemoSaving] = useState(false);
+  const [closeoutPackets, setCloseoutPackets] = useState<DealCloseoutPacket[]>([]);
+  const [closeoutDraft, setCloseoutDraft] = useState<DealCloseoutPacketInput>(emptyCloseoutDraft());
+  const [closeoutSaving, setCloseoutSaving] = useState(false);
   const [loading, setLoading] = useState(true);
   const [showNew, setShowNew] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -314,22 +524,51 @@ export default function DealsPage() {
       setCommunicationEvents([]);
       setAgreement(null);
       setAgreementDraft(emptyAgreementDraft());
+      setBudgetVersions([]);
+      setBudgetLines([]);
+      setBudgetDraft(emptyBudgetDraft());
+      setBudgetLineDrafts(defaultBudgetLines());
+      setDecisions([]);
+      setDecisionVotes([]);
+      setDecisionDraft(emptyDecisionDraft());
+      setCommitments([]);
+      setCommitmentDraft(emptyCommitmentDraft());
+      setExitMemos([]);
+      setExitMemoDraft(emptyExitMemoDraft());
+      setCloseoutPackets([]);
+      setCloseoutDraft(emptyCloseoutDraft());
       setDealAiAnalysis(null);
       setDealAiError("");
       return;
     }
+    const requiredApprovals = Math.max(1, Math.floor((activeMemberNames.length || 4) / 2) + 1);
     setDealAiAnalysis(null);
     setDealAiError("");
+    setBudgetDraft(emptyBudgetDraft(selected.id, selected.deal_stage));
+    setBudgetLineDrafts(defaultBudgetLines());
+    setDecisionDraft(emptyDecisionDraft(selected.id, selected.deal_stage, requiredApprovals));
+    setCommitmentDraft(emptyCommitmentDraft(selected.id, activeMemberNames[0] ?? user ?? ""));
+    setExitMemoDraft(emptyExitMemoDraft(selected.id));
+    setCloseoutDraft(emptyCloseoutDraft(selected.id));
     void fetchDealChecklist(selected.id).then(setChecklist);
     void fetchDealVotes(selected.id).then(setVotes);
     void fetchDealActivity(selected.id).then(setActivity);
     void fetchDealAttachments(selected.id).then(setAttachments);
+    void fetchDealBudgetBundle(selected.id).then(bundle => {
+      setBudgetVersions(bundle.versions);
+      setBudgetLines(bundle.lines);
+    });
+    void fetchDealDecisions(selected.id).then(setDecisions);
+    void fetchDealDecisionVotes(selected.id).then(setDecisionVotes);
+    void fetchDealMemberCommitments(selected.id).then(setCommitments);
+    void fetchDealExitMemos(selected.id).then(setExitMemos);
+    void fetchDealCloseoutPackets(selected.id).then(setCloseoutPackets);
     void fetchCommunicationEvents({ dealId: selected.id, limit: 30 }).then(setCommunicationEvents);
     void fetchDealAgreement(selected.id).then(row => {
       setAgreement(row);
       setAgreementDraft(row ?? emptyAgreementDraft(selected.id));
     });
-  }, [selected]);
+  }, [selected, activeMemberNames, user]);
 
   const liveInput: DealInput = useMemo(() => ({
     ...draft,
@@ -629,6 +868,143 @@ export default function DealsPage() {
     setMessage("Deal agreement saved.");
   };
 
+  const refreshWorkflowRecords = async (dealId: string) => {
+    const [budgetBundle, decisionRows, decisionVoteRows, commitmentRows, exitRows, closeoutRows, activityRows] = await Promise.all([
+      fetchDealBudgetBundle(dealId),
+      fetchDealDecisions(dealId),
+      fetchDealDecisionVotes(dealId),
+      fetchDealMemberCommitments(dealId),
+      fetchDealExitMemos(dealId),
+      fetchDealCloseoutPackets(dealId),
+      fetchDealActivity(dealId),
+    ]);
+    setBudgetVersions(budgetBundle.versions);
+    setBudgetLines(budgetBundle.lines);
+    setDecisions(decisionRows);
+    setDecisionVotes(decisionVoteRows);
+    setCommitments(commitmentRows);
+    setExitMemos(exitRows);
+    setCloseoutPackets(closeoutRows);
+    setActivity(activityRows);
+  };
+
+  const handleStageChange = async (stage: DealStage) => {
+    if (!selected) return;
+    const { data, error } = await updateDealStage(selected.id, stage, user);
+    if (error) { setMessage(error); return; }
+    if (data) {
+      setDeals(prev => prev.map(deal => deal.id === data.id ? data : deal));
+      setBudgetDraft(prev => ({ ...prev, stage }));
+      setDecisionDraft(prev => ({ ...prev, stage }));
+    }
+    setMessage(`Deal stage updated to ${DEAL_STAGE_LABELS[stage]}.`);
+  };
+
+  const updateBudgetLineDraft = (index: number, patch: Partial<DealBudgetLineInput>) => {
+    setBudgetLineDrafts(prev => prev.map((line, idx) => idx === index ? { ...line, ...patch } : line));
+  };
+
+  const handleSaveBudget = async () => {
+    if (!selected) return;
+    setBudgetSaving(true);
+    const { data, error } = await createDealBudgetVersion({ ...budgetDraft, deal_id: selected.id }, budgetLineDrafts, user);
+    setBudgetSaving(false);
+    if (error) { setMessage(error); return; }
+    await refreshWorkflowRecords(selected.id);
+    setBudgetDraft(emptyBudgetDraft(selected.id, selected.deal_stage));
+    setBudgetLineDrafts(defaultBudgetLines());
+    setMessage(data ? `Budget version ${data.version_number} saved.` : "Budget saved.");
+  };
+
+  const handleSaveDecision = async () => {
+    if (!selected) return;
+    setDecisionSaving(true);
+    const { data, error } = await createDealDecision({ ...decisionDraft, deal_id: selected.id }, user);
+    if (!error && data) {
+      const body = [
+        `Decision requested: ${data.decision_requested}`,
+        `Affected matter: ${data.affected_matter}`,
+        `Dollar impact/source: ${money(data.dollar_impact ?? null)} / ${data.source_of_funds || "Not specified"}`,
+        `Approval threshold: ${data.approval_threshold}`,
+        `Response deadline: ${data.response_deadline || "Not set"}`,
+        `Non-response: ${data.non_response_consequence}`,
+        `Personal risk: ${data.personal_risk_summary || "None stated"}`,
+      ].join("\n");
+      await Promise.all(activeMemberNames.map(member => createNotification({
+        title: `Decision needed: ${selected.title}`,
+        body,
+        priority: selected.urgency === "hot" ? "urgent" : "high",
+        assigned_to: member,
+        href: `/deals?deal=${selected.id}`,
+        source_table: "meridian_deal_decisions",
+        source_id: data.id,
+        notification_type: "deal_decision",
+      }, user)));
+      await Promise.all(activeMemberNames.map(member => createActionItem({
+        title: `Vote on decision: ${selected.title}`,
+        description: body,
+        assigned_to: member,
+        due_date: data.response_deadline ? data.response_deadline.slice(0, 10) : addDays(selected.urgency === "hot" ? 1 : 2),
+      }, user)));
+    }
+    setDecisionSaving(false);
+    if (error) { setMessage(error); return; }
+    await refreshWorkflowRecords(selected.id);
+    setDecisionDraft(emptyDecisionDraft(selected.id, selected.deal_stage, quorumNeeded));
+    setMessage("Decision notice opened and member tasks sent.");
+  };
+
+  const handleDecisionVote = async (decision: DealDecision, vote: DealDecisionVoteChoice) => {
+    if (!selected) return;
+    const { error } = await upsertDealDecisionVote(decision.id, user, vote, decisionVoteNote);
+    if (error) { setMessage(error); return; }
+    setDecisionVoteNote("");
+    await refreshWorkflowRecords(selected.id);
+    setMessage(`Decision vote recorded: ${statusLabel(vote)}.`);
+  };
+
+  const handleSaveCommitment = async () => {
+    if (!selected) return;
+    setCommitmentSaving(true);
+    const { error } = await createDealMemberCommitment({ ...commitmentDraft, deal_id: selected.id }, user);
+    setCommitmentSaving(false);
+    if (error) { setMessage(error); return; }
+    await refreshWorkflowRecords(selected.id);
+    setCommitmentDraft(emptyCommitmentDraft(selected.id, commitmentDraft.member_name || activeMemberNames[0] || user));
+    setMessage("Member commitment added.");
+  };
+
+  const handleCommitmentConsent = async (commitment: DealMemberCommitment, status: DealCommitmentConsentStatus) => {
+    if (!selected) return;
+    const { error } = await updateDealMemberCommitmentConsent(commitment.id, status, commitmentConsentNote, user);
+    if (error) { setMessage(error); return; }
+    setCommitmentConsentNote("");
+    await refreshWorkflowRecords(selected.id);
+    setMessage(`${commitment.member_name} commitment marked ${statusLabel(status)}.`);
+  };
+
+  const handleSaveExitMemo = async () => {
+    if (!selected) return;
+    setExitMemoSaving(true);
+    const { error } = await createDealExitMemo({ ...exitMemoDraft, deal_id: selected.id }, user);
+    setExitMemoSaving(false);
+    if (error) { setMessage(error); return; }
+    await refreshWorkflowRecords(selected.id);
+    setExitMemoDraft(emptyExitMemoDraft(selected.id));
+    setMessage("Exit memo saved.");
+  };
+
+  const handleSaveCloseout = async () => {
+    if (!selected) return;
+    setCloseoutSaving(true);
+    const { error } = await createDealCloseoutPacket({ ...closeoutDraft, deal_id: selected.id }, user);
+    setCloseoutSaving(false);
+    if (error) { setMessage(error); return; }
+    await refreshWorkflowRecords(selected.id);
+    setCloseoutDraft(emptyCloseoutDraft(selected.id));
+    setMessage("Closeout packet saved.");
+  };
+
   const handleSaveAgreementMemo = async () => {
     if (!selected) return;
     setMemoSaving(true);
@@ -705,50 +1081,38 @@ export default function DealsPage() {
     return "";
   };
   const canConvert = !!selected && !conversionBlockReason();
+  const currentStageIndex = selected ? DEAL_STAGES.indexOf(selected.deal_stage) : -1;
+  const latestBudget = budgetVersions[0] ?? null;
+  const openDecisions = decisions.filter(decision => decision.status === "open" || decision.status === "draft" || decision.status === "revision-needed");
+  const approvedDecisions = decisions.filter(decision => decision.status === "approved").length;
+  const pendingCommitments = commitments.filter(commitment => commitment.consent_status === "pending").length;
+  const approvedCommitments = commitments.filter(commitment => commitment.consent_status === "approved").length;
   const dealDetailTabs: { id: DealDetailTab; label: string; count?: number }[] = [
     { id: "packet", label: "Packet" },
     { id: "communications", label: "Communications", count: communicationEvents.length },
     { id: "agreement", label: "Agreement", count: agreementReady ? 1 : 0 },
+    { id: "budget", label: "Budget", count: budgetVersions.length },
+    { id: "decisions", label: "Decisions", count: openDecisions.length || decisions.length },
     { id: "vote", label: "Vote", count: votes.length },
     { id: "diligence", label: "Diligence", count: blocked || checklist.length },
+    { id: "exit", label: "Exit", count: exitMemos.length },
+    { id: "closeout", label: "Closeout", count: closeoutPackets.length },
   ];
-  const decisionPathCards = selected ? [
-    {
-      label: "1. Packet",
-      title: selected.submission_summary || vaHandoffVisible ? "Review VA handoff" : "Packet details",
-      detail: selected.requested_next_step || "Confirm what decision is being requested.",
-      state: vaHandoffVisible ? "active" : "open",
-      tab: "packet" as DealDetailTab,
-    },
-    {
-      label: "2. Calculator",
-      title: selected.analysis.recommendation,
-      detail: `${money(selected.analysis.acquisition.recommendedOffer)} recommended offer · ${selected.analysis.disposition.exitConfidence} exit confidence`,
-      state: selected.analysis.missingInfo.length ? "active" : "done",
-      tab: "packet" as DealDetailTab,
-    },
-    {
-      label: "3. Vote",
-      title: decisionStatus,
-      detail: votes.length ? `${votes.length}/${activeMemberNames.length} members responded` : "No member votes yet.",
-      state: quorumReached ? "done" : selected.status === "under-review" ? "active" : "open",
-      tab: "vote" as DealDetailTab,
-    },
-    {
-      label: "4. Agreement",
-      title: agreement ? statusLabel(agreement.status) : "Not started",
-      detail: agreementReady ? "Deal terms are approved for execution." : "Define capital, roles, risk, and approval threshold.",
-      state: agreementReady ? "done" : votes.length ? "active" : "open",
-      tab: "agreement" as DealDetailTab,
-    },
-    {
-      label: "5. Execution",
-      title: canConvert ? "Ready to convert" : "Blocked",
-      detail: conversionBlockReason() || "Create the project when member approval and deal terms are complete.",
-      state: canConvert ? "done" : "open",
-      tab: "diligence" as DealDetailTab,
-    },
-  ] : [];
+  const decisionPathCards = selected ? DEAL_STAGES.map((stage, index) => ({
+    label: `${index + 1}. ${DEAL_STAGE_LABELS[stage]}`,
+    title: index === currentStageIndex
+      ? "Current stage"
+      : index < currentStageIndex
+        ? "Completed / past stage"
+        : "Upcoming stage",
+    detail: STAGE_DETAILS[stage],
+    state: index === currentStageIndex ? "active" : index < currentStageIndex ? "done" : "open",
+    tab: stage === "offer-approval" || stage === "due-diligence-go-no-go" ? "decisions" as DealDetailTab
+      : stage === "active-project-change" ? "budget" as DealDetailTab
+        : stage === "exit-execution" ? "exit" as DealDetailTab
+          : stage === "closeout" ? "closeout" as DealDetailTab
+            : "packet" as DealDetailTab,
+  })) : [];
   const memberNextAction = selected
     ? getDealNextAction({
         deal: selected,
@@ -1067,6 +1431,16 @@ export default function DealsPage() {
                     <p style={{ fontSize: 13, color: "var(--ink)", opacity: 0.68, marginTop: 6 }}>
                       {selected.address || selected.parcel_id || "Location pending"} · {selected.source || "Source pending"}
                     </p>
+                    <div style={{ marginTop: 10, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                      <span style={pill}>OA stage</span>
+                      <select
+                        value={selected.deal_stage}
+                        onChange={event => handleStageChange(event.target.value as DealStage)}
+                        style={{ width: 250, minHeight: 36 }}
+                      >
+                        {DEAL_STAGES.map(stage => <option key={stage} value={stage}>{DEAL_STAGE_LABELS[stage]}</option>)}
+                      </select>
+                    </div>
                   </div>
                   <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", justifyContent: "flex-end" }}>
                     <span style={selected.urgency === "hot" ? hotPillLarge : pillLarge}>{statusLabel(selected.urgency)}</span>
@@ -1384,6 +1758,296 @@ export default function DealsPage() {
               </section>
               )}
 
+              {activeDealTab === "budget" && (
+              <section style={panel}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap", marginBottom: 12 }}>
+                  <div>
+                    <h2 style={sectionTitle}>Budget versions</h2>
+                    <p style={{ fontSize: 13, color: "var(--muted)", maxWidth: 760 }}>
+                      Create a new budget version when the deal budget changes. Approved versions become the baseline for later variance, overrun, exit, and closeout decisions.
+                    </p>
+                  </div>
+                  <button onClick={handleSaveBudget} disabled={budgetSaving} style={{ ...primaryButton, opacity: budgetSaving ? 0.6 : 1 }}>
+                    {budgetSaving ? "Saving..." : "Save Budget Version"}
+                  </button>
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, marginBottom: 12 }} className="number-grid">
+                  <Stat label="Current version" value={latestBudget ? `v${latestBudget.version_number}` : "None"} />
+                  <Stat label="Approved budget" value={money(latestBudget?.total_budget ?? null)} />
+                  <Stat label="Actuals" value={money(latestBudget?.total_actual ?? null)} />
+                  <Stat label="Variance" value={money(latestBudget?.variance_amount ?? null)} />
+                </div>
+
+                {budgetVersions.length > 0 && (
+                  <div style={{ ...subPanel, marginBottom: 12 }}>
+                    <p style={eyebrowSmall}>Saved versions</p>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 8 }}>
+                      {budgetVersions.map(version => {
+                        const rows = budgetLines.filter(line => line.budget_version_id === version.id);
+                        return (
+                          <div key={version.id} style={{ borderTop: "1px solid var(--fog)", paddingTop: 8 }}>
+                            <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
+                              <strong style={{ color: "var(--obsidian)", fontSize: 13 }}>v{version.version_number}: {version.label}</strong>
+                              <span style={version.status === "approved" || version.status === "final-actuals" ? hotPill : pill}>{statusLabel(version.status)}</span>
+                            </div>
+                            <p style={{ fontSize: 12, color: "var(--muted)", marginTop: 4 }}>
+                              {DEAL_STAGE_LABELS[version.stage]} · {money(version.total_budget)} budget · {money(version.total_actual)} actual · {rows.length} line{rows.length === 1 ? "" : "s"}
+                            </p>
+                            {version.change_summary && <p style={{ fontSize: 12, color: "var(--ink)", opacity: 0.72, marginTop: 4 }}>{version.change_summary}</p>}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                <div style={{ ...subPanel, marginBottom: 12 }}>
+                  <p style={eyebrowSmall}>New or revised budget</p>
+                  <div style={{ display: "grid", gridTemplateColumns: "1.2fr 0.8fr 0.8fr", gap: 10, marginTop: 10 }} className="three-col">
+                    <div>
+                      <label style={label}>Label</label>
+                      <input type="text" value={budgetDraft.label} onChange={e => setBudgetDraft({ ...budgetDraft, label: e.target.value })} />
+                    </div>
+                    <div>
+                      <label style={label}>Stage</label>
+                      <select value={budgetDraft.stage} onChange={e => setBudgetDraft({ ...budgetDraft, stage: e.target.value as DealStage })}>
+                        {DEAL_STAGES.map(stage => <option key={stage} value={stage}>{DEAL_STAGE_LABELS[stage]}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label style={label}>Status</label>
+                      <select value={budgetDraft.status ?? "draft"} onChange={e => setBudgetDraft({ ...budgetDraft, status: e.target.value as DealBudgetStatus })}>
+                        {BUDGET_STATUSES.map(status => <option key={status.value} value={status.value}>{status.label}</option>)}
+                      </select>
+                    </div>
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 10 }} className="two-col">
+                    <div>
+                      <label style={label}>Change summary</label>
+                      <textarea rows={3} value={budgetDraft.change_summary ?? ""} onChange={e => setBudgetDraft({ ...budgetDraft, change_summary: e.target.value })} placeholder="What changed from the prior budget and why?" />
+                    </div>
+                    <div>
+                      <label style={label}>Source of funds</label>
+                      <textarea rows={3} value={budgetDraft.source_of_funds ?? ""} onChange={e => setBudgetDraft({ ...budgetDraft, source_of_funds: e.target.value })} placeholder="Operating cash, member capital, credit line, lender draw..." />
+                    </div>
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr auto", gap: 10, marginTop: 10, alignItems: "end" }} className="three-col">
+                    <NumberField label="Variance vote cap $" value={budgetDraft.material_variance_threshold_amount} onChange={v => setBudgetDraft({ ...budgetDraft, material_variance_threshold_amount: v })} />
+                    <NumberField label="Variance vote cap %" value={budgetDraft.material_variance_threshold_percent} onChange={v => setBudgetDraft({ ...budgetDraft, material_variance_threshold_percent: v })} />
+                    <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "var(--ink)", minHeight: 38 }}>
+                      <input type="checkbox" checked={Boolean(budgetDraft.vote_required)} onChange={e => setBudgetDraft({ ...budgetDraft, vote_required: e.target.checked })} />
+                      Vote required
+                    </label>
+                  </div>
+                </div>
+
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  {budgetLineDrafts.map((line, index) => (
+                    <div key={index} style={{ display: "grid", gridTemplateColumns: "0.9fr 1.4fr repeat(3, 0.75fr) 34px", gap: 8, alignItems: "end" }} className="budget-line-row">
+                      <div>
+                        <label style={label}>Category</label>
+                        <input type="text" value={line.category} onChange={e => updateBudgetLineDraft(index, { category: e.target.value })} />
+                      </div>
+                      <div>
+                        <label style={label}>Description</label>
+                        <input type="text" value={line.description} onChange={e => updateBudgetLineDraft(index, { description: e.target.value })} />
+                      </div>
+                      <NumberField label="Estimate" value={line.estimated_amount} onChange={v => updateBudgetLineDraft(index, { estimated_amount: v })} />
+                      <NumberField label="Approved" value={line.approved_amount} onChange={v => updateBudgetLineDraft(index, { approved_amount: v })} />
+                      <NumberField label="Actual" value={line.actual_amount} onChange={v => updateBudgetLineDraft(index, { actual_amount: v })} />
+                      <button type="button" onClick={() => setBudgetLineDrafts(prev => prev.filter((_, idx) => idx !== index))} style={{ ...secondaryButton, padding: "9px 8px" }}>X</button>
+                    </div>
+                  ))}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setBudgetLineDrafts(prev => [...prev, { category: "", description: "", estimated_amount: null, approved_amount: null, actual_amount: null, source_of_funds: "", sort_order: (prev.length + 1) * 10 }])}
+                  style={{ ...secondaryButton, marginTop: 10 }}
+                >
+                  Add Line
+                </button>
+              </section>
+              )}
+
+              {activeDealTab === "decisions" && (
+              <section style={panel}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap", marginBottom: 12 }}>
+                  <div>
+                    <h2 style={sectionTitle}>Formal decisions</h2>
+                    <p style={{ fontSize: 13, color: "var(--muted)", maxWidth: 780 }}>
+                      Use this for the notice contents Aaliyah asked about: what decision is requested, who is affected, dollar impact, threshold, deadline, non-response rule, personal risk, and supporting docs.
+                    </p>
+                  </div>
+                  <button onClick={handleSaveDecision} disabled={decisionSaving} style={{ ...primaryButton, opacity: decisionSaving ? 0.6 : 1 }}>
+                    {decisionSaving ? "Opening..." : "Open Decision"}
+                  </button>
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, marginBottom: 12 }} className="number-grid">
+                  <Stat label="Open decisions" value={String(openDecisions.length)} />
+                  <Stat label="Approved decisions" value={String(approvedDecisions)} />
+                  <Stat label="Commitments approved" value={String(approvedCommitments)} />
+                  <Stat label="Commitments pending" value={String(pendingCommitments)} />
+                </div>
+
+                <div style={{ ...subPanel, marginBottom: 12 }}>
+                  <p style={eyebrowSmall}>Decision notice</p>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 0.75fr", gap: 10, marginTop: 10 }} className="three-col">
+                    <div>
+                      <label style={label}>Decision type</label>
+                      <select value={decisionDraft.decision_type} onChange={e => setDecisionDraft({ ...decisionDraft, decision_type: e.target.value as DealDecisionType })}>
+                        {DECISION_TYPES.map(type => <option key={type.value} value={type.value}>{type.label}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label style={label}>Stage</label>
+                      <select value={decisionDraft.stage} onChange={e => setDecisionDraft({ ...decisionDraft, stage: e.target.value as DealStage })}>
+                        {DEAL_STAGES.map(stage => <option key={stage} value={stage}>{DEAL_STAGE_LABELS[stage]}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label style={label}>Status</label>
+                      <select value={decisionDraft.status ?? "open"} onChange={e => setDecisionDraft({ ...decisionDraft, status: e.target.value as DealDecisionStatus })}>
+                        {DECISION_STATUSES.map(status => <option key={status.value} value={status.value}>{status.label}</option>)}
+                      </select>
+                    </div>
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 10 }} className="two-col">
+                    <div>
+                      <label style={label}>Decision requested</label>
+                      <textarea rows={3} value={decisionDraft.decision_requested} onChange={e => setDecisionDraft({ ...decisionDraft, decision_requested: e.target.value })} placeholder="Approve offer authority up to $X, approve revised budget, approve exit..." />
+                    </div>
+                    <div>
+                      <label style={label}>Affected deal or company matter</label>
+                      <textarea rows={3} value={decisionDraft.affected_matter} onChange={e => setDecisionDraft({ ...decisionDraft, affected_matter: e.target.value })} placeholder="Deal, property, LLC budget, member credit, guarantee, loan..." />
+                    </div>
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, marginTop: 10 }} className="number-grid">
+                    <NumberField label="Dollar impact" value={decisionDraft.dollar_impact} onChange={v => setDecisionDraft({ ...decisionDraft, dollar_impact: v })} />
+                    <div>
+                      <label style={label}>Source of funds</label>
+                      <input type="text" value={decisionDraft.source_of_funds ?? ""} onChange={e => setDecisionDraft({ ...decisionDraft, source_of_funds: e.target.value })} />
+                    </div>
+                    <NumberField label="Required approvals" value={decisionDraft.required_approvals ?? null} onChange={v => setDecisionDraft({ ...decisionDraft, required_approvals: v })} />
+                    <div>
+                      <label style={label}>Response deadline</label>
+                      <input type="date" value={decisionDraft.response_deadline?.slice(0, 10) ?? ""} onChange={e => setDecisionDraft({ ...decisionDraft, response_deadline: e.target.value })} />
+                    </div>
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 10 }} className="two-col">
+                    <div>
+                      <label style={label}>Required approval threshold</label>
+                      <input type="text" value={decisionDraft.approval_threshold ?? ""} onChange={e => setDecisionDraft({ ...decisionDraft, approval_threshold: e.target.value })} />
+                    </div>
+                    <div>
+                      <label style={label}>Related budget</label>
+                      <select value={decisionDraft.related_budget_version_id ?? ""} onChange={e => setDecisionDraft({ ...decisionDraft, related_budget_version_id: e.target.value || null })}>
+                        <option value="">None</option>
+                        {budgetVersions.map(version => <option key={version.id} value={version.id}>v{version.version_number}: {version.label}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label style={label}>Consequence of non-response</label>
+                      <textarea rows={3} value={decisionDraft.non_response_consequence ?? ""} onChange={e => setDecisionDraft({ ...decisionDraft, non_response_consequence: e.target.value })} />
+                    </div>
+                    <div>
+                      <label style={label}>Cash, credit, guarantee, loan, or personal risk affected</label>
+                      <textarea rows={3} value={decisionDraft.personal_risk_summary ?? ""} onChange={e => setDecisionDraft({ ...decisionDraft, personal_risk_summary: e.target.value })} placeholder="State whether any member cash, credit, guarantee, loan, or personal risk is affected." />
+                    </div>
+                  </div>
+                  <div style={{ marginTop: 10 }}>
+                    <label style={label}>Supporting documents</label>
+                    <textarea
+                      rows={3}
+                      value={(decisionDraft.supporting_documents ?? []).join("\n")}
+                      onChange={e => setDecisionDraft({ ...decisionDraft, supporting_documents: e.target.value.split(/\r?\n/).map(item => item.trim()).filter(Boolean) })}
+                      placeholder="Deal Approval Memo, budget version, lender term sheet, inspection report, exit memo..."
+                    />
+                  </div>
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }} className="two-col">
+                  <div style={subPanel}>
+                    <p style={eyebrowSmall}>Decision log</p>
+                    {decisions.length === 0 && <p style={{ fontSize: 12, color: "var(--muted)", marginTop: 8 }}>No formal decisions opened yet.</p>}
+                    <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 8 }}>
+                      {decisions.map(decision => {
+                        const votesForDecision = decisionVotes.filter(vote => vote.decision_id === decision.id);
+                        const myDecisionVote = votesForDecision.find(vote => vote.member_name === user);
+                        return (
+                          <div key={decision.id} style={{ borderTop: "1px solid var(--fog)", paddingTop: 10 }}>
+                            <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
+                              <strong style={{ fontSize: 13, color: "var(--obsidian)" }}>{decision.decision_requested}</strong>
+                              <span style={decision.status === "approved" ? hotPill : pill}>{statusLabel(decision.status)}</span>
+                            </div>
+                            <p style={{ fontSize: 12, color: "var(--muted)", marginTop: 4 }}>
+                              {DEAL_STAGE_LABELS[decision.stage]} · {money(decision.dollar_impact ?? null)} · {votesForDecision.filter(v => v.vote === "approve").length}/{decision.required_approvals} approvals
+                            </p>
+                            <p style={{ fontSize: 12, color: "var(--ink)", opacity: 0.72, marginTop: 5 }}>{decision.affected_matter}</p>
+                            <textarea rows={2} value={decisionVoteNote} onChange={e => setDecisionVoteNote(e.target.value)} placeholder={`Optional vote note${myDecisionVote ? ` · current vote: ${statusLabel(myDecisionVote.vote)}` : ""}`} style={{ marginTop: 8 }} />
+                            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8 }}>
+                              {DECISION_VOTES.map(option => (
+                                <button key={option.value} type="button" onClick={() => handleDecisionVote(decision, option.value)} style={option.value === "approve" ? primaryButton : secondaryButton}>
+                                  {option.label}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div style={subPanel}>
+                    <p style={eyebrowSmall}>Affected-member commitments</p>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 10 }} className="two-col">
+                      <div>
+                        <label style={label}>Member</label>
+                        <select value={commitmentDraft.member_name} onChange={e => setCommitmentDraft({ ...commitmentDraft, member_name: e.target.value })}>
+                          <option value="">Select member</option>
+                          {activeMemberNames.map(member => <option key={member} value={member}>{member}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label style={label}>Type</label>
+                        <select value={commitmentDraft.commitment_type} onChange={e => setCommitmentDraft({ ...commitmentDraft, commitment_type: e.target.value as DealCommitmentType })}>
+                          {COMMITMENT_TYPES.map(type => <option key={type.value} value={type.value}>{type.label}</option>)}
+                        </select>
+                      </div>
+                      <NumberField label="Amount" value={commitmentDraft.amount} onChange={v => setCommitmentDraft({ ...commitmentDraft, amount: v })} />
+                      <div>
+                        <label style={label}>Source of funds</label>
+                        <input type="text" value={commitmentDraft.source_of_funds ?? ""} onChange={e => setCommitmentDraft({ ...commitmentDraft, source_of_funds: e.target.value })} />
+                      </div>
+                    </div>
+                    <label style={{ ...label, marginTop: 8 }}>Description</label>
+                    <textarea rows={3} value={commitmentDraft.description ?? ""} onChange={e => setCommitmentDraft({ ...commitmentDraft, description: e.target.value })} placeholder="Example: Aaliyah $5,000 credit plus $45,000 cash for this deal." />
+                    <button type="button" onClick={handleSaveCommitment} disabled={commitmentSaving} style={{ ...primaryButton, marginTop: 8, opacity: commitmentSaving ? 0.6 : 1 }}>
+                      {commitmentSaving ? "Saving..." : "Add Commitment"}
+                    </button>
+                    <textarea rows={2} value={commitmentConsentNote} onChange={e => setCommitmentConsentNote(e.target.value)} placeholder="Optional consent note" style={{ marginTop: 10 }} />
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 8 }}>
+                      {commitments.length === 0 && <p style={{ fontSize: 12, color: "var(--muted)" }}>No affected-member commitments recorded.</p>}
+                      {commitments.map(commitment => (
+                        <div key={commitment.id} style={{ borderTop: "1px solid var(--fog)", paddingTop: 8 }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
+                            <strong style={{ fontSize: 13, color: "var(--obsidian)" }}>{commitment.member_name} · {statusLabel(commitment.commitment_type)}</strong>
+                            <span style={commitment.consent_status === "approved" ? hotPill : pill}>{statusLabel(commitment.consent_status)}</span>
+                          </div>
+                          <p style={{ fontSize: 12, color: "var(--muted)", marginTop: 4 }}>{money(commitment.amount ?? null)} · {commitment.description || "No description"}</p>
+                          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 7 }}>
+                            <button type="button" onClick={() => handleCommitmentConsent(commitment, "approved")} style={primaryButton}>Approve</button>
+                            <button type="button" onClick={() => handleCommitmentConsent(commitment, "rejected")} style={secondaryButton}>Reject</button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </section>
+              )}
+
               {activeDealTab === "vote" && (
               <section style={panel}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12, flexWrap: "wrap", marginBottom: 12 }}>
@@ -1458,6 +2122,150 @@ export default function DealsPage() {
                 </div>
               </section>
               )}
+
+              {activeDealTab === "exit" && (
+              <section style={panel}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap", marginBottom: 12 }}>
+                  <div>
+                    <h2 style={sectionTitle}>Exit memo</h2>
+                    <p style={{ fontSize: 13, color: "var(--muted)", maxWidth: 760 }}>
+                      Record the proposed sale, hold, refinance, assignment, or abandonment decision with net proceeds, debt payoff, reserves, distributions, risks, and alternatives.
+                    </p>
+                  </div>
+                  <button onClick={handleSaveExitMemo} disabled={exitMemoSaving} style={{ ...primaryButton, opacity: exitMemoSaving ? 0.6 : 1 }}>
+                    {exitMemoSaving ? "Saving..." : "Save Exit Memo"}
+                  </button>
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 12 }} className="three-col">
+                  <div>
+                    <label style={label}>Status</label>
+                    <select value={exitMemoDraft.status ?? "draft"} onChange={e => setExitMemoDraft({ ...exitMemoDraft, status: e.target.value as DealExitMemoStatus })}>
+                      {EXIT_MEMO_STATUSES.map(status => <option key={status.value} value={status.value}>{status.label}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label style={label}>Linked decision</label>
+                    <select value={exitMemoDraft.decision_id ?? ""} onChange={e => setExitMemoDraft({ ...exitMemoDraft, decision_id: e.target.value || null })}>
+                      <option value="">None</option>
+                      {decisions.map(decision => <option key={decision.id} value={decision.id}>{decision.decision_requested.slice(0, 70)}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label style={label}>Budget baseline</label>
+                    <input type="text" value={latestBudget ? `v${latestBudget.version_number}: ${money(latestBudget.total_budget)} budget / ${money(latestBudget.total_actual)} actual` : "No budget version"} readOnly />
+                  </div>
+                </div>
+                <div>
+                  <label style={label}>Recommended exit</label>
+                  <textarea rows={3} value={exitMemoDraft.recommended_exit} onChange={e => setExitMemoDraft({ ...exitMemoDraft, recommended_exit: e.target.value })} placeholder="Sell, hold, refinance, assign, abandon, or another exit recommendation." />
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 10, marginTop: 10 }} className="agreement-number-grid">
+                  <NumberField label="Debt payoff" value={exitMemoDraft.debt_payoff} onChange={v => setExitMemoDraft({ ...exitMemoDraft, debt_payoff: v })} />
+                  <NumberField label="Closing costs" value={exitMemoDraft.closing_costs} onChange={v => setExitMemoDraft({ ...exitMemoDraft, closing_costs: v })} />
+                  <NumberField label="Net proceeds" value={exitMemoDraft.expected_net_proceeds} onChange={v => setExitMemoDraft({ ...exitMemoDraft, expected_net_proceeds: v })} />
+                  <NumberField label="Return capital" value={exitMemoDraft.return_of_capital} onChange={v => setExitMemoDraft({ ...exitMemoDraft, return_of_capital: v })} />
+                  <NumberField label="Reserves" value={exitMemoDraft.reserves_to_hold_back} onChange={v => setExitMemoDraft({ ...exitMemoDraft, reserves_to_hold_back: v })} />
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 10 }} className="two-col">
+                  <AgreementTextarea label="Current budget to actual" value={exitMemoDraft.current_budget_to_actual} onChange={current_budget_to_actual => setExitMemoDraft({ ...exitMemoDraft, current_budget_to_actual })} placeholder="Summarize approved budget, actuals, and material variances." />
+                  <AgreementTextarea label="Estimated member distributions" value={exitMemoDraft.estimated_member_distributions} onChange={estimated_member_distributions => setExitMemoDraft({ ...exitMemoDraft, estimated_member_distributions })} placeholder="Return of capital, preferred return, guarantee premium, profit distribution." />
+                  <AgreementTextarea label="Risks" value={exitMemoDraft.risks} onChange={risks => setExitMemoDraft({ ...exitMemoDraft, risks })} placeholder="Market, title, lender, buyer, tax, timing, or member risk." />
+                  <AgreementTextarea label="Alternatives considered" value={exitMemoDraft.alternatives_considered} onChange={alternatives_considered => setExitMemoDraft({ ...exitMemoDraft, alternatives_considered })} placeholder="Hold, refinance, price reduction, alternate buyer, pass, etc." />
+                </div>
+                <div style={{ marginTop: 10 }}>
+                  <label style={label}>Supporting documents</label>
+                  <textarea
+                    rows={3}
+                    value={(exitMemoDraft.supporting_documents ?? []).join("\n")}
+                    onChange={e => setExitMemoDraft({ ...exitMemoDraft, supporting_documents: e.target.value.split(/\r?\n/).map(item => item.trim()).filter(Boolean) })}
+                    placeholder="Buyer offer, settlement estimate, refinance term sheet, final budget, listing package..."
+                  />
+                </div>
+
+                {exitMemos.length > 0 && (
+                  <div style={{ ...subPanel, marginTop: 12 }}>
+                    <p style={eyebrowSmall}>Saved exit memos</p>
+                    {exitMemos.map(memo => (
+                      <div key={memo.id} style={{ borderTop: "1px solid var(--fog)", paddingTop: 8, marginTop: 8 }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
+                          <strong style={{ fontSize: 13, color: "var(--obsidian)" }}>{memo.recommended_exit}</strong>
+                          <span style={memo.status === "approved" ? hotPill : pill}>{statusLabel(memo.status)}</span>
+                        </div>
+                        <p style={{ fontSize: 12, color: "var(--muted)", marginTop: 4 }}>
+                          Net {money(memo.expected_net_proceeds ?? null)} · Debt {money(memo.debt_payoff ?? null)} · Saved {formatDate(memo.updated_at)}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </section>
+              )}
+
+              {activeDealTab === "closeout" && (
+              <section style={panel}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap", marginBottom: 12 }}>
+                  <div>
+                    <h2 style={sectionTitle}>Closeout packet</h2>
+                    <p style={{ fontSize: 13, color: "var(--muted)", maxWidth: 760 }}>
+                      Finalize actuals, settlement or refinance records, profit/loss, capital return, distributions, lessons learned, and tax follow-ups.
+                    </p>
+                  </div>
+                  <button onClick={handleSaveCloseout} disabled={closeoutSaving} style={{ ...primaryButton, opacity: closeoutSaving ? 0.6 : 1 }}>
+                    {closeoutSaving ? "Saving..." : "Save Closeout"}
+                  </button>
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }} className="three-col">
+                  <div>
+                    <label style={label}>Status</label>
+                    <select value={closeoutDraft.status ?? "draft"} onChange={e => setCloseoutDraft({ ...closeoutDraft, status: e.target.value as DealCloseoutStatus })}>
+                      {CLOSEOUT_STATUSES.map(status => <option key={status.value} value={status.value}>{status.label}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label style={label}>Linked exit memo</label>
+                    <select value={closeoutDraft.exit_memo_id ?? ""} onChange={e => setCloseoutDraft({ ...closeoutDraft, exit_memo_id: e.target.value || null })}>
+                      <option value="">None</option>
+                      {exitMemos.map(memo => <option key={memo.id} value={memo.id}>{memo.recommended_exit.slice(0, 70)}</option>)}
+                    </select>
+                  </div>
+                  <NumberField label="Final profit/loss" value={closeoutDraft.final_profit_loss} onChange={v => setCloseoutDraft({ ...closeoutDraft, final_profit_loss: v })} />
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 10 }} className="two-col">
+                  <div>
+                    <label style={label}>Settlement statement URL</label>
+                    <input type="text" value={closeoutDraft.settlement_statement_url ?? ""} onChange={e => setCloseoutDraft({ ...closeoutDraft, settlement_statement_url: e.target.value })} />
+                  </div>
+                  <div>
+                    <label style={label}>Refinance statement URL</label>
+                    <input type="text" value={closeoutDraft.refinance_statement_url ?? ""} onChange={e => setCloseoutDraft({ ...closeoutDraft, refinance_statement_url: e.target.value })} />
+                  </div>
+                  <AgreementTextarea label="Final budget variance" value={closeoutDraft.final_budget_variance} onChange={final_budget_variance => setCloseoutDraft({ ...closeoutDraft, final_budget_variance })} placeholder="Compare final actuals to approved budget and explain material variances." />
+                  <AgreementTextarea label="Capital return" value={closeoutDraft.capital_return} onChange={capital_return => setCloseoutDraft({ ...closeoutDraft, capital_return })} placeholder="How and when member capital is returned." />
+                  <AgreementTextarea label="Distribution calculation" value={closeoutDraft.distribution_calculation} onChange={distribution_calculation => setCloseoutDraft({ ...closeoutDraft, distribution_calculation })} placeholder="Profit/loss split, preferred return, guarantee premium, fees." />
+                  <AgreementTextarea label="Tax follow-ups" value={closeoutDraft.tax_followups} onChange={tax_followups => setCloseoutDraft({ ...closeoutDraft, tax_followups })} placeholder="1099/K-1/CPA/timing follow-ups." />
+                </div>
+                <div style={{ marginTop: 10 }}>
+                  <AgreementTextarea label="Lessons learned" value={closeoutDraft.lessons_learned} onChange={lessons_learned => setCloseoutDraft({ ...closeoutDraft, lessons_learned })} placeholder="What should Meridian repeat, change, or avoid on future deals?" />
+                </div>
+
+                {closeoutPackets.length > 0 && (
+                  <div style={{ ...subPanel, marginTop: 12 }}>
+                    <p style={eyebrowSmall}>Saved closeouts</p>
+                    {closeoutPackets.map(packet => (
+                      <div key={packet.id} style={{ borderTop: "1px solid var(--fog)", paddingTop: 8, marginTop: 8 }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
+                          <strong style={{ fontSize: 13, color: "var(--obsidian)" }}>{money(packet.final_profit_loss ?? null)} final profit/loss</strong>
+                          <span style={packet.status === "final" ? hotPill : pill}>{statusLabel(packet.status)}</span>
+                        </div>
+                        <p style={{ fontSize: 12, color: "var(--muted)", marginTop: 4 }}>Saved {formatDate(packet.updated_at)}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </section>
+              )}
             </>
           )}
         </main>
@@ -1466,7 +2274,7 @@ export default function DealsPage() {
       <style jsx>{`
         .member-decision-path {
           display: grid;
-          grid-template-columns: repeat(5, minmax(0, 1fr));
+          grid-template-columns: repeat(auto-fit, minmax(142px, 1fr));
           gap: 10px;
         }
         .decision-path-card {
@@ -1619,6 +2427,7 @@ export default function DealsPage() {
           .three-col,
           .number-grid,
           .agreement-number-grid,
+          .budget-line-row,
           .checklist-row {
             grid-template-columns: 1fr !important;
           }
