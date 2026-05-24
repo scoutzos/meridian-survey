@@ -825,24 +825,41 @@ export default function AnalyzeDealPage() {
               {matches.map(match => {
                 const active = selectedMatch?.id === match.id && selectedMatch?.source === match.source;
                 return (
-                  <button
+                  <div
                     key={`${match.source}-${match.id}`}
-                    type="button"
-                    onClick={() => setSelectedMatch(match)}
                     style={active ? selectedMatchCard : matchCard}
                   >
-                    <span style={matchTop}>
-                      <strong style={matchTitle}>{match.label}</strong>
-                      <span style={confidencePill(match.confidence)}>{confidenceLabel(match)}</span>
-                    </span>
-                    <span style={mutedText}>{match.source_label} · {compactLocation(match)}</span>
-                    <span style={matchFacts}>
-                      <span>{formatMoney(match.asking_price)}</span>
-                      <span>{formatAcreage(match.acreage)}</span>
-                      <span>{match.parcel_id || "No APN"}</span>
-                    </span>
-                    {match.reasons.length > 0 && <span style={reasonText}>{match.reasons.join(", ")}</span>}
-                  </button>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedMatch(match)}
+                      style={matchSelectButton}
+                    >
+                      <span style={matchTop}>
+                        <strong style={matchTitle}>{match.label}</strong>
+                        <span style={confidencePill(match.confidence)}>{confidenceLabel(match)}</span>
+                      </span>
+                      <span style={mutedText}>{match.source_label} · {compactLocation(match)}</span>
+                      <span style={matchFacts}>
+                        <span>{formatMoney(match.asking_price)}</span>
+                        <span>{formatAcreage(match.acreage)}</span>
+                        <span>{match.parcel_id || "No APN"}</span>
+                      </span>
+                      {match.reasons.length > 0 && <span style={reasonText}>{match.reasons.join(", ")}</span>}
+                    </button>
+                    <div style={matchActions}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedMatch(match);
+                          if (match.href) router.push(match.href);
+                        }}
+                        disabled={!match.href}
+                        style={openRecordButton}
+                      >
+                        Open Record
+                      </button>
+                    </div>
+                  </div>
                 );
               })}
             </div>
@@ -1211,6 +1228,19 @@ const selectedMatchCard: CSSProperties = {
   boxShadow: "0 0 0 2px rgba(49,107,76,0.08)",
 };
 
+const matchSelectButton: CSSProperties = {
+  border: "none",
+  background: "transparent",
+  color: "inherit",
+  padding: 0,
+  display: "grid",
+  gap: 5,
+  textAlign: "left",
+  cursor: "pointer",
+  width: "100%",
+  minWidth: 0,
+};
+
 const matchTop: CSSProperties = {
   display: "flex",
   justifyContent: "space-between",
@@ -1237,6 +1267,26 @@ const reasonText: CSSProperties = {
   color: "var(--muted)",
   fontSize: 11,
   lineHeight: 1.35,
+};
+
+const matchActions: CSSProperties = {
+  display: "flex",
+  justifyContent: "flex-end",
+  marginTop: 4,
+};
+
+const openRecordButton: CSSProperties = {
+  border: "1px solid rgba(21,17,13,0.18)",
+  background: "var(--surface)",
+  color: "var(--obsidian)",
+  borderRadius: 7,
+  minHeight: 30,
+  padding: "7px 10px",
+  fontSize: 10,
+  fontWeight: 800,
+  letterSpacing: "0.08em",
+  textTransform: "uppercase",
+  cursor: "pointer",
 };
 
 const metricGrid: CSSProperties = {
