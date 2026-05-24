@@ -8,6 +8,7 @@ import {
   Expense,
   MemberProfile,
   TrackerSettings,
+  allTrackerMembers,
   activeTrackerMembers,
   computeMemberBalances,
   computeTargets,
@@ -62,7 +63,8 @@ export default function MemberTrackerPage() {
 
   if (!user) return null;
 
-  const members = activeTrackerMembers(profiles);
+  const members = allTrackerMembers(profiles);
+  const activeMembers = activeTrackerMembers(profiles);
   const balances = computeMemberBalances({
     members,
     expenses,
@@ -71,7 +73,7 @@ export default function MemberTrackerPage() {
     settings,
   });
 
-  const targets = computeTargets(expenses, settings, members.length);
+  const targets = computeTargets(expenses, settings, members);
   const totals = balances.reduce(
     (acc, b) => {
       acc.initialPaid += b.initialPaid;
@@ -80,11 +82,13 @@ export default function MemberTrackerPage() {
       acc.monthlyRemaining += b.monthlyRemaining;
       acc.capitalPaid += b.capitalPaid;
       acc.capitalRemaining += b.capitalRemaining;
+      acc.initialTarget += b.initialTarget;
+      acc.monthlyTarget += b.monthlyTarget;
       acc.totalOwed += b.totalOwed;
       acc.totalRemaining += b.totalRemaining;
       return acc;
     },
-    { initialPaid: 0, initialRemaining: 0, monthlyPaid: 0, monthlyRemaining: 0, capitalPaid: 0, capitalRemaining: 0, totalOwed: 0, totalRemaining: 0 },
+    { initialTarget: 0, initialPaid: 0, initialRemaining: 0, monthlyTarget: 0, monthlyPaid: 0, monthlyRemaining: 0, capitalPaid: 0, capitalRemaining: 0, totalOwed: 0, totalRemaining: 0 },
   );
 
   return (
@@ -94,7 +98,7 @@ export default function MemberTrackerPage() {
       <div style={{ ...trackerCard, marginBottom: 16, display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16 }}>
         <SummaryStat label="Initial target / member" value={fmtUSD(targets.initialTarget)} />
         <SummaryStat label="Monthly dues / member (per mo)" value={fmtUSD(targets.monthlyTargetPerMonth)} />
-        <SummaryStat label="Members" value={String(targets.memberCount)} />
+        <SummaryStat label="Active members" value={String(activeMembers.length)} />
       </div>
 
       <div style={{ ...trackerCard, padding: 0, overflow: "auto" }}>
@@ -134,6 +138,7 @@ export default function MemberTrackerPage() {
                   <td style={{ ...td, fontWeight: youAreThis ? 600 : 500 }}>
                     {b.llcName}
                     {youAreThis && <span style={{ marginLeft: 6, fontSize: 10, color: "var(--gold)" }}>YOU</span>}
+                    {!b.isActive && <span style={{ marginLeft: 6, fontSize: 10, color: "var(--muted)" }}>WITHDRAWN</span>}
                   </td>
                   <td style={tdR}>{fmtUSD(b.initialTarget)}</td>
                   <td style={tdR}>{fmtUSD(b.initialPaid)}</td>
@@ -159,10 +164,10 @@ export default function MemberTrackerPage() {
             })}
             <tr style={{ borderTop: "2px solid var(--border)", background: "var(--surface2)" }}>
               <td style={{ ...td, fontWeight: 700, color: "var(--gold)" }}>TOTAL</td>
-              <td style={tdR}>{fmtUSD(targets.initialTarget * targets.memberCount)}</td>
+              <td style={tdR}>{fmtUSD(totals.initialTarget)}</td>
               <td style={tdR}>{fmtUSD(totals.initialPaid)}</td>
               <td style={tdR}>{fmtUSD(totals.initialRemaining)}</td>
-              <td style={tdR}>{fmtUSD(targets.monthlyTargetTotal * targets.memberCount)}</td>
+              <td style={tdR}>{fmtUSD(totals.monthlyTarget)}</td>
               <td style={tdR}>{fmtUSD(totals.monthlyPaid)}</td>
               <td style={tdR}>{fmtUSD(totals.monthlyRemaining)}</td>
               <td style={tdR}>—</td>

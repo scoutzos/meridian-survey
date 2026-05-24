@@ -1,0 +1,549 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Meridian Land Buildability Due Diligence Checklist</title>
+  <style>
+    :root {
+      --obsidian: #0C0F0D;
+      --ink: #1A1A1A;
+      --bone: #F4EFE6;
+      --ivory: #FBF8F2;
+      --surface: #FFFDF8;
+      --brass: #B08954;
+      --brass-deep: #8E6B3F;
+      --fog: #D6D1C4;
+      --muted: #696862;
+      --soft: rgba(176, 137, 84, 0.18);
+      --display: "Cormorant Garamond", "EB Garamond", "Playfair Display", Georgia, serif;
+      --body: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    }
+
+    @page {
+      size: Letter;
+      margin: 0;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      margin: 0;
+      background: var(--bone);
+      color: var(--ink);
+      font-family: var(--body);
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+
+    .page {
+      width: 8.5in;
+      height: 11in;
+      padding: 0;
+      background: var(--ivory);
+      position: relative;
+      overflow: hidden;
+      page-break-after: always;
+    }
+
+    .page:last-child {
+      page-break-after: auto;
+    }
+
+    .cover-band {
+      min-height: 2.36in;
+      padding: 0.42in 0.6in 0.3in;
+      background:
+        linear-gradient(90deg, rgba(176, 137, 84, 0.18), transparent 28%, transparent 72%, rgba(176, 137, 84, 0.13)),
+        var(--obsidian);
+      color: var(--bone);
+      position: relative;
+    }
+
+    .cover-band::after {
+      content: "";
+      position: absolute;
+      inset: 0.26in;
+      border: 1px solid rgba(176, 137, 84, 0.34);
+      pointer-events: none;
+    }
+
+    .brand-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.24in;
+      position: relative;
+      z-index: 1;
+    }
+
+    .logo {
+      width: 1.35in;
+      height: auto;
+      display: block;
+      margin-left: -0.08in;
+    }
+
+    .document-type {
+      color: rgba(244, 239, 230, 0.72);
+      font-size: 8.4pt;
+      font-weight: 700;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      text-align: right;
+      line-height: 1.35;
+    }
+
+    .title-block {
+      margin-top: 0.24in;
+      position: relative;
+      z-index: 1;
+    }
+
+    .eyebrow {
+      margin: 0 0 0.1in;
+      color: var(--brass);
+      font-size: 8.2pt;
+      font-weight: 800;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+    }
+
+    h1 {
+      margin: 0;
+      max-width: 6.95in;
+      color: var(--bone);
+      font-family: var(--display);
+      font-size: 36.4pt;
+      font-weight: 300;
+      line-height: 0.94;
+      letter-spacing: 0;
+    }
+
+    .subtitle {
+      max-width: 6.2in;
+      margin: 0.1in 0 0;
+      color: rgba(244, 239, 230, 0.78);
+      font-size: 10.6pt;
+      line-height: 1.44;
+    }
+
+    .content {
+      padding: 0.3in 0.58in 0.48in;
+    }
+
+    .prep-grid {
+      display: grid;
+      grid-template-columns: 1.08fr 1fr 1fr;
+      gap: 0.12in;
+      margin-bottom: 0.18in;
+    }
+
+    .prep-card {
+      min-height: 0.68in;
+      border: 1px solid var(--fog);
+      background: var(--surface);
+      padding: 0.13in 0.14in;
+    }
+
+    .prep-card span {
+      display: block;
+      margin-bottom: 0.04in;
+      color: var(--brass-deep);
+      font-size: 7.4pt;
+      font-weight: 800;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+    }
+
+    .line {
+      height: 0.17in;
+      border-bottom: 1px solid rgba(105, 104, 98, 0.45);
+    }
+
+    .brief {
+      display: grid;
+      grid-template-columns: 1.45in 1fr;
+      gap: 0.18in;
+      align-items: start;
+      margin-bottom: 0.18in;
+      border-left: 0.07in solid var(--brass);
+      background: rgba(12, 15, 13, 0.052);
+      padding: 0.14in 0.18in;
+    }
+
+    .brief strong {
+      color: var(--obsidian);
+      font-size: 9.2pt;
+      font-weight: 800;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+
+    .brief p {
+      margin: 0;
+      color: var(--ink);
+      font-size: 9.8pt;
+      line-height: 1.42;
+    }
+
+    .section-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.13in;
+      align-items: start;
+    }
+
+    .section {
+      border-top: 2px solid var(--obsidian);
+      padding-top: 0.07in;
+      page-break-inside: avoid;
+    }
+
+    .section.wide {
+      grid-column: 1 / -1;
+    }
+
+    h2 {
+      margin: 0 0 0.06in;
+      color: var(--obsidian);
+      font-family: var(--display);
+      font-size: 16.2pt;
+      font-weight: 400;
+      line-height: 1.02;
+      letter-spacing: 0;
+    }
+
+    .items {
+      display: grid;
+      gap: 0.04in;
+    }
+
+    .item {
+      display: grid;
+      grid-template-columns: 0.15in 1fr;
+      gap: 0.072in;
+      align-items: start;
+      color: var(--ink);
+      font-size: 8.65pt;
+      line-height: 1.25;
+    }
+
+    .box {
+      width: 0.115in;
+      height: 0.115in;
+      border: 1.25px solid var(--brass-deep);
+      margin-top: 0.022in;
+      background: rgba(255, 253, 248, 0.7);
+    }
+
+    .doc-strip {
+      display: grid;
+      grid-template-columns: 1.2fr 1fr 1fr;
+      gap: 0.1in;
+      margin-top: 0.12in;
+    }
+
+    .doc-pill {
+      border: 1px solid rgba(176, 137, 84, 0.4);
+      background: rgba(176, 137, 84, 0.09);
+      color: var(--obsidian);
+      padding: 0.08in 0.1in;
+      font-size: 8.4pt;
+      font-weight: 700;
+      line-height: 1.28;
+    }
+
+    .page-header {
+      height: 0.86in;
+      padding: 0.27in 0.58in 0;
+      background: var(--obsidian);
+      color: var(--bone);
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+    }
+
+    .page-header strong {
+      font-family: var(--display);
+      font-size: 18pt;
+      font-weight: 300;
+      line-height: 1;
+    }
+
+    .page-header span {
+      color: var(--brass);
+      font-size: 7.8pt;
+      font-weight: 800;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      padding-top: 0.05in;
+    }
+
+    .two-col {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.18in;
+      align-items: start;
+    }
+
+    .wide-note {
+      margin-bottom: 0.22in;
+      padding: 0.16in 0.18in;
+      background: var(--surface);
+      border: 1px solid var(--fog);
+      border-left: 0.07in solid var(--brass);
+      color: var(--ink);
+      font-size: 9.8pt;
+      line-height: 1.43;
+    }
+
+    .wide-note strong {
+      color: var(--obsidian);
+    }
+
+    .red-flags {
+      margin-top: 0.22in;
+      padding: 0.18in;
+      background: var(--obsidian);
+      color: var(--bone);
+    }
+
+    .red-flags h2 {
+      color: var(--bone);
+      margin-bottom: 0.1in;
+    }
+
+    .flag-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 0.1in;
+    }
+
+    .flag {
+      border: 1px solid rgba(176, 137, 84, 0.38);
+      padding: 0.11in;
+      min-height: 0.72in;
+      color: rgba(244, 239, 230, 0.82);
+      font-size: 8.3pt;
+      line-height: 1.32;
+    }
+
+    .flag strong {
+      display: block;
+      margin-bottom: 0.03in;
+      color: var(--brass);
+      font-size: 8pt;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+
+    .source-list {
+      margin-top: 0.22in;
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 0.1in;
+    }
+
+    .source {
+      min-height: 0.62in;
+      border: 1px solid var(--fog);
+      background: rgba(255, 253, 248, 0.75);
+      padding: 0.11in;
+      color: var(--muted);
+      font-size: 7.65pt;
+      line-height: 1.32;
+      overflow-wrap: anywhere;
+    }
+
+    .source strong {
+      display: block;
+      margin-bottom: 0.025in;
+      color: var(--obsidian);
+      font-size: 8.1pt;
+    }
+
+    .footer {
+      position: absolute;
+      left: 0.58in;
+      right: 0.58in;
+      bottom: 0.29in;
+      display: flex;
+      justify-content: space-between;
+      color: var(--muted);
+      font-size: 7.3pt;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      border-top: 1px solid rgba(214, 209, 196, 0.9);
+      padding-top: 0.08in;
+    }
+
+    a {
+      color: inherit;
+      text-decoration: none;
+    }
+  </style>
+</head>
+<body>
+  <section class="page">
+    <div class="cover-band">
+      <div class="brand-row">
+        <img class="logo" src="public/logos/meridian-collective-transparent.svg" alt="Meridian Collective" />
+        <div class="document-type">Land Acquisition<br />Call Sheet</div>
+      </div>
+      <div class="title-block">
+        <p class="eyebrow">Buildability due diligence</p>
+        <h1>Questions to Ask the Agent Before We Buy Land</h1>
+        <p class="subtitle">A practical call guide for confirming whether a parcel can legally, physically, and economically support the intended build.</p>
+      </div>
+    </div>
+
+    <main class="content">
+      <div class="prep-grid">
+        <div class="prep-card">
+          <span>Property / APN</span>
+          <div class="line"></div>
+        </div>
+        <div class="prep-card">
+          <span>County / City</span>
+          <div class="line"></div>
+        </div>
+        <div class="prep-card">
+          <span>Target Build</span>
+          <div class="line"></div>
+        </div>
+      </div>
+
+      <div class="brief">
+        <strong>Call objective</strong>
+        <p>Get document-backed answers. Verbal confidence is helpful, but buildability should be confirmed through zoning, access, utilities, survey, septic/soil records, and county planning.</p>
+      </div>
+
+      <div class="section-grid">
+        <section class="section">
+          <h2>Buildability</h2>
+          <div class="items">
+            <div class="item"><span class="box"></span><span>What is the parcel ID/APN and exact acreage?</span></div>
+            <div class="item"><span class="box"></span><span>What is the current zoning?</span></div>
+            <div class="item"><span class="box"></span><span>Is a single-family home allowed by right, or would we need a variance, special use permit, or rezoning?</span></div>
+            <div class="item"><span class="box"></span><span>What are the setbacks, minimum lot size, road frontage, height limits, and lot coverage rules?</span></div>
+            <div class="item"><span class="box"></span><span>Are manufactured homes, modular homes, barndominiums, ADUs, or tiny homes allowed if relevant?</span></div>
+            <div class="item"><span class="box"></span><span>Has anyone tried to build here before, and were permits approved or denied?</span></div>
+          </div>
+        </section>
+
+        <section class="section">
+          <h2>Access</h2>
+          <div class="items">
+            <div class="item"><span class="box"></span><span>Does the property have legal recorded access, not just a visible path or driveway?</span></div>
+            <div class="item"><span class="box"></span><span>Is the road public or private?</span></div>
+            <div class="item"><span class="box"></span><span>If private, who maintains it and is there a recorded road-maintenance agreement?</span></div>
+            <div class="item"><span class="box"></span><span>Are there access easements across or to the property?</span></div>
+            <div class="item"><span class="box"></span><span>Will the driveway require a culvert, DOT permit, or shared-road approval?</span></div>
+          </div>
+        </section>
+
+        <section class="section">
+          <h2>Utilities</h2>
+          <div class="items">
+            <div class="item"><span class="box"></span><span>Is power at the property line? If not, how far away is the nearest pole or transformer?</span></div>
+            <div class="item"><span class="box"></span><span>Is public water and sewer available?</span></div>
+            <div class="item"><span class="box"></span><span>If not, has the land passed a perc test for septic?</span></div>
+            <div class="item"><span class="box"></span><span>Are there existing septic permits, well permits, soil reports, utility letters, or site plans?</span></div>
+            <div class="item"><span class="box"></span><span>What internet and cell service are available at the parcel?</span></div>
+          </div>
+        </section>
+
+        <section class="section">
+          <h2>Land Conditions</h2>
+          <div class="items">
+            <div class="item"><span class="box"></span><span>Is any part of the property in a flood zone, floodway, wetland, protected area, or conservation area?</span></div>
+            <div class="item"><span class="box"></span><span>Are there streams, drainage ditches, steep slopes, rock outcrops, or known soil issues?</span></div>
+            <div class="item"><span class="box"></span><span>Has the property been surveyed recently, and are the corners marked?</span></div>
+            <div class="item"><span class="box"></span><span>Are there old structures, buried tanks, dumping areas, environmental issues, or cleanup concerns?</span></div>
+          </div>
+        </section>
+
+      </div>
+    </main>
+
+    <div class="footer">
+      <span>The Meridian Collective</span>
+      <span>Land Buildability Due Diligence</span>
+    </div>
+  </section>
+
+  <section class="page">
+    <div class="page-header">
+      <strong>Agent Call Follow-Up</strong>
+      <span>Verify before offer hardens</span>
+    </div>
+
+    <main class="content">
+      <div class="wide-note">
+        <strong>Offer discipline:</strong> Make the offer contingent on confirming zoning, legal access, survey, septic/perc, utility availability, and builder review. The agent can help gather facts, but the county and recorded documents decide what can actually be built.
+      </div>
+
+      <section class="section wide" style="margin-bottom: 0.22in;">
+        <h2>Documents to Request</h2>
+        <div class="doc-strip">
+          <div class="doc-pill">Survey, deed, plat, parcel map, and recorded easements</div>
+          <div class="doc-pill">Zoning confirmation, restrictions, HOA/covenants, and prior permit records</div>
+          <div class="doc-pill">Perc/septic records, well records, utility letters, flood map, and soil report</div>
+        </div>
+      </section>
+
+      <div class="two-col">
+        <section class="section">
+          <h2>Restrictions</h2>
+          <div class="items">
+            <div class="item"><span class="box"></span><span>Are there deed restrictions, covenants, HOA rules, architectural rules, or minimum home-size requirements?</span></div>
+            <div class="item"><span class="box"></span><span>Are mineral, timber, water, hunting, or agricultural rights included or reserved?</span></div>
+            <div class="item"><span class="box"></span><span>Are there leases, tenants, grazing rights, crop rights, or land-use agreements?</span></div>
+            <div class="item"><span class="box"></span><span>Is the parcel subject to conservation easements, rollback taxes, or current-use programs?</span></div>
+          </div>
+        </section>
+
+        <section class="section">
+          <h2>Money and Timeline</h2>
+          <div class="items">
+            <div class="item"><span class="box"></span><span>What are estimated tap fees, impact fees, permit fees, driveway/culvert costs, and utility-extension costs?</span></div>
+            <div class="item"><span class="box"></span><span>How long is the county taking to approve building, septic, driveway, and utility permits?</span></div>
+            <div class="item"><span class="box"></span><span>Will the seller allow a due-diligence period for zoning, survey, septic/perc, environmental, and builder review?</span></div>
+            <div class="item"><span class="box"></span><span>Are there known local contractors, surveyors, soil scientists, or builders who have worked nearby?</span></div>
+          </div>
+        </section>
+      </div>
+
+      <section class="red-flags">
+        <h2>Red Flags to Slow Down For</h2>
+        <div class="flag-grid">
+          <div class="flag"><strong>No legal access</strong> A driveway or tire track is not enough. Confirm recorded access and maintenance duties.</div>
+          <div class="flag"><strong>No septic path</strong> Rural land without sewer needs soil and perc support before a home is realistic.</div>
+          <div class="flag"><strong>Floodway or wetlands</strong> Buildable acreage can shrink fast when regulated areas cross the lot.</div>
+          <div class="flag"><strong>Utility distance</strong> Power, water, and road improvements can quietly become five-figure costs.</div>
+          <div class="flag"><strong>Restrictive covenants</strong> Private restrictions can block otherwise legal build types.</div>
+          <div class="flag"><strong>Only verbal answers</strong> Ask for source documents and county confirmation before relying on claims.</div>
+        </div>
+      </section>
+
+      <section class="section wide" style="margin-top: 0.24in;">
+        <h2>Independent Verification</h2>
+        <div class="source-list">
+          <div class="source"><strong>County Planning/Zoning</strong> Confirm zoning, setbacks, permitted use, permits, and local build rules.</div>
+          <div class="source"><strong>FEMA Flood Map</strong> msc.fema.gov or fema.gov/flood-maps</div>
+          <div class="source"><strong>USDA Web Soil Survey</strong> websoilsurvey.nrcs.usda.gov</div>
+          <div class="source"><strong>EPA Envirofacts</strong> epa.gov/enviro</div>
+        </div>
+      </section>
+    </main>
+
+    <div class="footer">
+      <span>The Meridian Collective</span>
+      <span>Use with parcel-specific county review</span>
+    </div>
+  </section>
+</body>
+</html>

@@ -2,10 +2,10 @@
 import { useRouter, usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import type { CSSProperties } from "react";
-import { getCurrentMeridianUser, isVaUser, signOutMeridianUser } from "@/lib/identity";
+import { getCurrentMeridianUser, isMeridianUserActive, isVaUser, signOutMeridianUser } from "@/lib/identity";
 import Logo from "./Logo";
 
-const crmRoutes = ["/crm", "/va", "/lead", "/lists"];
+const crmRoutes = ["/crm", "/va", "/lead", "/lists", "/inbox"];
 const crmLinks = [
   { href: "/dashboard", label: "Member Portal" },
   { href: "/crm", label: "Command Center" },
@@ -22,6 +22,7 @@ const crmLinks = [
 // tab strip on /va — don't duplicate them in the sidebar.
 const vaLinks = [
   { href: "/va", label: "Dashboard" },
+  { href: "/inbox", label: "Inbox" },
   { href: "/actions?filter=va", label: "Tasks" },
   { href: "/crm?view=records", label: "Records" },
   { href: "/dashboard", label: "Member Portal" },
@@ -75,7 +76,17 @@ export default function NavBar() {
   const [moreOpen, setMoreOpen] = useState(false);
 
   useEffect(() => {
-    setUser(getCurrentMeridianUser());
+    let mounted = true;
+    const currentUser = getCurrentMeridianUser();
+    setUser(currentUser);
+    if (currentUser) {
+      void isMeridianUserActive(currentUser).then(async active => {
+        if (!mounted || active) return;
+        await signOutMeridianUser();
+        setUser(null);
+        router.push("/");
+      });
+    }
     if (pathname === "/crm") {
       setCrmView(new URLSearchParams(window.location.search).get("view"));
     } else {
@@ -86,7 +97,8 @@ export default function NavBar() {
     } else {
       setVaTab(null);
     }
-  }, [pathname]);
+    return () => { mounted = false; };
+  }, [pathname, router]);
 
   useEffect(() => {
     const handleCounts = (event: Event) => {
@@ -132,6 +144,7 @@ export default function NavBar() {
   const memberLinks = [
     { href: "/dashboard",  label: "Home" },
     { href: "/analyze",    label: "Analyze" },
+    { href: "/inbox",      label: "Inbox" },
     { href: "/actions",    label: "Tasks" },
     { href: "/deals",      label: "Deal Reviews" },
     { href: "/crm",        label: "CRM" },
@@ -150,6 +163,7 @@ export default function NavBar() {
   ];
   const mainVaLinks = [
     { href: "/va", label: "Dashboard" },
+    { href: "/inbox", label: "Inbox" },
     { href: "/actions?filter=va", label: "Tasks" },
     { href: "/crm?view=records", label: "Records" },
     { href: "/dashboard", label: "Member Portal" },

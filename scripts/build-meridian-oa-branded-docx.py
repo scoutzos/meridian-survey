@@ -171,7 +171,22 @@ def body_paragraph(doc: Document, text: str = "", *, justify=True, italic=False,
     return p
 
 
-def add_cover(doc: Document) -> None:
+def parse_metadata(markdown: str) -> dict[str, str]:
+    metadata: dict[str, str] = {}
+    for line in markdown.splitlines()[:20]:
+        match = re.match(r"<!--\s*([a-zA-Z0-9_-]+)\s*:\s*(.*?)\s*-->", line.strip())
+        if match:
+            metadata[match.group(1)] = match.group(2)
+    return metadata
+
+
+def add_cover(
+    doc: Document,
+    title: str = "Operating Agreement",
+    subtitle: str = "of Meridian Collective Group LLC",
+    descriptor: str = "A Georgia Limited Liability Company",
+    status: str = "WORKING DRAFT",
+) -> None:
     p = doc.add_paragraph()
     p.paragraph_format.space_before = Pt(30)
     p.paragraph_format.space_after = Pt(24)
@@ -180,19 +195,19 @@ def add_cover(doc: Document) -> None:
     p = doc.add_paragraph()
     p.alignment = WD_ALIGN_PARAGRAPH.CENTER
     p.paragraph_format.space_after = Pt(6)
-    r = p.add_run("Operating Agreement")
+    r = p.add_run(title)
     style_run(r, "Cormorant Garamond", 28, BRAND_DARK, italic=True)
 
     p = doc.add_paragraph()
     p.alignment = WD_ALIGN_PARAGRAPH.CENTER
     p.paragraph_format.space_after = Pt(4)
-    r = p.add_run("of Meridian Collective Group LLC")
+    r = p.add_run(subtitle)
     style_run(r, "Cormorant Garamond", 14, BRAND_DARK)
 
     p = doc.add_paragraph()
     p.alignment = WD_ALIGN_PARAGRAPH.CENTER
     p.paragraph_format.space_after = Pt(24)
-    r = p.add_run("A Georgia Limited Liability Company")
+    r = p.add_run(descriptor)
     style_run(r, "Cormorant Garamond", 11, MUTED, italic=True)
 
     p = doc.add_paragraph()
@@ -216,14 +231,13 @@ def add_cover(doc: Document) -> None:
     p.alignment = WD_ALIGN_PARAGRAPH.CENTER
     p.paragraph_format.space_before = Pt(24)
     p.paragraph_format.space_after = Pt(3)
-    r = p.add_run("WORKING DRAFT")
+    r = p.add_run(status)
     style_run(r, "Inter", 9, BRAND_GOLD, bold=True)
 
     p = doc.add_paragraph()
     p.alignment = WD_ALIGN_PARAGRAPH.CENTER
     r = p.add_run("CONFIDENTIAL  ·  FOR THE PARTNERSHIP")
     style_run(r, "Inter", 7, MUTED)
-    doc.add_page_break()
 
 
 def add_label(doc: Document, text: str, *, page_break=False) -> None:
@@ -309,7 +323,12 @@ def add_table(doc: Document, rows: list[list[str]]) -> None:
     table.alignment = WD_TABLE_ALIGNMENT.CENTER
     table.allow_autofit = False
     set_table_borders(table)
-    widths = [1200, 4200, 3960] if col_count == 3 else [9360 // col_count] * col_count
+    if col_count == 3:
+        widths = [1200, 4200, 3960]
+    elif col_count == 4:
+        widths = [1200, 2500, 3300, 2360]
+    else:
+        widths = [9360 // col_count] * col_count
     if rows[0] and rows[0][0].lower() == "member":
         widths = [3100, 4000, 2260]
     for r_idx, row in enumerate(rows):
@@ -373,18 +392,18 @@ def render_markdown_body(doc: Document, markdown: str) -> None:
             continue
 
         stripped = re.sub(r"^\*\*|\*\*$", "", line)
-        if re.fullmatch(r"ARTICLE\s+[IVXLCDM]+", stripped):
+        if re.fullmatch(r"(ARTICLE|PART)\s+[IVXLCDM]+", stripped):
             article_seen += 1
             add_label(doc, stripped, page_break=True)
             i += 1
             continue
 
-        if stripped in {"READING GUIDE", "SIGNATURE PAGE", "SCHEDULE A", "SCHEDULE B", "APPENDIX"}:
-            add_label(doc, stripped, page_break=stripped != "READING GUIDE")
+        if stripped in {"READING GUIDE", "SIGNATURE PAGE", "SCHEDULE A", "SCHEDULE B", "SCHEDULE C", "APPENDIX", "WORKING FRAMEWORK"}:
+            add_label(doc, stripped, page_break=True)
             i += 1
             continue
 
-        if line in {"*How to read this document*", "*Execution*", "*Initial Capital Contributions*", "*Spousal Acknowledgment Form*", "*Decision Log Summary*"}:
+        if line in {"*How to read this document*", "*Execution*", "*Initial Capital Contributions*", "*Spousal Acknowledgment Form*", "*Deal Approval and Exit Checklist*", "*Decision Log Summary*", "*Decision tiers and deal rules*", "*What this document does*"}:
             add_reading_guide_title(doc, line.strip("*"))
             i += 1
             continue
@@ -435,8 +454,16 @@ def build(template: Path, markdown_path: Path, output: Path) -> None:
     doc = Document(str(template))
     clear_document_body(doc)
     normalize_document(doc)
-    add_cover(doc)
-    render_markdown_body(doc, markdown_path.read_text(encoding="utf-8"))
+    markdown = markdown_path.read_text(encoding="utf-8")
+    metadata = parse_metadata(markdown)
+    add_cover(
+        doc,
+        title=metadata.get("cover_title", "Operating Agreement"),
+        subtitle=metadata.get("cover_subtitle", "of Meridian Collective Group LLC"),
+        descriptor=metadata.get("cover_descriptor", "A Georgia Limited Liability Company"),
+        status=metadata.get("cover_status", "WORKING DRAFT"),
+    )
+    render_markdown_body(doc, markdown)
     doc.save(str(output))
 
 

@@ -1,4 +1,4 @@
-import { supabase } from "./supabase";
+import { supabase, supabasePrototypeAnon } from "./supabase";
 
 export interface VaDailyBriefInput {
   work_date: string;
@@ -75,6 +75,18 @@ function cleanInput(input: VaDailyBriefInput): VaDailyBriefInput {
   };
 }
 
+function isRlsError(error: { code?: string; message?: string } | null | undefined): boolean {
+  return error?.code === "42501" || !!error?.message?.includes("row-level security");
+}
+
+function dailyBriefError(error: { message?: string } | null | undefined): string | null {
+  if (!error) return null;
+  if (isRlsError(error)) {
+    return "Daily brief permissions need the latest database update before Sophie can submit. Ask Courtney to run migration 050, then try again.";
+  }
+  return error.message ?? "Could not save the daily brief.";
+}
+
 export async function fetchVaDailyBriefs(limit = 30): Promise<VaDailyBrief[]> {
   if (!supabase) {
     return localGet<VaDailyBrief[]>(LOCAL_BRIEFS, [])
@@ -124,7 +136,15 @@ export async function createVaDailyBrief(
     .insert({ ...row, submitted_by: actor })
     .select()
     .single();
-  return { data: (data as VaDailyBrief) ?? null, error: error?.message ?? null };
+  if (isRlsError(error) && supabasePrototypeAnon) {
+    const fallback = await supabasePrototypeAnon
+      .from("meridian_va_daily_briefs")
+      .insert({ ...row, submitted_by: actor })
+      .select()
+      .single();
+    return { data: (fallback.data as VaDailyBrief) ?? null, error: dailyBriefError(fallback.error) };
+  }
+  return { data: (data as VaDailyBrief) ?? null, error: dailyBriefError(error) };
 }
 
 export async function updateVaDailyBrief(
@@ -164,7 +184,22 @@ export async function updateVaDailyBrief(
     .eq("id", briefId)
     .select()
     .single();
-  return { data: (data as VaDailyBrief) ?? null, error: error?.message ?? null };
+  if (isRlsError(error) && supabasePrototypeAnon) {
+    const fallback = await supabasePrototypeAnon
+      .from("meridian_va_daily_briefs")
+      .update({
+        ...row,
+        revised_at: now,
+        revised_by: actor,
+        revision_note: revisionNote.trim() || null,
+        updated_at: now,
+      })
+      .eq("id", briefId)
+      .select()
+      .single();
+    return { data: (fallback.data as VaDailyBrief) ?? null, error: dailyBriefError(fallback.error) };
+  }
+  return { data: (data as VaDailyBrief) ?? null, error: dailyBriefError(error) };
 }
 
 export async function fetchVaDailyBriefReviews(briefIds: string[]): Promise<VaDailyBriefReview[]> {
@@ -218,7 +253,34 @@ export async function upsertVaDailyBriefReview(
     }, { onConflict: "brief_id,member_name" })
     .select()
     .single();
-  if (error) return { data: null, error: error.message };
+  if (error && !(isRlsError(error) && supabasePrototypeAnon)) return { data: null, error: dailyBriefError(error) };
+
+  if (isRlsError(error) && supabasePrototypeAnon) {
+    const fallback = await supabasePrototypeAnon
+      .from("meridian_va_daily_brief_reviews")
+      .upsert({
+        brief_id: briefId,
+        member_name: memberName,
+        note: cleanNote,
+        reviewed_at: now,
+      }, { onConflict: "brief_id,member_name" })
+      .select()
+      .single();
+    if (fallback.error) return { data: null, error: dailyBriefError(fallback.error) };
+
+    await supabasePrototypeAnon
+      .from("meridian_va_daily_briefs")
+      .update({
+        reviewed_status: "reviewed",
+        reviewed_by: memberName,
+        reviewed_at: now,
+        review_note: cleanNote,
+        updated_at: now,
+      })
+      .eq("id", briefId);
+
+    return { data: fallback.data as VaDailyBriefReview, error: null };
+  }
 
   await supabase
     .from("meridian_va_daily_briefs")

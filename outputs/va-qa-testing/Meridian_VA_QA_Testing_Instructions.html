@@ -1,0 +1,628 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Meridian VA QA Testing Instructions</title>
+  <style>
+    :root {
+      --obsidian: #14110D;
+      --bone: #EDE6D6;
+      --brass: #C9A878;
+      --brass-deep: #A88859;
+      --fog: #D6CDB7;
+      --ink: #1A1A1A;
+      --surface: #F7F1E4;
+      --muted: #6B6B68;
+      --display: "Cormorant Garamond", "EB Garamond", "Playfair Display", Georgia, serif;
+      --body: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    }
+
+    @page {
+      size: Letter;
+      margin: 0.55in 0.58in 0.62in;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      background: var(--bone);
+      color: var(--ink);
+      font-family: var(--body);
+      font-size: 10.7pt;
+      line-height: 1.45;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+
+    .cover {
+      min-height: 9.86in;
+      margin: -0.55in -0.58in -0.62in;
+      padding: 0.74in 0.72in;
+      background: var(--obsidian);
+      color: var(--bone);
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      page-break-after: always;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .cover::before {
+      content: "";
+      position: absolute;
+      inset: 0.34in;
+      border: 1px solid rgba(201, 168, 120, 0.34);
+      pointer-events: none;
+    }
+
+    .cover-mark {
+      width: 2.15in;
+      margin-left: -0.18in;
+    }
+
+    .cover-kicker,
+    .eyebrow {
+      margin: 0 0 0.16in;
+      color: var(--brass);
+      font-size: 8.4pt;
+      font-weight: 700;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+    }
+
+    .cover h1 {
+      max-width: 6.2in;
+      margin: 0;
+      color: var(--bone);
+      font-family: var(--display);
+      font-size: 46pt;
+      font-weight: 300;
+      line-height: 0.95;
+      letter-spacing: -0.018em;
+    }
+
+    .cover-subtitle {
+      max-width: 5.55in;
+      margin-top: 0.28in;
+      color: rgba(237, 230, 214, 0.84);
+      font-size: 12.6pt;
+      line-height: 1.5;
+    }
+
+    .cover-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 0.12in;
+      margin-top: 0.44in;
+      max-width: 6.55in;
+    }
+
+    .cover-card {
+      border: 1px solid rgba(201, 168, 120, 0.35);
+      background: rgba(237, 230, 214, 0.055);
+      padding: 0.14in;
+      min-height: 0.95in;
+    }
+
+    .cover-card strong {
+      display: block;
+      color: var(--bone);
+      font-size: 14pt;
+      margin-bottom: 0.04in;
+    }
+
+    .cover-card span {
+      color: rgba(237, 230, 214, 0.72);
+      font-size: 8.8pt;
+      line-height: 1.35;
+    }
+
+    .cover-footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      gap: 0.3in;
+      color: rgba(237, 230, 214, 0.74);
+      font-size: 9pt;
+      position: relative;
+      z-index: 1;
+    }
+
+    .document-header {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      align-items: end;
+      gap: 0.2in;
+      border-bottom: 1px solid var(--fog);
+      padding-bottom: 0.16in;
+      margin-bottom: 0.25in;
+    }
+
+    .document-header strong {
+      display: block;
+      font-family: var(--display);
+      font-size: 24pt;
+      font-weight: 400;
+      line-height: 1;
+      color: var(--obsidian);
+    }
+
+    .document-header span {
+      color: var(--muted);
+      font-size: 8.7pt;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+
+    .quick-reference {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 0.1in;
+      margin: 0 0 0.24in;
+    }
+
+    .quick-card {
+      border: 1px solid var(--fog);
+      background: var(--surface);
+      padding: 0.13in;
+      min-height: 0.76in;
+    }
+
+    .quick-card span {
+      display: block;
+      margin-bottom: 0.04in;
+      color: var(--brass-deep);
+      font-size: 7.6pt;
+      font-weight: 800;
+      letter-spacing: 0.13em;
+      text-transform: uppercase;
+    }
+
+    .quick-card strong {
+      display: block;
+      color: var(--obsidian);
+      font-size: 10.4pt;
+      line-height: 1.28;
+    }
+
+    .safety-band {
+      margin: 0 0 0.28in;
+      border-left: 0.07in solid var(--brass);
+      background: rgba(20, 17, 13, 0.06);
+      padding: 0.14in 0.18in;
+      color: var(--obsidian);
+      font-size: 10pt;
+      line-height: 1.45;
+    }
+
+    .section {
+      page-break-inside: avoid;
+      margin: 0 0 0.22in;
+      padding-bottom: 0.08in;
+      border-bottom: 1px solid rgba(214, 205, 183, 0.74);
+    }
+
+    .section:nth-of-type(n+5) {
+      page-break-inside: auto;
+    }
+
+    h1, h2, h3, p, ul, ol, pre { margin-top: 0; }
+
+    h2 {
+      margin: 0 0 0.11in;
+      color: var(--obsidian);
+      font-family: var(--display);
+      font-size: 22pt;
+      font-weight: 400;
+      line-height: 1.05;
+      letter-spacing: -0.012em;
+    }
+
+    h3 {
+      margin: 0.15in 0 0.06in;
+      color: var(--obsidian);
+      font-size: 10pt;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    p {
+      margin: 0 0 0.08in;
+    }
+
+    ul, ol {
+      margin: 0 0 0.1in 0.2in;
+      padding-left: 0.12in;
+    }
+
+    li {
+      margin: 0 0 0.035in;
+      padding-left: 0.02in;
+    }
+
+    li::marker {
+      color: var(--brass-deep);
+      font-weight: 800;
+    }
+
+    strong {
+      color: var(--obsidian);
+      font-weight: 800;
+    }
+
+    .inline-code {
+      display: inline-block;
+      padding: 0.01in 0.04in;
+      border: 1px solid rgba(201, 168, 120, 0.42);
+      background: rgba(255, 252, 245, 0.72);
+      color: var(--obsidian);
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+      font-size: 8.6pt;
+      white-space: nowrap;
+    }
+
+    .script-box {
+      margin: 0.08in 0 0.13in;
+      border: 1px solid rgba(201, 168, 120, 0.58);
+      background: #fffaf0;
+      page-break-inside: avoid;
+    }
+
+    .script-box pre {
+      margin: 0;
+      padding: 0.12in 0.14in;
+      color: var(--obsidian);
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+      font-size: 8.7pt;
+      line-height: 1.42;
+      white-space: pre-wrap;
+    }
+
+    .check-heading {
+      margin-top: 0.11in;
+      color: var(--brass-deep);
+      font-size: 8pt;
+      font-weight: 900;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+
+    .footer-note {
+      margin-top: 0.24in;
+      padding-top: 0.12in;
+      border-top: 1px solid var(--fog);
+      color: var(--muted);
+      font-size: 8.2pt;
+      text-align: center;
+    }
+
+    @media print {
+      a { color: inherit; text-decoration: none; }
+    }
+  </style>
+</head>
+<body>
+  <section class="cover">
+    <div>
+      <div class="cover-mark"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 280" role="img" aria-labelledby="t d">
+<title id="t">Meridian Collective — transparent</title>
+<desc id="d">Primary lockup with no background fill, intended to overlay any surface that respects sufficient contrast with bone and brass.</desc>
+<text x="200" y="170" text-anchor="middle" font-family="'Cormorant Garamond', 'EB Garamond', 'Playfair Display', Georgia, serif" font-size="140" font-weight="300" letter-spacing="-5" fill="#EDE6D6">M</text>
+<text x="262" y="91" font-family="'Cormorant Garamond', 'EB Garamond', Georgia, serif" font-size="34" font-weight="400" fill="#C9A878">°</text>
+<line x1="64" y1="207" x2="94" y2="207" stroke="#C9A878" stroke-width="1"/>
+<text x="200" y="211" text-anchor="middle" font-family="'Inter', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="10" font-weight="500" letter-spacing="4.5" fill="#C9A878">MERIDIAN COLLECTIVE</text>
+<line x1="306" y1="207" x2="336" y2="207" stroke="#C9A878" stroke-width="1"/>
+</svg></div>
+      <p class="cover-kicker">VA Desk QA Runbook</p>
+      <h1>Testing Instructions</h1>
+      <p class="cover-subtitle">A controlled first-day workflow test for list upload, bulk SMS, inbound replies, calls, assigned tasks, time clock, and daily brief submission.</p>
+      <div class="cover-grid">
+        <div class="cover-card"><strong>5</strong><span>QA property records using member phone numbers only.</span></div>
+        <div class="cover-card"><strong>SMS</strong><span>Bulk send plus inbound reply matching.</span></div>
+        <div class="cover-card"><strong>Brief</strong><span>Clock in, work tasks, submit daily brief, clock out.</span></div>
+      </div>
+    </div>
+    <div class="cover-footer">
+      <span>Prepared for Sophie / VA</span>
+      <span>May 15, 2026</span>
+    </div>
+  </section>
+
+  <header class="document-header">
+    <div>
+      <span>Meridian Collective</span>
+      <strong>VA QA Testing Instructions</strong>
+    </div>
+    <div class="eyebrow">Controlled Test</div>
+  </header>
+
+  <section class="quick-reference">
+    <div class="quick-card"><span>File</span><strong>VA_QA_5_Property_Bulk_SMS_Test.csv</strong></div>
+    <div class="quick-card"><span>Audience</span><strong>Exactly 5 QA records</strong></div>
+    <div class="quick-card"><span>Reply Format</span><strong>RECEIVED - [name]</strong></div>
+    <div class="quick-card"><span>Stop If</span><strong>Any real seller number appears</strong></div>
+  </section>
+
+  <section class="safety-band">
+    Use this only for the controlled Meridian VA workflow test. Do not upload, text, or call real seller lists during this run.
+  </section>
+
+  <section class="section"><h2>Purpose</h2>
+<p>Today is a controlled test of the Meridian VA workflow. Use only the test list and member phone numbers provided by the team. Do not upload or text a real seller list during this test.</p>
+</section>
+<section class="section"><h2>Test File</h2>
+<p>Use this CSV:</p>
+<p><span class="inline-code">VA_QA_5_Property_Bulk_SMS_Test.csv</span></p>
+<p>This file contains 5 test property records. The phone numbers are team member numbers so replies and calls can be tested safely.</p>
+</section>
+<section class="section"><h2>Exact Test Contacts</h2>
+<p>The uploaded QA list should contain these five member test numbers:</p>
+<ul>
+<li>Courtney Mosely: <span class="inline-code">9126753440</span></li>
+<li>Aaliyah Thomas: <span class="inline-code">5138018036</span></li>
+<li>Raquel Twine: <span class="inline-code">4046687764</span></li>
+<li>Odessa Patterson: <span class="inline-code">7706097994</span></li>
+<li>Tiffany Stallworth: <span class="inline-code">3106547985</span></li>
+</ul>
+<p>If the uploaded list shows different numbers, stop before sending texts.</p>
+</section>
+<section class="section"><h2>Exact Message Scripts</h2>
+<p>Use this as the bulk SMS message:</p>
+<div class="script-box"><pre>QA TEST from Meridian: testing our VA bulk SMS workflow for {{primary_property_address}}. Please reply RECEIVED - your name.</pre></div>
+<p>Each member should reply with:</p>
+<div class="script-box"><pre>RECEIVED - [their name]</pre></div>
+<p>Example replies:</p>
+<div class="script-box"><pre>RECEIVED - Courtney
+RECEIVED - Aaliyah
+RECEIVED - Raquel
+RECEIVED - Odessa
+RECEIVED - Tiffany</pre></div>
+<p>Use this short call script:</p>
+<div class="script-box"><pre>Hi, this is a Meridian QA test call. I am confirming that the VA call workflow connects, logs the call, and updates the lead activity. No real seller outreach is happening.</pre></div>
+<p>Use this call note after the call:</p>
+<div class="script-box"><pre>QA call completed. Audio connected, member answered, and call outcome logged.</pre></div>
+<p>Use this internal lead note:</p>
+<div class="script-box"><pre>QA note: verified lead record opens, property details display, and activity history saves.</pre></div>
+<p>Use this task comment:</p>
+<div class="script-box"><pre>QA task update: I opened this assigned task, confirmed the record link/status controls work, and am updating it as part of the VA workflow test.</pre></div>
+<p>Use this daily brief summary:</p>
+<div class="script-box"><pre>Completed QA workflow test: uploaded 5-record QA list, ran bulk SMS test, reviewed replies, updated one lead record, tested call workflow, and updated assigned tasks.</pre></div>
+</section>
+<section class="section"><h2>Before You Start</h2>
+<ol>
+<li>Log in to the Meridian portal.</li>
+<li>Open the VA desk.</li>
+<li>Confirm you can see:</li>
+</ol>
+<ul>
+<li>the VA work queue;</li>
+<li>list upload area;</li>
+<li>contact queue;</li>
+<li>SMS tools;</li>
+<li>call button;</li>
+<li>time clock;</li>
+<li>daily brief section.</li>
+</ul>
+<ol>
+<li>Clock in before beginning the test.</li>
+</ol>
+<p>If anything is missing or you see an error, stop and report the issue before continuing.</p>
+</section>
+<section class="section"><h2>Test 1: Upload The QA List</h2>
+<ol>
+<li>Go to the list/upload area in the VA desk.</li>
+<li>Click <strong>Upload List</strong> or <strong>Choose CSV</strong>.</li>
+<li>Upload <span class="inline-code">VA_QA_5_Property_Bulk_SMS_Test.csv</span>.</li>
+<li>Set the source/list name to:</li>
+</ol>
+<p><span class="inline-code">QA VA Bulk SMS Test</span></p>
+<ol>
+<li>Review the preview screen.</li>
+<li>Confirm the system detects:</li>
+</ol>
+<ul>
+<li>5 property rows;</li>
+<li>owner names;</li>
+<li>property addresses;</li>
+<li>parcel/APN values;</li>
+<li>phone numbers;</li>
+<li>mobile phone type;</li>
+<li>no DNC/state DNC/litigator blocks.</li>
+</ul>
+<ol>
+<li>Save/import the list.</li>
+</ol>
+<p class="check-heading">Pass check:</p>
+<ul>
+<li>The list saves successfully.</li>
+<li>The 5 records appear in the VA list/lead queue.</li>
+<li>Each record has a phone number.</li>
+</ul>
+<p>If any record is excluded as duplicate, DNC, no phone, or blocked, write down which record and what reason the system gives.</p>
+</section>
+<section class="section"><h2>Test 2: Bulk Text The QA List</h2>
+<ol>
+<li>Open the bulk text/campaign send workflow.</li>
+<li>Select the uploaded QA list as the audience.</li>
+<li>Confirm exactly 5 records are considered.</li>
+<li>Review the compliance screen.</li>
+<li>Confirm the eligible count matches what the system allows.</li>
+</ol>
+<p>Use this test message:</p>
+<div class="script-box"><pre>QA TEST from Meridian: testing our VA bulk SMS workflow for {{primary_property_address}}. Please reply RECEIVED - your name.</pre></div>
+<ol>
+<li>Preview the message before sending.</li>
+<li>Check that the preview includes the correct property address for each contact.</li>
+<li>Send the bulk text only to the eligible QA contacts.</li>
+</ol>
+<p class="check-heading">Pass check:</p>
+<ul>
+<li>The send completes without an error.</li>
+<li>The sent count matches the eligible count.</li>
+<li>Each sent record shows outbound SMS activity.</li>
+<li>The daily brief outreach count updates or can be updated manually.</li>
+</ul>
+<p>Do not send multiple bulk tests unless an admin asks you to.</p>
+</section>
+<section class="section"><h2>Test 3: Confirm Replies</h2>
+<p>Ask each member who received a text to reply:</p>
+<div class="script-box"><pre>RECEIVED - [their name]</pre></div>
+<p>Then check the contact queue.</p>
+<p class="check-heading">Pass check:</p>
+<ul>
+<li>Replies appear in the contact queue or conversation panel.</li>
+<li>Each reply is connected to the correct lead/phone number.</li>
+<li>The conversation history shows both outbound and inbound SMS.</li>
+<li>Unread replies can be opened and reviewed.</li>
+</ul>
+<p>If a reply appears unmatched, do not delete it. Note the phone number and report it.</p>
+<p class="check-heading">Expected reply tracking:</p>
+<ul>
+<li>Courtney should reply from <span class="inline-code">9126753440</span>.</li>
+<li>Aaliyah should reply from <span class="inline-code">5138018036</span>.</li>
+<li>Raquel should reply from <span class="inline-code">4046687764</span>.</li>
+<li>Odessa should reply from <span class="inline-code">7706097994</span>.</li>
+<li>Tiffany should reply from <span class="inline-code">3106547985</span>.</li>
+</ul>
+</section>
+<section class="section"><h2>Test 4: Single Lead Work</h2>
+<p>Pick one QA lead from the uploaded list.</p>
+<ol>
+<li>Open the lead record.</li>
+<li>Review the property details.</li>
+<li>Add an internal note:</li>
+</ol>
+<div class="script-box"><pre>QA note: verified lead record opens and activity history saves.</pre></div>
+<ol>
+<li>Set one follow-up date for tomorrow.</li>
+<li>Change the disposition/status to <strong>Follow Up</strong> if available. If Follow Up is not available, use the closest test outcome and write down what option you selected.</li>
+</ol>
+<p class="check-heading">Pass check:</p>
+<ul>
+<li>The note appears in the activity history.</li>
+<li>The status/disposition saves.</li>
+<li>The follow-up date saves.</li>
+<li>The record remains searchable by owner, phone, parcel, or address.</li>
+</ul>
+</section>
+<section class="section"><h2>Test 5: Call Workflow</h2>
+<p>Pick one QA lead whose phone belongs to a member who is ready to answer.</p>
+<ol>
+<li>Use the call button from the lead/contact record.</li>
+<li>Read this script:</li>
+</ol>
+<div class="script-box"><pre>Hi, this is a Meridian QA test call. I am confirming that the VA call workflow connects, logs the call, and updates the lead activity. No real seller outreach is happening.</pre></div>
+<ol>
+<li>Complete the short test call.</li>
+<li>Log the call outcome as <strong>Called</strong>, <strong>Completed</strong>, or the closest available successful call outcome.</li>
+<li>Add this call note:</li>
+</ol>
+<div class="script-box"><pre>QA call completed. Audio connected, member answered, and call outcome logged.</pre></div>
+<p class="check-heading">Pass check:</p>
+<ul>
+<li>The call connects.</li>
+<li>The lead/contact history shows the call or call note.</li>
+<li>The daily brief call count updates or can be updated manually.</li>
+</ul>
+<p>If the call button is disabled, write down the disabled reason shown by the system.</p>
+<p class="check-heading">Optional voicemail test:</p>
+<ol>
+<li>Pick a member who will not answer.</li>
+<li>Place a call.</li>
+<li>Log the outcome as <strong>Left Voicemail</strong>.</li>
+<li>Add this note:</li>
+</ol>
+<div class="script-box"><pre>QA voicemail test. Call reached voicemail or no answer, and voicemail outcome was logged.</pre></div>
+<p class="check-heading">Pass check:</p>
+<ul>
+<li>The call attempt saves.</li>
+<li>The voicemail/no-answer outcome appears in the activity history.</li>
+<li>The call count updates or can be updated manually.</li>
+</ul>
+</section>
+<section class="section"><h2>Test 6: Admin-Assigned Tasks</h2>
+<p>Open the assigned task area.</p>
+<p>For each test task assigned to you:</p>
+<ol>
+<li>Open the task.</li>
+<li>Mark one task as started/in progress.</li>
+<li>Add this comment:</li>
+</ol>
+<div class="script-box"><pre>QA task update: I opened this assigned task, confirmed the record link/status controls work, and am updating it as part of the VA workflow test.</pre></div>
+<ol>
+<li>Mark one task done.</li>
+<li>Mark one task blocked only if there is a real blocker to report.</li>
+</ol>
+<p class="check-heading">Pass check:</p>
+<ul>
+<li>Task status changes save.</li>
+<li>Comments save to task history.</li>
+<li>Completed tasks count toward the daily brief.</li>
+<li>Blocked tasks show the blocker reason.</li>
+</ul>
+</section>
+<section class="section"><h2>Test 7: Daily Brief</h2>
+<p>At the end of the test:</p>
+<ol>
+<li>Open the daily brief section.</li>
+<li>Confirm the system has captured or allows you to enter:</li>
+</ol>
+<ul>
+<li>hours worked;</li>
+<li>leads uploaded/updated;</li>
+<li>outreach sent;</li>
+<li>seller/member replies;</li>
+<li>calls completed;</li>
+<li>VA tasks completed;</li>
+<li>blockers.</li>
+</ul>
+<ol>
+<li>In activities completed, write a short summary:</li>
+</ol>
+<div class="script-box"><pre>Completed QA workflow test: uploaded 5-record QA list, ran bulk SMS test, reviewed replies, updated one lead record, tested call workflow, and updated assigned tasks.</pre></div>
+<ol>
+<li>If there were no blockers, write:</li>
+</ol>
+<div class="script-box"><pre>No blockers from my side. Waiting on admin review of QA results.</pre></div>
+<ol>
+<li>If anything failed, write the exact error or what was confusing.</li>
+<li>Submit the daily brief.</li>
+<li>Clock out.</li>
+</ol>
+<p class="check-heading">Pass check:</p>
+<ul>
+<li>Daily brief submits successfully.</li>
+<li>Clock-out saves.</li>
+<li>Admin/member can see the brief for review.</li>
+</ul>
+</section>
+<section class="section"><h2>What To Report Back</h2>
+<p>Send the team a short report with:</p>
+<ul>
+<li>whether upload worked;</li>
+<li>how many records were eligible for bulk SMS;</li>
+<li>how many texts sent;</li>
+<li>which replies came in;</li>
+<li>whether calls worked;</li>
+<li>which tasks were completed or blocked;</li>
+<li>any error messages;</li>
+<li>screenshots of any failed or confusing screens.</li>
+</ul>
+</section>
+<section class="section"><h2>Stop Conditions</h2>
+<p>Stop and ask an admin before continuing if:</p>
+<ul>
+<li>the audience is larger than 5 records;</li>
+<li>the system shows real seller numbers instead of member numbers;</li>
+<li>the CSV imports with unexpected DNC/duplicate/compliance blocks;</li>
+<li>the send screen does not show the correct QA list;</li>
+<li>the system asks you to confirm a real campaign or real seller outreach.</li>
+</ul>
+</section>
+
+  <p class="footer-note">Meridian Collective · VA QA Runbook · Use with the QA CSV and results workbook only.</p>
+</body>
+</html>

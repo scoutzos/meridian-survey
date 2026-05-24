@@ -6,6 +6,7 @@ import { getSurveyById, type SurveyQuestion } from "@/data/surveys";
 import { supabase } from "@/lib/supabase";
 import { insights } from "@/data/insights";
 import { snapshotWithVersion } from "@/lib/question-snapshot";
+import { activeTrackerMembers, type MemberProfile } from "@/lib/tracker";
 
 function formatRelativeTime(timestamp: string | null | undefined): string {
   if (!timestamp) return "Never logged in";
@@ -117,18 +118,17 @@ export default function ResultsPage() {
         setSavedVersions(versions);
       });
 
-    supabase
-      .from("meridian_members")
-      .select("name, last_login")
-      .then(({ data: members }) => {
+    Promise.all([
+      supabase.from("tracker_member_profiles").select("*").order("member_name"),
+      supabase.from("meridian_members").select("name, last_login"),
+    ]).then(([{ data: profiles }, { data: members }]) => {
         const logins: Record<string, string | null> = {};
-        const names: string[] = [];
         for (const m of members || []) {
           logins[m.name] = m.last_login;
-          names.push(m.name);
         }
+        const names = activeTrackerMembers((profiles as MemberProfile[] | null) ?? []).map(member => member.name);
         setMemberLogins(logins);
-        if (names.length) setMemberNames(Array.from(new Set([...names, ...MEMBERS])));
+        if (names.length) setMemberNames(names);
       });
   }, [router, surveyId]);
 

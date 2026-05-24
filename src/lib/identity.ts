@@ -1,5 +1,6 @@
 import { MEMBERS } from "@/data/questions";
 import { supabase } from "./supabase";
+import { activeTrackerMembers, isMemberProfileActiveOn, type MemberProfile } from "./tracker";
 
 export type MeridianRole = "member" | "va";
 export const MERIDIAN_USER_KEY = "meridian_user";
@@ -7,6 +8,25 @@ export const MERIDIAN_USER_KEY = "meridian_user";
 export const VA_USERS = ["Sophie / VA"] as const;
 
 export const LOGIN_USERS = [...MEMBERS, ...VA_USERS] as const;
+
+export async function fetchActiveLoginUsers(): Promise<string[]> {
+  if (!supabase) return [...LOGIN_USERS];
+  const { data, error } = await supabase.from("tracker_member_profiles").select("*").order("member_name");
+  if (error || !data) return [...LOGIN_USERS];
+  return Array.from(new Set([...activeTrackerMembers((data as MemberProfile[] | null) ?? []).map(member => member.name), ...VA_USERS]));
+}
+
+export async function isMeridianUserActive(name: string): Promise<boolean> {
+  if ((VA_USERS as readonly string[]).includes(name)) return true;
+  if (!supabase) return true;
+  const { data, error } = await supabase
+    .from("tracker_member_profiles")
+    .select("*")
+    .eq("member_name", name)
+    .maybeSingle();
+  if (error || !data) return true;
+  return isMemberProfileActiveOn(data as MemberProfile);
+}
 
 export function getUserRole(name: string | null): MeridianRole {
   if (name && (VA_USERS as readonly string[]).includes(name)) return "va";
@@ -44,6 +64,10 @@ export async function hydrateMeridianUserFromAuth(): Promise<string | null> {
     : null;
 
   if (metadataName) {
+    if (!(await isMeridianUserActive(metadataName))) {
+      await signOutMeridianUser();
+      return null;
+    }
     setCurrentMeridianUser(metadataName);
     await supabase
       .from("meridian_members")
@@ -61,6 +85,10 @@ export async function hydrateMeridianUserFromAuth(): Promise<string | null> {
 
   const memberName = data?.name as string | undefined;
   if (!memberName) return null;
+  if (!(await isMeridianUserActive(memberName))) {
+    await signOutMeridianUser();
+    return null;
+  }
   setCurrentMeridianUser(memberName);
   await supabase
     .from("meridian_members")

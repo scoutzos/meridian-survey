@@ -8,6 +8,7 @@ import {
   Expense,
   MemberProfile,
   TrackerSettings,
+  allTrackerMembers,
   activeTrackerMembers,
   computeFundingStatus,
   computeMemberBalances,
@@ -70,15 +71,16 @@ export default function TrackerDashboard() {
     setLoading(false);
   }
 
-  const trackerMembers = useMemo(() => activeTrackerMembers(profiles), [profiles]);
-  const memberCount = trackerMembers.length;
+  const trackerMembers = useMemo(() => allTrackerMembers(profiles), [profiles]);
+  const activeMembers = useMemo(() => activeTrackerMembers(profiles), [profiles]);
+  const memberCount = activeMembers.length;
 
   const status = useMemo(
-    () => computeFundingStatus(expenses, contributions, calls, memberCount),
-    [expenses, contributions, calls, memberCount],
+    () => computeFundingStatus(expenses, contributions, calls, trackerMembers),
+    [expenses, contributions, calls, trackerMembers],
   );
 
-  const targets = useMemo(() => computeTargets(expenses, settings, memberCount), [expenses, settings, memberCount]);
+  const targets = useMemo(() => computeTargets(expenses, settings, trackerMembers), [expenses, settings, trackerMembers]);
 
   const balances = useMemo(() => {
     return computeMemberBalances({
@@ -97,7 +99,7 @@ export default function TrackerDashboard() {
   // alerts
   const unclassified = expenses.filter(e => !e.deleted_at && monthBucket(e.expense_date, start) === "Unclassified");
   const suggestedCalls = calls.filter(c => !c.deleted_at && c.status === "suggested");
-  const behindMembers = balances.filter(b => b.totalRemaining > b.totalOwed * 0.5).slice(0, 3);
+  const behindMembers = balances.filter(b => b.isActive && b.totalRemaining > b.totalOwed * 0.5).slice(0, 3);
 
   // bank
   const bankBalance = status.totalDeposits - status.totalExpenses;

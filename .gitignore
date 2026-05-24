@@ -19,6 +19,7 @@
 # misc
 .DS_Store
 *.pem
+.tmp-meridian-pdf-preview/
 
 # debug
 npm-debug.log*

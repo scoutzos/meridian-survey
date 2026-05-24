@@ -246,7 +246,9 @@ export default function DashboardPage() {
       void fetchVaDailyBriefReviews(briefRows.map(brief => brief.id)).then(setVaBriefReviews);
       setReimbursements(reimbursementRows);
       setDecisions(hub.decisions.slice(0, 4));
-      const activeMembers = trackerData ? activeTrackerMembers(trackerData.profiles) : MEMBERS.map(member => ({ name: member, llcName: member }));
+      const activeMembers = trackerData
+        ? activeTrackerMembers(trackerData.profiles)
+        : MEMBERS.map(member => ({ name: member, llcName: member, memberStatus: "active" as const, withdrawnEffectiveDate: null }));
       setMemberDirectory(activeMembers.map(({ name: member, llcName }) => {
         const trackerProfile = trackerData?.profiles.find(profile => profile.member_name === member);
         const hubProfile = hub.profiles[member];

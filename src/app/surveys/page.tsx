@@ -5,6 +5,7 @@ import { getAllSurveys } from "@/data/surveys";
 import { MEMBERS } from "@/data/questions";
 import { supabase } from "@/lib/supabase";
 import { migrateLocalStorage, getStorageKey } from "@/lib/migration";
+import { activeTrackerMembers, type MemberProfile } from "@/lib/tracker";
 
 export default function SurveysPage() {
   const router = useRouter();
@@ -25,11 +26,11 @@ export default function SurveysPage() {
     // Fetch all responses to compute progress from Supabase
     Promise.all([
       supabase.from("meridian_responses").select("member_name, survey_id"),
-      supabase.from("meridian_members").select("name").order("name"),
+      supabase.from("tracker_member_profiles").select("*").order("member_name"),
     ]).then(([{ data: rows }, { data: members }]) => {
         if (!rows) return;
-        const names = (members ?? []).map(row => row.name as string).filter(Boolean);
-        if (names.length) setMemberNames(Array.from(new Set([...names, ...MEMBERS])));
+        const names = activeTrackerMembers((members as MemberProfile[] | null) ?? []).map(member => member.name);
+        if (names.length) setMemberNames(names);
         // Build: { surveyId: { memberName: count } }
         const map: Record<string, Record<string, number>> = {};
         for (const row of rows) {

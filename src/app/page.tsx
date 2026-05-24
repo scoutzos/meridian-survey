@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { LOGIN_USERS, getUserRole, hydrateMeridianUserFromAuth, setCurrentMeridianUser } from "@/lib/identity";
+import { LOGIN_USERS, fetchActiveLoginUsers, getUserRole, hydrateMeridianUserFromAuth, isMeridianUserActive, setCurrentMeridianUser } from "@/lib/identity";
 import { supabase } from "@/lib/supabase";
 import Logo from "@/components/Logo";
 
@@ -66,18 +66,9 @@ export default function LoginPage() {
     void hydrateMeridianUserFromAuth().then(memberName => {
       if (mounted && memberName) router.push(homeFor(memberName));
     });
-    if (supabase) {
-      void supabase
-        .from("meridian_members")
-        .select("name")
-        .order("name")
-        .then(({ data }) => {
-          if (!mounted || !data) return;
-          const names = data.map(row => row.name as string).filter(Boolean);
-          const merged = Array.from(new Set([...names, ...LOGIN_USERS]));
-          setLoginUsers(merged);
-        });
-    }
+    void fetchActiveLoginUsers().then(users => {
+      if (mounted) setLoginUsers(users);
+    });
     return () => { mounted = false; };
   }, [router]);
 
@@ -100,6 +91,12 @@ export default function LoginPage() {
 
     if (dbErr || !data) {
       setError("Could not verify. Try again.");
+      setLoading(false);
+      return;
+    }
+
+    if (!(await isMeridianUserActive(name))) {
+      setError("This member is marked withdrawn and no longer has portal access.");
       setLoading(false);
       return;
     }
@@ -198,6 +195,11 @@ export default function LoginPage() {
     if (!supabase) { setError("Database not available."); setLoading(false); return; }
 
     const { data: loginRecord } = await fetchMemberLoginRecord(resetName);
+    if (!(await isMeridianUserActive(resetName))) {
+      setError("This member is marked withdrawn and no longer has portal access.");
+      setLoading(false);
+      return;
+    }
     if (loginRecord?.auth_email) {
       const { error: resetErr } = await supabase.auth.resetPasswordForEmail(loginRecord.auth_email, {
         redirectTo: window.location.origin,

@@ -111,7 +111,7 @@ create table if not exists tracker_contributions (
   contribution_date        date not null,
   member_name              text not null references meridian_members(name) on delete cascade,
   type                     text not null
-                              check (type in ('initial_contribution','monthly_dues','capital_call')),
+                              check (type in ('initial_contribution','monthly_dues','capital_call','expense')),
   amount                   numeric(12,2) not null check (amount >= 0),
   reference                text,
   notes                    text,

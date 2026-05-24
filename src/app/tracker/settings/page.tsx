@@ -3,11 +3,12 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import {
-  MemberProfile,
-  TrackerSettings,
-  activeTrackerMembers,
+  allTrackerMembers,
   isAdmin,
   logAudit,
+  type MemberProfile,
+  type MemberStatus,
+  type TrackerSettings,
 } from "@/lib/tracker";
 import { fetchMonetaryDecisions, type MonetaryKind } from "@/lib/decisions";
 import TrackerShell, { trackerCard, trackerInput, trackerBtn } from "@/components/TrackerShell";
@@ -28,6 +29,9 @@ export default function TrackerSettingsPage() {
   const [monthsTracked, setMonthsTracked] = useState(3);
   const [llcNames, setLlcNames] = useState<Record<string, string>>({});
   const [adminFlags, setAdminFlags] = useState<Record<string, boolean>>({});
+  const [memberStatuses, setMemberStatuses] = useState<Record<string, MemberStatus>>({});
+  const [withdrawalDates, setWithdrawalDates] = useState<Record<string, string>>({});
+  const [withdrawalNotes, setWithdrawalNotes] = useState<Record<string, string>>({});
   // Confirmed-decision monetary values surfaced as authoritative.
   const [decisionMoney, setDecisionMoney] = useState<DecisionMoney>({});
 
@@ -56,14 +60,23 @@ export default function TrackerSettingsPage() {
     setMonthsTracked(settingsRow?.months_tracked ?? 3);
     const llcMap: Record<string, string> = {};
     const adminMap: Record<string, boolean> = {};
-    const memberNames = activeTrackerMembers(profileRows).map(member => member.name);
+    const statusMap: Record<string, MemberStatus> = {};
+    const withdrawalDateMap: Record<string, string> = {};
+    const withdrawalNoteMap: Record<string, string> = {};
+    const memberNames = allTrackerMembers(profileRows).map(member => member.name);
     for (const m of memberNames) {
       const row = profileRows.find(r => r.member_name === m);
       llcMap[m] = row?.llc_name ?? "";
       adminMap[m] = row?.is_admin ?? false;
+      statusMap[m] = row?.member_status === "withdrawn" ? "withdrawn" : "active";
+      withdrawalDateMap[m] = row?.withdrawn_effective_date ?? "";
+      withdrawalNoteMap[m] = row?.withdrawal_note ?? "";
     }
     setLlcNames(llcMap);
     setAdminFlags(adminMap);
+    setMemberStatuses(statusMap);
+    setWithdrawalDates(withdrawalDateMap);
+    setWithdrawalNotes(withdrawalNoteMap);
     setLoading(false);
   }
 
@@ -75,6 +88,25 @@ export default function TrackerSettingsPage() {
     if (!supabase || !user) return;
     setSaving(true);
     setMsg(null);
+    const memberNames = allTrackerMembers(profiles).map(member => member.name);
+    for (const m of memberNames) {
+      if (memberStatuses[m] === "withdrawn" && !withdrawalDates[m]) {
+        setMsg(`Error on ${m}: withdrawal effective date is required.`);
+        setSaving(false);
+        return;
+      }
+    }
+    if (memberStatuses[user] === "withdrawn") {
+      setMsg("Error: ask another active admin to mark your own profile withdrawn.");
+      setSaving(false);
+      return;
+    }
+    const activeAdminsAfter = memberNames.filter(m => memberStatuses[m] !== "withdrawn" && adminFlags[m]).length;
+    if (activeAdminsAfter < 1) {
+      setMsg("Error: at least one active admin is required.");
+      setSaving(false);
+      return;
+    }
     const before = settings;
     const newStart = llcStartDate || null;
     const { error: e1 } = await supabase
@@ -98,26 +130,47 @@ export default function TrackerSettingsPage() {
       },
     });
 
-    for (const m of activeTrackerMembers(profiles).map(member => member.name)) {
+    for (const m of memberNames) {
       const existing = profiles.find(p => p.member_name === m);
       const newLlc = llcNames[m]?.trim() || m;
-      const newAdmin = !!adminFlags[m];
-      if (existing && existing.llc_name === newLlc && existing.is_admin === newAdmin) continue;
+      const newStatus = memberStatuses[m] ?? "active";
+      const newAdmin = newStatus === "withdrawn" ? false : !!adminFlags[m];
+      const newWithdrawalDate = newStatus === "withdrawn" ? withdrawalDates[m] || null : null;
+      const newWithdrawalNote = newStatus === "withdrawn" ? withdrawalNotes[m]?.trim() || null : null;
+      const wasWithdrawn = existing?.member_status === "withdrawn";
+      const nextProfile = {
+        member_name: m,
+        llc_name: newLlc,
+        is_admin: newAdmin,
+        member_status: newStatus,
+        withdrawn_effective_date: newWithdrawalDate,
+        withdrawn_at: newStatus === "withdrawn" ? existing?.withdrawn_at ?? new Date().toISOString() : null,
+        withdrawn_by: newStatus === "withdrawn" ? existing?.withdrawn_by ?? user : null,
+        withdrawal_note: newWithdrawalNote,
+        updated_at: new Date().toISOString(),
+      };
+      if (
+        existing
+        && existing.llc_name === newLlc
+        && existing.is_admin === newAdmin
+        && (existing.member_status ?? "active") === newStatus
+        && (existing.withdrawn_effective_date ?? null) === newWithdrawalDate
+        && (existing.withdrawal_note ?? null) === newWithdrawalNote
+      ) continue;
       const { error: e2 } = await supabase
         .from("tracker_member_profiles")
-        .upsert({
-          member_name: m,
-          llc_name: newLlc,
-          is_admin: newAdmin,
-          updated_at: new Date().toISOString(),
-        });
+        .upsert(nextProfile, { onConflict: "member_name" });
       if (e2) { setMsg(`Error on ${m}: ${e2.message}`); setSaving(false); return; }
       await logAudit({
         actor: user,
         table_name: "tracker_member_profiles",
         row_id: m,
         action: existing ? "update" : "create",
-        diff: { before: existing, after: { member_name: m, llc_name: newLlc, is_admin: newAdmin } },
+        diff: {
+          before: existing,
+          after: nextProfile,
+          withdrawal_changed: wasWithdrawn !== (newStatus === "withdrawn"),
+        },
       });
     }
     setMsg("Saved.");
@@ -147,6 +200,8 @@ export default function TrackerSettingsPage() {
     MonetaryKind,
     { value: number; decisionId: string; finalAnswer: string | null; meetingDate: string | null },
   ]>);
+  const memberRows = allTrackerMembers(profiles);
+  const today = new Date().toISOString().slice(0, 10);
 
   return (
     <TrackerShell
@@ -219,15 +274,17 @@ export default function TrackerSettingsPage() {
       <div style={{ ...trackerCard, marginBottom: 16 }}>
         <h2 style={{ fontSize: 16, fontWeight: 600, marginBottom: 4 }}>Member profiles</h2>
         <p style={{ fontSize: 12, color: "var(--muted)", marginBottom: 12 }}>
-          Each member is a person in the auth table; their LLC entity name is shown across the tracker. Admin flag controls who can edit other members&apos; data, settings, and approve capital calls.
+          Active members are included in future votes, assignments, and money splits. Withdrawn members keep their historical records, but are excluded from money dated on or after the effective date.
         </p>
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          {activeTrackerMembers(profiles).map(member => member.name).map(m => (
+          {memberRows.map(member => member.name).map(m => {
+            const status = memberStatuses[m] ?? "active";
+            return (
             <div
               key={m}
               style={{
                 display: "grid",
-                gridTemplateColumns: "200px 1fr 90px",
+                gridTemplateColumns: "190px minmax(180px, 1fr) 118px 154px 1fr 90px",
                 gap: 12,
                 alignItems: "center",
                 padding: "8px 0",
@@ -242,16 +299,48 @@ export default function TrackerSettingsPage() {
                 onChange={e => setLlcNames({ ...llcNames, [m]: e.target.value })}
                 style={trackerInput}
               />
+              <select
+                value={status}
+                onChange={e => {
+                  const nextStatus = e.target.value as MemberStatus;
+                  setMemberStatuses({ ...memberStatuses, [m]: nextStatus });
+                  if (nextStatus === "withdrawn") {
+                    setWithdrawalDates({ ...withdrawalDates, [m]: withdrawalDates[m] || today });
+                    setAdminFlags({ ...adminFlags, [m]: false });
+                  }
+                }}
+                style={trackerInput}
+              >
+                <option value="active">Active</option>
+                <option value="withdrawn">Withdrawn</option>
+              </select>
+              <input
+                type="date"
+                value={withdrawalDates[m] ?? ""}
+                disabled={status !== "withdrawn"}
+                onChange={e => setWithdrawalDates({ ...withdrawalDates, [m]: e.target.value })}
+                style={{ ...trackerInput, opacity: status === "withdrawn" ? 1 : 0.55 }}
+              />
+              <input
+                type="text"
+                value={withdrawalNotes[m] ?? ""}
+                disabled={status !== "withdrawn"}
+                placeholder="Withdrawal note"
+                onChange={e => setWithdrawalNotes({ ...withdrawalNotes, [m]: e.target.value })}
+                style={{ ...trackerInput, opacity: status === "withdrawn" ? 1 : 0.55 }}
+              />
               <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: "var(--muted)" }}>
                 <input
                   type="checkbox"
-                  checked={!!adminFlags[m]}
+                  checked={status !== "withdrawn" && !!adminFlags[m]}
+                  disabled={status === "withdrawn"}
                   onChange={e => setAdminFlags({ ...adminFlags, [m]: e.target.checked })}
                 />
                 Admin
               </label>
             </div>
-          ))}
+            );
+          })}
         </div>
       </div>
 

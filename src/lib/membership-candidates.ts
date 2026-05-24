@@ -289,6 +289,11 @@ export async function admitMembershipCandidate(input: MemberAdmissionInput): Pro
       member_name: memberName,
       llc_name: llcName,
       is_admin: input.isAdmin,
+      member_status: "active",
+      withdrawn_effective_date: null,
+      withdrawn_at: null,
+      withdrawn_by: null,
+      withdrawal_note: null,
       updated_at: now,
     }, { onConflict: "member_name" });
   if (profileError) return { error: profileError.message };
@@ -310,6 +315,7 @@ export async function admitMembershipCandidate(input: MemberAdmissionInput): Pro
       member_name: memberName,
       llc_name: llcName,
       is_admin: input.isAdmin,
+      member_status: "active",
     },
   });
   if (auditError) return { error: `Member admitted, but audit log could not be saved: ${auditError.message}` };

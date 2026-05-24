@@ -71,18 +71,17 @@ export default function CapitalCallsPage() {
   if (!user) return null;
 
   const admin = isAdmin(profiles, user);
-  const memberCount = activeTrackerMembers(profiles).length;
-
   async function create() {
     if (!supabase || !user || !admin) return;
     const total = Number(totalAmount.replace(/[$,]/g, ""));
     if (!Number.isFinite(total) || total <= 0) return;
     if (!reason.trim() || !date) return;
+    const activeCountForCall = activeTrackerMembers(profiles, date).length;
     const row = {
       date_called: date,
       reason: reason.trim(),
       total_amount: total,
-      per_member_amount: memberCount > 0 ? Number((total / memberCount).toFixed(2)) : 0,
+      per_member_amount: activeCountForCall > 0 ? Number((total / activeCountForCall).toFixed(2)) : 0,
       status: "open" as CapitalCallStatus,
       auto_suggested: false,
       created_by: user,

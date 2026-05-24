@@ -8,6 +8,7 @@ import {
   CapitalCall,
   MemberProfile,
   CONTRIBUTION_TYPE_LABEL,
+  allTrackerMembers,
   activeTrackerMembers,
   fmtUSD,
   fmtDate,
@@ -24,6 +25,7 @@ const TYPE_COLOR: Record<ContributionType, string> = {
   initial_contribution: "var(--gold)",
   monthly_dues: "var(--gold)",
   capital_call: "var(--gold-dim)",
+  expense: "var(--obsidian)",
 };
 
 export default function ContributionsPage() {
@@ -82,10 +84,11 @@ export default function ContributionsPage() {
 
   const admin = isAdmin(profiles, user);
   const llcOf = (m: string) => profiles.find(p => p.member_name === m)?.llc_name || m;
-  const trackerMembers = activeTrackerMembers(profiles);
+  const trackerMembers = allTrackerMembers(profiles);
+  const activeMembers = activeTrackerMembers(profiles);
 
   // non-admins can only log contributions for themselves.
-  const allowedMembers: readonly string[] = admin ? trackerMembers.map(member => member.name) : [user];
+  const allowedMembers: readonly string[] = admin ? trackerMembers.map(member => member.name) : activeMembers.some(member => member.name === user) ? [user] : [];
 
   const filtered = contributions.filter(c => {
     if (filterMember !== "all" && c.member_name !== filterMember) return false;

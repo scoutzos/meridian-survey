@@ -7,7 +7,7 @@ import {
   MemberProfile,
   TrackerSettings,
   EXPENSE_CATEGORIES,
-  activeTrackerMembers,
+  allTrackerMembers,
   fmtUSD,
   isAdmin,
   logAudit,
@@ -83,7 +83,10 @@ export default function ExpensesPage() {
   }
 
   const paidByOptions = useMemo(() => {
-    const memberOpts = activeTrackerMembers(profiles).map(member => ({ value: member.name, label: member.llcName }));
+    const memberOpts = allTrackerMembers(profiles).map(member => ({
+      value: member.name,
+      label: `${member.llcName}${member.memberStatus === "withdrawn" ? " (withdrawn)" : ""}`,
+    }));
     const labelOpts = PAID_BY_LABELS.map(l => ({ value: l, label: l }));
     return [...memberOpts, ...labelOpts];
   }, [profiles]);

@@ -35,7 +35,9 @@ import {
   isVaTask,
   reassignActionItem,
   updateActionItemStatus,
+  updateActionItemChecklist,
   type ActionItem,
+  type ActionItemChecklistItem,
   type ActionItemEvent,
   type ActionItemStatus,
 } from "@/lib/action-items";
@@ -62,7 +64,7 @@ interface TaskCard {
   title: string;
   detail: string;
   href: string;
-  status: "Open" | "In Progress" | "Done";
+  status: "Open" | "In Progress" | "Blocked" | "Done";
   due: string | null;
   sourceItem?: ActionItem;
 }
@@ -113,9 +115,47 @@ const DOCUMENT_LINK_OPTIONS: LinkOption[] = [
 
 function formatDue(iso: string | null): string | null {
   if (!iso) return null;
-  const d = new Date(iso + "T00:00:00");
+  const d = new Date(iso.includes("T") ? iso : iso + "T00:00:00");
   if (isNaN(d.getTime())) return null;
   return d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+}
+
+function formatDeadline(item: ActionItem): string {
+  if (item.deadline_at) return formatDateTime(item.deadline_at);
+  return formatDue(item.due_date) || "No deadline";
+}
+
+function isOverdue(item: ActionItem): boolean {
+  if (item.status === "done") return false;
+  const now = new Date();
+  if (item.deadline_at) {
+    const deadline = new Date(item.deadline_at);
+    return !Number.isNaN(deadline.getTime()) && deadline < now;
+  }
+  if (!item.due_date) return false;
+  const endOfDueDate = new Date(item.due_date + "T23:59:59");
+  return !Number.isNaN(endOfDueDate.getTime()) && endOfDueDate < now;
+}
+
+function buildDeadlineAt(date: string, time: string): string | null {
+  if (!date || !time) return null;
+  const parsed = new Date(`${date}T${time}`);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return parsed.toISOString();
+}
+
+function buildChecklistItems(value: string): ActionItemChecklistItem[] {
+  return value
+    .split(/\r?\n/)
+    .map(text => text.trim())
+    .filter(Boolean)
+    .map((text, index) => ({
+      id: `check-${Date.now()}-${index + 1}`,
+      text,
+      done: false,
+      completed_by: null,
+      completed_at: null,
+    }));
 }
 
 function taskHref(item: ActionItem): string {
@@ -173,6 +213,9 @@ export default function ActionsPage() {
     description: "",
     assigned_to: ALL_MEMBERS_LABEL,
     due_date: "",
+    deadline_time: "",
+    expected_outcome: "",
+    checklist_text: "",
     task_type: "general",
     priority: "normal",
     link_type: "general" as LinkType,
@@ -400,7 +443,7 @@ export default function ActionsPage() {
       title: item.title,
       detail: item.description || "Assigned action item.",
       href: taskHref(item),
-      status: item.status === "done" ? "Done" as const : item.status === "in-progress" ? "In Progress" as const : item.status === "blocked" ? "In Progress" as const : "Open" as const,
+      status: item.status === "done" ? "Done" as const : item.status === "in-progress" ? "In Progress" as const : item.status === "blocked" ? "Blocked" as const : "Open" as const,
       due: item.due_date,
       sourceItem: item,
     })),
@@ -531,6 +574,40 @@ export default function ActionsPage() {
     setMessage("Comment added.");
   };
 
+  const handleToggleChecklistItem = async (item: ActionItem, checklistItemId: string) => {
+    const now = new Date().toISOString();
+    let changedText = "Checklist updated.";
+    const nextChecklist = item.checklist_items.map(check => {
+      if (check.id !== checklistItemId) return check;
+      const done = !check.done;
+      changedText = `${done ? "Checked" : "Unchecked"} checklist item: ${check.text}`;
+      return {
+        ...check,
+        done,
+        completed_by: done ? user : null,
+        completed_at: done ? now : null,
+      };
+    });
+    const { data, error } = await updateActionItemChecklist(item.id, nextChecklist, user, changedText);
+    if (error) { setMessage(error); return; }
+    const updated = data ?? { ...item, checklist_items: nextChecklist, updated_at: now, updated_by: user };
+    setItems(prev => prev.map(row => row.id === item.id ? updated : row));
+    setTaskEvents(prev => [
+      ...prev,
+      {
+        id: `local-checklist-${item.id}-${now}`,
+        action_item_id: item.id,
+        event_type: "checklist-updated",
+        previous_status: null,
+        next_status: null,
+        note: changedText,
+        created_by: user,
+        created_at: now,
+      },
+    ]);
+    setMessage(changedText);
+  };
+
   const handleReassignTask = async (item: ActionItem) => {
     const assignedTo = taskAssignees[item.id] || item.assigned_to || ALL_MEMBERS_LABEL;
     if (!assignedTo || assignedTo === item.assigned_to) return;
@@ -572,11 +649,15 @@ export default function ActionsPage() {
   const handleCreate = async () => {
     if (!draft.title.trim()) { setMessage("Title is required."); return; }
     setSaving(true);
+    const deadlineAt = buildDeadlineAt(draft.due_date, draft.deadline_time);
     const { error } = await createActionItem({
       title: draft.title,
       description: draft.description,
       assigned_to: draft.assigned_to,
       due_date: draft.due_date || null,
+      deadline_at: deadlineAt,
+      expected_outcome: draft.expected_outcome,
+      checklist_items: buildChecklistItems(draft.checklist_text),
       task_type: draft.assigned_to === VA_ASSIGNEE_LABEL ? "va-work" : draft.task_type as ActionItem["task_type"],
       priority: draft.priority as ActionItem["priority"],
       source_table: selectedLink?.table ?? null,
@@ -584,7 +665,7 @@ export default function ActionsPage() {
     }, user);
     setSaving(false);
     if (error) { setMessage(error); return; }
-    setDraft({ title: "", description: "", assigned_to: ALL_MEMBERS_LABEL, due_date: "", task_type: "general", priority: "normal", link_type: "general", source_key: "" });
+    setDraft({ title: "", description: "", assigned_to: ALL_MEMBERS_LABEL, due_date: "", deadline_time: "", expected_outcome: "", checklist_text: "", task_type: "general", priority: "normal", link_type: "general", source_key: "" });
     setShowNew(false);
     void reload();
     setMessage("Task assigned.");
@@ -656,6 +737,18 @@ export default function ActionsPage() {
             onChange={e => setDraft({ ...draft, description: e.target.value })}
             rows={3}
           />
+          <textarea
+            placeholder="Expected outcome / definition of done"
+            value={draft.expected_outcome}
+            onChange={e => setDraft({ ...draft, expected_outcome: e.target.value })}
+            rows={2}
+          />
+          <textarea
+            placeholder={"Checklist, one item per line\nExample: Upload CSV\nConfirm 5 rows\nReport blockers"}
+            value={draft.checklist_text}
+            onChange={e => setDraft({ ...draft, checklist_text: e.target.value })}
+            rows={4}
+          />
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }} className="action-form-row">
             <div>
               <label style={labelStyle}>Assigned to</label>
@@ -669,12 +762,35 @@ export default function ActionsPage() {
               </select>
             </div>
             <div>
-              <label style={labelStyle}>Due date</label>
+              <label style={labelStyle}>Deadline date</label>
               <input
                 type="date"
                 value={draft.due_date}
                 onChange={e => setDraft({ ...draft, due_date: e.target.value })}
               />
+            </div>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }} className="action-form-row">
+            <div>
+              <label style={labelStyle}>Deadline time</label>
+              <input
+                type="time"
+                value={draft.deadline_time}
+                onChange={e => setDraft({ ...draft, deadline_time: e.target.value })}
+              />
+            </div>
+            <div style={{
+              background: "var(--bone)",
+              border: "1px solid var(--fog)",
+              borderRadius: 8,
+              padding: "10px 12px",
+              color: "var(--muted)",
+              fontSize: 12,
+              lineHeight: 1.45,
+              display: "flex",
+              alignItems: "center",
+            }}>
+              Add a time when the task has a true deadline. Date-only tasks still sort in the queue.
             </div>
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "220px 1fr", gap: 12 }} className="action-form-row">
@@ -826,7 +942,7 @@ export default function ActionsPage() {
                   <div key={task.id} style={{
                     background: "var(--bone)",
                     border: "1px solid var(--fog)",
-                    borderLeft: `3px solid ${task.status === "Done" ? "var(--fog)" : "var(--brass)"}`,
+                    borderLeft: `3px solid ${task.status === "Done" ? "var(--fog)" : task.sourceItem && isOverdue(task.sourceItem) ? "var(--obsidian)" : "var(--brass)"}`,
                     borderRadius: 10,
                     padding: "14px 16px",
                     display: "flex",
@@ -853,7 +969,16 @@ export default function ActionsPage() {
                         }}>{task.kind}</span>
                         <span style={{ fontSize: 11, color: "var(--ink)", opacity: 0.58 }}>{task.status}</span>
                         {task.sourceItem && <span style={{ fontSize: 11, color: "var(--ink)", opacity: 0.58 }}>{sourceLabel(task.sourceItem)}</span>}
-                        {task.due && <span style={{ fontSize: 11, color: "var(--ink)", opacity: 0.58 }}>{formatDue(task.due)}</span>}
+                        {task.sourceItem ? (
+                          <span style={{ fontSize: 11, color: isOverdue(task.sourceItem) ? "var(--obsidian)" : "var(--ink)", opacity: isOverdue(task.sourceItem) ? 1 : 0.58, fontWeight: isOverdue(task.sourceItem) ? 800 : 400 }}>
+                            {isOverdue(task.sourceItem) ? "Overdue · " : "Deadline · "}{formatDeadline(task.sourceItem)}
+                          </span>
+                        ) : task.due && <span style={{ fontSize: 11, color: "var(--ink)", opacity: 0.58 }}>{formatDue(task.due)}</span>}
+                        {task.sourceItem && task.sourceItem.checklist_items.length > 0 && (
+                          <span style={{ fontSize: 11, color: "var(--ink)", opacity: 0.58 }}>
+                            {task.sourceItem.checklist_items.filter(item => item.done).length}/{task.sourceItem.checklist_items.length} checklist
+                          </span>
+                        )}
                       </div>
                       <p style={{ fontSize: 15, fontWeight: 700, color: "var(--obsidian)", lineHeight: 1.3 }}>{task.title}</p>
                       <p style={{ fontSize: 13, color: "var(--ink)", opacity: 0.7, lineHeight: 1.45, marginTop: 4 }}>{task.detail}</p>
@@ -885,6 +1010,7 @@ export default function ActionsPage() {
               onAddComment={() => handleAddTaskComment(selectedTask)}
               onAssigneeChange={value => setTaskAssignees(prev => ({ ...prev, [selectedTask.id]: value }))}
               onReassign={() => handleReassignTask(selectedTask)}
+              onToggleChecklistItem={checklistItemId => handleToggleChecklistItem(selectedTask, checklistItemId)}
               onClose={() => setSelectedTaskId(null)}
               onOpenRecord={() => router.push(taskHref(selectedTask))}
               onStart={() => handleStatusChange(selectedTask, "in-progress")}
@@ -918,7 +1044,7 @@ export default function ActionsPage() {
             )}
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               {list.map(item => {
-                const due = formatDue(item.due_date);
+                const deadline = formatDeadline(item);
                 const mine = isOwnedBy(item, user);
                 const canMarkDone = mine || admin;
                 return (
@@ -941,9 +1067,9 @@ export default function ActionsPage() {
                         {item.title}
                       </p>
                       <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
-                        {due && (
-                          <span style={{ fontSize: 11, color: "var(--ink)", opacity: 0.6, alignSelf: "center" }}>
-                            {due}
+                        {deadline !== "No deadline" && (
+                          <span style={{ fontSize: 11, color: isOverdue(item) ? "var(--obsidian)" : "var(--ink)", opacity: isOverdue(item) ? 1 : 0.6, fontWeight: isOverdue(item) ? 800 : 400, alignSelf: "center" }}>
+                            {isOverdue(item) ? "Overdue · " : ""}{deadline}
                           </span>
                         )}
                       </div>
@@ -970,6 +1096,14 @@ export default function ActionsPage() {
                         }}>
                           {sourceLabel(item)}
                         </span>
+                        {item.checklist_items.length > 0 && (
+                          <span style={{
+                            background: "var(--bone)", border: "1px solid var(--fog)",
+                            padding: "2px 8px", borderRadius: 999, fontSize: 11, fontWeight: 500,
+                          }}>
+                            {item.checklist_items.filter(check => check.done).length}/{item.checklist_items.length} checklist
+                          </span>
+                        )}
                       </div>
                       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                         {canMarkDone && status !== "in-progress" && status !== "done" && (
@@ -1088,6 +1222,7 @@ function TaskDetailPanel({
   onAddComment,
   onAssigneeChange,
   onReassign,
+  onToggleChecklistItem,
   onDelete,
 }: {
   task: ActionItem;
@@ -1105,6 +1240,7 @@ function TaskDetailPanel({
   onAddComment: () => void;
   onAssigneeChange: (value: string) => void;
   onReassign: () => void;
+  onToggleChecklistItem: (checklistItemId: string) => void;
   onDelete?: () => void;
 }) {
   const fallbackHistory = [
@@ -1153,6 +1289,11 @@ function TaskDetailPanel({
           </p>
           <h2 style={{ fontFamily: DISPLAY_FONT, fontSize: 26, fontWeight: 500, color: "var(--obsidian)" }}>{task.title}</h2>
           <p style={{ color: "var(--ink)", opacity: 0.7, fontSize: 13, lineHeight: 1.5, marginTop: 5 }}>{task.description || "No description added."}</p>
+          {isOverdue(task) && (
+            <p style={{ color: "var(--obsidian)", fontSize: 12, fontWeight: 800, letterSpacing: "0.1em", textTransform: "uppercase", marginTop: 8 }}>
+              Overdue · {formatDeadline(task)}
+            </p>
+          )}
         </div>
         <button onClick={onClose} style={subtleBtnStyle}>Close</button>
       </div>
@@ -1161,12 +1302,63 @@ function TaskDetailPanel({
         <TaskDetailStat label="Status" value={STATUS_LABEL[task.status]} />
         <TaskDetailStat label="Assignee" value={task.assigned_to || "Unassigned"} />
         <TaskDetailStat label="Priority" value={labelForStatus(task.priority || "normal")} />
-        <TaskDetailStat label="Due" value={formatDue(task.due_date) || "No due date"} />
+        <TaskDetailStat label="Deadline" value={formatDeadline(task)} />
         <TaskDetailStat label="Created By" value={task.created_by || "Unknown"} />
         <TaskDetailStat label="Record" value={sourceLabel(task)} />
         <TaskDetailStat label="Updated" value={formatDateTime(task.updated_at)} />
         <TaskDetailStat label="Completed By" value={task.completed_by || "Not completed"} />
       </div>
+
+      {task.expected_outcome && (
+        <div style={{ background: "var(--bone)", border: "1px solid var(--fog)", borderRadius: 10, padding: 12, marginBottom: 14 }}>
+          <p style={{ fontSize: 11, fontWeight: 900, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--brass)", marginBottom: 5 }}>
+            Expected Outcome
+          </p>
+          <p style={{ color: "var(--ink)", opacity: 0.78, fontSize: 13, lineHeight: 1.5, whiteSpace: "pre-wrap" }}>{task.expected_outcome}</p>
+        </div>
+      )}
+
+      {task.checklist_items.length > 0 && (
+        <div style={{ background: "var(--bone)", border: "1px solid var(--fog)", borderRadius: 10, padding: 12, marginBottom: 14 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", marginBottom: 8 }}>
+            <p style={{ fontSize: 11, fontWeight: 900, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--brass)" }}>
+              Checklist
+            </p>
+            <span style={{ color: "var(--muted)", fontSize: 12 }}>
+              {task.checklist_items.filter(item => item.done).length}/{task.checklist_items.length} complete
+            </span>
+          </div>
+          <div style={{ display: "grid", gap: 7 }}>
+            {task.checklist_items.map(item => (
+              <label key={item.id} style={{
+                display: "grid",
+                gridTemplateColumns: "18px 1fr",
+                gap: 9,
+                alignItems: "start",
+                color: "var(--ink)",
+                fontSize: 13,
+                lineHeight: 1.45,
+                cursor: "pointer",
+              }}>
+                <input
+                  type="checkbox"
+                  checked={item.done}
+                  onChange={() => onToggleChecklistItem(item.id)}
+                  style={{ marginTop: 2, accentColor: "var(--brass)" }}
+                />
+                <span style={{ textDecoration: item.done ? "line-through" : "none", opacity: item.done ? 0.62 : 1 }}>
+                  {item.text}
+                  {item.done && item.completed_by && (
+                    <small style={{ display: "block", color: "var(--muted)", marginTop: 2 }}>
+                      Done by {item.completed_by}{item.completed_at ? ` · ${formatDateTime(item.completed_at)}` : ""}
+                    </small>
+                  )}
+                </span>
+              </label>
+            ))}
+          </div>
+        </div>
+      )}
 
       {(task.blocker_reason || task.completion_note) && (
         <div style={{ background: "var(--bone)", border: "1px solid var(--fog)", borderRadius: 10, padding: 12, marginBottom: 14 }}>
@@ -1259,6 +1451,7 @@ function eventLabel(event: ActionItemEvent): string {
   if (event.event_type === "deleted") return "Deleted";
   if (event.event_type === "comment") return "Comment";
   if (event.event_type === "reassigned") return "Reassigned";
+  if (event.event_type === "checklist-updated") return "Checklist";
   return "Status Changed";
 }
 

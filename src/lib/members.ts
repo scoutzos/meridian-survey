@@ -8,8 +8,7 @@ export function activeMemberNamesFromProfiles(profiles: MemberProfile[]): string
 
 export async function fetchActiveMemberNames(): Promise<string[]> {
   if (!supabase) return [...MEMBERS];
-  const { data, error } = await supabase.from("meridian_members").select("name").order("name");
+  const { data, error } = await supabase.from("tracker_member_profiles").select("*").order("member_name");
   if (error || !data) return [...MEMBERS];
-  const active = new Set<string>(MEMBERS);
-  return Array.from(new Set([...(data as Array<{ name: string }>).map(row => row.name).filter(name => active.has(name)), ...MEMBERS]));
+  return activeTrackerMembers((data as MemberProfile[] | null) ?? []).map(member => member.name);
 }

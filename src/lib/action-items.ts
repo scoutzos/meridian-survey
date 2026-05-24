@@ -4,7 +4,15 @@ import { supabase } from "./supabase";
 
 export type ActionItemStatus = "open" | "in-progress" | "blocked" | "done";
 export type ActionItemTaskType = "general" | "va-work" | "meeting-follow-up" | "deal-follow-up" | "project-task" | "document-review" | "money-approval";
-export type ActionItemEventType = "created" | "status-changed" | "completed" | "blocked" | "reopened" | "deleted" | "comment" | "reassigned";
+export type ActionItemEventType = "created" | "status-changed" | "completed" | "blocked" | "reopened" | "deleted" | "comment" | "reassigned" | "checklist-updated";
+
+export interface ActionItemChecklistItem {
+  id: string;
+  text: string;
+  done: boolean;
+  completed_by: string | null;
+  completed_at: string | null;
+}
 
 export interface ActionItem {
   id: string;
@@ -12,6 +20,9 @@ export interface ActionItem {
   description: string | null;
   assigned_to: string | null;
   due_date: string | null;
+  deadline_at: string | null;
+  expected_outcome: string | null;
+  checklist_items: ActionItemChecklistItem[];
   status: ActionItemStatus;
   task_type: ActionItemTaskType | null;
   priority: "low" | "normal" | "high" | "urgent" | null;
@@ -46,6 +57,35 @@ const HIDDEN_ACTION_ITEM_TITLES = new Set([
   "Complete Branding Survey",
 ]);
 
+function normalizeChecklist(value: unknown): ActionItemChecklistItem[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item, index): ActionItemChecklistItem | null => {
+      if (!item || typeof item !== "object") return null;
+      const row = item as Record<string, unknown>;
+      const text = String(row.text ?? "").trim();
+      if (!text) return null;
+      return {
+        id: String(row.id ?? `item-${index + 1}`),
+        text,
+        done: row.done === true,
+        completed_by: typeof row.completed_by === "string" ? row.completed_by : null,
+        completed_at: typeof row.completed_at === "string" ? row.completed_at : null,
+      };
+    })
+    .filter((item): item is ActionItemChecklistItem => Boolean(item));
+}
+
+function normalizeActionItem(row: unknown): ActionItem {
+  const item = row as ActionItem;
+  return {
+    ...item,
+    deadline_at: item.deadline_at ?? null,
+    expected_outcome: item.expected_outcome ?? null,
+    checklist_items: normalizeChecklist(item.checklist_items),
+  };
+}
+
 function isVisibleActionItem(item: ActionItem): boolean {
   return !HIDDEN_ACTION_ITEM_TITLES.has(item.title);
 }
@@ -59,7 +99,7 @@ export async function fetchActionItems(): Promise<ActionItem[]> {
     .order("due_date", { ascending: true, nullsFirst: false })
     .order("created_at", { ascending: true });
   if (error || !data) return [];
-  return (data as ActionItem[]).filter(isVisibleActionItem);
+  return data.map(normalizeActionItem).filter(isVisibleActionItem);
 }
 
 export async function fetchActionItemEvents(actionItemIds: string[]): Promise<ActionItemEvent[]> {
@@ -107,6 +147,9 @@ export async function createActionItem(
     priority?: ActionItem["priority"];
     source_table?: string | null;
     source_id?: string | null;
+    deadline_at?: string | null;
+    expected_outcome?: string | null;
+    checklist_items?: ActionItemChecklistItem[];
   },
   actor: string,
 ): Promise<{ data: ActionItem | null; error: string | null }> {
@@ -118,6 +161,9 @@ export async function createActionItem(
       description: patch.description?.trim() || null,
       assigned_to: patch.assigned_to || null,
       due_date: patch.due_date || null,
+      deadline_at: patch.deadline_at || null,
+      expected_outcome: patch.expected_outcome?.trim() || null,
+      checklist_items: patch.checklist_items || [],
       task_type: patch.task_type || (patch.assigned_to === VA_ASSIGNEE_LABEL ? "va-work" : "general"),
       priority: patch.priority || "normal",
       source_table: patch.source_table || null,
@@ -129,7 +175,7 @@ export async function createActionItem(
     .select()
     .single();
   if (error || !data) return { data: null, error: error?.message ?? null };
-  const item = data as ActionItem;
+  const item = normalizeActionItem(data);
   await recordActionItemEvent(item.id, "created", actor, { next_status: "open" });
   return { data: item, error: null };
 }
@@ -250,7 +296,29 @@ export async function reassignActionItem(id: string, actor: string, assignedTo: 
   await recordActionItemEvent(id, "reassigned", actor, {
     note: `Reassigned from ${previousAssignee || "Unassigned"} to ${assignee}.`,
   });
-  return { data: data as ActionItem, error: null };
+  return { data: normalizeActionItem(data), error: null };
+}
+
+export async function updateActionItemChecklist(
+  id: string,
+  checklistItems: ActionItemChecklistItem[],
+  actor: string,
+  note: string,
+): Promise<{ data: ActionItem | null; error: string | null }> {
+  if (!supabase) return { data: null, error: "Supabase not configured" };
+  const { data, error } = await supabase
+    .from("action_items")
+    .update({
+      checklist_items: checklistItems,
+      updated_at: new Date().toISOString(),
+      updated_by: actor,
+    })
+    .eq("id", id)
+    .select()
+    .single();
+  if (error || !data) return { data: null, error: error?.message ?? null };
+  await recordActionItemEvent(id, "checklist-updated", actor, { note });
+  return { data: normalizeActionItem(data), error: null };
 }
 
 export async function deleteActionItem(id: string, actor: string): Promise<{ error: string | null }> {

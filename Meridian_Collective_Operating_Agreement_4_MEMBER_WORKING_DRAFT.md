@@ -102,6 +102,10 @@ For purposes of this Agreement, the following capitalized terms have the meaning
 
 “Deal Approval Memo” or “Deal Participation Agreement” means the written deal-level agreement required before the Company commits to any acquisition, contract, financing, earnest money deposit, due diligence expense, guarantee, construction budget, or other material obligation for a specific deal. The Deal Approval Memo supplements this Agreement and controls deal-specific economics for that deal only.
 
+**“Decision Packet”** means the written materials circulated to Members before a Tier 3, Tier 4, or Tier 5 decision, including the requested decision, required approval threshold, response deadline, dollar impact, affected Member risk, and supporting documents.
+
+**“Exit Decision Memo”** means the written deal-level memorandum required before the Company sells, refinances, holds, assigns, abandons, or otherwise exits a deal, as described in Section 9.7.
+
 **“Fair Market Value”** means The price at which property would change hands between a willing buyer and a willing seller, neither under compulsion, both with reasonable knowledge of relevant facts. Where this Agreement requires a determination of Fair Market Value and the parties cannot agree, an independent appraiser mutually selected (or, failing agreement within thirty (30) days, appointed by the American Arbitration Association) shall determine value, with cost split equally.
 
 **“Managing Member”** means A Member designated under Section 5.1 to perform day-to-day management functions on behalf of the Company.
@@ -138,9 +142,11 @@ Equal Membership Interests in the Company do not require equal economics on ever
 
 ## **3.3  Adding New Members**
 
-New Members may be admitted only with Supermajority approval of existing Members. Admission requires: (a) written consent of at least three (3) existing Members while the Company has four (4) Members; (b) execution of and agreement to be bound by this Agreement; (c) initial Capital Contribution as determined by the existing Members; and (d) completion of a vetting process addressing financial capacity, real estate experience or relevant skills, alignment with risk tolerance, and reference checks.
+New Members may be admitted only with Majority approval of existing Members. While the Company has four (4) Members, Majority approval means written consent of at least three (3) existing Members. Admission also requires: (a) execution of and agreement to be bound by this Agreement; (b) initial Capital Contribution as determined by the existing Members; and (c) completion of a vetting process addressing financial capacity, real estate experience or relevant skills, alignment with risk tolerance, and reference checks.
 
-*(Retained from the original majority-aligned draft; confirm under the current four-member approval process before execution.)*
+Changing the Membership Interests or core voting rights of existing Members is not an admission decision and remains subject to the Unanimous approval requirement for core provisions under Article XXII.
+
+*(Updated per current Member direction: adding Members requires Majority approval; changes to existing ownership remain a core-rights decision.)*
 
 ## **3.4  Transfer of Interest**
 
@@ -240,13 +246,17 @@ No Member's cash, credit, guarantee, member loan, or deal-specific capital may b
 
 Current four-member survey result: no clean three (3) of four (4) majority on which decisions require Majority, Supermajority, or Unanimous approval.
 
-**Working Default (in effect until finalized):** Except where this Agreement requires a higher threshold, ordinary operations, budgeted spending, and administrative decisions require Majority approval, meaning three (3) of four (4) Members while the Company has four (4) Members.
+**Working Default (in effect until finalized):** The Company shall use the decision tiers below unless a specific provision of this Agreement requires a higher approval threshold.
 
-Major decisions require Supermajority approval, meaning three (3) of four (4) Members in the normal course, including debt over $25,000, removal of a Member subject to Section 8.6, major unbudgeted expenses, material changes to an approved deal budget, and admission of outside equity participants into a deal.
+| Tier | Who Decides | Examples | Approval Rule |
+| :---- | :---- | :---- | :---- |
+| Tier 1: Routine Administration | Co-Managing Member(s) or assigned Member | Scheduling, reminders, document collection, advisor coordination, routine filings, maintaining records, preparing vote packets. | No separate vote required, but updates must be documented and visible to all Members. |
+| Tier 2: Approved Budget Execution | Authorized signer(s) after approval | Paying invoices inside an approved budget, signing routine documents for an approved project, ordering inspections or reports already approved in a Deal Approval Memo. | No new vote if the action stays within the approved budget, scope, and deal authority. Payment and signature controls still apply. |
+| Tier 3: Group Vote Required | Members | New deal offers, acquisitions, new or unbudgeted spending, debt, capital calls, member loans, outside investors, material budget changes, sale or refinance decisions, member-vendor transactions, commission treatment, and adding new Members. | Majority approval, meaning three (3) of four (4) Members while the Company has four (4) Members, unless this Agreement requires a higher threshold. |
+| Tier 4: Affected Member Written Consent | Affected Member | Use of a Member's cash, credit, guarantee, member loan, personal collateral, or deal-specific capital. | The affected Member must affirmatively approve the obligation in writing. Non-response never commits personal money or risk. |
+| Tier 5: Core Rights / Unanimous | All Members | Changing Membership Interests, changing core voting rights, transfer exceptions, mandatory capital beyond an agreed cap, voluntary dissolution if finalized as Unanimous under Section 21.2, and any action expressly identified as requiring Unanimous consent. | Unanimous approval, meaning four (4) of four (4) Members while the Company has four (4) Members, unless this Agreement expressly sets a different rule. |
 
-Unanimous approval, meaning four (4) of four (4) Members while the Company has four (4) Members, is required for amendments to core provisions, transfer exceptions, voluntary dissolution unless otherwise finalized under Section 21.2, changes to Membership Interests, and any action expressly identified in this Agreement as requiring Unanimous consent.
-
-Deal Approval Memos require at least Majority approval unless the specific deal involves debt over $25,000, personal guarantees, outside equity participants, acquisition of real property, or a material variance from the approved Year-1 capital exposure limits; those matters require Supermajority approval unless this Agreement requires Unanimous consent.
+Deal Approval Memos require at least Tier 3 Majority approval unless the specific deal involves a higher threshold under this Agreement. No Deal Approval Memo may bind a Member to cash, credit, guarantees, member loans, personal collateral, or deal-specific capital without that Member's Tier 4 written consent.
 
 ## **5.5  Signature Authority**
 
@@ -264,6 +274,8 @@ Separate spending-authority responses show all four (4) current Members selected
 
 **Working Default (in effect until group finalizes):** Option A, using the Co-Managing Members designated under Section 5.1 as signatories under the threshold structure described. No Member has independent authority to approve new expenditures unless that authority is later approved in writing.
 
+For avoidance of doubt, signature authority and payment-processing authority are implementation authority only. They do not create independent approval authority for a cost, contract, debt, deal, guarantee, member loan, or other obligation that has not already been approved under Section 5.4 or a Deal Approval Memo.
+
 ## **5.6  Member Meetings**
 
 Regular meetings of the Members shall occur Monday evenings at 7:15 PM ET, or as otherwise scheduled by majority vote. Special meetings may be called by any two Members on forty-eight (48) hours’ written notice. A quorum shall consist of three (3) Members present in person or virtually while the Company has four (4) Members. Meetings may be held by video or telephone conference, and Members may participate from any location.
@@ -278,11 +290,19 @@ Any action that may be taken by vote of the Members may be taken by written cons
 
 The current active survey does not directly settle how long Members have to respond to a vote or what happens if a Member does not respond. Before execution, the Members should select a rule covering: (a) routine decision deadlines; (b) urgent deal decision deadlines; (c) what information must be included in a vote notice; and (d) whether non-response counts as abstention, a no vote, or a pause on the decision.
 
-**Working Default (in effect until finalized):** A written decision notice must state the decision requested, dollar impact, required approval threshold, response deadline, and consequence of non-response. Routine decisions have a forty-eight (48) hour response window. Urgent deal decisions have a twenty-four (24) hour response window if the notice states why the matter is urgent. A Member who does not respond by the stated deadline is treated as abstaining, and the decision may proceed only if the required approval threshold is otherwise met. No Member's cash, credit, guarantee, or member loan may be committed by non-response.
+**Working Default (in effect until finalized):** A written decision notice must state the decision requested, affected deal or Company matter, dollar impact and source of funds, required approval threshold, response deadline, consequence of non-response, whether any Member cash, credit, guarantee, loan, collateral, or personal risk is affected, and supporting documents, including the Deal Approval Memo when the vote involves a deal.
+
+Routine decisions have a forty-eight (48) hour response window. Urgent deal decisions have a twenty-four (24) hour response window if the notice states why the matter is urgent. Core-rights decisions shall not use an automatic short deadline unless all Members agree to that deadline in writing.
+
+A Member who does not respond by the stated deadline is treated as abstaining, not approving. The decision may proceed only if the required approval threshold is otherwise met. No Member's cash, credit, guarantee, member loan, collateral, or deal-specific capital may be committed by silence or non-response.
 
 ## **5.8  Records of Decisions**
 
 Minutes of all meetings and copies of all written consents shall be maintained by the Co-Managing Members or a designated Member and made available to all Members within seven (7) days.
+
+## **5.9  Decision Packets**
+
+For Tier 3, Tier 4, and Tier 5 decisions, the Member requesting action shall provide a written decision packet sufficient for the Members to evaluate the matter. For deal decisions, the decision packet must include or update the Deal Approval Memo described in Section 3.2 and Schedule C. For exit decisions, the decision packet must include the Exit Decision Memo described in Section 9.7.
 
 **ARTICLE VI**
 
@@ -522,6 +542,39 @@ In practice, lenders require guarantees from Members who qualify; the framework 
 
 A Member may, by majority approval of the other Members, lend funds to the Company on terms negotiated at the time of the loan. Member loans are debt obligations, not Capital Contributions, and shall be documented by promissory note with interest rate, maturity, and security (if any) specified. Member loans repaid before equity distributions under Article VI.
 
+## **9.4  Deal Selection Standard**
+
+The Company shall take on deals only when the Members can reasonably determine, based on the information then available, that the deal fits the Company's approved purpose, market, current strategy, and risk tolerance; the expected profit justifies the time, capital, and risk; the financing plan is realistic; no Member is forced into unapproved personal exposure; the required capital fits within approved Member commitments or voluntary deal-specific commitments; there is a clear deal lead and role plan; there is a documented primary exit plan and backup exit plan; the timeline is realistic for Member capacity; and conflicts, commissions, and member-vendor relationships are disclosed before approval.
+
+## **9.5  Deal Approval Stages**
+
+Unless the Members approve a different written process for a specific opportunity, Company deals shall move through the following stages:
+
+| Stage | Decision Point | Required Output | Approval Rule |
+| :---- | :---- | :---- | :---- |
+| 1. Intake | Is this worth screening? | Deal lead, source, property, rough strategy, and next deadline. | Co-Managing Member(s) or assigned deal lead may prepare the screen. |
+| 2. Initial Screen | Does it fit Meridian's strategy and risk? | Rough numbers, red flags, capital need, financing need, and exit path. | Group discussion before meaningful Company spend. |
+| 3. Offer Approval | Should Meridian submit an offer or letter of intent? | Deal Approval Memo with maximum offer, earnest money, funding, roles, and exit plan. | Tier 3 Majority approval, plus Tier 4 written consent from any Member whose cash, credit, guarantee, member loan, or collateral is used. |
+| 4. Due Diligence Go/No-Go | Should Meridian proceed, renegotiate, or exit before deadlines? | Inspection, title, zoning, budget, financing, and revised deal-memo update if needed. | Tier 3 Majority approval for proceed or renegotiate; Tier 4 written consent for changed personal risk. |
+| 5. Active Project Changes | Should budget, timeline, financing, scope, or roles change? | Written change memo explaining variance and recommendation. | Tier 3 Majority approval for material changes; Tier 4 written consent for affected Member risk. |
+| 6. Exit Execution | Should Meridian sell, refinance, hold, assign, or abandon? | Exit Decision Memo showing economics, timing, debt payoff, reserves, and distributions. | Tier 3 Majority approval unless this Agreement requires a higher threshold. |
+
+## **9.6  Deal Approval Memo**
+
+No deal is approved until the Members have approved a Deal Approval Memo or Deal Participation Agreement meeting the requirements of Section 3.2 and Schedule C. The Deal Approval Memo controls deal-specific economics, roles, capital commitments, credit support, guarantees, member loans, commission treatment, budget variance rules, material-change thresholds, and exit plan for that deal only. Equal Membership Interests in the Company do not require equal economics on every deal.
+
+## **9.7  Exit Strategy and Exit Decision Memo**
+
+Every deal must have a primary exit strategy and backup exit strategy before the Company submits an offer, signs a contract, spends material money, or commits Member capital. Possible exit strategies include wholesale or assignment, renovate and sell, build and sell, hold as rental, refinance and hold, sell as-is if the project no longer fits the numbers, or exit during due diligence before earnest money becomes non-refundable.
+
+The Members shall revisit the exit plan if inspection, title, zoning, permitting, lender, contractor, budget, timeline, financing, role, or Member-risk information materially changes the approved deal assumptions; if projected profit drops below the approved minimum; or if a better risk-adjusted exit becomes available.
+
+Before selling, refinancing, holding, assigning, or abandoning a deal, the deal lead shall circulate an Exit Decision Memo that includes the recommended exit, current budget-to-actual, debt payoff and closing costs, expected net proceeds, return of capital, preferred return or guarantee premium if applicable, reserves to hold back, estimated Member distributions, risks of the recommended exit, and alternative exit options considered.
+
+## **9.8  Deal Closeout**
+
+After each deal exits, the Co-Managing Member(s) or deal lead shall provide a closeout packet with the final settlement statement or refinance statement, final project budget and variance report, final profit/loss calculation, capital return and distribution calculation, lessons learned, and follow-up tasks for taxes, records, vendors, warranties, insurance, or other post-closing matters.
+
 **ARTICLE X**
 
 # Banking and Financial Controls
@@ -610,7 +663,7 @@ Current four-member survey result: no clean three (3) of four (4) majority. Resp
 
 ## **13.2  Required Records**
 
-* The Company shall maintain the following records in a secure Company recordkeeping system, which may include cloud-based storage, accounting software, or another digital records platform approved by the Members. Records need not be physically maintained at the Company’s principal office if the principal office is a virtual office or registered mailing address:
+The Company shall maintain the following records in a secure Company recordkeeping system, which may include cloud-based storage, accounting software, or another digital records platform approved by the Members. Records need not be physically maintained at the Company’s principal office if the principal office is a virtual office or registered mailing address:
 
 * (a) The Articles of Organization and any amendments
 
@@ -622,11 +675,11 @@ Current four-member survey result: no clean three (3) of four (4) majority. Resp
 
 * (e) Minutes of all Member meetings and written consents
 
-* (f) Deal Approval Memos for each deal pursued
+* (f) Written decision notices, vote records, and decision packets
 
 * (g) A current list of all Members and their contact information
 
-* (h) Deal Approval Memos, deal budgets, member capital commitments, guarantee records, diligence files, and closeout accounting for each deal
+* (h) Deal Approval Memos, deal budgets, member capital commitments, guarantee records, diligence files, Exit Decision Memos, closeout packets, and closeout accounting for each deal
 
 ## **13.3  Member Inspection Rights**
 
@@ -965,6 +1018,32 @@ Final initial contribution due dates and whether the amounts above are mandatory
 
 \[TO BE PREPARED BY GEORGIA COUNSEL\] Form to be executed by each currently-married Member at signing under Section 18.1, and by any Member who marries after execution under Section 18.2.
 
+**SCHEDULE C**
+
+*Deal Approval and Exit Checklist*
+
+Each Deal Approval Memo should include the following information before the Company submits an offer, signs a contract, spends material money, or commits Member capital, credit, guarantees, loans, or collateral:
+
+* Property address, parcel identification, seller, deal source, and any related-party or conflict disclosure.
+
+* Proposed strategy, primary exit plan, and backup exit plan.
+
+* Maximum offer authority, purchase price, earnest money, due diligence budget, inspection budget, and go/no-go deadlines.
+
+* Total project budget, reserves, expected overrun procedure, and material variance threshold requiring a new vote.
+
+* Financing plan, debt terms, guarantees, guarantor compensation, Member loans, and any Member-specific cash, credit, collateral, or personal-risk commitment.
+
+* Member roles, deal lead, expected time commitments, management fees, vendor plan, member-vendor disclosures, commission treatment, and any required recusal.
+
+* Deal Participation Interests, profit/loss waterfall, capital return, preferred return, guarantee premium, reserve holdback, and distribution assumptions.
+
+* Required vote threshold for material changes, exit review triggers, and documents supporting the underwriting.
+
+Before any sale, refinance, hold, assignment, abandonment, or other final exit decision, the deal lead should circulate an Exit Decision Memo covering the recommended exit, current budget-to-actual, debt payoff and closing costs, expected net proceeds, return of capital, preferred return or guarantee premium if applicable, reserves to hold back, estimated Member distributions, risks of the recommended exit, and alternative exit options considered.
+
+After exit, the closeout packet should include the final settlement statement or refinance statement, final project budget and variance report, final profit/loss calculation, capital return and distribution calculation, lessons learned, and follow-up tasks for taxes, records, vendors, warranties, insurance, or other post-closing matters.
+
 **APPENDIX**
 
 *Decision Log Summary*
@@ -973,12 +1052,14 @@ The body of this majority-aligned draft now converts confirmed and strong-majori
 
 | Section | Decision Required | Decided / Date |
 | :---- | :---- | :---- |
+| **3.3** | Adding new Members | Updated working term: admission requires Majority approval; while four Members, this means 3 of 4 |
 | **4.1** | Initial capital contribution structure | Adopted working term: variable by Member capacity based on 3 of 4 current-member responses |
 | **5.1** | Co-Managing Member structure after membership change |  |
 | **5.3** | Voting model | Adopted working term: one vote per Member for operations; weighted by deal-specific financial commitment for financial decisions over $25,000 |
-| **5.4** | Vote thresholds |  |
+| **5.4** | Vote thresholds | Working default added: Tier 1 routine admin, Tier 2 approved budget execution, Tier 3 Majority vote, Tier 4 affected Member written consent, Tier 5 core-rights/Unanimous |
 | **5.5** | Signature authority |  |
-| **5.7A** | Vote response deadlines and non-response rule |  |
+| **5.7A** | Vote response deadlines and non-response rule | Working default added: 48-hour routine response, 24-hour urgent-deal response, non-response treated as abstention, no personal risk by silence |
+| **5.9** | Decision packets | Added requirement for written decision packets for Tier 3, Tier 4, and Tier 5 decisions |
 | **6.6** | Tax distribution timing | Adopted working term: annual before K-1s based on 3 of 4 current-member responses |
 | **7.2** | Partnership Representative designation |  |
 | **8.4** | Right of first refusal timeframe |  |
@@ -986,17 +1067,20 @@ The body of this majority-aligned draft now converts confirmed and strong-majori
 | **8.8** | Voting scope of Designated Representative during incapacitation grace period |  |
 | **8.8** | Disability buy-sell insurance |  |
 | **9.2** | Personal guarantee exposure principle | Adopted working term: equal-exposure protection when guarantees are used; no Member guarantee without that Member's written approval |
+| **9.4–9.8** | Deal selection, deal approval stages, exit strategy, and closeout | Added working framework requiring Deal Approval Memos, Exit Decision Memos, and closeout packets |
 | **11.2** | Standard for Member-vendor transactions |  |
 | **12.1** | Real estate commission handling |  |
 | **13.1** | Bookkeeping function |  |
+| **13.2** | Required records | Updated to include decision notices, decision packets, Exit Decision Memos, and closeout packets |
 | **18.1** | Spousal consent at signing |  |
 | **19.1** | Fiduciary standard |  |
 | **20.2** | Deadlock resolution mechanism | Adopted working term: mutually agreed advisor may cast deciding vote on the deadlocked issue |
 | **21.2** | Vote threshold for voluntary dissolution |  |
 | **22.1** | Amendment process | Adopted working term: semi-annual review for first 2 years, annual thereafter; Supermajority for standard amendments; Unanimous for core provisions |
 | **24.2** | Year-1 maximum capital at risk |  |
+| **Schedule C** | Deal approval and exit checklist | Added checklist for Deal Approval Memo, Exit Decision Memo, and deal closeout packet |
 
-Updated in this draft: membership reduced to four Members; Membership Interests updated to 25.00% each; former Members removed from the Member list and signature page; Section 4.1, Section 5.3, Section 6.6, Section 8.7, Section 9.2, Section 20.2, and Section 22.1 updated from Decision Required to adopted working terms based on the current four-member response set; Section 5.5 clarified that the $2,500 amount is not a settled independent spending cap; Schedule A updated with current readiness capital data. Remaining unresolved items include Co-Managing Member structure, vote thresholds, signature authority/payment-processing cap, vote response/non-response rules, Partnership Representative, right-of-first-refusal timeframe, incapacity mechanics, disability buy-sell insurance, member-vendor standard, commissions, bookkeeping, spousal consent, fiduciary standard, dissolution threshold, and Year-1 maximum capital at risk.
+Updated in this draft: membership reduced to four Members; Membership Interests updated to 25.00% each; former Members removed from the Member list and signature page; Section 3.3 updated so adding new Members requires Majority approval; Section 4.1, Section 5.3, Section 6.6, Section 8.7, Section 9.2, Section 20.2, and Section 22.1 updated from Decision Required to adopted working terms based on the current four-member response set; Section 5.4 added the decision-tier framework; Section 5.5 clarified that the $2,500 amount is not a settled independent spending cap; Section 5.7A and Section 5.9 added response-window and decision-packet rules; Article IX added deal selection, deal approval, exit strategy, and closeout rules; Section 13.2 and Schedule C added the records/checklist support for those deal rules; Schedule A updated with current readiness capital data. Remaining unresolved items include Co-Managing Member structure, final signature authority/payment-processing cap, Partnership Representative, right-of-first-refusal timeframe, incapacity mechanics, disability buy-sell insurance, member-vendor standard, commissions, bookkeeping, spousal consent, fiduciary standard, dissolution threshold, Year-1 maximum capital at risk, and deal metrics such as minimum projected profit, budget variance trigger, required reserves, and maximum project timeline.
 
 ———————
 
