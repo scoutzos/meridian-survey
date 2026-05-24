@@ -6,7 +6,7 @@ Meridian is a private operating portal for a six-operator real estate partnershi
 
 The portal should not feel like a generic task app, a survey app, or a document dump. It should feel like Meridian's internal command room: measured, specific, candid, elevated, and warm.
 
-## Product Promises
+## Product Promise
 
 Meridian helps the collective move from opportunity to decision to execution without losing context.
 
