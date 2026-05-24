@@ -23,15 +23,15 @@ export const categories: Category[] = [
       options: ["Consistent financial losses", "Trust being broken between members", "Lack of progress — no deals closing", "Personal financial circumstances changing", "Disagreements on direction that can't be resolved", "I can't see myself leaving — I'm fully committed"] },
   ]},
   { id: "oa-1", name: "Ownership & Membership Structure", questions: [
-    { id: "oa-1-0", text: "How will ownership be structured — equal shares for all members, or weighted based on capital contribution, sweat equity, or a combination?",
+    { id: "oa-1-0", text: "How will ownership be structured — equal shares for the current active members, or weighted based on capital contribution, sweat equity, or a combination?",
       priority: "critical",
-      options: ["Equal ownership for all members", "Weighted by capital contribution", "Weighted by time/effort/sweat equity", "Combination of capital and sweat equity", "To be determined based on each deal"] },
+      options: ["Equal ownership for the four current active members", "Weighted by capital contribution", "Weighted by time/effort/sweat equity", "Combination of capital and sweat equity", "To be determined based on each deal"] },
     { id: "oa-1-1", text: "Can new members be added in the future? If so, what vote is required?",
       priority: "critical",
-      options: ["Yes, with unanimous approval of existing members", "Yes, with supermajority (2/3) approval", "Yes, with Managing Member approval only", "No, membership is closed"] },
+      options: ["Yes, with unanimous approval of all active members", "Yes, with supermajority approval (currently 3 of 4 active members)", "Yes, with Managing Member approval only", "No, membership is closed"] },
     { id: "oa-1-2", text: "Can a member transfer or sell their ownership interest to someone outside the group?",
       priority: "critical",
-      options: ["No outside transfers — must sell back to the group", "Only with unanimous consent of all members", "Allowed with majority approval", "Allowed freely after a minimum holding period"] },
+      options: ["No outside transfers — must sell back to the group", "Only with unanimous consent of all active members", "Allowed with majority approval of active members", "Allowed freely after a minimum holding period"] },
     { id: "oa-1-3", text: "What happens to a member's interest if they pass away, become incapacitated, go through a divorce, or file for bankruptcy?",
       priority: "critical",
       options: ["Group has mandatory buyout right at fair market value in all cases", "Interest passes to estate/heirs with group approval; buyout right for divorce/bankruptcy", "Heir inherits economic interest only (no voting) unless group approves full membership", "Handle each situation case-by-case per the operating agreement provisions"] },
@@ -42,7 +42,7 @@ export const categories: Category[] = [
       options: ["$5,000 each within 30 days", "$10,000 each within 30 days", "$25,000 each within 60 days", "$50,000 each within 90 days", "Variable amounts based on individual capacity"] },
     { id: "oa-2-1", text: "What forms of contribution are acceptable — cash only, or also property, services, or sweat equity?",
       priority: "critical",
-      options: ["Cash only", "Cash and real property", "Cash, property, and documented services/sweat equity", "Cash, property, services, and credit/lending capacity", "Any form with agreed-upon valuation by all members"] },
+      options: ["Cash only", "Cash and real property", "Cash, property, and documented services/sweat equity", "Cash, property, services, and credit/lending capacity", "Any form with agreed-upon valuation by all active members"] },
     { id: "oa-2-2", text: "What happens if a member cannot make their contribution on time?",
       priority: "critical",
       options: ["30-day grace period, then ownership percentage is reduced", "Automatic forfeiture of membership", "Treated as a loan from other members at agreed interest rate", "Remaining members cover the shortfall and adjust equity accordingly"] },
@@ -57,15 +57,15 @@ export const categories: Category[] = [
     { id: "oa-3-1", text: "What is the dollar threshold that requires a group vote vs. what the Managing Member can decide alone?",
       priority: "critical",
       options: ["Managing Member can approve up to $5,000 independently", "Managing Member can approve up to $10,000 independently", "Managing Member can approve up to $25,000 independently", "All expenditures require group approval regardless of amount"] },
-    { id: "oa-3-2", text: "How will voting work — one vote per member or weighted by ownership? How are ties resolved?",
+    { id: "oa-3-2", text: "How will voting work — one vote per active member or weighted by ownership? How are ties resolved?",
       priority: "critical",
-      options: ["One vote per member; Managing Member breaks ties", "Weighted by ownership percentage; table tied votes for 30 days", "One vote per member for operations, weighted for financial decisions", "One vote per member; neutral third-party mediator for ties"] },
-    { id: "oa-3-3", text: "What decisions require simple majority, supermajority (2/3), and unanimous votes?",
+      options: ["One vote per active member; Managing Member breaks ties", "Weighted by ownership percentage; table tied votes for 30 days", "One vote per active member for operations, weighted for financial decisions", "One vote per active member; neutral third-party mediator for ties"] },
+    { id: "oa-3-3", text: "What decisions require active-member majority, supermajority, and unanimous votes?",
       priority: "critical",
-      options: ["Majority: day-to-day ops | Supermajority: major expenses, removing a member | Unanimous: new members, dissolution, amending OA", "Majority: all operational decisions | Supermajority: debt over $50K | Unanimous: dissolution and OA amendments only", "Everything requires supermajority except Managing Member's day-to-day authority", "Unanimous for all major decisions; Managing Member handles everything else"] },
+      options: ["3 of 4 active members: day-to-day ops and major expenses | 4 of 4: new members, dissolution, and core OA amendments", "3 of 4 active members: all operational decisions and debt over $50K | 4 of 4: dissolution and OA amendments only", "3 of 4 active members required for all non-delegated decisions except Managing Member day-to-day authority", "4 of 4 active members for all major decisions; Managing Member handles delegated routine administration"] },
     { id: "oa-3-4", text: "Who has signature authority on bank accounts and contracts?",
       priority: "critical",
-      options: ["Managing Member only", "Any two members jointly", "Managing Member plus one other member", "All members have individual signature authority"] },
+      options: ["Managing Member only", "Any two active members jointly", "Managing Member plus one other active member", "All active members have individual signature authority"] },
   ]},
   { id: "oa-4", name: "Profits, Distributions & Losses", questions: [
     { id: "oa-4-0", text: "How will profits be distributed — pro-rata by ownership, or is there a preferred return structure?",
@@ -73,10 +73,10 @@ export const categories: Category[] = [
       options: ["Strictly pro-rata based on ownership percentage", "Preferred return (e.g., 8%) to capital contributors first, then pro-rata", "Preferred return to capital, then 70/30 split (members/managing member)", "Deal-by-deal waterfall based on each member's contribution to that deal"] },
     { id: "oa-4-1", text: "How frequently will distributions be made?",
       priority: "critical",
-      options: ["Monthly", "Quarterly", "After each deal closes", "Annually", "Only when majority votes to distribute"] },
+      options: ["Monthly", "Quarterly", "After each deal closes", "Annually", "Only when a majority of active members votes to distribute"] },
     { id: "oa-4-2", text: "How will losses be allocated among members?",
       priority: "critical",
-      options: ["Pro-rata based on ownership percentage", "Equally among all members", "Allocated to members who approved the deal", "Based on capital account balances"] },
+      options: ["Pro-rata based on ownership percentage", "Equally among all active members", "Allocated to members who approved the deal", "Based on capital account balances"] },
   ]},
   { id: "oa-5", name: "Exit & Buyout Provisions", questions: [
     { id: "oa-5-0", text: "Is there a minimum commitment period before a member can exit (e.g., 1-3 years)?",
@@ -110,12 +110,12 @@ export const categories: Category[] = [
       options: ["Cash only — no debt", "Conventional financing only", "Hard money for flips, conventional for holds", "Leverage preferred — maximize returns with OPM"] },
     { id: "oa-6-1", text: "Will members be required to personally guarantee loans? Is everyone willing?",
       priority: "critical",
-      options: ["Yes, all members guarantee equally", "Only Managing Member(s) guarantee, with compensation for the risk", "Guarantors rotate based on deal", "No personal guarantees — only non-recourse or asset-based lending"] },
+      options: ["Yes, all participating active members guarantee equally", "Only Managing Member(s) guarantee, with compensation for the risk", "Guarantors rotate based on deal", "No personal guarantees — only non-recourse or asset-based lending"] },
   ]},
   { id: "oa-7", name: "Banking & Financial Controls", questions: [
     { id: "oa-7-0", text: "How many signatures are required for large payments, and what's the spending limit before group approval?",
       priority: "critical",
-      options: ["All member signatures required for every transaction", "Two signatures over $5,000; group approval over $5,000", "Two signatures over $10,000; group approval over $10,000", "Managing Member alone up to $10,000; two signatures and group approval above", "Single signature for budgeted items; group approval for all unbudgeted expenses"] },
+      options: ["All active member signatures required for every transaction", "Two signatures over $5,000; active-member approval over $5,000", "Two signatures over $10,000; active-member approval over $10,000", "Managing Member alone up to $10,000; two signatures and active-member approval above", "Single signature for budgeted items; active-member approval for all unbudgeted expenses"] },
   ]},
   { id: "oa-8", name: "Conflicts of Interest & Outside Deals", questions: [
     { id: "oa-8-0", text: "Can members pursue real estate deals outside of the LLC?",
@@ -123,7 +123,7 @@ export const categories: Category[] = [
       options: ["No — all real estate activity must go through the LLC", "Yes, but only in markets/property types the LLC doesn't operate in", "Yes, but must disclose and offer to the LLC first (right of first offer)", "Yes, with full disclosure but no restrictions"] },
     { id: "oa-8-1", text: "Can a member do business with the LLC (contracting, lending, property management)?",
       priority: "critical",
-      options: ["No — members cannot be vendors to the LLC", "Yes, at market rate with full written disclosure and majority approval", "Yes, at or below market rate with unanimous approval", "Yes, but must obtain competitive bids to prove fair pricing"] },
+      options: ["No — members cannot be vendors to the LLC", "Yes, at market rate with full written disclosure and active-member majority approval", "Yes, at or below market rate with unanimous active-member approval", "Yes, but must obtain competitive bids to prove fair pricing"] },
   ]},
   { id: "oa-9", name: "Real Estate Licenses & Commissions", questions: [
     { id: "oa-9-0", text: "When a licensed member represents the LLC in a transaction, who keeps the commission?",
@@ -133,7 +133,7 @@ export const categories: Category[] = [
   { id: "oa-10", name: "Dissolution", questions: [
     { id: "oa-10-0", text: "What vote is required to dissolve the LLC, and how are assets distributed?",
       priority: "critical",
-      options: ["Unanimous vote; pay debts then distribute pro-rata by ownership", "Supermajority (2/3); pay debts, return capital, then split remainder pro-rata", "Supermajority (3/4); liquidate everything and distribute cash pro-rata", "Unanimous; complete active projects first, then pay debts and distribute"] },
+      options: ["Unanimous vote of all active members; pay debts then distribute pro-rata by ownership", "Supermajority of active members (currently 3 of 4); pay debts, return capital, then split remainder pro-rata", "3 of 4 active members; liquidate everything and distribute cash pro-rata", "Unanimous active-member approval; complete active projects first, then pay debts and distribute"] },
   ]},
   { id: "oa-11", name: "Dispute Resolution", questions: [
     { id: "oa-11-0", text: "How will the group resolve disputes — mediation, arbitration, or litigation?",
@@ -143,7 +143,7 @@ export const categories: Category[] = [
   { id: "oa-12", name: "Operating Agreement Administration", questions: [
     { id: "oa-12-0", text: "How often will the Operating Agreement be reviewed, and what vote is required to amend it?",
       priority: "critical",
-      options: ["Annually; unanimous vote to amend", "Every 2 years; supermajority (2/3) to amend", "Only when triggered by a major event; unanimous to amend", "Semi-annually for first 2 years then annually; supermajority (3/4) to amend"] },
+      options: ["Annually; unanimous active-member vote to amend", "Every 2 years; supermajority of active members (currently 3 of 4) to amend", "Only when triggered by a major event; unanimous active-member approval to amend", "Semi-annually for first 2 years then annually; 3 of 4 active members to amend"] },
   ]},
   { id: "oa-13", name: "Confidentiality & Non-Compete", questions: [
     { id: "oa-13-0", text: "After a member leaves, are there non-compete or non-solicitation restrictions?",
@@ -153,7 +153,7 @@ export const categories: Category[] = [
   { id: "oa-14", name: "Tax & Distributions", questions: [
     { id: "oa-14-0", text: "Will the LLC make mandatory tax distributions so members can cover taxes on K-1 income even when cash isn't distributed?",
       priority: "critical",
-      options: ["Yes — mandatory quarterly tax distributions based on estimated liability", "Yes — annual tax distribution before K-1s are issued", "No — members are responsible for their own taxes from personal funds", "Tax distributions at the highest marginal rate to cover all members"] },
+      options: ["Yes — mandatory quarterly tax distributions based on estimated liability", "Yes — annual tax distribution before K-1s are issued", "No — members are responsible for their own taxes from personal funds", "Tax distributions at the highest marginal rate to cover all active members"] },
   ]},
   { id: "oa-15", name: "Spousal Consent", questions: [
     { id: "oa-15-0", text: "Should spouses/partners be required to sign an acknowledgment of the Operating Agreement waiving any claim to membership rights?",
@@ -163,7 +163,7 @@ export const categories: Category[] = [
   { id: "oa-16", name: "Intellectual Property & Brand", questions: [
     { id: "oa-16-0", text: "Who owns the Meridian Collective name, logo, website, and social media accounts — and what happens to them if the group dissolves or a member leaves?",
       priority: "critical",
-      options: ["The LLC owns all IP — departing members have no claim", "The LLC owns all IP — upon dissolution, IP is sold or transferred by majority vote", "Founding members retain equal rights to the brand even after dissolution", "The LLC owns all IP — a departing member cannot use the name or brand in any capacity"] },
+      options: ["The LLC owns all IP — departing members have no claim", "The LLC owns all IP — upon dissolution, IP is sold or transferred by active-member majority vote", "Founding active members retain equal rights to the brand even after dissolution", "The LLC owns all IP — a departing member cannot use the name or brand in any capacity"] },
   ]},
   { id: "oa-17", name: "Deadlock Provisions", questions: [
     { id: "oa-17-0", text: "If the group is deadlocked on a critical decision for 60+ days and can't reach the required vote, what happens?",
@@ -183,12 +183,12 @@ export const categories: Category[] = [
   { id: "oa-20", name: "Books, Records & Transparency", questions: [
     { id: "oa-20-0", text: "Who maintains the financial books and do members have the right to inspect records at any time?",
       priority: "critical",
-      options: ["Professional bookkeeper maintains records; any member can inspect anytime with 48-hour notice", "Managing Member maintains records; quarterly reports to all members, inspection by request", "CPA firm maintains records; monthly reports, open access to all members at all times", "Designated member maintains records; real-time access via shared accounting software for all members"] },
+      options: ["Professional bookkeeper maintains records; any active member can inspect anytime with 48-hour notice", "Managing Member maintains records; quarterly reports to all active members, inspection by request", "CPA firm maintains records; monthly reports, open access to all active members at all times", "Designated member maintains records; real-time access via shared accounting software for all active members"] },
   ]},
   { id: "oa-21", name: "Indemnification", questions: [
     { id: "oa-21-0", text: "Will the LLC indemnify (legally protect and cover costs for) members for actions taken in good faith on behalf of the business?",
       priority: "critical",
-      options: ["Yes — full indemnification for all actions taken in good faith within their authority", "Yes — but only for the Managing Member(s) acting within their defined authority", "Yes — for all members, but not for gross negligence or intentional misconduct", "No indemnification — each member is responsible for their own legal exposure"] },
+      options: ["Yes — full indemnification for all actions taken in good faith within their authority", "Yes — but only for the Managing Member(s) acting within their defined authority", "Yes — for all active members, but not for gross negligence or intentional misconduct", "No indemnification — each member is responsible for their own legal exposure"] },
   ]},
   { id: "oa-22", name: "Working Style & Communication", questions: [
     { id: "oa-22-0", text: "How do you handle conflict or disagreement?",
@@ -219,7 +219,7 @@ export const categories: Category[] = [
 export const oaSurvey: Survey = {
   id: "operating-agreement",
   title: "Operating Agreement",
-  description: "Comprehensive survey covering all operating agreement topics — vision, ownership, capital, management, profits, exits, and more.",
+  description: "Comprehensive survey covering operating agreement topics for the current active-member structure — vision, ownership, capital, management, profits, exits, and more.",
   categories,
 };
 

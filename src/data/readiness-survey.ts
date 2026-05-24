@@ -3,7 +3,7 @@ import type { Survey } from "./surveys";
 export const readinessSurvey: Survey = {
   id: "readiness-commitment",
   title: "Readiness & Commitment",
-  description: "Quick check-in: who's in, what are you bringing, and can we move now? Fill this out by Wednesday.",
+  description: "Current active-member check-in: confirm commitment, contribution capacity, and readiness to move.",
   categories: [
     {
       id: "rc-whos-in",
@@ -57,7 +57,7 @@ export const readinessSurvey: Survey = {
         {
           id: "rc-4",
           text: "Are you committed to actively participating in this partnership? (Weekly meetings, tasks, decision-making — not silent participation)",
-          context: "We need to know who's showing up and doing the work, not just whose name is on the paperwork. The LLC filing depends on knowing exactly who's in.",
+          context: "We need to know who's showing up and doing the work, not just whose name is on the paperwork. Membership records, operating agreement terms, and active-member decisions depend on knowing exactly who's in.",
           priority: "critical",
           singleSelect: true,
           options: [
@@ -72,12 +72,12 @@ export const readinessSurvey: Survey = {
     {
       id: "rc-stake",
       name: "What's Your Stake?",
-      description: "Your financial contribution — cash or credit — determines your equity percentage on each deal. If credit is used to fund a deal, that credit is paid back first from the deal's proceeds before any profits are split. In other words: credit gets repaid, then everyone gets their share.",
+      description: "Each active member's financial contribution — cash or credit — determines that person's equity percentage on each deal. If credit is used to fund a deal, that credit is paid back first from the deal's proceeds before any profits are split.",
       questions: [
         {
           id: "rc-6",
           text: "Between cash and credit, what is the MOST you'd be willing to invest in a single deal?",
-          context: "This isn't a commitment — it's your ceiling. We need to know everyone's total buying power so we can find deals that fit the group's budget. Your contribution on any deal determines your ownership percentage, which goes into the operating agreement.",
+          context: "This isn't a commitment — it's your ceiling. We need to know the active members' total buying power so we can find deals that fit the group's budget. Your contribution on any deal determines your ownership percentage, which goes into the operating agreement.",
           priority: "critical",
           inputType: "currency",
           placeholder: "e.g. $10,000",
@@ -100,7 +100,7 @@ export const readinessSurvey: Survey = {
         },
         {
           id: "rc-5",
-          text: "How much are you contributing toward startup/admin costs? (VAs, call tools, organizational expenses — estimated $300-$500 per person)",
+          text: "How much are you contributing toward startup/admin costs? (VAs, call tools, organizational expenses — estimated $300-$500 per active member)",
           context: "Before we can start finding deals, we need to hire VAs and set up call tools. This is the immediate money needed to get the operation running — not the big investment, just the startup fuel.",
           priority: "critical",
           singleSelect: true,
@@ -150,7 +150,7 @@ export const readinessSurvey: Survey = {
         {
           id: "rc-10",
           text: "Are you comfortable with a lender pulling your credit as part of the financing process?",
-          context: "Most hard money and conventional lenders require a credit pull for anyone who owns 25% or more of the LLC. If you have concerns about your credit, we need to know now so we can plan the financing structure accordingly.",
+          context: "Most hard money and conventional lenders require a credit pull for anyone who owns 25% or more of the LLC. With four equal active members, each member may meet that threshold. If you have concerns about your credit, we need to know now so we can plan the financing structure accordingly.",
           priority: "critical",
           singleSelect: true,
           options: [
