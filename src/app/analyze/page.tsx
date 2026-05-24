@@ -26,6 +26,8 @@ import { getCurrentMeridianUser, isVaUser } from "@/lib/identity";
 import {
   createImportedLandLeadActivity,
   fetchImportedLandLeads,
+  listingSummaryNotes,
+  listingTextHints,
   leadToDealDraft,
   updateImportedLandLeadStatus,
   type ImportedLandLead,
@@ -43,6 +45,9 @@ type IntakeForm = {
   listing_url: string;
   asking_price: string;
   acreage: string;
+  zoning: string;
+  utilities: string;
+  road_frontage: string;
   target_resale_price: string;
   exit_strategy: string;
   target_buyer_type: string;
@@ -61,6 +66,9 @@ const EMPTY_FORM: IntakeForm = {
   listing_url: "",
   asking_price: "",
   acreage: "",
+  zoning: "",
+  utilities: "",
+  road_frontage: "",
   target_resale_price: "",
   exit_strategy: "Build new construction and sell; wholesale or assignment as backup if build risk does not clear",
   target_buyer_type: "Retail new-build buyer / builder investor backup",
@@ -114,6 +122,149 @@ function stringFromNumber(value: number | null | undefined): string {
   return typeof value === "number" && Number.isFinite(value) ? String(value) : "";
 }
 
+type ListingHints = ReturnType<typeof listingTextHints>;
+type ListingFact = { label: string; value: string };
+type ListingCardRow = Record<string, string>;
+
+function listingDetails(hints: ListingHints): Record<string, string | number | null | undefined> {
+  return (hints.listingDetails || {}) as Record<string, string | number | null | undefined>;
+}
+
+function detailText(details: Record<string, string | number | null | undefined>, key: string): string {
+  const value = details[key];
+  if (value === null || value === undefined) return "";
+  const text = String(value).trim();
+  if (!text || ["--", "-", "n/a", "na", "not available", "none"].includes(text.toLowerCase())) return "";
+  return text;
+}
+
+function fullListingAddress(hints: ListingHints): string {
+  const cityStateZip = [hints.city, [hints.state, hints.zip].filter(Boolean).join(" ")].filter(Boolean).join(", ");
+  return [hints.propertyAddress, cityStateZip].filter(Boolean).join(", ");
+}
+
+function utilitySummary(hints: ListingHints): string {
+  const direct = hints.utilities?.trim();
+  const parts = [
+    direct || "",
+    hints.water ? `Water: ${hints.water}` : "",
+    hints.sewer ? `Sewer: ${hints.sewer}` : "",
+  ].filter(Boolean);
+  return Array.from(new Set(parts)).join("; ");
+}
+
+function parseListingRows(value: unknown): ListingCardRow[] {
+  if (typeof value !== "string" || !value.trim()) return [];
+  try {
+    const parsed = JSON.parse(value);
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter((row): row is Record<string, unknown> => !!row && typeof row === "object" && !Array.isArray(row))
+      .map(row => Object.fromEntries(
+        Object.entries(row).map(([key, rowValue]) => [key, String(rowValue ?? "").trim()]),
+      ));
+  } catch {
+    return [];
+  }
+}
+
+function summarizeListingRows(label: string, value: unknown, limit = 5): string {
+  const rows = parseListingRows(value).slice(0, limit);
+  if (!rows.length) return "";
+  const summaries = rows.map(row =>
+    [row.price, row.summary, row.status, row.address].filter(Boolean).join(" "),
+  ).filter(Boolean);
+  return summaries.length ? `${label}: ${summaries.join(" | ")}` : "";
+}
+
+function listingCompEvidence(hints: ListingHints): string {
+  const details = listingDetails(hints);
+  const evidenceLines = [
+    summarizeListingRows("Nearby homes shown in the listing paste", details["Nearby Homes"]),
+    summarizeListingRows("Similar land/listing results shown in the paste", details["Similar Homes"]),
+    summarizeListingRows("Land search results shown in the paste", details["Search Result Listings"]),
+    summarizeListingRows("Other homes surfaced in the paste", details["Homes For You"], 4),
+  ].filter(Boolean);
+  if (!evidenceLines.length) return "";
+  return [
+    "Listing paste evidence only. Verify 3-5 sold new-build comps in MLS/FMLS/GAMLS before making a buy recommendation.",
+    ...evidenceLines,
+  ].join("\n");
+}
+
+function listingIntakeNotes(hints: ListingHints): string {
+  const details = listingDetails(hints);
+  return mergeText(
+    listingSummaryNotes(hints),
+    hints.zoning ? `Zoning: ${hints.zoning}` : "",
+    hints.assessedValue ? `Tax assessed value: ${formatMoney(hints.assessedValue)}` : "",
+    hints.propertyTax ? `Annual tax amount: ${formatMoney(hints.propertyTax)}` : "",
+    detailText(details, "MLS Number") ? `MLS number: ${detailText(details, "MLS Number")}` : "",
+    detailText(details, "Also Listed On") ? `Also listed on: ${detailText(details, "Also Listed On")}` : "",
+    detailText(details, "Road Surface Type") ? `Road surface type: ${detailText(details, "Road Surface Type")}` : "",
+    detailText(details, "Electric Utility On Property") ? `Electric utility on property: ${detailText(details, "Electric Utility On Property")}` : "",
+    detailText(details, "Flood Zone") ? `Flood zone: ${detailText(details, "Flood Zone")}` : "",
+    detailText(details, "Schools") ? `Schools captured from paste: ${detailText(details, "Schools").slice(0, 500)}` : "",
+    detailText(details, "Price History") ? "Price history captured from listing paste." : "",
+    detailText(details, "Public Tax History") ? "Public tax history captured from listing paste." : "",
+  );
+}
+
+function listingFactHighlights(hints: ListingHints): ListingFact[] {
+  const details = listingDetails(hints);
+  const facts: ListingFact[] = [
+    { label: "Address", value: fullListingAddress(hints) },
+    { label: "Parcel", value: hints.parcelId || "" },
+    { label: "Asking", value: hints.askingPrice ? formatMoney(hints.askingPrice) : "" },
+    { label: "Acreage", value: hints.acreage ? formatAcreage(hints.acreage) : "" },
+    { label: "Type", value: hints.landUse || hints.dealPropertyType || "" },
+    { label: "Zoning", value: hints.zoning || "" },
+    { label: "Utilities", value: utilitySummary(hints) },
+    { label: "MLS", value: detailText(details, "MLS Number") || hints.sourceMls || "" },
+    { label: "DOM", value: detailText(details, "Days On Zillow") ? `${detailText(details, "Days On Zillow")} days` : "" },
+  ];
+  return facts.filter(fact => fact.value.trim());
+}
+
+function hasUsefulListingHints(hints: ListingHints): boolean {
+  return Boolean(
+    hints.propertyAddress ||
+    hints.parcelId ||
+    hints.askingPrice ||
+    hints.acreage ||
+    hints.zoning ||
+    hints.utilities ||
+    listingCompEvidence(hints),
+  );
+}
+
+function applyListingHintsToForm(prev: IntakeForm, query: string, hints: ListingHints): { next: IntakeForm; parsed: boolean } {
+  const next: IntakeForm = { ...prev, query };
+  let parsed = false;
+  const setIfBlank = (field: "address" | "parcel_id" | "asking_price" | "acreage" | "zoning" | "utilities" | "road_frontage" | "buyer_demand_evidence" | "notes", value: string | null | undefined) => {
+    const clean = value?.trim();
+    if (!clean || next[field].trim()) return;
+    next[field] = clean;
+    parsed = true;
+  };
+
+  if (hints.dealPropertyType && (!next.property_type || next.property_type === EMPTY_FORM.property_type) && next.property_type !== hints.dealPropertyType) {
+    next.property_type = hints.dealPropertyType;
+    parsed = true;
+  }
+
+  setIfBlank("address", fullListingAddress(hints));
+  setIfBlank("parcel_id", hints.parcelId);
+  setIfBlank("asking_price", stringFromNumber(hints.askingPrice));
+  setIfBlank("acreage", stringFromNumber(hints.acreage));
+  setIfBlank("zoning", hints.zoning);
+  setIfBlank("utilities", utilitySummary(hints));
+  setIfBlank("buyer_demand_evidence", listingCompEvidence(hints));
+  setIfBlank("notes", listingIntakeNotes(hints));
+
+  return { next, parsed };
+}
+
 function matchFromLead(lead: ImportedLandLead): DealIntakeMatch {
   return {
     id: lead.id,
@@ -159,6 +310,9 @@ function formFromLead(lead: ImportedLandLead): IntakeForm {
     listing_url: lead.property_url || lead.parcel_link || lead.google_map_url || "",
     asking_price: stringFromNumber(draft.asking_price ?? lead.asking_price),
     acreage: stringFromNumber(draft.acreage ?? lead.acreage),
+    zoning: String(draft.zoning || lead.zoning || ""),
+    utilities: String(draft.utilities || ""),
+    road_frontage: String(draft.road_frontage || ""),
     target_resale_price: stringFromNumber(draft.target_resale_price ?? draft.arv),
     exit_strategy: draft.exit_strategy || EMPTY_FORM.exit_strategy,
     target_buyer_type: draft.target_buyer_type || EMPTY_FORM.target_buyer_type,
@@ -184,6 +338,8 @@ export default function AnalyzeDealPage() {
   const [createdDeal, setCreatedDeal] = useState<Deal | null>(null);
   const [requestedLeadId, setRequestedLeadId] = useState<string | null>(null);
   const [prefilledLeadId, setPrefilledLeadId] = useState<string | null>(null);
+  const parsedListingHints = useMemo(() => listingTextHints(form.query), [form.query]);
+  const parsedListingFacts = useMemo(() => listingFactHighlights(parsedListingHints), [parsedListingHints]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -235,6 +391,19 @@ export default function AnalyzeDealPage() {
     setMessage("");
   }, []);
 
+  const handleQueryChange = useCallback((value: string) => {
+    const hints = listingTextHints(value);
+    const shouldApplyListingHints = value.trim().length > 120 && hasUsefulListingHints(hints);
+    setForm(prev => shouldApplyListingHints ? applyListingHintsToForm(prev, value, hints).next : { ...prev, query: value });
+    setMatches([]);
+    setSelectedMatch(null);
+    setMatchError("");
+    setAnalysis(null);
+    setAiError("");
+    setCreatedDeal(null);
+    setMessage(shouldApplyListingHints ? "Parsed listing text into the intake. Review the fields, then run internal matching or AI analysis." : "");
+  }, []);
+
   const intakeInput = useMemo<DealIntakeInput>(() => ({
     query: form.query,
     property_type: form.property_type,
@@ -245,6 +414,9 @@ export default function AnalyzeDealPage() {
     listing_url: form.listing_url,
     asking_price: moneyToNumber(form.asking_price),
     acreage: moneyToNumber(form.acreage),
+    zoning: form.zoning,
+    utilities: form.utilities,
+    road_frontage: form.road_frontage,
     target_resale_price: moneyToNumber(form.target_resale_price),
     exit_strategy: form.exit_strategy,
     target_buyer_type: form.target_buyer_type,
@@ -502,11 +674,28 @@ export default function AnalyzeDealPage() {
             <span style={label}>Paste property notes, address, APN, or listing text</span>
             <textarea
               value={form.query}
-              onChange={event => updateField("query", event.target.value)}
+              onChange={event => handleQueryChange(event.target.value)}
               style={{ ...textarea, minHeight: 96 }}
               placeholder="Paste whatever the member has: address, APN, seller text, Zillow/LandWatch notes, or property record details."
             />
           </label>
+
+          {parsedListingFacts.length > 0 && (
+            <div style={parsedListingBox}>
+              <div style={parsedListingHeader}>
+                <strong>Parsed from listing paste</strong>
+                <span>{parsedListingFacts.length} facts</span>
+              </div>
+              <div style={parsedListingGrid}>
+                {parsedListingFacts.map(fact => (
+                  <div key={fact.label} style={parsedListingFact}>
+                    <span>{fact.label}</span>
+                    <strong style={parsedListingFactValue}>{fact.value}</strong>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           <div style={twoCol}>
             <label style={field}>
@@ -563,6 +752,21 @@ export default function AnalyzeDealPage() {
             <label style={field}>
               <span style={label}>Target resale / ARV</span>
               <input value={form.target_resale_price} onChange={event => updateField("target_resale_price", event.target.value)} style={input} placeholder="$" inputMode="decimal" />
+            </label>
+          </div>
+
+          <div style={threeCol}>
+            <label style={field}>
+              <span style={label}>Zoning</span>
+              <input value={form.zoning} onChange={event => updateField("zoning", event.target.value)} style={input} placeholder="Res, R-1, etc." />
+            </label>
+            <label style={field}>
+              <span style={label}>Utilities</span>
+              <input value={form.utilities} onChange={event => updateField("utilities", event.target.value)} style={input} placeholder="Water, sewer, power, gas" />
+            </label>
+            <label style={field}>
+              <span style={label}>Road frontage/access</span>
+              <input value={form.road_frontage} onChange={event => updateField("road_frontage", event.target.value)} style={input} placeholder="Frontage/access notes" />
             </label>
           </div>
 
@@ -879,6 +1083,48 @@ const textarea: CSSProperties = {
   minHeight: 78,
   resize: "vertical",
   lineHeight: 1.45,
+};
+
+const parsedListingBox: CSSProperties = {
+  border: "1px solid rgba(49,107,76,0.18)",
+  borderRadius: 8,
+  background: "rgba(49,107,76,0.07)",
+  padding: 10,
+  display: "grid",
+  gap: 9,
+};
+
+const parsedListingHeader: CSSProperties = {
+  display: "flex",
+  justifyContent: "space-between",
+  gap: 10,
+  color: "var(--obsidian)",
+  fontSize: 12,
+};
+
+const parsedListingGrid: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 130px), 1fr))",
+  gap: 8,
+};
+
+const parsedListingFact: CSSProperties = {
+  display: "grid",
+  gap: 2,
+  minWidth: 0,
+  color: "var(--muted)",
+  fontSize: 10,
+  textTransform: "uppercase",
+  letterSpacing: "0.06em",
+};
+
+const parsedListingFactValue: CSSProperties = {
+  color: "var(--obsidian)",
+  fontSize: 12,
+  fontWeight: 800,
+  textTransform: "none",
+  letterSpacing: 0,
+  overflowWrap: "anywhere",
 };
 
 const actionRow: CSSProperties = {

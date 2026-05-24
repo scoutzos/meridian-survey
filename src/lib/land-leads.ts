@@ -1390,7 +1390,7 @@ function normalizeListingDate(value: string | null | undefined): string | null {
   return Number.isNaN(parsed.getTime()) ? value : parsed.toISOString().slice(0, 10);
 }
 
-function listingSummaryNotes(hints: ListingUrlHints): string | null {
+export function listingSummaryNotes(hints: ListingUrlHints): string | null {
   const details = hints.listingDetails || {};
   const lines = [
     hints.listingStatus ? `Listing status: ${hints.listingStatus}` : "",
@@ -1768,6 +1768,16 @@ export function listingTextHints(listingText: string): ListingUrlHints {
     if (index < 0) return null;
     return clean(mainLines.slice(index + 1, index + 4).find(line => line !== ":"));
   };
+  const moneyAfterStandaloneLabel = (pattern: RegExp): string | null => {
+    const index = mainLines.findIndex(line => pattern.test(line));
+    if (index < 0) return null;
+    for (const line of mainLines.slice(index + 1, index + 8)) {
+      if (/^(Estimated sales range|Rent Zestimate®?|Price history|Public tax history|Monthly payment)$/i.test(line)) return null;
+      const money = moneyText(line);
+      if (money && !/\/mo\b/i.test(line)) return money;
+    }
+    return null;
+  };
 
   const priceLineIndex = mainLines.findIndex(line => /^\$\s?[\d,]+(?:\.\d+)?\s?[kKmM]?$/i.test(line) && !line.includes("--"));
   const priceLine = priceLineIndex >= 0
@@ -1790,7 +1800,13 @@ export function listingTextHints(listingText: string): ListingUrlHints {
   const listingDateMatch = mainText.match(/Date on market:\s*(\d{1,2}\/\d{1,2}\/\d{2,4})/i);
   const assessedValueMatch = mainText.match(/Tax assessed value:\s*(\$\s?[\d,]+(?:\.\d+)?\s?[kKmM]?)/i);
   const propertyTaxMatch = mainText.match(/Annual tax amount:\s*(\$\s?[\d,]+(?:\.\d+)?\s?[kKmM]?)/i);
-  const marketValueMatch = mainText.match(/(?:Estimated market value|Zestimate®?)\s*(\$\s?[\d,]+(?:\.\d+)?\s?[kKmM]?)/i);
+  const inlineMarketValue = mainLines
+    .filter(line => !/^Rent Zestimate®?/i.test(line))
+    .map(line => line.match(/^(?:Estimated market value|Zestimate®?)\s*(\$\s?[\d,]+(?:\.\d+)?\s?[kKmM]?)(?!\/mo)/i)?.[1] || null)
+    .find(Boolean) || null;
+  const marketValueText = moneyAfterStandaloneLabel(/^Estimated market value$/i)
+    || moneyAfterStandaloneLabel(/^Zestimate®?$/i)
+    || inlineMarketValue;
   const standaloneCountyLine = lines.find(line => /^[A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+)*\s+County$/i.test(line) && !/^Georgia/i.test(line));
   const embeddedGeorgiaCounty = allText.match(/Georgia([A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+)*)\s+County\b/);
   const genericCounty = allText.match(/\b([A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+)*)\s+County\b/);
@@ -2024,7 +2040,7 @@ export function listingTextHints(listingText: string): ListingUrlHints {
     parcelId: parcelMatch?.[1] || null,
     acreage: acresFromSplitLines || (acresMatch?.[1] ? Number(acresMatch[1]) : null),
     askingPrice: priceLine ? parseListingMoneyValue(priceLine) : null,
-    marketValue: marketValueMatch?.[1] ? parseListingMoneyValue(marketValueMatch[1]) : null,
+    marketValue: marketValueText ? parseListingMoneyValue(marketValueText) : null,
     assessedValue: assessedValueMatch?.[1] ? parseListingMoneyValue(assessedValueMatch[1]) : null,
     propertyTax: propertyTaxMatch?.[1] ? parseListingMoneyValue(propertyTaxMatch[1]) : null,
     zoning: extractLineValue("Zoning"),

@@ -39,6 +39,9 @@ export interface DealIntakeInput {
   listing_url?: string | null;
   asking_price?: number | null;
   acreage?: number | null;
+  zoning?: string | null;
+  utilities?: string | null;
+  road_frontage?: string | null;
   target_resale_price?: number | null;
   exit_strategy?: string | null;
   target_buyer_type?: string | null;
@@ -291,12 +294,18 @@ export function buildDealDraftFromIntake(input: DealIntakeInput, match?: DealInt
   const address = input.address?.trim() || match?.address || "";
   const parcel = input.parcel_id?.trim() || match?.parcel_id || "";
   const askingPrice = input.asking_price ?? match?.asking_price ?? null;
-  const targetResale = input.target_resale_price ?? match?.market_value ?? null;
+  const targetResale = input.target_resale_price ?? (propertyType === "land" ? null : match?.market_value ?? null);
   const acreage = input.acreage ?? match?.acreage ?? null;
+  const zoning = input.zoning?.trim() || match?.zoning || null;
+  const utilities = input.utilities?.trim() || null;
+  const roadFrontage = input.road_frontage?.trim() || null;
   const sourceLines = [
     match ? `Matched ${match.source_label}: ${match.label}` : "",
     match?.reasons.length ? `Match reasons: ${match.reasons.join(", ")}` : "",
     input.listing_url ? `Listing/source link: ${input.listing_url}` : "",
+    zoning ? `Zoning: ${zoning}` : "",
+    utilities ? `Utilities: ${utilities}` : "",
+    roadFrontage ? `Road frontage/access: ${roadFrontage}` : "",
     input.notes?.trim() || "",
   ].filter(Boolean);
 
@@ -315,9 +324,9 @@ export function buildDealDraftFromIntake(input: DealIntakeInput, match?: DealInt
     arv: targetResale,
     target_resale_price: targetResale,
     acreage,
-    zoning: match?.zoning || null,
-    road_frontage: null,
-    utilities: null,
+    zoning,
+    road_frontage: roadFrontage,
+    utilities,
     notes: sourceLines.join("\n"),
     links: [input.listing_url?.trim(), match?.href].filter((value): value is string => !!value),
     lead_temperature: "warm",
@@ -335,7 +344,7 @@ export function buildDealDraftFromIntake(input: DealIntakeInput, match?: DealInt
       target_resale_price: targetResale,
       arv: targetResale,
       acreage,
-      zoning: match?.zoning || null,
+      zoning,
     }) : null,
   };
 }
