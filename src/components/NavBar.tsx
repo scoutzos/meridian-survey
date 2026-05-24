@@ -173,6 +173,7 @@ export default function NavBar() {
   const memberLinks = [
     { href: "/dashboard",  label: "Home" },
     { href: "/analyze",    label: "Analyze" },
+    { href: "/properties", label: "Properties" },
     { href: "/actions",    label: "Tasks" },
     { href: "/deals",      label: "Deal Reviews" },
     { href: "/crm",        label: "CRM" },
