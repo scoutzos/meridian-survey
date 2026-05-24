@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import {
   fetchImportedLandLeads,
   importedLeadDealPropertyType,
+  listingUrlHints,
   type ImportedLandLead,
 } from "@/lib/land-leads";
 import { getCurrentMeridianUser } from "@/lib/identity";
@@ -43,15 +44,57 @@ function dateText(value: string | null | undefined): string {
 }
 
 function propertyTitle(lead: ImportedLandLead): string {
-  return lead.property_address || lead.parcel_id || lead.owner_name || "Property record";
+  return displayAddressParts(lead).address || lead.property_address || lead.parcel_id || lead.owner_name || "Property record";
 }
 
 function propertySubtitle(lead: ImportedLandLead): string {
+  const display = displayAddressParts(lead);
   return [
-    [lead.city, lead.state].filter(Boolean).join(", "),
-    lead.zip,
+    [display.city || lead.city, display.state || lead.state].filter(Boolean).join(", "),
+    display.zip || lead.zip,
     lead.county,
   ].filter(Boolean).join(" · ") || "Location pending";
+}
+
+function normalizeKey(value: string | null | undefined): string {
+  return (value || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+}
+
+function displayAddressParts(lead: ImportedLandLead): { address: string | null; city: string | null; state: string | null; zip: string | null; conflict: boolean } {
+  const urlHints = listingUrlHints(lead.property_url || lead.parcel_link || "");
+  const urlAddress = [urlHints.propertyAddress, urlHints.city, urlHints.state, urlHints.zip].filter(Boolean).join(" ");
+  const savedAddress = [lead.property_address, lead.city, lead.state, lead.zip].filter(Boolean).join(" ");
+  const urlNumber = normalizeKey(urlAddress).match(/\b\d{1,6}\b/)?.[0] || null;
+  const savedNumber = normalizeKey(savedAddress).match(/\b\d{1,6}\b/)?.[0] || null;
+  const conflict = Boolean(urlHints.propertyAddress && savedAddress && urlNumber && savedNumber && urlNumber !== savedNumber);
+  return {
+    address: conflict ? urlHints.propertyAddress || null : null,
+    city: conflict ? urlHints.city || null : null,
+    state: conflict ? urlHints.state || null : null,
+    zip: conflict ? urlHints.zip || null : null,
+    conflict,
+  };
+}
+
+function recordKey(lead: ImportedLandLead): string {
+  const url = normalizeKey(lead.property_url || lead.parcel_link);
+  if (url) return `url:${url}`;
+  const parcel = normalizeKey(lead.parcel_id);
+  if (parcel) return `parcel:${parcel}`;
+  const display = displayAddressParts(lead);
+  return `address:${normalizeKey([display.address || lead.property_address, display.city || lead.city, display.state || lead.state, display.zip || lead.zip].filter(Boolean).join(" ")) || lead.id}`;
+}
+
+function uniqueRecords(records: ImportedLandLead[]): ImportedLandLead[] {
+  const seen = new Set<string>();
+  return records
+    .sort((a, b) => sortValue(b).localeCompare(sortValue(a)))
+    .filter(lead => {
+      const key = recordKey(lead);
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
 }
 
 function filterMatches(lead: ImportedLandLead, filter: PropertyFilter): boolean {
@@ -64,7 +107,12 @@ function filterMatches(lead: ImportedLandLead, filter: PropertyFilter): boolean 
 function searchMatches(lead: ImportedLandLead, search: string): boolean {
   const query = search.trim().toLowerCase();
   if (!query) return true;
+  const display = displayAddressParts(lead);
   return [
+    display.address,
+    display.city,
+    display.state,
+    display.zip,
     lead.property_address,
     lead.parcel_id,
     lead.owner_name,
@@ -121,19 +169,22 @@ export default function PropertiesPage() {
     return () => { cancelled = true; };
   }, [user]);
 
-  const rows = useMemo(() => records
+  const uniqueRows = useMemo(() => uniqueRecords(records), [records]);
+
+  const rows = useMemo(() => uniqueRows
     .filter(lead => filterMatches(lead, filter))
     .filter(lead => searchMatches(lead, search))
     .sort((a, b) => sortValue(b).localeCompare(sortValue(a))),
-    [filter, records, search],
+    [filter, search, uniqueRows],
   );
 
   const stats = useMemo(() => ({
-    total: records.length,
-    land: records.filter(row => importedLeadDealPropertyType(row) === "land").length,
-    linked: records.filter(row => Boolean(row.deal_id)).length,
-    newest: records[0]?.created_at || null,
-  }), [records]);
+    total: uniqueRows.length,
+    hiddenDuplicates: Math.max(0, records.length - uniqueRows.length),
+    land: uniqueRows.filter(row => importedLeadDealPropertyType(row) === "land").length,
+    linked: uniqueRows.filter(row => Boolean(row.deal_id)).length,
+    newest: uniqueRows[0]?.created_at || null,
+  }), [records.length, uniqueRows]);
 
   if (!user) return null;
 
@@ -156,6 +207,7 @@ export default function PropertiesPage() {
       <section style={statsGrid}>
         <Metric label="Visible records" value={String(rows.length)} />
         <Metric label="Total saved" value={String(stats.total)} />
+        <Metric label="Duplicates hidden" value={String(stats.hiddenDuplicates)} />
         <Metric label="Land records" value={String(stats.land)} />
         <Metric label="Deal linked" value={String(stats.linked)} />
         <Metric label="Newest added" value={dateText(stats.newest)} />
@@ -191,16 +243,19 @@ export default function PropertiesPage() {
             <tbody>
               {rows.map(lead => {
                 const type = importedLeadDealPropertyType(lead);
+                const display = displayAddressParts(lead);
+                const detailsConflict = display.conflict;
                 return (
                   <tr key={lead.id} style={tr}>
                     <td style={td}>
                       <strong style={rowTitle}>{propertyTitle(lead)}</strong>
                       <span style={rowMeta}>{propertySubtitle(lead)}</span>
                       <span style={rowMeta}>{lead.parcel_id || "APN pending"}</span>
+                      {detailsConflict && <span style={warnText}>Source URL address did not match saved listing-card details.</span>}
                     </td>
                     <td style={td}><span style={pill}>{type}</span></td>
-                    <td style={td}>{money(lead.asking_price ?? lead.market_value ?? lead.assessed_value)}</td>
-                    <td style={td}>{numberText(lead.acreage, " ac")}</td>
+                    <td style={td}>{detailsConflict ? "-" : money(lead.asking_price ?? lead.market_value ?? lead.assessed_value)}</td>
+                    <td style={td}>{detailsConflict ? "-" : numberText(lead.acreage, " ac")}</td>
                     <td style={td}>
                       <span>{lead.owner_name || "Owner pending"}</span>
                       <span style={rowMeta}>{lead.phone || lead.phone_2 || lead.email || "Contact pending"}</span>
@@ -417,6 +472,15 @@ const rowMeta: CSSProperties = {
   fontSize: 11,
   lineHeight: 1.4,
   marginTop: 2,
+};
+
+const warnText: CSSProperties = {
+  display: "block",
+  color: "#8d3f31",
+  fontSize: 11,
+  fontWeight: 700,
+  lineHeight: 1.35,
+  marginTop: 4,
 };
 
 const rowActions: CSSProperties = {

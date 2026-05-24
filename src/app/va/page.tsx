@@ -47,6 +47,7 @@ import {
   importedLeadContactIdentityKey,
   leadToDealDraft,
   listingTextHints,
+  listingUrlHints,
   previewLandLeadsCsv,
   runAutomatedLandResearch,
   updateImportedLandLeadStatus,
@@ -2616,12 +2617,12 @@ export default function VaPage() {
     setLinkIntakeDraft(prev => ({
       ...prev,
       listingText,
-      propertyAddress: fillDraftString(prev.propertyAddress, parsed.propertyAddress),
+      propertyAddress: fillDraftString(prev.propertyAddress, listingUrlHints(prev.sourceUrl).propertyAddress || parsed.propertyAddress),
       parcelId: fillDraftString(prev.parcelId, parsed.parcelId),
       county: fillDraftString(prev.county, parsed.county),
-      city: fillDraftString(prev.city, parsed.city),
-      state: fillDraftString(prev.state, parsed.state),
-      zip: fillDraftString(prev.zip, parsed.zip),
+      city: fillDraftString(prev.city, listingUrlHints(prev.sourceUrl).city || parsed.city),
+      state: fillDraftString(prev.state, listingUrlHints(prev.sourceUrl).state || parsed.state),
+      zip: fillDraftString(prev.zip, listingUrlHints(prev.sourceUrl).zip || parsed.zip),
       askingPrice: fillDraftNumber(prev.askingPrice, parsed.askingPrice),
       acreage: fillDraftNumber(prev.acreage, parsed.acreage),
       marketValue: fillDraftNumber(prev.marketValue, parsed.marketValue),
@@ -4435,10 +4436,15 @@ export default function VaPage() {
                     value={linkIntakeDraft.sourceUrl}
                     onChange={e => {
                       const sourceUrl = e.target.value;
+                      const parsedUrl = listingUrlHints(sourceUrl);
                       setLinkIntakeDraft(prev => ({
                         ...prev,
                         sourceUrl,
                         sourceSystem: prev.sourceSystem === "Manual Link" || !prev.sourceSystem ? inferLandLeadSourceFromUrl(sourceUrl) : prev.sourceSystem,
+                        propertyAddress: fillDraftString(prev.propertyAddress, parsedUrl.propertyAddress),
+                        city: fillDraftString(prev.city, parsedUrl.city),
+                        state: fillDraftString(prev.state, parsedUrl.state),
+                        zip: fillDraftString(prev.zip, parsedUrl.zip),
                       }));
                     }}
                     placeholder="Paste Zillow, Land.com, Realtor, county GIS, map, or listing URL"

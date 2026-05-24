@@ -1450,6 +1450,28 @@ export function listingUrlHints(sourceUrl: string): ListingUrlHints {
   }
 }
 
+function listingAddressParts(hints: ListingUrlHints): string {
+  return [hints.propertyAddress, hints.city, hints.state, hints.zip].filter(Boolean).join(" ");
+}
+
+function firstStreetNumber(value: string): string | null {
+  return value.match(/\b\d{1,6}\b/)?.[0] || null;
+}
+
+function listingAddressesCompatible(a: string, b: string): boolean {
+  const left = normalizeText(a);
+  const right = normalizeText(b);
+  if (!left || !right) return true;
+  if (left === right || left.includes(right) || right.includes(left)) return true;
+  const leftNumber = firstStreetNumber(left);
+  const rightNumber = firstStreetNumber(right);
+  if (leftNumber && rightNumber && leftNumber !== rightNumber) return false;
+  const leftZip = left.match(/\b\d{5}\b/)?.[0] || null;
+  const rightZip = right.match(/\b\d{5}\b/)?.[0] || null;
+  if (leftNumber && rightNumber && leftNumber === rightNumber && leftZip && rightZip && leftZip === rightZip) return true;
+  return false;
+}
+
 function moneyText(value: string | null | undefined): string | null {
   const text = clean(value);
   return text && /^\$/.test(text) && !text.includes("--") ? text : null;
@@ -2068,33 +2090,53 @@ export async function createSingleLinkLandLead(input: SingleLinkLandLeadInput): 
   const campaignSource = input.campaignSource?.trim() || "Single Link Intake";
   const urlHints = listingUrlHints(url);
   const textHints = listingTextHints(input.listingText || "");
-  const parsedNotes = listingSummaryNotes(textHints);
-  const notes = [input.notes?.trim(), parsedNotes].filter(Boolean).join("\n") || null;
+  const urlAddress = listingAddressParts(urlHints);
+  const textAddress = listingAddressParts(textHints);
+  const inputAddress = [input.propertyAddress, input.city, input.state, input.zip].filter(Boolean).join(" ");
+  const sourceUrlIdentityMismatch = Boolean(urlAddress && (
+    (textAddress && firstStreetNumber(textAddress) && !listingAddressesCompatible(urlAddress, textAddress))
+    || (inputAddress && firstStreetNumber(inputAddress) && !listingAddressesCompatible(urlAddress, inputAddress))
+  ));
+  const safeTextHints = sourceUrlIdentityMismatch ? {} as ListingUrlHints : textHints;
+  const useSupplementalFacts = !sourceUrlIdentityMismatch;
+  const parsedNotes = listingSummaryNotes(safeTextHints);
+  const mismatchNote = sourceUrlIdentityMismatch
+    ? "Source URL address did not match the pasted listing/search text. Meridian used the address from the source URL and ignored mismatched listing-card facts."
+    : "";
+  const notes = [input.notes?.trim(), mismatchNote, parsedNotes].filter(Boolean).join("\n") || null;
   const enrichedInput: SingleLinkLandLeadInput = {
     ...input,
-    propertyAddress: input.propertyAddress?.trim() || textHints.propertyAddress || urlHints.propertyAddress || null,
-    parcelId: input.parcelId?.trim() || textHints.parcelId || null,
-    county: input.county?.trim() || textHints.county || null,
-    city: input.city?.trim() || textHints.city || urlHints.city || null,
-    state: input.state?.trim() || textHints.state || urlHints.state || null,
-    zip: input.zip?.trim() || textHints.zip || urlHints.zip || null,
-    acreage: input.acreage ?? textHints.acreage ?? null,
-    askingPrice: input.askingPrice ?? textHints.askingPrice ?? null,
-    marketValue: input.marketValue ?? textHints.marketValue ?? null,
-    assessedValue: input.assessedValue ?? textHints.assessedValue ?? null,
-    propertyTax: input.propertyTax ?? textHints.propertyTax ?? null,
-    zoning: input.zoning?.trim() || textHints.zoning || null,
-    landUse: input.landUse?.trim() || textHints.landUse || null,
-    subdivision: input.subdivision?.trim() || textHints.subdivision || null,
-    hoaStatus: input.hoaStatus?.trim() || textHints.hoaStatus || null,
-    listingStatus: input.listingStatus?.trim() || textHints.listingStatus || null,
-    listingDate: input.listingDate?.trim() || textHints.listingDate || null,
-    water: input.water?.trim() || textHints.water || null,
-    sewer: input.sewer?.trim() || textHints.sewer || null,
-    utilities: input.utilities?.trim() || textHints.utilities || null,
-    sourceMls: input.sourceMls?.trim() || textHints.sourceMls || null,
-    listingDescription: input.listingDescription?.trim() || textHints.listingDescription || null,
-    listingDetails: { ...(textHints.listingDetails || {}), ...(input.listingDetails || {}) },
+    propertyAddress: sourceUrlIdentityMismatch
+      ? urlHints.propertyAddress || input.propertyAddress?.trim() || null
+      : input.propertyAddress?.trim() || textHints.propertyAddress || urlHints.propertyAddress || null,
+    parcelId: useSupplementalFacts ? input.parcelId?.trim() || textHints.parcelId || null : null,
+    county: useSupplementalFacts ? input.county?.trim() || textHints.county || null : null,
+    city: sourceUrlIdentityMismatch
+      ? urlHints.city || null
+      : input.city?.trim() || textHints.city || urlHints.city || null,
+    state: sourceUrlIdentityMismatch
+      ? urlHints.state || null
+      : input.state?.trim() || textHints.state || urlHints.state || null,
+    zip: sourceUrlIdentityMismatch
+      ? urlHints.zip || null
+      : input.zip?.trim() || textHints.zip || urlHints.zip || null,
+    acreage: useSupplementalFacts ? input.acreage ?? textHints.acreage ?? null : null,
+    askingPrice: useSupplementalFacts ? input.askingPrice ?? textHints.askingPrice ?? null : null,
+    marketValue: useSupplementalFacts ? input.marketValue ?? textHints.marketValue ?? null : null,
+    assessedValue: useSupplementalFacts ? input.assessedValue ?? textHints.assessedValue ?? null : null,
+    propertyTax: useSupplementalFacts ? input.propertyTax ?? textHints.propertyTax ?? null : null,
+    zoning: useSupplementalFacts ? input.zoning?.trim() || textHints.zoning || null : null,
+    landUse: useSupplementalFacts ? input.landUse?.trim() || textHints.landUse || null : null,
+    subdivision: useSupplementalFacts ? input.subdivision?.trim() || textHints.subdivision || null : null,
+    hoaStatus: useSupplementalFacts ? input.hoaStatus?.trim() || textHints.hoaStatus || null : null,
+    listingStatus: useSupplementalFacts ? input.listingStatus?.trim() || textHints.listingStatus || null : null,
+    listingDate: useSupplementalFacts ? input.listingDate?.trim() || textHints.listingDate || null : null,
+    water: useSupplementalFacts ? input.water?.trim() || textHints.water || null : null,
+    sewer: useSupplementalFacts ? input.sewer?.trim() || textHints.sewer || null : null,
+    utilities: useSupplementalFacts ? input.utilities?.trim() || textHints.utilities || null : null,
+    sourceMls: useSupplementalFacts ? input.sourceMls?.trim() || textHints.sourceMls || null : null,
+    listingDescription: useSupplementalFacts ? input.listingDescription?.trim() || textHints.listingDescription || null : null,
+    listingDetails: { ...(safeTextHints.listingDetails || {}), ...(sourceUrlIdentityMismatch ? {} : input.listingDetails || {}) },
     notes,
     sourceSystem,
     campaignSource,
