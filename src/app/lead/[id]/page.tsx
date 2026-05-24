@@ -135,7 +135,13 @@ function factField(
 function parseCompListingText(text: string, sourceUrl: string) {
   const hints = listingUrlHints(sourceUrl);
   const textHints = listingTextHints(text);
-  const lines = text.split(/\n+/).map(line => line.trim()).filter(Boolean);
+  const rawLines = text.split(/\n+/).map(line => line.trim()).filter(Boolean);
+  const detailStartIndex = rawLines.findIndex((line, index) =>
+    /^Back to search$/i.test(line)
+    && rawLines.slice(index + 1, index + 90).some(row => /^\$\s?[\d,]+(?:\.\d+)?\s?[kKmM]?$/i.test(row) && !row.includes("--"))
+    && rawLines.slice(index + 1, index + 120).some(row => /^\d{1,6}\s+[^,]+,\s*[^,]+,\s*[A-Z]{2}\s+\d{5}(?:-\d{4})?$/i.test(row)),
+  );
+  const lines = detailStartIndex >= 0 ? rawLines.slice(detailStartIndex) : rawLines;
   const priceHistoryIndex = lines.findIndex(line => /^price history$/i.test(line));
   const carouselIndex = lines.findIndex(line => /^(nearby homes|similar homes|homes for you)$/i.test(line));
   const mainEnd = [priceHistoryIndex, carouselIndex].filter(index => index >= 0).sort((a, b) => a - b)[0] ?? lines.length;

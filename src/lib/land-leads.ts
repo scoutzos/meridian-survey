@@ -1771,7 +1771,13 @@ function classifyListingDealPropertyType(args: {
 }
 
 export function listingTextHints(listingText: string): ListingUrlHints {
-  const lines = listingText.split(/\n+/).map(line => line.trim()).filter(Boolean);
+  const rawLines = listingText.split(/\n+/).map(line => line.trim()).filter(Boolean);
+  const detailStartIndex = rawLines.findIndex((line, index) =>
+    /^Back to search$/i.test(line)
+    && rawLines.slice(index + 1, index + 90).some(row => /^\$\s?[\d,]+(?:\.\d+)?\s?[kKmM]?$/i.test(row) && !row.includes("--"))
+    && rawLines.slice(index + 1, index + 120).some(row => /^\d{1,6}\s+[^,]+,\s*[^,]+,\s*[A-Z]{2}\s+\d{5}(?:-\d{4})?$/i.test(row)),
+  );
+  const lines = detailStartIndex >= 0 ? rawLines.slice(detailStartIndex) : rawLines;
   if (!lines.length) return {};
 
   const priceHistoryIndex = lines.findIndex(line => /^price history$/i.test(line));
@@ -1818,6 +1824,7 @@ export function listingTextHints(listingText: string): ListingUrlHints {
   const acresFromSplitLines = splitAcreIndex > 0 ? Number(mainLines[splitAcreIndex - 1]) : null;
   const acresMatch = mainText.match(/(?:Size:\s*)?([\d.]+)\s+Acres?\b/i)
     || mainText.match(/([\d.]+)\s+acres?\s+lot/i);
+  const parcelLineValue = extractLineValue("Parcel number");
   const parcelMatch = mainText.match(/Parcel number:\s*([A-Za-z0-9-]+)/i);
   const listingDateMatch = mainText.match(/Date on market:\s*(\d{1,2}\/\d{1,2}\/\d{2,4})/i);
   const assessedValueMatch = mainText.match(/Tax assessed value:\s*(\$\s?[\d,]+(?:\.\d+)?\s?[kKmM]?)/i);
@@ -2059,7 +2066,7 @@ export function listingTextHints(listingText: string): ListingUrlHints {
     state: addressHints.state || buildablePlanMatch?.[4]?.toUpperCase() || null,
     zip: addressHints.zip || buildablePlanMatch?.[5] || null,
     county: countyName ? `${titleCaseAddressPart(countyName)} County` : null,
-    parcelId: parcelMatch?.[1] || null,
+    parcelId: parcelLineValue || parcelMatch?.[1] || null,
     acreage: acresFromSplitLines || (acresMatch?.[1] ? Number(acresMatch[1]) : null),
     askingPrice: priceLine ? parseListingMoneyValue(priceLine) : null,
     marketValue: marketValueText ? parseListingMoneyValue(marketValueText) : null,
@@ -2081,6 +2088,83 @@ export function listingTextHints(listingText: string): ListingUrlHints {
   };
 }
 
+export function repairImportedLeadFromListingText(lead: ImportedLandLead): ImportedLandLead {
+  const raw = lead.raw_data || {};
+  const listingText = rawTextValue(raw, ["Listing Text", "Original Listing Text", "Raw Listing Text", "Source Listing Text"]);
+  const textHints = listingText ? listingTextHints(listingText) : {};
+  const sourceUrl = lead.property_url || rawTextValue(raw, ["Listing URL", "Source URL"]) || lead.parcel_link || "";
+  const urlHints = listingUrlHints(sourceUrl);
+  const textAddress = listingAddressParts(textHints);
+  const urlAddress = listingAddressParts(urlHints);
+  const savedAddress = listingAddressParts({
+    propertyAddress: lead.property_address,
+    city: lead.city,
+    state: lead.state,
+    zip: lead.zip,
+  });
+  const textMatchesUrl = Boolean(textAddress && (!urlAddress || listingAddressesCompatible(urlAddress, textAddress)));
+  const candidateHints = textMatchesUrl ? textHints : urlAddress ? urlHints : {};
+  const candidateAddress = listingAddressParts(candidateHints);
+  const shouldRepair = Boolean(
+    candidateAddress
+    && savedAddress
+    && firstStreetNumber(candidateAddress)
+    && firstStreetNumber(savedAddress)
+    && !listingAddressesCompatible(candidateAddress, savedAddress),
+  );
+  if (!shouldRepair) return lead;
+
+  const nextRaw: Record<string, unknown> = { ...raw };
+  const setRawValue = (key: string, value: string | number | null | undefined) => {
+    if (value !== null && value !== undefined && String(value).trim()) nextRaw[key] = String(value);
+  };
+  Object.entries(candidateHints.listingDetails || {}).forEach(([key, value]) => setRawValue(`Listing ${key}`, value));
+  setRawValue("Property Address", candidateHints.propertyAddress);
+  setRawValue("County", candidateHints.county);
+  setRawValue("City", candidateHints.city);
+  setRawValue("State", candidateHints.state);
+  setRawValue("Zip", candidateHints.zip);
+  setRawValue("Parcel ID", candidateHints.parcelId);
+  setRawValue("Acreage", candidateHints.acreage);
+  setRawValue("Asking Price", candidateHints.askingPrice);
+  setRawValue("Market Value Estimate", candidateHints.marketValue);
+  setRawValue("Tax Assessed Value", candidateHints.assessedValue);
+  setRawValue("Property Tax", candidateHints.propertyTax);
+  setRawValue("Zoning", candidateHints.zoning);
+  setRawValue("Land Use", candidateHints.landUse);
+  setRawValue("Subdivision", candidateHints.subdivision);
+  setRawValue("HOA", candidateHints.hoaStatus);
+  setRawValue("Listing Status", candidateHints.listingStatus);
+  setRawValue("Date On Market", candidateHints.listingDate);
+  setRawValue("Water", candidateHints.water);
+  setRawValue("Sewer", candidateHints.sewer);
+  setRawValue("Utilities", candidateHints.utilities);
+  setRawValue("Source MLS", candidateHints.sourceMls);
+  setRawValue("Listing Description", candidateHints.listingDescription);
+  setRawValue("Deal Property Type", candidateHints.dealPropertyType);
+  nextRaw["Display Repair Note"] = "Loaded from the Zillow detail pane because the saved record matched a search-result card instead of the source URL.";
+
+  return {
+    ...lead,
+    property_address: candidateHints.propertyAddress || lead.property_address,
+    county: candidateHints.county || lead.county,
+    city: candidateHints.city || lead.city,
+    state: candidateHints.state || lead.state,
+    zip: candidateHints.zip || lead.zip,
+    parcel_id: candidateHints.parcelId || lead.parcel_id,
+    acreage: candidateHints.acreage ?? lead.acreage,
+    asking_price: candidateHints.askingPrice ?? lead.asking_price,
+    assessed_value: candidateHints.assessedValue ?? lead.assessed_value,
+    market_value: candidateHints.marketValue ?? lead.market_value,
+    property_tax: candidateHints.propertyTax ?? lead.property_tax,
+    zoning: candidateHints.zoning || lead.zoning,
+    land_use: candidateHints.landUse || lead.land_use,
+    subdivision: candidateHints.subdivision || lead.subdivision,
+    hoa_status: candidateHints.hoaStatus || lead.hoa_status,
+    raw_data: nextRaw,
+  };
+}
+
 export async function createSingleLinkLandLead(input: SingleLinkLandLeadInput): Promise<LeadImportResult> {
   const url = input.sourceUrl.trim();
   if (!url) return { batch: null, leads: [], error: "Paste a property or listing link first." };
@@ -2093,15 +2177,14 @@ export async function createSingleLinkLandLead(input: SingleLinkLandLeadInput): 
   const urlAddress = listingAddressParts(urlHints);
   const textAddress = listingAddressParts(textHints);
   const inputAddress = [input.propertyAddress, input.city, input.state, input.zip].filter(Boolean).join(" ");
-  const sourceUrlIdentityMismatch = Boolean(urlAddress && (
-    (textAddress && firstStreetNumber(textAddress) && !listingAddressesCompatible(urlAddress, textAddress))
-    || (inputAddress && firstStreetNumber(inputAddress) && !listingAddressesCompatible(urlAddress, inputAddress))
-  ));
-  const safeTextHints = sourceUrlIdentityMismatch ? {} as ListingUrlHints : textHints;
-  const useSupplementalFacts = !sourceUrlIdentityMismatch;
+  const textConflictsWithUrl = Boolean(urlAddress && textAddress && firstStreetNumber(textAddress) && !listingAddressesCompatible(urlAddress, textAddress));
+  const inputConflictsWithUrl = Boolean(urlAddress && inputAddress && firstStreetNumber(inputAddress) && !listingAddressesCompatible(urlAddress, inputAddress));
+  const sourceUrlIdentityMismatch = textConflictsWithUrl || inputConflictsWithUrl;
+  const safeTextHints = textConflictsWithUrl ? {} as ListingUrlHints : textHints;
+  const useSupplementalFacts = !textConflictsWithUrl;
   const parsedNotes = listingSummaryNotes(safeTextHints);
   const mismatchNote = sourceUrlIdentityMismatch
-    ? "Source URL address did not match the pasted listing/search text. Meridian used the address from the source URL and ignored mismatched listing-card facts."
+    ? "Source URL address did not match one of the pasted/input addresses. Meridian used the source URL/detail-pane identity and ignored mismatched search-card identity."
     : "";
   const notes = [input.notes?.trim(), mismatchNote, parsedNotes].filter(Boolean).join("\n") || null;
   const enrichedInput: SingleLinkLandLeadInput = {
@@ -2517,7 +2600,8 @@ export async function fetchImportedLandLeads(limit = 250): Promise<ImportedLandL
   if (!supabase) {
     return localGet<ImportedLandLead[]>(LOCAL_LEADS, [])
       .sort((a, b) => b.created_at.localeCompare(a.created_at))
-      .slice(0, limit);
+      .slice(0, limit)
+      .map(repairImportedLeadFromListingText);
   }
   const { data, error } = await supabase
     .from("meridian_imported_land_leads")
@@ -2525,7 +2609,7 @@ export async function fetchImportedLandLeads(limit = 250): Promise<ImportedLandL
     .order("created_at", { ascending: false })
     .limit(limit);
   if (error || !data) return [];
-  return data as ImportedLandLead[];
+  return (data as ImportedLandLead[]).map(repairImportedLeadFromListingText);
 }
 
 function countImportedLeadContactMetrics(rows: ImportedLandLeadMetricsRow[]): number {
@@ -2576,7 +2660,8 @@ export async function fetchRecentlyUpdatedImportedLandLeads(limit = 500): Promis
         (b.last_activity_at || b.updated_at || b.created_at)
           .localeCompare(a.last_activity_at || a.updated_at || a.created_at)
       )
-      .slice(0, limit);
+      .slice(0, limit)
+      .map(repairImportedLeadFromListingText);
   }
   const { data, error } = await supabase
     .from("meridian_imported_land_leads")
@@ -2584,7 +2669,7 @@ export async function fetchRecentlyUpdatedImportedLandLeads(limit = 500): Promis
     .order("updated_at", { ascending: false })
     .limit(limit);
   if (error || !data) return [];
-  return data as ImportedLandLead[];
+  return (data as ImportedLandLead[]).map(repairImportedLeadFromListingText);
 }
 
 export async function fetchImportedLandLeadFieldValues(leadId: string): Promise<ImportedLandLeadFieldValue[]> {
