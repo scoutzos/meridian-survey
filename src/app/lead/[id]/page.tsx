@@ -11,7 +11,7 @@ import LandUnderwritingPanel from "@/components/LandUnderwritingPanel";
 import ParsedListingFacts from "@/components/ParsedListingFacts";
 import { createActionItem } from "@/lib/action-items";
 import { checkLeadSmsCompliance, renderMessageForRecipient } from "@/lib/bulk-sms";
-import { calculateBuildAnalysis } from "@/lib/build-underwriting";
+import { calculateBuildAnalysis, normalizeBuildAnalysis, type BuildAnalysisInput } from "@/lib/build-underwriting";
 import type { DealAiAnalysisResult, DealAiPortalContext } from "@/lib/deal-ai";
 import {
   calculateDealAnalysis,
@@ -319,6 +319,7 @@ export default function LeadPage() {
   const [decisionEvidence, setDecisionEvidence] = useState("");
   const [decisionNotes, setDecisionNotes] = useState("");
   const [decisionAnalysis, setDecisionAnalysis] = useState<DealAiAnalysisResult | null>(null);
+  const [decisionBuildDraft, setDecisionBuildDraft] = useState<BuildAnalysisInput | null>(null);
   const [decisionAiRunning, setDecisionAiRunning] = useState(false);
   const [decisionAiError, setDecisionAiError] = useState("");
   const [decisionSaving, setDecisionSaving] = useState(false);
@@ -372,6 +373,7 @@ export default function LeadPage() {
     setDecisionEvidence("");
     setDecisionNotes("");
     setDecisionAnalysis(null);
+    setDecisionBuildDraft(null);
     setDecisionAiError("");
     setCreatedDecisionDeal(null);
   }, [leadId]);
@@ -498,11 +500,19 @@ export default function LeadPage() {
     ];
   }, [lead, compSummary.medianPpa]);
   const buildPreviewDeal = useMemo(() => lead ? leadToDealDraft(lead) : null, [lead]);
+  useEffect(() => {
+    if (!buildPreviewDeal) {
+      setDecisionBuildDraft(null);
+      return;
+    }
+    setDecisionBuildDraft(normalizeBuildAnalysis(buildPreviewDeal.build_analysis, buildPreviewDeal));
+  }, [buildPreviewDeal]);
   const decisionDeal = useMemo<DealInput | null>(() => {
     if (!lead || !buildPreviewDeal) return null;
     const base = buildPreviewDeal as DealInput;
     return {
       ...base,
+      build_analysis: decisionBuildDraft || base.build_analysis,
       status: base.status || "lead",
       urgency: base.urgency || "routine",
       source: base.source || "Property record",
@@ -511,7 +521,7 @@ export default function LeadPage() {
       notes: mergeText(base.notes, decisionNotes),
       links: Array.from(new Set([...(base.links || []), lead.property_url, lead.parcel_link, lead.comping_link].filter((value): value is string => !!value))),
     };
-  }, [buildPreviewDeal, decisionEvidence, decisionNotes, lead]);
+  }, [buildPreviewDeal, decisionBuildDraft, decisionEvidence, decisionNotes, lead]);
   const decisionPortalContext = useMemo<DealAiPortalContext | null>(() => {
     if (!lead) return null;
     return {
@@ -1622,8 +1632,8 @@ export default function LeadPage() {
       )}
 
       {tab === "decision" && (
-        <section style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 380px", gap: 16 }} className="lead-decision-grid">
-          <div style={{ display: "grid", gap: 16 }}>
+        <section style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(300px, 360px)", gap: 16, alignItems: "start" }} className="lead-decision-grid">
+          <div style={{ display: "grid", gap: 16, minWidth: 0 }}>
             <section style={panel}>
               <header style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "baseline", flexWrap: "wrap", marginBottom: 12 }}>
                 <div>
@@ -1644,6 +1654,12 @@ export default function LeadPage() {
               <BuildDealAnalysisPanel
                 value={decisionDeal.build_analysis}
                 deal={decisionDeal}
+                editable
+                onChange={next => {
+                  setDecisionBuildDraft(next);
+                  setDecisionAnalysis(null);
+                  setDecisionAiError("");
+                }}
               />
             )}
 
@@ -1657,7 +1673,7 @@ export default function LeadPage() {
             />
           </div>
 
-          <aside style={{ display: "grid", gap: 16, alignContent: "start" }}>
+          <aside style={{ display: "grid", gap: 16, alignContent: "start", minWidth: 0 }}>
             <section style={panel}>
               <p style={eyebrowSmall}>Decision controls</p>
               <h3 style={{ ...sectionTitle, fontSize: 20 }}>Run analysis here</h3>
@@ -1970,7 +1986,7 @@ export default function LeadPage() {
       )}
 
       <style jsx>{`
-        @media (max-width: 880px) {
+        @media (max-width: 1180px) {
           .lead-root { padding-top: 28px !important; }
           .lead-overview-grid, .lead-conv-grid, .lead-decision-grid, .lead-research-grid, .lead-fact-grid, .lead-fact-edit-grid, .lead-comp-form, .lead-comp-row { grid-template-columns: 1fr !important; }
         }

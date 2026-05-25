@@ -481,6 +481,9 @@ const wrap: React.CSSProperties = {
   padding: 12,
   display: "grid",
   gap: 12,
+  minWidth: 0,
+  maxWidth: "100%",
+  overflow: "hidden",
 };
 
 const topRow: React.CSSProperties = {
@@ -521,8 +524,9 @@ const pill: React.CSSProperties = {
 
 const metricGrid: React.CSSProperties = {
   display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(128px, 1fr))",
+  gridTemplateColumns: "repeat(auto-fit, minmax(min(150px, 100%), 1fr))",
   gap: 8,
+  minWidth: 0,
 };
 
 const mini: React.CSSProperties = {
@@ -552,7 +556,7 @@ const body: React.CSSProperties = {
 
 const alertGrid: React.CSSProperties = {
   display: "grid",
-  gridTemplateColumns: "1fr 1fr",
+  gridTemplateColumns: "repeat(auto-fit, minmax(min(260px, 100%), 1fr))",
   gap: 8,
 };
 
@@ -589,14 +593,15 @@ const nestedSummary: React.CSSProperties = {
 
 const sectionGrid: React.CSSProperties = {
   display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))",
+  gridTemplateColumns: "repeat(auto-fit, minmax(min(170px, 100%), 1fr))",
   gap: 10,
   marginTop: 10,
+  minWidth: 0,
 };
 
 const twoCol: React.CSSProperties = {
   display: "grid",
-  gridTemplateColumns: "1fr 1fr",
+  gridTemplateColumns: "repeat(auto-fit, minmax(min(240px, 100%), 1fr))",
   gap: 10,
 };
 
