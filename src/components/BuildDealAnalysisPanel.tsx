@@ -523,13 +523,14 @@ const pill: React.CSSProperties = {
 };
 
 const metricGrid: React.CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(min(150px, 100%), 1fr))",
+  display: "flex",
+  flexWrap: "wrap",
   gap: 8,
   minWidth: 0,
 };
 
 const mini: React.CSSProperties = {
+  flex: "1 1 170px",
   border: "1px solid var(--fog)",
   borderRadius: 6,
   background: "var(--surface)",
@@ -537,6 +538,7 @@ const mini: React.CSSProperties = {
   display: "grid",
   gap: 4,
   minWidth: 0,
+  maxWidth: "100%",
 };
 
 const miniLabel: React.CSSProperties = {

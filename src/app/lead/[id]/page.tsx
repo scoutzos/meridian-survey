@@ -2280,6 +2280,9 @@ const panel: React.CSSProperties = {
   borderRadius: 8,
   padding: 16,
   boxShadow: "0 16px 44px rgba(20,17,13,0.06)",
+  minWidth: 0,
+  maxWidth: "100%",
+  overflow: "hidden",
 };
 
 const subPanel: React.CSSProperties = {
