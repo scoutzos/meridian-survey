@@ -5,10 +5,21 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 import OperatingHeader from "@/components/OperatingHeader";
 import BuildDealAnalysisPanel from "@/components/BuildDealAnalysisPanel";
 import ConversationPanel from "@/components/ConversationPanel";
+import DealAiAnalysisPanel from "@/components/DealAiAnalysisPanel";
 import LandUnderwritingMatrix from "@/components/LandUnderwritingMatrix";
 import LandUnderwritingPanel from "@/components/LandUnderwritingPanel";
 import ParsedListingFacts from "@/components/ParsedListingFacts";
+import { createActionItem } from "@/lib/action-items";
 import { checkLeadSmsCompliance, renderMessageForRecipient } from "@/lib/bulk-sms";
+import { calculateBuildAnalysis } from "@/lib/build-underwriting";
+import type { DealAiAnalysisResult } from "@/lib/deal-ai";
+import {
+  calculateDealAnalysis,
+  createDeal,
+  createDealActivity,
+  type Deal,
+  type DealInput,
+} from "@/lib/deals";
 import {
   createLandCompRecord,
   createImportedLandLeadActivity,
@@ -44,14 +55,17 @@ import {
   fetchCommunicationEvents,
   type CommunicationEvent,
 } from "@/lib/communications";
+import { fetchActiveMemberNames } from "@/lib/members";
+import { createNotification } from "@/lib/operations";
 import { labelForStatus } from "@/lib/status-map";
 
-type Tab = "overview" | "conversation" | "properties" | "research";
+type Tab = "overview" | "conversation" | "properties" | "decision" | "research";
 
 const TABS: Array<{ value: Tab; label: string }> = [
   { value: "overview", label: "Overview" },
   { value: "conversation", label: "Conversation" },
   { value: "properties", label: "Properties" },
+  { value: "decision", label: "Build Decision" },
   { value: "research", label: "Research" },
 ];
 
@@ -225,6 +239,29 @@ const SMS_TEMPLATES = [
   { label: "Next step", body: "Thanks. I'm reviewing the property details now and will follow up with next steps." },
 ];
 
+type DecisionGateTone = "ready" | "review" | "blocked";
+
+function addDays(days: number): string {
+  const date = new Date();
+  date.setDate(date.getDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+function mergeText(...parts: Array<string | null | undefined>): string {
+  const seen = new Set<string>();
+  return parts
+    .flatMap(part => String(part || "").split(/\n{2,}/g))
+    .map(part => part.trim())
+    .filter(Boolean)
+    .filter(part => {
+      const key = part.toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .join("\n\n");
+}
+
 export default function LeadPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
@@ -256,6 +293,13 @@ export default function LeadPage() {
   const [savingResearch, setSavingResearch] = useState(false);
   const [autoResearchRunning, setAutoResearchRunning] = useState(false);
   const [autoResearchResult, setAutoResearchResult] = useState<AutomatedLandResearchResult | null>(null);
+  const [decisionEvidence, setDecisionEvidence] = useState("");
+  const [decisionNotes, setDecisionNotes] = useState("");
+  const [decisionAnalysis, setDecisionAnalysis] = useState<DealAiAnalysisResult | null>(null);
+  const [decisionAiRunning, setDecisionAiRunning] = useState(false);
+  const [decisionAiError, setDecisionAiError] = useState("");
+  const [decisionSaving, setDecisionSaving] = useState(false);
+  const [createdDecisionDeal, setCreatedDecisionDeal] = useState<Deal | null>(null);
 
   useEffect(() => {
     if (requestedTab && TABS.some(t => t.value === requestedTab)) setTab(requestedTab);
@@ -300,6 +344,14 @@ export default function LeadPage() {
   useEffect(() => {
     void loadAll();
   }, [loadAll]);
+
+  useEffect(() => {
+    setDecisionEvidence("");
+    setDecisionNotes("");
+    setDecisionAnalysis(null);
+    setDecisionAiError("");
+    setCreatedDecisionDeal(null);
+  }, [leadId]);
 
   const compliance = useMemo(() => lead ? checkLeadSmsCompliance(lead) : null, [lead]);
   const phones = useMemo(() => lead ? collectPhones(lead) : [], [lead]);
@@ -423,6 +475,91 @@ export default function LeadPage() {
     ];
   }, [lead, compSummary.medianPpa]);
   const buildPreviewDeal = useMemo(() => lead ? leadToDealDraft(lead) : null, [lead]);
+  const decisionDeal = useMemo<DealInput | null>(() => {
+    if (!lead || !buildPreviewDeal) return null;
+    const base = buildPreviewDeal as DealInput;
+    return {
+      ...base,
+      status: base.status || "lead",
+      urgency: base.urgency || "routine",
+      source: base.source || "Property record",
+      campaign_source: base.campaign_source || lead.campaign_source || lead.source_system || "Property record",
+      buyer_demand_evidence: mergeText(base.buyer_demand_evidence, decisionEvidence),
+      notes: mergeText(base.notes, decisionNotes),
+      links: Array.from(new Set([...(base.links || []), lead.property_url, lead.parcel_link, lead.comping_link].filter((value): value is string => !!value))),
+    };
+  }, [buildPreviewDeal, decisionEvidence, decisionNotes, lead]);
+  const decisionCalculator = useMemo(() => decisionDeal ? calculateDealAnalysis(decisionDeal) : null, [decisionDeal]);
+  const decisionBuild = useMemo(() => decisionDeal ? calculateBuildAnalysis(decisionDeal.build_analysis, decisionDeal) : null, [decisionDeal]);
+  const decisionGates = useMemo(() => {
+    if (!lead || !decisionDeal || !decisionBuild || !decisionCalculator) return [];
+    const blockers = researchItems.filter(item => item.status === "blocked");
+    const verifiedCategories = new Set(researchItems.filter(item => item.status === "verified").map(item => item.category));
+    const identityReady = Boolean((lead.property_address || lead.parcel_id) && lead.acreage && lead.asking_price);
+    const physicalBlockers = [
+      lead.is_land_locked ? "Landlocked" : null,
+      (lead.flood_zone_percent ?? 0) > 25 ? "Flood exposure over 25%" : null,
+      (lead.wetlands_percent ?? 0) > 25 ? "Wetlands over 25%" : null,
+      lead.bad_topography ? "Bad topography" : null,
+    ].filter(Boolean) as string[];
+    const utilityEvidence = Boolean(
+      lead.raw_data?.["Utilities"]
+      || lead.raw_data?.["Listing Utilities"]
+      || lead.raw_data?.["Listing Utilities For Property"]
+      || lead.raw_data?.["Listing Water"]
+      || lead.raw_data?.["Listing Sewer"],
+    );
+    const buildabilityReady = physicalBlockers.length === 0
+      && (Boolean(lead.zoning) || verifiedCategories.has("zoning"))
+      && (utilityEvidence || verifiedCategories.has("utilities") || verifiedCategories.has("access"));
+    const compReady = decisionBuild.missingInfo.every(item => !item.toLowerCase().includes("comp"));
+    const budgetReady = decisionBuild.missingInfo.every(item => !["build size / specs", "construction budget"].includes(item.toLowerCase()));
+    const financingReady = !decisionBuild.missingInfo.some(item => item.toLowerCase().includes("financing"));
+    const exitReady = Boolean(decisionDeal.target_resale_price || decisionDeal.arv) && decisionBuild.breakEvenSalePrice !== null;
+    const voteReady = blockers.length === 0
+      && decisionBuild.missingInfo.length === 0
+      && decisionCalculator.missingInfo.length === 0
+      && decisionBuild.riskFlags.length <= 1;
+
+    return [
+      {
+        title: "Property identity",
+        status: identityReady ? "ready" as const : "review" as const,
+        detail: identityReady ? "Address/APN, acreage, and price are available." : "Needs address/APN, acreage, and asking price before a clean review.",
+        next: identityReady ? "Use as source of truth." : "Verify parcel, acreage, and asking price.",
+      },
+      {
+        title: "Buildability",
+        status: physicalBlockers.length ? "blocked" as const : buildabilityReady ? "ready" as const : "review" as const,
+        detail: physicalBlockers.length ? physicalBlockers.join(" · ") : buildabilityReady ? "No major physical blocker flagged." : "Zoning, utilities, access, flood, and wetlands still need proof.",
+        next: physicalBlockers.length ? "Clear blocker before offer authority." : "Attach zoning, utility/access, and flood/wetlands evidence.",
+      },
+      {
+        title: "Sold new-build comps",
+        status: compReady ? "ready" as const : "review" as const,
+        detail: compReady ? "Comp count requirement is satisfied in build analysis." : "Needs at least 3 sold new-build comps supporting ARV.",
+        next: "Use sold new construction, recent, similar sqft/bed/bath, same school/community when possible.",
+      },
+      {
+        title: "Build budget",
+        status: budgetReady ? "ready" as const : "review" as const,
+        detail: budgetReady ? "Build size and construction budget are present." : "Construction budget and build specs are not complete.",
+        next: "Fill hard costs, soft costs, permits, utility taps, contingency, and specs.",
+      },
+      {
+        title: "Financing",
+        status: financingReady ? "ready" as const : "review" as const,
+        detail: financingReady ? "Financing source is present." : "Cash, construction loan, hard money, or investor capital still needs to be documented.",
+        next: "Confirm cash required, per-member contribution, lender terms, rate, points, and timeline.",
+      },
+      {
+        title: "Exit and vote",
+        status: voteReady ? "ready" as const : exitReady ? "review" as const : "blocked" as const,
+        detail: voteReady ? "Ready to package for member decision." : exitReady ? "Exit math exists, but missing items or risks remain." : "Break-even and ARV support are not ready.",
+        next: voteReady ? "Submit for review." : "Resolve missing items before presenting as a buy.",
+      },
+    ];
+  }, [decisionBuild, decisionCalculator, decisionDeal, lead, researchItems]);
 
   const nextActionText = useMemo(() => {
     if (!lead) return "";
@@ -697,6 +834,153 @@ export default function LeadPage() {
     }
   };
 
+  const runDecisionAiAnalysis = async () => {
+    if (!decisionDeal) return;
+    setDecisionAiRunning(true);
+    setDecisionAiError("");
+    setMessage("");
+    try {
+      const response = await fetch("/api/deals/ai-analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          deal: decisionDeal,
+          context: [
+            "This analysis is running inside the property record Build Decision tab.",
+            "Follow Meridian's land-to-build decision framework: property identity, buildability, sold new-build comps, build budget, financing, exit strategy, offer guidance, and vote readiness.",
+            "Do not invent comps or external facts. If sold new-build comps are missing, mark the comp gate as missing and specify the exact comp search needed.",
+            "Give a Buy / Negotiate / Research More / Pass style recommendation through the existing recommendation fields.",
+          ].join("\n"),
+        }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || data.error) throw new Error(data.error || response.statusText || "AI analysis failed.");
+      setDecisionAnalysis(data as DealAiAnalysisResult);
+      setMessage(data.note ? String(data.note) : "AI build decision analysis is ready on this property record.");
+    } catch (error) {
+      const text = error instanceof Error ? error.message : "AI analysis failed.";
+      setDecisionAiError(text);
+      setMessage(text);
+    } finally {
+      setDecisionAiRunning(false);
+    }
+  };
+
+  const applyDecisionAiSuggestions = () => {
+    if (!decisionAnalysis) return;
+    const suggestions = decisionAnalysis.field_suggestions;
+    setDecisionEvidence(prev => mergeText(prev, suggestions.buyer_demand_evidence));
+    setDecisionNotes(prev => mergeText(prev, suggestions.calculator_notes, suggestions.build_analysis_notes));
+    setMessage("AI suggestions added to the build decision notes. Review before saving or submitting.");
+  };
+
+  const notifyDecisionReviewWork = async (deal: Deal): Promise<string[]> => {
+    const members = await fetchActiveMemberNames();
+    const body = [
+      `${deal.analysis?.recommendation ?? "Needs Review"} from property Build Decision framework.`,
+      deal.address || deal.parcel_id || "Location pending",
+      decisionAnalysis?.executive_summary || "",
+    ].filter(Boolean).join(" ");
+    const results = await Promise.all(members.flatMap(member => [
+      createNotification({
+        title: `Build decision ready: ${deal.title}`,
+        body,
+        priority: deal.urgency === "hot" ? "urgent" : "high",
+        assigned_to: member,
+        href: `/opportunity?deal=${deal.id}`,
+        source_table: "meridian_deals",
+        source_id: deal.id,
+        notification_type: "deal_vote",
+        dedupe: true,
+      }, user || "Member"),
+      createActionItem({
+        title: `Review build decision: ${deal.title}`,
+        description: body,
+        assigned_to: member,
+        due_date: addDays(deal.urgency === "hot" ? 1 : 2),
+        task_type: "deal-follow-up",
+        priority: deal.urgency === "hot" ? "urgent" : "high",
+        source_table: "meridian_deals",
+        source_id: deal.id,
+      }, user || "Member"),
+    ]));
+    return results.map(result => result.error).filter((error): error is string => !!error);
+  };
+
+  const saveDecisionDeal = async (submitForReview: boolean) => {
+    if (!lead || !user || !decisionDeal || !decisionCalculator || !decisionBuild) return;
+    setDecisionSaving(true);
+    setMessage("");
+    try {
+      const suggestions = decisionAnalysis?.field_suggestions;
+      const now = new Date().toISOString();
+      const missing = Array.from(new Set([...decisionCalculator.missingInfo, ...decisionBuild.missingInfo]));
+      const payload: DealInput = {
+        ...decisionDeal,
+        status: submitForReview ? "under-review" : "lead",
+        submitted_by: user,
+        assigned_to: user,
+        review_intent: "needs-info-review",
+        submission_summary: suggestions?.submission_summary || decisionAnalysis?.executive_summary || decisionCalculator.summary,
+        requested_next_step: suggestions?.requested_next_step || "Complete the land-to-build framework and verify sold new-build comps before member vote.",
+        submit_uncertainties: suggestions?.submit_uncertainties || (missing.length ? missing.map(item => `- ${item}`).join("\n") : "No missing framework items flagged."),
+        first_submitted_at: submitForReview ? now : null,
+        last_submitted_at: submitForReview ? now : null,
+        review_round: submitForReview ? 1 : 0,
+        last_review_notification_at: submitForReview ? now : null,
+        calculator_notes: mergeText(
+          decisionDeal.calculator_notes,
+          decisionAnalysis?.pricing_guidance,
+          suggestions?.calculator_notes,
+          suggestions?.build_analysis_notes,
+        ),
+        notes: mergeText(
+          decisionDeal.notes,
+          decisionAnalysis?.executive_summary ? `AI summary: ${decisionAnalysis.executive_summary}` : "",
+          `Source property record: ${lead.id}`,
+        ),
+        buyer_demand_evidence: suggestions?.buyer_demand_evidence || decisionDeal.buyer_demand_evidence,
+        exit_strategy: suggestions?.exit_strategy || decisionDeal.exit_strategy,
+        target_buyer_type: suggestions?.target_buyer_type || decisionDeal.target_buyer_type,
+      };
+      const { data, error } = await createDeal(payload, user);
+      if (error && !data) throw new Error(error);
+      if (!data) throw new Error("Deal save failed.");
+
+      await createDealActivity({
+        deal_id: data.id,
+        actor: user,
+        activity_type: submitForReview ? "submitted-review" : "note",
+        summary: submitForReview ? "Submitted from property Build Decision tab." : "Saved draft from property Build Decision tab.",
+        field_changes: {
+          source_lead_id: lead.id,
+          ai_recommendation: decisionAnalysis?.recommendation ?? null,
+          ai_confidence: decisionAnalysis?.confidence ?? null,
+        },
+      });
+      await updateImportedLandLeadStatus(lead.id, submitForReview ? "converted" : "interested", data.id);
+      await createImportedLandLeadActivity({
+        leadId: lead.id,
+        actor: user,
+        activityType: submitForReview ? "converted" : "interested",
+        summary: submitForReview ? `Submitted build decision packet: ${data.title}` : `Saved build decision draft: ${data.title}`,
+      });
+
+      const workErrors = submitForReview ? await notifyDecisionReviewWork(data) : [];
+      setCreatedDecisionDeal(data);
+      if (workErrors.length || error) {
+        setMessage(`Deal saved, but one follow-up step needs attention: ${workErrors[0] || error}`);
+      } else {
+        setMessage(submitForReview ? "Build decision submitted for member review." : "Build decision draft saved.");
+      }
+      await loadAll();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Deal save failed.");
+    } finally {
+      setDecisionSaving(false);
+    }
+  };
+
   const openPropertyRecord = (propertyId: string) => {
     if (propertyId === lead?.id) {
       setTab("properties");
@@ -742,7 +1026,7 @@ export default function LeadPage() {
           <>
             <button onClick={() => router.push("/va?tab=outreach")} style={secondaryButton}>Back to Contact Queue</button>
             <button onClick={() => router.push(`/va?tab=packet&lead=${lead.id}`)} style={secondaryButton}>Build Packet</button>
-            <button onClick={() => router.push(`/analyze?lead=${lead.id}`)} style={primaryButton}>Analyze Property</button>
+            <button onClick={() => setTab("decision")} style={primaryButton}>Analyze Property</button>
             {lead.deal_id && <button onClick={() => router.push(`/opportunity?deal=${lead.deal_id}`)} style={secondaryButton}>Open Deal File</button>}
             {lead.status !== "interested" && (
               <button onClick={() => logDisposition("interested", "Marked interested from Lead Page", "interested")} style={secondaryButton}>
@@ -792,7 +1076,7 @@ export default function LeadPage() {
               </button>
               <button onClick={() => setTab("conversation")} style={secondaryButton}>Open Conversation</button>
               <button onClick={() => setTab("properties")} style={secondaryButton}>Open Properties</button>
-              <button onClick={() => router.push(`/analyze?lead=${lead.id}`)} style={secondaryButton}>Analyze Property</button>
+              <button onClick={() => setTab("decision")} style={secondaryButton}>Analyze Property</button>
             </div>
           </div>
 
@@ -886,7 +1170,7 @@ export default function LeadPage() {
                       <p style={eyebrowSmall}>Build breakdown preview</p>
                       <h3 style={{ ...sectionTitle, fontSize: 18 }}>Land build analysis</h3>
                     </div>
-                    <button onClick={() => router.push(`/analyze?lead=${lead.id}`)} style={inlineLinkButton}>Analyze →</button>
+                    <button onClick={() => setTab("decision")} style={inlineLinkButton}>Analyze →</button>
                   </header>
                   <BuildDealAnalysisPanel value={buildPreviewDeal.build_analysis} deal={buildPreviewDeal} compact />
                 </section>
@@ -1217,7 +1501,15 @@ export default function LeadPage() {
                     )}
                     <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                       <button onClick={() => openPropertyRecord(prop.id)} style={primaryButton}>Open Record →</button>
-                      <button onClick={() => router.push(`/analyze?lead=${prop.id}`)} style={secondaryButton}>Analyze Property</button>
+                      <button
+                        onClick={() => {
+                          if (prop.id === lead.id) setTab("decision");
+                          else router.push(`/lead/${prop.id}?tab=decision`);
+                        }}
+                        style={secondaryButton}
+                      >
+                        Analyze Property
+                      </button>
                       {prop.deal_id && <button onClick={() => router.push(`/opportunity?deal=${prop.deal_id}`)} style={secondaryButton}>Open Deal File</button>}
                       {prop.status !== "passed" && (
                         <button onClick={async () => {
@@ -1232,6 +1524,113 @@ export default function LeadPage() {
               </div>
             );
           })}
+        </section>
+      )}
+
+      {tab === "decision" && (
+        <section style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 380px", gap: 16 }} className="lead-decision-grid">
+          <div style={{ display: "grid", gap: 16 }}>
+            <section style={panel}>
+              <header style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "baseline", flexWrap: "wrap", marginBottom: 12 }}>
+                <div>
+                  <p style={eyebrowSmall}>Land-to-build framework</p>
+                  <h3 style={{ ...sectionTitle, fontSize: 22 }}>Build decision for {lead.property_address || lead.parcel_id || "this property"}</h3>
+                  <p style={{ color: "var(--muted)", fontSize: 12, lineHeight: 1.45, marginTop: 4 }}>
+                    This is the permanent decision workspace for the parcel: verify the gates, run AI, then save or submit the member packet from here.
+                  </p>
+                </div>
+                {decisionBuild && <span style={decisionBuild.recommendation === "Likely Pass" ? warnChip : decisionBuild.recommendation === "Needs More Info" ? mutedChip : goodChip}>{decisionBuild.recommendation}</span>}
+              </header>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 10 }}>
+                {decisionGates.map(gate => <DecisionGateCard key={gate.title} gate={gate} />)}
+              </div>
+            </section>
+
+            {decisionDeal && (
+              <BuildDealAnalysisPanel
+                value={decisionDeal.build_analysis}
+                deal={decisionDeal}
+              />
+            )}
+
+            <DealAiAnalysisPanel
+              result={decisionAnalysis}
+              loading={decisionAiRunning}
+              error={decisionAiError}
+              onAnalyze={runDecisionAiAnalysis}
+              onApply={applyDecisionAiSuggestions}
+              canApply={Boolean(decisionAnalysis)}
+            />
+          </div>
+
+          <aside style={{ display: "grid", gap: 16, alignContent: "start" }}>
+            <section style={panel}>
+              <p style={eyebrowSmall}>Decision controls</p>
+              <h3 style={{ ...sectionTitle, fontSize: 20 }}>Run analysis here</h3>
+              <p style={{ color: "var(--muted)", fontSize: 12, lineHeight: 1.45, marginTop: 4 }}>
+                Add comps or build notes, then run AI without leaving the property record.
+              </p>
+              <label style={{ display: "grid", gap: 6, marginTop: 12 }}>
+                <span style={{ ...eyebrowSmall, marginBottom: 0 }}>Sold new-build comps / buyer demand</span>
+                <textarea
+                  value={decisionEvidence}
+                  onChange={event => {
+                    setDecisionEvidence(event.target.value);
+                    setDecisionAnalysis(null);
+                    setDecisionAiError("");
+                  }}
+                  rows={4}
+                  placeholder="Paste sold new-build comp notes, MLS numbers, sale prices, sqft, school district, or buyer demand evidence."
+                  style={textareaStyle}
+                />
+              </label>
+              <label style={{ display: "grid", gap: 6, marginTop: 10 }}>
+                <span style={{ ...eyebrowSmall, marginBottom: 0 }}>Decision notes</span>
+                <textarea
+                  value={decisionNotes}
+                  onChange={event => {
+                    setDecisionNotes(event.target.value);
+                    setDecisionAnalysis(null);
+                    setDecisionAiError("");
+                  }}
+                  rows={3}
+                  placeholder="Offer terms, contingencies, build assumptions, lender notes, or member concerns."
+                  style={textareaStyle}
+                />
+              </label>
+              <div style={{ display: "grid", gap: 8, marginTop: 12 }}>
+                <button onClick={runDecisionAiAnalysis} disabled={decisionAiRunning || !decisionDeal} style={{ ...primaryButton, opacity: decisionAiRunning || !decisionDeal ? 0.55 : 1 }}>
+                  {decisionAiRunning ? "Analyzing..." : "Run AI Analysis"}
+                </button>
+                <button onClick={() => saveDecisionDeal(false)} disabled={decisionSaving || !decisionDeal} style={{ ...secondaryButton, opacity: decisionSaving || !decisionDeal ? 0.55 : 1 }}>
+                  {decisionSaving ? "Saving..." : "Save Draft"}
+                </button>
+                <button onClick={() => saveDecisionDeal(true)} disabled={decisionSaving || !decisionDeal} style={{ ...primaryButton, opacity: decisionSaving || !decisionDeal ? 0.55 : 1 }}>
+                  {decisionSaving ? "Submitting..." : "Submit For Review"}
+                </button>
+              </div>
+              {createdDecisionDeal && (
+                <div style={{ ...subPanel, marginTop: 12 }}>
+                  <strong style={{ color: "var(--obsidian)", fontSize: 13 }}>{createdDecisionDeal.title}</strong>
+                  <p style={{ color: "var(--muted)", fontSize: 12, marginTop: 4 }}>{labelForStatus(createdDecisionDeal.status)} · {createdDecisionDeal.analysis.recommendation}</p>
+                  <button onClick={() => router.push(`/opportunity?deal=${createdDecisionDeal.id}`)} style={{ ...secondaryButton, marginTop: 8 }}>Open Deal File</button>
+                </div>
+              )}
+            </section>
+
+            <section style={panel}>
+              <p style={eyebrowSmall}>Framework math</p>
+              <div style={{ display: "grid", gap: 9, marginTop: 8 }}>
+                <Detail label="Ask" value={money(decisionDeal?.asking_price)} />
+                <Detail label="Target ARV" value={money(decisionBuild?.targetArv)} />
+                <Detail label="Break-even sale" value={money(decisionBuild?.breakEvenSalePrice)} />
+                <Detail label="Base profit" value={money(decisionBuild?.baseNetProfit)} />
+                <Detail label="Base ROI" value={decisionBuild?.baseRoi !== null && decisionBuild?.baseRoi !== undefined ? `${(decisionBuild.baseRoi * 100).toFixed(1)}%` : "—"} />
+                <Detail label="Cash required" value={money(decisionBuild?.cashRequiredFromGroup)} />
+                <Detail label="Missing items" value={decisionBuild?.missingInfo.length ? decisionBuild.missingInfo.join(" · ") : "None flagged"} />
+              </div>
+            </section>
+          </aside>
         </section>
       )}
 
@@ -1479,7 +1878,7 @@ export default function LeadPage() {
       <style jsx>{`
         @media (max-width: 880px) {
           .lead-root { padding-top: 28px !important; }
-          .lead-overview-grid, .lead-conv-grid, .lead-research-grid, .lead-fact-grid, .lead-fact-edit-grid, .lead-comp-form, .lead-comp-row { grid-template-columns: 1fr !important; }
+          .lead-overview-grid, .lead-conv-grid, .lead-decision-grid, .lead-research-grid, .lead-fact-grid, .lead-fact-edit-grid, .lead-comp-form, .lead-comp-row { grid-template-columns: 1fr !important; }
         }
       `}</style>
     </div>
@@ -1533,6 +1932,26 @@ function Detail({ label, value }: { label: string; value: React.ReactNode }) {
     <div>
       <dt style={{ color: "var(--muted)", fontSize: 10, fontWeight: 700, letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: 4 }}>{label}</dt>
       <dd style={{ color: "var(--ink)", fontSize: 13, lineHeight: 1.35, margin: 0, overflowWrap: "anywhere" }}>{value}</dd>
+    </div>
+  );
+}
+
+function decisionGateChipStyle(status: DecisionGateTone): React.CSSProperties {
+  if (status === "ready") return goodChip;
+  if (status === "blocked") return warnChip;
+  return mutedChip;
+}
+
+function DecisionGateCard({ gate }: { gate: { title: string; status: DecisionGateTone; detail: string; next: string } }) {
+  const label = gate.status === "ready" ? "Ready" : gate.status === "blocked" ? "Blocked" : "Needs proof";
+  return (
+    <div style={{ ...subPanel, minHeight: 162, display: "flex", flexDirection: "column", gap: 8 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
+        <strong style={{ color: "var(--obsidian)", fontSize: 14 }}>{gate.title}</strong>
+        <span style={{ ...decisionGateChipStyle(gate.status), padding: "3px 7px", fontSize: 10 }}>{label}</span>
+      </div>
+      <p style={{ color: "var(--ink)", fontSize: 12, lineHeight: 1.45 }}>{gate.detail}</p>
+      <p style={{ color: "var(--muted)", fontSize: 11, lineHeight: 1.45, marginTop: "auto" }}>{gate.next}</p>
     </div>
   );
 }
