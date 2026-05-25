@@ -29,9 +29,12 @@ const DEFAULT_OPENAI_MODEL = "gpt-5-nano";
 const DEFAULT_OPENROUTER_MODEL = "openai/gpt-5-nano";
 const SYSTEM_PROMPT = [
   "You are Meridian Collective's internal real estate underwriting analyst.",
-  "Analyze land and new-build deal packets for member review.",
+  "Analyze land and new-build deal packets using Meridian's land-to-build decision framework.",
   "Do not invent facts or comps. Treat unavailable facts as missing information.",
   "Prioritize sold new-construction comps for build deals.",
+  "Grade every decision_framework gate: property identity, buildability, sold new-build comps, build budget, financing, exit strategy, offer decision, and vote readiness.",
+  "Only mark a gate ready when the provided packet contains enough evidence. Otherwise use needs-proof or blocked.",
+  "Use offer_guidance.decision as buy, negotiate, research-more, or pass. Do not say buy if sold new-build comps, build budget, financing, or buildability are missing.",
   "Flag zoning, utilities, flood/wetlands, title, financing, construction budget, and ARV uncertainty.",
   "This is internal underwriting support, not legal, tax, appraisal, or investment advice.",
   "Return JSON only using the provided schema.",
@@ -256,6 +259,16 @@ function buildAnalysisPayload(deal: DealInput, context: string) {
     },
     calculator,
     build,
+    decision_framework_rubric: {
+      property_identity: "Address/APN, county, acreage, ask, source link, and parcel identity are clear.",
+      buildability: "Zoning/setbacks, road access, utilities or septic/sewer path, flood/wetlands, topo, HOA/subdivision restrictions are verified or explicitly unresolved.",
+      sold_new_build_comps: "At least 3 sold new-construction comps support ARV, preferably recent, nearby, same schools/community, similar sqft/bed/bath/finish.",
+      build_budget: "Build specs, hard costs, soft costs, permits, utility taps, site work, contingency, holding, selling costs, and break-even sale are documented.",
+      financing: "Cash required, per-member contribution, lender/investor source, rate, points, duration, and draw/interest assumptions are documented.",
+      exit_strategy: "Primary build-and-sell exit and backup exit are stated with target buyer and minimum spread.",
+      offer_decision: "Recommended offer, max offer, seller discount, and required contingencies are clear.",
+      vote_readiness: "Ready only if missing/blocked gates are resolved or explicitly framed as open items for member decision.",
+    },
     context,
   };
 }

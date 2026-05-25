@@ -45,9 +45,31 @@ export default function DealAiAnalysisPanel({
         <div style={{ display: "grid", gap: 10 }}>
           <div style={metricGrid}>
             <Mini label="Confidence" value={result.confidence} />
+            <Mini label="Decision" value={decisionLabel(result.offer_guidance.decision)} />
             <Mini label="Source" value={sourceLabel(result)} />
             <Mini label="Missing" value={String(result.missing_info.length)} />
             <Mini label="Next actions" value={String(result.next_actions.length)} />
+          </div>
+
+          <div style={noteBox}>
+            <div style={offerHeader}>
+              <div>
+                <p style={miniLabel}>Offer guidance</p>
+                <h4 style={offerTitle}>{decisionLabel(result.offer_guidance.decision)}</h4>
+              </div>
+              <span style={decisionPill(result.offer_guidance.decision)}>{result.offer_guidance.decision.replace("-", " ")}</span>
+            </div>
+            <div style={metricGrid}>
+              <Mini label="Recommended" value={result.offer_guidance.recommended_offer} />
+              <Mini label="Max offer" value={result.offer_guidance.max_offer} />
+              <Mini label="Seller move" value={result.offer_guidance.required_seller_discount} />
+            </div>
+            <p style={{ ...body, marginTop: 8 }}>{result.offer_guidance.rationale}</p>
+            {!compact && result.offer_guidance.contingency_terms.length > 0 && (
+              <div style={{ display: "grid", gap: 4, marginTop: 8 }}>
+                {result.offer_guidance.contingency_terms.slice(0, 6).map(term => <p key={term} style={body}>- {term}</p>)}
+              </div>
+            )}
           </div>
 
           <div style={noteBox}>
@@ -57,6 +79,19 @@ export default function DealAiAnalysisPanel({
 
           {!compact && (
             <>
+              <div style={frameworkGrid}>
+                {frameworkRows(result).map(row => (
+                  <div key={row.label} style={gateCard}>
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "flex-start" }}>
+                      <strong style={{ color: "var(--obsidian)", fontSize: 12 }}>{row.label}</strong>
+                      <span style={gatePill(row.gate.status)}>{row.gate.status.replace("-", " ")}</span>
+                    </div>
+                    <p style={{ ...body, color: "var(--ink)", marginTop: 6 }}>{row.gate.finding}</p>
+                    <p style={{ ...body, marginTop: 6 }}><strong>Evidence:</strong> {row.gate.evidence_needed}</p>
+                    <p style={{ ...body, marginTop: 4 }}><strong>Next:</strong> {row.gate.next_step}</p>
+                  </div>
+                ))}
+              </div>
               <div style={twoCol}>
                 <Info title="Investment thesis" lines={[result.investment_thesis]} />
                 <Info title="Pricing guidance" lines={[result.pricing_guidance]} />
@@ -117,6 +152,26 @@ function sourceLabel(result: DealAiAnalysisResult): string {
   return result.model;
 }
 
+function decisionLabel(decision: DealAiAnalysisResult["offer_guidance"]["decision"]): string {
+  if (decision === "buy") return "Buy";
+  if (decision === "negotiate") return "Negotiate";
+  if (decision === "pass") return "Pass";
+  return "Research More";
+}
+
+function frameworkRows(result: DealAiAnalysisResult) {
+  return [
+    { label: "Property Identity", gate: result.decision_framework.property_identity },
+    { label: "Buildability", gate: result.decision_framework.buildability },
+    { label: "Sold New-Build Comps", gate: result.decision_framework.sold_new_build_comps },
+    { label: "Build Budget", gate: result.decision_framework.build_budget },
+    { label: "Financing", gate: result.decision_framework.financing },
+    { label: "Exit Strategy", gate: result.decision_framework.exit_strategy },
+    { label: "Offer Decision", gate: result.decision_framework.offer_decision },
+    { label: "Vote Readiness", gate: result.decision_framework.vote_readiness },
+  ];
+}
+
 function Info({ title, lines }: { title: string; lines: string[] }) {
   return (
     <div style={noteBox}>
@@ -126,6 +181,41 @@ function Info({ title, lines }: { title: string; lines: string[] }) {
       </div>
     </div>
   );
+}
+
+function decisionPill(decision: DealAiAnalysisResult["offer_guidance"]["decision"]): React.CSSProperties {
+  const pass = decision === "pass";
+  const ready = decision === "buy";
+  return {
+    borderRadius: 999,
+    border: pass ? "1px solid rgba(141,63,49,0.35)" : ready ? "1px solid rgba(31,90,64,0.28)" : "1px solid var(--fog)",
+    background: pass ? "rgba(141,63,49,0.10)" : ready ? "rgba(31,90,64,0.10)" : "var(--bone)",
+    color: pass ? "#8d3f31" : ready ? "#1f5a40" : "var(--obsidian)",
+    padding: "4px 8px",
+    fontSize: 9,
+    fontWeight: 800,
+    textTransform: "uppercase",
+    letterSpacing: "0.08em",
+    whiteSpace: "nowrap",
+  };
+}
+
+function gatePill(status: string): React.CSSProperties {
+  const blocked = status === "blocked";
+  const ready = status === "ready";
+  return {
+    borderRadius: 999,
+    border: blocked ? "1px solid rgba(141,63,49,0.35)" : ready ? "1px solid rgba(31,90,64,0.28)" : "1px solid var(--fog)",
+    background: blocked ? "rgba(141,63,49,0.10)" : ready ? "rgba(31,90,64,0.10)" : "var(--bone)",
+    color: blocked ? "#8d3f31" : ready ? "#1f5a40" : "var(--muted)",
+    padding: "3px 7px",
+    fontSize: 9,
+    fontWeight: 800,
+    textTransform: "uppercase",
+    letterSpacing: "0.08em",
+    alignSelf: "start",
+    whiteSpace: "nowrap",
+  };
 }
 
 function priorityPill(priority: string): React.CSSProperties {
@@ -234,6 +324,34 @@ const twoCol: React.CSSProperties = {
   display: "grid",
   gridTemplateColumns: "1fr 1fr",
   gap: 8,
+};
+
+const frameworkGrid: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+  gap: 8,
+};
+
+const gateCard: React.CSSProperties = {
+  border: "1px solid var(--fog)",
+  borderRadius: 6,
+  background: "var(--surface)",
+  padding: 10,
+  minHeight: 150,
+};
+
+const offerHeader: React.CSSProperties = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "flex-start",
+  gap: 10,
+  marginBottom: 8,
+};
+
+const offerTitle: React.CSSProperties = {
+  color: "var(--obsidian)",
+  fontSize: 18,
+  fontWeight: 800,
 };
 
 const actionRow: React.CSSProperties = {
