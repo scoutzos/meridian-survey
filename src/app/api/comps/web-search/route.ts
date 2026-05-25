@@ -249,7 +249,7 @@ function nearestPrice(text: string, center: number): number | null {
 }
 
 function parseSqft(text: string, center: number): number | null {
-  return nearestNumber(text, center, /([0-9][0-9,.]*)(k)?\s*(?:sq\s*ft|sqft|sf)\b/gi, match => {
+  return nearestNumber(text, center, /([0-9][0-9,.]*)(k)?\s*(?:sq\.?\s*ft\.?|sqft|sf)\b/gi, match => {
     const raw = Number(String(match[1] || "").replace(/,/g, ""));
     if (!Number.isFinite(raw)) return null;
     return /k/i.test(match[2] || "") ? Math.round(raw * 1000) : raw;
@@ -369,7 +369,7 @@ function extractCandidates(result: SearchResult, lead: WebCompLeadPayload): WebC
     const sourceSystem = sourceName(result.url);
     const newConstruction = Boolean(
       (yearBuilt && yearBuilt >= CURRENT_YEAR - 2)
-      || /\b(?:new construction|new build|new home|move in ready|builder|built 2025|built 2026|built 2027|century communities|d\.?r\.?\s+horton|lennar|pulte)\b/i.test(snippet),
+      || /\b(?:new construction|new build|new home|move in ready|builder|built 2025|built 2026|built 2027|century communities|oak grove glen|d\.?r\.?\s+horton|lennar|pulte)\b/i.test(snippet),
     );
     const price = nearestPrice(combined, center);
     const base = {
