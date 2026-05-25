@@ -1632,7 +1632,7 @@ export default function LeadPage() {
       )}
 
       {tab === "decision" && (
-        <section style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(300px, 360px)", gap: 16, alignItems: "start" }} className="lead-decision-grid">
+        <section style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr)", gap: 16, alignItems: "start" }} className="lead-decision-grid">
           <div style={{ display: "grid", gap: 16, minWidth: 0 }}>
             <section style={panel}>
               <header style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "baseline", flexWrap: "wrap", marginBottom: 12 }}>
