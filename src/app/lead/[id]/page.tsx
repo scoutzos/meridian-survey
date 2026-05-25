@@ -299,6 +299,38 @@ type HomeMarketSignal = {
   baths: number | null;
   status: string;
   source: string;
+  isNewConstruction?: boolean;
+};
+
+type WebCompSearchCandidate = {
+  address: string;
+  price: number | null;
+  sqft: number | null;
+  beds: number | null;
+  baths: number | null;
+  yearBuilt: number | null;
+  saleDate: string | null;
+  status: "sold" | "pending" | "active" | "unknown";
+  newConstruction: boolean;
+  score: number;
+  confidence: LandCompConfidence;
+  sourceSystem: string;
+  sourceUrl: string;
+  sourceTitle: string;
+  snippet: string;
+  matchReason: string;
+  listingDetails: Record<string, string | number | null>;
+  rawData: Record<string, unknown>;
+};
+
+type WebCompSearchResponse = {
+  ok?: boolean;
+  error?: string;
+  provider?: string;
+  queries?: string[];
+  manual_search_links?: Array<{ query: string; url: string }>;
+  candidates?: WebCompSearchCandidate[];
+  searched_at?: string;
 };
 
 function createAiAssistedBuildDraft(deal: DealInput, lead: ImportedLandLead, compRecords: LandCompRecord[]): BuildDraftResult {
@@ -311,6 +343,11 @@ function createAiAssistedBuildDraft(deal: DealInput, lead: ImportedLandLead, com
   const sqftSignals = preferredSignals.map(signal => signal.sqft).filter((value): value is number => Boolean(value));
   const bedSignals = preferredSignals.map(signal => signal.beds).filter((value): value is number => Boolean(value));
   const bathSignals = preferredSignals.map(signal => signal.baths).filter((value): value is number => Boolean(value));
+  const soldNewBuildSignals = preferredSignals.filter(signal =>
+    /\bsold\b|closed/i.test(`${signal.status} ${signal.source}`)
+    && (signal.isNewConstruction || /\bnew|built\s+20\d{2}|year built/i.test(`${signal.status} ${signal.source}`))
+    && (signal.sqft || signal.beds || signal.baths)
+  );
   const estimatedArv = median(priceSignals);
   const estimatedSqft = median(sqftSignals) ?? (estimatedArv ? clamp(Math.round(estimatedArv / 185 / 50) * 50, 1400, 2600) : 1800);
   const estimatedBeds = Math.round(median(bedSignals) ?? 3);
@@ -337,6 +374,9 @@ function createAiAssistedBuildDraft(deal: DealInput, lead: ImportedLandLead, com
   if (!analysis.comps.target_arv && estimatedArv) analysis.comps.target_arv = estimatedArv;
   if (!analysis.comps.median_sale_price && estimatedArv) analysis.comps.median_sale_price = estimatedArv;
   if (!analysis.comps.average_price_per_sqft && estimatedArv && estimatedSqft) analysis.comps.average_price_per_sqft = Math.round(estimatedArv / estimatedSqft);
+  if ((!analysis.comps.sold_comp_count || analysis.comps.sold_comp_count < soldNewBuildSignals.length) && soldNewBuildSignals.length) {
+    analysis.comps.sold_comp_count = soldNewBuildSignals.length;
+  }
   if (!analysis.comps.sold_comp_notes) {
     analysis.comps.sold_comp_notes = assumptionLines.length
       ? `AI draft market signals from parsed listing data. These are NOT verified sold new-build comps until MLS/county sale records confirm closed sale date, year built, sqft, bed/bath, builder, and school district.\n${assumptionLines.map(line => `- ${line}`).join("\n")}`
@@ -412,14 +452,16 @@ function collectHomeMarketSignals(rawData: Record<string, unknown> | null | unde
   compRecords.forEach(comp => {
     const text = [comp.address, comp.listing_text, comp.similarity_notes, comp.adjustment_notes, JSON.stringify(comp.listing_details || {})].filter(Boolean).join(" ");
     if (comp.price && comp.price >= 120_000 && /bd|bed|bath|sqft|new|built|home/i.test(text) && !/land|lot\/land|acres lot|unimproved/i.test(text)) {
+      const isNewConstruction = /new construction|new build|new home|built\s+20\d{2}|year built["':\s]+20\d{2}|new-construction/i.test(text);
       signals.push({
         address: comp.address || "Saved comp",
         price: comp.price,
         sqft: parseSqft(text),
         beds: parseBeds(text),
         baths: parseBaths(text),
-        status: comp.comp_type,
+        status: [comp.comp_type, isNewConstruction ? "new construction" : "", String(comp.listing_details?.["Year Built"] || "")].filter(Boolean).join(" "),
         source: comp.source_system || "Saved comp",
+        isNewConstruction,
       });
     }
   });
@@ -514,6 +556,41 @@ function uniqueSignals(signals: HomeMarketSignal[]): HomeMarketSignal[] {
     seen.add(key);
     return true;
   });
+}
+
+function normalizeAddress(value: string | null | undefined): string {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/\b(sw|se|nw|ne|n|s|e|w)\b/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function mergeCompRecords(existing: LandCompRecord[], incoming: LandCompRecord[]): LandCompRecord[] {
+  const seen = new Set<string>();
+  return [...incoming, ...existing].filter(comp => {
+    const key = comp.comp_property_id || comp.comp_key || comp.source_url || `${comp.address || ""}-${comp.price || ""}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function finishedHomeSoldCompCount(comps: LandCompRecord[]): number {
+  return comps.filter(comp => {
+    const text = [comp.comp_type, comp.address, comp.listing_text, comp.similarity_notes, comp.adjustment_notes, JSON.stringify(comp.listing_details || {})].filter(Boolean).join(" ");
+    return comp.comp_type === "sold"
+      && Boolean(comp.price && comp.price >= 120_000)
+      && /bd|bed|bath|sqft|square feet|new construction|built\s+20\d{2}|year built/i.test(text)
+      && !/lot\/land|acres lot|unimproved land|vacant land/i.test(text);
+  }).length;
+}
+
+function webStatusToCompType(status: WebCompSearchCandidate["status"]): LandCompType {
+  if (status === "sold") return "sold";
+  if (status === "pending") return "pending";
+  if (status === "active") return "active";
+  return "manual-note";
 }
 
 function fillConstructionBudget(analysis: BuildAnalysisInput, total: number) {
@@ -643,6 +720,7 @@ export default function LeadPage() {
   const [savingResearch, setSavingResearch] = useState(false);
   const [autoResearchRunning, setAutoResearchRunning] = useState(false);
   const [autoResearchResult, setAutoResearchResult] = useState<AutomatedLandResearchResult | null>(null);
+  const [webCompSearching, setWebCompSearching] = useState(false);
   const [decisionEvidence, setDecisionEvidence] = useState("");
   const [decisionNotes, setDecisionNotes] = useState("");
   const [decisionAnalysis, setDecisionAnalysis] = useState<DealAiAnalysisResult | null>(null);
@@ -1259,13 +1337,105 @@ export default function LeadPage() {
     }
   };
 
+  const runWebCompSearch = async (options: { silent?: boolean } = {}): Promise<LandCompRecord[]> => {
+    if (!lead || !user) return [];
+    setWebCompSearching(true);
+    if (!options.silent) setMessage("Searching the public web for sold new-build comps...");
+    try {
+      const response = await fetch("/api/comps/web-search", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ lead, max_results: 8 }),
+      });
+      const payload = await response.json().catch(() => ({})) as WebCompSearchResponse;
+      if (!response.ok || payload.error) {
+        const manualLinks = payload.manual_search_links?.slice(0, 3).map(link => link.query).join(" | ");
+        const text = payload.error || response.statusText || "Web comp search failed.";
+        if (!options.silent) setMessage(manualLinks ? `${text} Search queries: ${manualLinks}` : text);
+        return [];
+      }
+      const candidates = (payload.candidates || [])
+        .filter(candidate => candidate.address && candidate.price)
+        .slice(0, 8);
+      if (!candidates.length) {
+        if (!options.silent) setMessage("Web search ran, but no usable new-build comp candidates were parsed. Try a broader location or add comps manually.");
+        return [];
+      }
+
+      const saved: LandCompRecord[] = [];
+      const existingKeys = new Set(compRecords.map(comp => `${normalizeAddress(comp.address)}:${comp.price || ""}:${comp.source_url || ""}`));
+      for (const candidate of candidates) {
+        const key = `${normalizeAddress(candidate.address)}:${candidate.price || ""}:${candidate.sourceUrl || ""}`;
+        if (existingKeys.has(key)) continue;
+        const { comp, error } = await createLandCompRecord({
+          leadId: lead.id,
+          compType: webStatusToCompType(candidate.status),
+          address: candidate.address,
+          price: candidate.price,
+          saleOrListDate: candidate.saleDate,
+          sourceSystem: `Web Search: ${candidate.sourceSystem || payload.provider || "Public"}`,
+          sourceUrl: candidate.sourceUrl,
+          listingText: [
+            candidate.sourceTitle,
+            candidate.snippet,
+            candidate.matchReason,
+            candidate.newConstruction ? "New-construction signal found." : "",
+            "Public web candidate. Verify in FMLS/GAMLS/county records before final ARV proof.",
+          ].filter(Boolean).join("\n"),
+          listingDetails: candidate.listingDetails,
+          rawData: {
+            ...candidate.rawData,
+            "Comp Search Provider": payload.provider || candidate.rawData["Comp Search Provider"],
+            "Comp Search Score": candidate.score,
+            "Comp Search Confidence": candidate.confidence,
+            "Comp Sale Date": candidate.saleDate,
+            "Comp Status": candidate.status,
+          },
+          similarityScore: candidate.score,
+          matchReason: candidate.matchReason,
+          similarityNotes: `${candidate.status === "sold" ? "Sold" : labelForStatus(candidate.status)} public web candidate${candidate.newConstruction ? " with new-build signal" : ""}${candidate.sqft ? ` · ${candidate.sqft.toLocaleString()} sf` : ""}${candidate.beds ? ` · ${candidate.beds} bd` : ""}${candidate.baths ? `/${candidate.baths} ba` : ""}.`,
+          adjustmentNotes: "Use as preliminary market evidence only until MLS/county sale records verify status, sale date, year built, sqft, bed/bath, builder, and school district.",
+          includeInValuation: candidate.status === "sold" && candidate.newConstruction && candidate.score >= 58,
+          confidence: candidate.confidence,
+          actor: user,
+        });
+        if (error || !comp) continue;
+        saved.push(comp);
+        existingKeys.add(key);
+      }
+
+      if (saved.length) {
+        setCompRecords(rows => mergeCompRecords(rows, saved));
+        const soldCount = saved.filter(comp => comp.comp_type === "sold").length;
+        const note = `Web comp search saved ${saved.length} public candidate comp${saved.length === 1 ? "" : "s"}${soldCount ? `, including ${soldCount} sold candidate${soldCount === 1 ? "" : "s"}` : ""}. These were found from ${payload.provider || "public web"} search and still need FMLS/GAMLS or county verification before final ARV proof.`;
+        setDecisionNotes(prev => mergeText(prev, note));
+        if (!options.silent) setMessage(note);
+      } else if (!options.silent) {
+        setMessage("Web search found candidates, but they were already saved or could not be stored.");
+      }
+      return saved;
+    } catch (error) {
+      const text = error instanceof Error ? error.message : "Web comp search failed.";
+      if (!options.silent) setMessage(text);
+      return [];
+    } finally {
+      setWebCompSearching(false);
+    }
+  };
+
   const runDecisionAiAnalysis = async () => {
     if (!decisionDeal || !lead) return;
     setDecisionAiRunning(true);
     setDecisionAiError("");
     setMessage("");
     try {
-      const draft = createAiAssistedBuildDraft(decisionDeal, lead, compRecords);
+      let compsForDraft = compRecords;
+      if (finishedHomeSoldCompCount(compsForDraft) < 3) {
+        setMessage("Searching the public web for sold new-build comps before running AI...");
+        const webComps = await runWebCompSearch({ silent: true });
+        compsForDraft = mergeCompRecords(compsForDraft, webComps);
+      }
+      const draft = createAiAssistedBuildDraft(decisionDeal, lead, compsForDraft);
       const dealForAnalysis = draft.changed ? { ...decisionDeal, build_analysis: draft.analysis } : decisionDeal;
       if (draft.changed) {
         setDecisionBuildDraft(draft.analysis);
@@ -2051,8 +2221,11 @@ export default function LeadPage() {
                 />
               </label>
               <div style={{ display: "grid", gap: 8, marginTop: 12 }}>
+                <button onClick={() => void runWebCompSearch()} disabled={webCompSearching || !lead} style={{ ...secondaryButton, opacity: webCompSearching || !lead ? 0.55 : 1 }}>
+                  {webCompSearching ? "Searching Web..." : "Find Web Comps"}
+                </button>
                 <button onClick={runDecisionAiAnalysis} disabled={decisionAiRunning || !decisionDeal} style={{ ...primaryButton, opacity: decisionAiRunning || !decisionDeal ? 0.55 : 1 }}>
-                  {decisionAiRunning ? "Analyzing..." : "Run AI + Fill Draft"}
+                  {decisionAiRunning ? "Analyzing..." : "Run AI + Web Comps"}
                 </button>
                 <button onClick={() => saveDecisionDeal(false)} disabled={decisionSaving || !decisionDeal} style={{ ...secondaryButton, opacity: decisionSaving || !decisionDeal ? 0.55 : 1 }}>
                   {decisionSaving ? "Saving..." : "Save Draft"}
@@ -2205,6 +2378,9 @@ export default function LeadPage() {
                   <span style={mutedChip}>{compSummary.soldCount} sold</span>
                   <span style={mutedChip}>{compSummary.activeCount} active</span>
                   <span style={compSummary.trusted ? goodChip : warnChip}>{compSummary.medianPpa ? `${money(compSummary.medianPpa)}/ac median` : "No PPA yet"}</span>
+                  <button type="button" onClick={() => void runWebCompSearch()} disabled={webCompSearching} style={{ ...secondaryButton, minHeight: 30, padding: "6px 9px", opacity: webCompSearching ? 0.55 : 1 }}>
+                    {webCompSearching ? "Searching..." : "Find Web Comps"}
+                  </button>
                 </div>
               </header>
 
