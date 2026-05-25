@@ -958,7 +958,10 @@ export default function LeadPage() {
         }),
       });
       const data = await response.json().catch(() => ({}));
-      if (!response.ok || data.error) throw new Error(data.error || response.statusText || "AI analysis failed.");
+      if (!response.ok || data.error) {
+        const statusMessage = response.status ? `AI analysis request failed (${response.status}).` : "AI analysis request failed.";
+        throw new Error(data.error || response.statusText || statusMessage);
+      }
       setDecisionAnalysis(data as DealAiAnalysisResult);
       setMessage(data.note ? String(data.note) : "AI build decision analysis is ready on this property record.");
     } catch (error) {
