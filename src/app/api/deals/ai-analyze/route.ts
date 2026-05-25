@@ -29,7 +29,7 @@ type DealAiClient = {
 
 const DEFAULT_OPENAI_MODEL = "gpt-5-nano";
 const DEFAULT_OPENROUTER_MODEL = "openai/gpt-5-nano";
-const DEFAULT_PROVIDER_TIMEOUT_MS = 25_000;
+const DEFAULT_PROVIDER_TIMEOUT_MS = 16_000;
 const SYSTEM_PROMPT = [
   "You are Meridian Collective's internal real estate underwriting analyst.",
   "Analyze land and new-build deal packets using Meridian's land-to-build decision framework.",
@@ -61,6 +61,10 @@ export async function POST(req: NextRequest) {
 
   const deal = body.deal;
   const fallback = buildFallbackDealAiAnalysis(deal, undefined, body.portal_context);
+  const deterministicReason = deterministicOnlyReason(deal, body.portal_context);
+  if (deterministicReason) {
+    return NextResponse.json(buildFallbackDealAiAnalysis(deal, deterministicReason, body.portal_context));
+  }
   const client = resolveDealAiClient();
 
   if (!client.apiKey) {
@@ -282,28 +286,49 @@ function buildAnalysisPayload(deal: DealInput, context: string, portalContext?: 
 async function fetchWithProviderTimeout(url: string, init: RequestInit, label: string): Promise<Response> {
   const timeoutMs = providerTimeoutMs();
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<Response>((_, reject) => {
+    timer = setTimeout(() => {
+      controller.abort();
+      reject(new Error(`${label} timed out after ${Math.round(timeoutMs / 1000)} seconds`));
+    }, timeoutMs);
+  });
   try {
-    return await fetch(url, {
+    const request = fetch(url, {
       ...init,
       signal: controller.signal,
     });
+    return await Promise.race([request, timeout]);
   } catch (error) {
     if (error instanceof Error && error.name === "AbortError") {
       throw new Error(`${label} timed out after ${Math.round(timeoutMs / 1000)} seconds`);
     }
     throw error;
   } finally {
-    clearTimeout(timer);
+    if (timer) clearTimeout(timer);
   }
 }
 
 function providerTimeoutMs(): number {
   const configured = Number(process.env.DEAL_AI_TIMEOUT_MS);
   if (Number.isFinite(configured) && configured >= 5_000) {
-    return Math.min(configured, 45_000);
+    return Math.min(configured, DEFAULT_PROVIDER_TIMEOUT_MS);
   }
   return DEFAULT_PROVIDER_TIMEOUT_MS;
+}
+
+function deterministicOnlyReason(deal: DealInput, portalContext?: DealAiPortalContext): string | null {
+  if (deal.property_type !== "land") return null;
+  const build = calculateBuildAnalysis(deal.build_analysis, deal);
+  const missing = build.missingInfo.map(item => item.toLowerCase());
+  const savedCompCount = portalContext?.comp_records?.filter(comp => comp.include_in_valuation !== false).length ?? 0;
+  const missingSoldNewBuildComps = missing.some(item => item.includes("new-build") && item.includes("comp"));
+  const missingBudget = missing.some(item => item.includes("construction budget"));
+  const missingFinancing = missing.some(item => item.includes("financing"));
+  if (savedCompCount === 0 && missingSoldNewBuildComps && missingBudget && missingFinancing) {
+    return "Core build-decision evidence is missing, so Meridian used the deterministic framework immediately: add sold new-build comps, construction budget, and financing before running a deeper AI review.";
+  }
+  return null;
 }
 
 function compactPortalContextForAi(portalContext?: DealAiPortalContext): DealAiPortalContext | undefined {
