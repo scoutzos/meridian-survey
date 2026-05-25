@@ -424,7 +424,7 @@ function collectHomeMarketSignals(rawData: Record<string, unknown> | null | unde
     }
   });
   Object.entries(rawData || {}).forEach(([key, value]) => {
-    if (!/nearby homes|similar homes|homes for you|sold homes|comps|comparison/i.test(key)) return;
+    if (!/nearby homes|similar homes|homes for you|sold homes|comps|comparison|section snapshot|original listing text/i.test(key)) return;
     extractSignalsFromUnknown(value, key).forEach(signal => {
       if (isFinishedHomeSignal(signal)) signals.push(signal);
     });
@@ -436,7 +436,20 @@ function extractSignalsFromUnknown(value: unknown, source: string): HomeMarketSi
   if (!value) return [];
   if (Array.isArray(value)) return value.flatMap(item => extractSignalsFromUnknown(item, source)).slice(0, 24);
   const row = value && typeof value === "object" ? value as Record<string, unknown> : null;
-  const text = row ? Object.values(row).map(item => typeof item === "string" || typeof item === "number" ? String(item) : "").filter(Boolean).join(" ") : String(value);
+  const sectionTitle = row ? String(row.title || row.Title || source) : source;
+  const rowLines = row && Array.isArray(row.lines) ? row.lines.map(String) : null;
+  if (rowLines?.length) {
+    const shouldParseSection = /nearby homes|similar homes|homes for you|sold homes|comps|comparison/i.test(sectionTitle)
+      || rowLines.some(line => /nearby homes|similar homes|homes for you/i.test(line));
+    return shouldParseSection ? parseListingLines(rowLines, sectionTitle) : [];
+  }
+  const text = row ? Object.values(row).map(item => {
+    if (typeof item === "string" || typeof item === "number") return String(item);
+    if (Array.isArray(item)) return item.map(String).join("\n");
+    return "";
+  }).filter(Boolean).join("\n") : String(value);
+  const lineSignals = parseListingLines(text.split(/\n+/g).map(line => line.trim()).filter(Boolean), source);
+  if (lineSignals.length) return lineSignals;
   const address = row ? String(row.address || row.Address || row.property || row.Property || "").trim() : parseAddress(text);
   const price = parseMoneyLike(row?.price ?? row?.Price ?? row?.value ?? row?.Value ?? text);
   const sqft = parseSqft(row?.sqft ?? row?.square_feet ?? row?.details ?? text);
@@ -444,6 +457,32 @@ function extractSignalsFromUnknown(value: unknown, source: string): HomeMarketSi
   const baths = parseBaths(row?.baths ?? row?.bathrooms ?? row?.details ?? text);
   const status = String(row?.status || row?.Status || row?.details || row?.Details || text.match(/\b(Sold|Off Market|Active|For Sale|Pending)\b/i)?.[1] || "").slice(0, 80);
   return [{ address, price, sqft, beds, baths, status, source }];
+}
+
+function parseListingLines(lines: string[], source: string): HomeMarketSignal[] {
+  const signals: HomeMarketSignal[] = [];
+  lines.forEach((line, index) => {
+    const address = parseAddress(line);
+    if (!address) return;
+    const before = lines.slice(Math.max(0, index - 10), index);
+    const after = lines.slice(index + 1, Math.min(lines.length, index + 8));
+    const context = [...before, line, ...after].join(" ");
+    const price = nearestParsedValue(before, parseMoneyLike, 120_000) ?? nearestParsedValue(after, parseMoneyLike, 120_000) ?? parseMoneyLike(context);
+    const sqft = nearestParsedValue(before, parseSqft, 450) ?? nearestParsedValue(after, parseSqft, 450) ?? parseSqft(context);
+    const beds = nearestParsedValue(before, parseBeds, 1) ?? nearestParsedValue(after, parseBeds, 1) ?? parseBeds(context);
+    const baths = nearestParsedValue(before, parseBaths, 1) ?? nearestParsedValue(after, parseBaths, 1) ?? parseBaths(context);
+    const status = [...after, ...before].find(item => /\b(Sold|Off Market|Active|For Sale|Pending|Active Under Contract)\b/i.test(item)) || "";
+    signals.push({ address, price, sqft, beds, baths, status, source });
+  });
+  return signals;
+}
+
+function nearestParsedValue(lines: string[], parser: (value: unknown) => number | null, minValue = 0): number | null {
+  for (let idx = lines.length - 1; idx >= 0; idx -= 1) {
+    const parsed = parser(lines[idx]);
+    if (parsed !== null && parsed >= minValue) return parsed;
+  }
+  return null;
 }
 
 function isFinishedHomeSignal(signal: HomeMarketSignal): boolean {
@@ -551,7 +590,7 @@ function parseBaths(value: unknown): number | null {
 }
 
 function parseAddress(text: string): string {
-  return text.match(/\d{2,6}\s+[^,$\n]+,\s*[^,$\n]+,\s*[A-Z]{2}\s*\d{5}/)?.[0] || "";
+  return text.match(/\d{2,6}\s+[^,$\n]+,\s*[^,$\n]+,\s*[A-Z]{2}\s*\d{5}/i)?.[0] || "";
 }
 
 function median(values: number[]): number | null {
