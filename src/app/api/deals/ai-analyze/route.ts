@@ -36,6 +36,8 @@ const SYSTEM_PROMPT = [
   "Do not invent facts or comps. Treat unavailable facts as missing information.",
   "Prioritize sold new-construction comps for build deals.",
   "Use portal_context as the source-of-truth evidence packet: property record, parsed listing facts, research checklist, saved comps, build budget, member financing assumptions, and exit strategy.",
+  "When verified inputs are missing, create a draft underwriting assumption from available portal signals instead of stopping at missing information. Label every draft number as estimated/not verified.",
+  "You may use parsed listing nearby-home/similar-home facts as candidate market signals, but do not count them as sold new-build ARV proof unless the provided text clearly says sold/closed and new construction/recent build.",
   "Active listings can support market interest but cannot prove ARV. Saved comps only count toward ARV when they are sold and have a credible new-build signal.",
   "Explain the residual offer math: supported ARV minus build costs, soft costs, financing, selling costs, target profit, and contingency.",
   "Every green-light statement must be backed by an evidence_sources item. If the evidence is missing, mark the related gate needs-proof or blocked.",
@@ -61,10 +63,6 @@ export async function POST(req: NextRequest) {
 
   const deal = body.deal;
   const fallback = buildFallbackDealAiAnalysis(deal, undefined, body.portal_context);
-  const deterministicReason = deterministicOnlyReason(deal, body.portal_context);
-  if (deterministicReason) {
-    return NextResponse.json(buildFallbackDealAiAnalysis(deal, deterministicReason, body.portal_context));
-  }
   const client = resolveDealAiClient();
 
   if (!client.apiKey) {
@@ -315,20 +313,6 @@ function providerTimeoutMs(): number {
     return Math.min(configured, DEFAULT_PROVIDER_TIMEOUT_MS);
   }
   return DEFAULT_PROVIDER_TIMEOUT_MS;
-}
-
-function deterministicOnlyReason(deal: DealInput, portalContext?: DealAiPortalContext): string | null {
-  if (deal.property_type !== "land") return null;
-  const build = calculateBuildAnalysis(deal.build_analysis, deal);
-  const missing = build.missingInfo.map(item => item.toLowerCase());
-  const savedCompCount = portalContext?.comp_records?.filter(comp => comp.include_in_valuation !== false).length ?? 0;
-  const missingSoldNewBuildComps = missing.some(item => item.includes("new-build") && item.includes("comp"));
-  const missingBudget = missing.some(item => item.includes("construction budget"));
-  const missingFinancing = missing.some(item => item.includes("financing"));
-  if (savedCompCount === 0 && missingSoldNewBuildComps && missingBudget && missingFinancing) {
-    return "Core build-decision evidence is missing, so Meridian used the deterministic framework immediately: add sold new-build comps, construction budget, and financing before running a deeper AI review.";
-  }
-  return null;
 }
 
 function compactPortalContextForAi(portalContext?: DealAiPortalContext): DealAiPortalContext | undefined {

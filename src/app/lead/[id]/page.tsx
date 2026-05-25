@@ -285,6 +285,294 @@ function aiRawFactSnapshot(rawData: Record<string, unknown> | null | undefined):
   );
 }
 
+type BuildDraftResult = {
+  analysis: BuildAnalysisInput;
+  changed: boolean;
+  note: string;
+};
+
+type HomeMarketSignal = {
+  address: string;
+  price: number | null;
+  sqft: number | null;
+  beds: number | null;
+  baths: number | null;
+  status: string;
+  source: string;
+};
+
+function createAiAssistedBuildDraft(deal: DealInput, lead: ImportedLandLead, compRecords: LandCompRecord[]): BuildDraftResult {
+  const analysis = cloneBuildAnalysis(normalizeBuildAnalysis(deal.build_analysis, deal));
+  const before = JSON.stringify(analysis);
+  const signals = collectHomeMarketSignals(lead.raw_data, lead, compRecords);
+  const localSignals = signals.filter(signal => isLocalSignal(signal, lead));
+  const preferredSignals = (localSignals.length >= 3 ? localSignals : signals).filter(signal => signal.price && signal.price >= 120_000);
+  const priceSignals = preferredSignals.map(signal => signal.price).filter((value): value is number => Boolean(value));
+  const sqftSignals = preferredSignals.map(signal => signal.sqft).filter((value): value is number => Boolean(value));
+  const bedSignals = preferredSignals.map(signal => signal.beds).filter((value): value is number => Boolean(value));
+  const bathSignals = preferredSignals.map(signal => signal.baths).filter((value): value is number => Boolean(value));
+  const estimatedArv = median(priceSignals);
+  const estimatedSqft = median(sqftSignals) ?? (estimatedArv ? clamp(Math.round(estimatedArv / 185 / 50) * 50, 1400, 2600) : 1800);
+  const estimatedBeds = Math.round(median(bedSignals) ?? 3);
+  const estimatedBaths = Math.round((median(bathSignals) ?? 2) * 2) / 2;
+  const costPerSf = estimatedArv && estimatedArv > 450_000 ? 170 : estimatedArv && estimatedArv < 325_000 ? 145 : 155;
+  const hardConstruction = roundCurrency(estimatedSqft * costPerSf, 500);
+  const sitePremium = lead.flood_zone_type?.toLowerCase().includes("ae") ? 15_000 : 0;
+  const preConstruction = 23_000 + sitePremium;
+  const carrying = 7_500;
+  const sellingPrep = 6_000;
+  const additional = Math.round(hardConstruction * 0.11);
+  const totalProjectBeforeFinance = (deal.asking_price || 0) + hardConstruction + preConstruction + carrying + sellingPrep + additional;
+  const loanAmount = roundCurrency(totalProjectBeforeFinance * 0.7, 500);
+  const groupCash = Math.max(0, totalProjectBeforeFinance - loanAmount);
+  const assumptionLines = preferredSignals.slice(0, 6).map(signal => (
+    `${signal.address || "Candidate"} - ${signal.price ? formatDraftMoney(signal.price) : "price ?"}${signal.sqft ? `, ${signal.sqft.toLocaleString()} sf` : ""}${signal.beds ? `, ${signal.beds} bd` : ""}${signal.baths ? `/${signal.baths} ba` : ""} (${signal.status || signal.source})`
+  ));
+
+  if (!analysis.community.subdivision && lead.subdivision) analysis.community.subdivision = lead.subdivision;
+  if (analysis.community.hoa_required === null && lead.in_hoa !== null && lead.in_hoa !== undefined) analysis.community.hoa_required = Boolean(lead.in_hoa);
+  if (!analysis.community.hoa_fee && parseMoneyLike(lead.raw_data?.["Listing HOA"] || lead.raw_data?.["HOA Fee"])) {
+    analysis.community.hoa_fee = parseMoneyLike(lead.raw_data?.["Listing HOA"] || lead.raw_data?.["HOA Fee"]);
+  }
+  if (!analysis.comps.target_arv && estimatedArv) analysis.comps.target_arv = estimatedArv;
+  if (!analysis.comps.median_sale_price && estimatedArv) analysis.comps.median_sale_price = estimatedArv;
+  if (!analysis.comps.average_price_per_sqft && estimatedArv && estimatedSqft) analysis.comps.average_price_per_sqft = Math.round(estimatedArv / estimatedSqft);
+  if (!analysis.comps.sold_comp_notes) {
+    analysis.comps.sold_comp_notes = assumptionLines.length
+      ? `AI draft market signals from parsed listing data. These are NOT verified sold new-build comps until MLS/county sale records confirm closed sale date, year built, sqft, bed/bath, builder, and school district.\n${assumptionLines.map(line => `- ${line}`).join("\n")}`
+      : "AI could not find finished-home market signals in the parsed listing data. Pull sold new-build comps from MLS/FMLS/GAMLS before vote.";
+  }
+
+  if (!analysis.specs.home_size_sqft) analysis.specs.home_size_sqft = estimatedSqft;
+  if (!analysis.specs.bedrooms) analysis.specs.bedrooms = estimatedBeds;
+  if (!analysis.specs.bathrooms) analysis.specs.bathrooms = estimatedBaths;
+  if (!analysis.specs.garage_spaces) analysis.specs.garage_spaces = 2;
+  if (!analysis.specs.timeline_months) analysis.specs.timeline_months = 8;
+  if (!analysis.specs.quality_level) analysis.specs.quality_level = "Entry/mid new-build finish - AI draft";
+  if (!analysis.specs.gc_strategy) analysis.specs.gc_strategy = "Hired GC / builder bid pending";
+
+  fillLineItem(analysis.budget.pre_construction, "closing_costs", Math.max(2_000, roundCurrency((deal.asking_price || 0) * 0.035, 100)), "AI draft: buyer closing/transaction costs.");
+  fillLineItem(analysis.budget.pre_construction, "architectural_plans", 6_000, "AI draft: plan set allowance.");
+  fillLineItem(analysis.budget.pre_construction, "engineer_stamp", 2_500, "AI draft: structural/civil review allowance.");
+  fillLineItem(analysis.budget.pre_construction, "survey", 2_500, "AI draft: boundary/topo survey allowance.");
+  fillLineItem(analysis.budget.pre_construction, "permits_impact_fees", 6_000, "AI draft: permit and review allowance.");
+  fillLineItem(analysis.budget.pre_construction, "water_sewer_taps", lead.raw_data?.["Listing Utilities For Property"] ? 4_000 + sitePremium : null, "AI draft: utility tap/path allowance; verify sewer/septic.");
+
+  fillConstructionBudget(analysis, hardConstruction);
+  fillLineItem(analysis.budget.carrying, "builders_risk", 2_500, "AI draft.");
+  fillLineItem(analysis.budget.carrying, "property_taxes", Math.max(lead.property_tax || 0, 1_000), "AI draft.");
+  fillLineItem(analysis.budget.carrying, "temp_utilities", 1_500, "AI draft.");
+  fillLineItem(analysis.budget.carrying, "post_completion_utilities", 1_500, "AI draft.");
+  fillLineItem(analysis.budget.selling_prep, "staging", 2_500, "AI draft.");
+  fillLineItem(analysis.budget.selling_prep, "photography_drone", 500, "AI draft.");
+  fillLineItem(analysis.budget.selling_prep, "warranty_reserve", 3_000, "AI draft.");
+  fillLineItem(analysis.budget.additional, "gc_flat_fee", roundCurrency(hardConstruction * 0.1, 500), "AI draft: GC overhead/profit allowance.");
+  fillLineItem(analysis.budget.additional, "liability_insurance", 1_200, "AI draft.");
+  fillLineItem(analysis.budget.additional, "porta_potty", 1_200, "AI draft.");
+  fillLineItem(analysis.budget.additional, "reinspections", 1_000, "AI draft.");
+
+  if (!analysis.financing.member_count) analysis.financing.member_count = 6;
+  if (!analysis.financing.construction_loan && !analysis.financing.hard_money && !analysis.financing.investor_capital) analysis.financing.construction_loan = loanAmount;
+  if (!analysis.financing.group_cash) analysis.financing.group_cash = roundCurrency(groupCash, 500);
+  if (!analysis.financing.lender_rate_pct) analysis.financing.lender_rate_pct = 10.5;
+  if (!analysis.financing.lender_points_pct) analysis.financing.lender_points_pct = 2;
+  if (!analysis.financing.lender_duration_months) analysis.financing.lender_duration_months = analysis.specs.timeline_months || 8;
+  if (!analysis.financing.notes) {
+    analysis.financing.notes = "AI draft financing assumption: 70% construction loan / 30% group cash. Replace with lender quote, rate, points, draw schedule, and required member cash.";
+  }
+
+  if (analysis.comps.target_arv) {
+    analysis.exits.build_sell.conservative.sale_price ||= roundCurrency(analysis.comps.target_arv * 0.92, 500);
+    analysis.exits.build_sell.base.sale_price ||= analysis.comps.target_arv;
+    analysis.exits.build_sell.optimistic.sale_price ||= roundCurrency(analysis.comps.target_arv * 1.05, 500);
+  }
+
+  analysis.status_checks = analysis.status_checks.map(check => {
+    if (check.key === "community_identified" && lead.subdivision) return { ...check, status: check.status === "open" ? "in-review" : check.status, notes: check.notes || "AI draft from property record subdivision/listing facts." };
+    if (check.key === "new_build_comps") return { ...check, status: check.status === "open" ? "in-review" : check.status, notes: check.notes || "AI draft uses candidate market signals; verify 3 sold new-build comps." };
+    if (check.key === "zoning_verified" && lead.zoning) return { ...check, status: check.status === "open" ? "in-review" : check.status, notes: check.notes || `AI draft saw zoning ${lead.zoning}; verify setbacks/buildability with county.` };
+    if (check.key === "flood_checked" && lead.flood_zone_type) return { ...check, status: check.status === "open" ? "in-review" : check.status, notes: check.notes || `AI draft saw flood signal ${lead.flood_zone_type}; verify map/build envelope.` };
+    if (check.key === "utilities_verified") return { ...check, status: check.status === "open" ? "in-review" : check.status, notes: check.notes || "AI draft from listing utility text; verify taps/sewer/septic." };
+    if (check.key === "construction_budget") return { ...check, status: check.status === "open" ? "in-review" : check.status, notes: check.notes || `AI draft budget at ${formatDraftMoney(hardConstruction)} hard cost (${formatDraftMoney(costPerSf)}/sf).` };
+    if (check.key === "financing_identified") return { ...check, status: check.status === "open" ? "in-review" : check.status, notes: check.notes || "AI draft financing assumption; replace with lender terms." };
+    return check;
+  });
+
+  const changed = JSON.stringify(analysis) !== before;
+  const note = `AI filled a draft build packet using parsed portal data: ${estimatedArv ? `target ARV ${formatDraftMoney(estimatedArv)}` : "target ARV still needs a comp source"}, ${estimatedSqft.toLocaleString()} sf ${estimatedBeds}/${estimatedBaths} spec, ${formatDraftMoney(hardConstruction)} hard construction budget, and ${formatDraftMoney(loanAmount)} draft construction loan. Treat as assumptions until verified sold new-build comps, builder bids, and lender terms are attached.`;
+  return { analysis, changed, note };
+}
+
+function cloneBuildAnalysis(value: BuildAnalysisInput): BuildAnalysisInput {
+  return JSON.parse(JSON.stringify(value)) as BuildAnalysisInput;
+}
+
+function collectHomeMarketSignals(rawData: Record<string, unknown> | null | undefined, lead: ImportedLandLead, compRecords: LandCompRecord[]): HomeMarketSignal[] {
+  const signals: HomeMarketSignal[] = [];
+  compRecords.forEach(comp => {
+    const text = [comp.address, comp.listing_text, comp.similarity_notes, comp.adjustment_notes, JSON.stringify(comp.listing_details || {})].filter(Boolean).join(" ");
+    if (comp.price && comp.price >= 120_000 && /bd|bed|bath|sqft|new|built|home/i.test(text) && !/land|lot\/land|acres lot|unimproved/i.test(text)) {
+      signals.push({
+        address: comp.address || "Saved comp",
+        price: comp.price,
+        sqft: parseSqft(text),
+        beds: parseBeds(text),
+        baths: parseBaths(text),
+        status: comp.comp_type,
+        source: comp.source_system || "Saved comp",
+      });
+    }
+  });
+  Object.entries(rawData || {}).forEach(([key, value]) => {
+    if (!/nearby homes|similar homes|homes for you|sold homes|comps|comparison/i.test(key)) return;
+    extractSignalsFromUnknown(value, key).forEach(signal => {
+      if (isFinishedHomeSignal(signal)) signals.push(signal);
+    });
+  });
+  return uniqueSignals(signals).filter(signal => isLocalSignal(signal, lead) || signals.length < 6).slice(0, 12);
+}
+
+function extractSignalsFromUnknown(value: unknown, source: string): HomeMarketSignal[] {
+  if (!value) return [];
+  if (Array.isArray(value)) return value.flatMap(item => extractSignalsFromUnknown(item, source)).slice(0, 24);
+  const row = value && typeof value === "object" ? value as Record<string, unknown> : null;
+  const text = row ? Object.values(row).map(item => typeof item === "string" || typeof item === "number" ? String(item) : "").filter(Boolean).join(" ") : String(value);
+  const address = row ? String(row.address || row.Address || row.property || row.Property || "").trim() : parseAddress(text);
+  const price = parseMoneyLike(row?.price ?? row?.Price ?? row?.value ?? row?.Value ?? text);
+  const sqft = parseSqft(row?.sqft ?? row?.square_feet ?? row?.details ?? text);
+  const beds = parseBeds(row?.beds ?? row?.bedrooms ?? row?.details ?? text);
+  const baths = parseBaths(row?.baths ?? row?.bathrooms ?? row?.details ?? text);
+  const status = String(row?.status || row?.Status || row?.details || row?.Details || text.match(/\b(Sold|Off Market|Active|For Sale|Pending)\b/i)?.[1] || "").slice(0, 80);
+  return [{ address, price, sqft, beds, baths, status, source }];
+}
+
+function isFinishedHomeSignal(signal: HomeMarketSignal): boolean {
+  const text = `${signal.address} ${signal.status} ${signal.source}`;
+  return Boolean(signal.price && signal.price >= 120_000 && (signal.sqft || signal.beds || signal.baths) && !/land|lot\/land|acres lot|unimproved|vacant/i.test(text));
+}
+
+function isLocalSignal(signal: HomeMarketSignal, lead: ImportedLandLead): boolean {
+  const text = signal.address.toLowerCase();
+  return Boolean(
+    (lead.city && text.includes(lead.city.toLowerCase()))
+    || (lead.zip && text.includes(String(lead.zip)))
+    || (lead.property_address && signal.address && sameStreetName(signal.address, lead.property_address))
+  );
+}
+
+function sameStreetName(a: string, b: string): boolean {
+  const clean = (value: string) => value.toLowerCase().replace(/^\d+\s+/, "").replace(/\b(dr|drive|rd|road|ct|court|ln|lane|st|street|ave|avenue|way|trl|trail)\b/g, "").replace(/[^a-z0-9]+/g, " ").trim();
+  const left = clean(a);
+  const right = clean(b);
+  return Boolean(left && right && (left.includes(right.split(" ")[0]) || right.includes(left.split(" ")[0])));
+}
+
+function uniqueSignals(signals: HomeMarketSignal[]): HomeMarketSignal[] {
+  const seen = new Set<string>();
+  return signals.filter(signal => {
+    const key = `${signal.address.toLowerCase()}-${signal.price || ""}`;
+    if (!signal.address || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function fillConstructionBudget(analysis: BuildAnalysisInput, total: number) {
+  const allocations: Array<[string, number]> = [
+    ["site_clearing_grading", 0.05],
+    ["foundation", 0.09],
+    ["framing_lumber_labor", 0.16],
+    ["roofing", 0.05],
+    ["windows", 0.04],
+    ["siding", 0.05],
+    ["hvac", 0.06],
+    ["electrical", 0.06],
+    ["plumbing", 0.06],
+    ["insulation", 0.02],
+    ["drywall", 0.05],
+    ["paint", 0.03],
+    ["lvp_flooring", 0.03],
+    ["tile", 0.02],
+    ["kitchen_cabinets", 0.04],
+    ["countertops", 0.02],
+    ["appliances", 0.02],
+    ["bath_vanities", 0.02],
+    ["bath_tile_hardware", 0.02],
+    ["trim", 0.02],
+    ["interior_doors", 0.015],
+    ["driveway", 0.03],
+    ["landscaping_sod", 0.02],
+    ["gutters", 0.01],
+    ["cleanup", 0.01],
+    ["final_inspections_co", 0.005],
+  ];
+  allocations.forEach(([key, pct]) => fillLineItem(analysis.budget.construction, key, roundCurrency(total * pct, 100), "AI draft construction allowance; replace with builder bid."));
+}
+
+function fillLineItem(items: BuildAnalysisInput["budget"]["construction"], key: string, amount: number | null, notes: string) {
+  if (!amount) return;
+  const item = items.find(row => row.key === key);
+  if (item && !item.amount) {
+    item.amount = amount;
+    item.notes = item.notes || notes;
+  }
+}
+
+function parseMoneyLike(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  const text = String(value || "");
+  const match = text.match(/\$?\s*([0-9][0-9,]*(?:\.\d+)?)(K|k)?/);
+  if (!match) return null;
+  const parsed = Number(match[1].replace(/,/g, ""));
+  if (!Number.isFinite(parsed)) return null;
+  return match[2] ? parsed * 1000 : parsed;
+}
+
+function parseSqft(value: unknown): number | null {
+  const text = String(value || "");
+  const match = text.match(/([0-9][0-9,.]*)\s*(?:k\s*)?sqft|([0-9][0-9,.]*)\s*sf/i);
+  if (!match) return null;
+  const raw = (match[1] || match[2] || "").replace(/,/g, "");
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed)) return null;
+  return /\bk\s*sqft/i.test(match[0]) ? Math.round(parsed * 1000) : parsed;
+}
+
+function parseBeds(value: unknown): number | null {
+  const text = String(value || "");
+  const match = text.match(/(\d+(?:\.\d+)?)\s*(?:bd|bed|beds|bedrooms)/i);
+  return match ? Number(match[1]) : typeof value === "number" ? value : null;
+}
+
+function parseBaths(value: unknown): number | null {
+  const text = String(value || "");
+  const match = text.match(/(\d+(?:\.\d+)?)\s*(?:ba|bath|baths|bathrooms)/i);
+  return match ? Number(match[1]) : typeof value === "number" ? value : null;
+}
+
+function parseAddress(text: string): string {
+  return text.match(/\d{2,6}\s+[^,$\n]+,\s*[^,$\n]+,\s*[A-Z]{2}\s*\d{5}/)?.[0] || "";
+}
+
+function median(values: number[]): number | null {
+  const sorted = values.filter(value => Number.isFinite(value)).sort((a, b) => a - b);
+  if (!sorted.length) return null;
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 ? sorted[mid] : Math.round((sorted[mid - 1] + sorted[mid]) / 2);
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
+
+function roundCurrency(value: number, nearest = 100): number {
+  return Math.round(value / nearest) * nearest;
+}
+
+function formatDraftMoney(value: number): string {
+  return `$${Math.round(value).toLocaleString()}`;
+}
+
 export default function LeadPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
@@ -933,27 +1221,36 @@ export default function LeadPage() {
   };
 
   const runDecisionAiAnalysis = async () => {
-    if (!decisionDeal) return;
+    if (!decisionDeal || !lead) return;
     setDecisionAiRunning(true);
     setDecisionAiError("");
     setMessage("");
     try {
+      const draft = createAiAssistedBuildDraft(decisionDeal, lead, compRecords);
+      const dealForAnalysis = draft.changed ? { ...decisionDeal, build_analysis: draft.analysis } : decisionDeal;
+      if (draft.changed) {
+        setDecisionBuildDraft(draft.analysis);
+        setDecisionNotes(prev => mergeText(prev, draft.note));
+        setMessage("AI filled the draft ARV, build specs, construction budget, and financing assumptions. Running the analysis against that draft now...");
+      }
       const response = await fetch("/api/deals/ai-analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          deal: decisionDeal,
+          deal: dealForAnalysis,
           portal_context: decisionPortalContext,
           context: [
             "This analysis is running inside the property record Build Decision tab.",
             "Use the attached portal_context as source-of-truth evidence before using freeform notes.",
+            "Fill a draft build underwriting packet from available portal evidence and clearly mark draft assumptions versus verified facts.",
             "Automatically evaluate property record facts, parsed Zillow/FMLS facts, research checklist, saved comps, build budget, financing, and exit strategy.",
             "Follow Meridian's land-to-build decision framework: property identity, buildability, sold new-build comps, build budget, financing, exit strategy, offer guidance, and vote readiness.",
             "Separate sold new-build comps from land comps and active listings. Active listings are not ARV proof.",
             "Calculate max land offer with residual math: supported ARV minus build costs, soft costs, financing, selling costs, target profit, and contingency.",
             "Point green-light statements to evidence_sources. If evidence is missing, create next_actions instead of approving.",
-            "Do not invent comps or external facts. If sold new-build comps are missing, mark the comp gate as missing and specify the exact comp search needed.",
+            "Do not invent verified comps or external facts. If using candidate market signals, label them as preliminary and specify the exact sold-new-build comp search still needed.",
             "Give a Buy / Negotiate / Research More / Pass style recommendation through the existing recommendation fields.",
+            draft.changed ? `Client-side AI draft assumptions already applied before this request: ${draft.note}` : "",
           ].join("\n"),
         }),
       });
@@ -963,7 +1260,10 @@ export default function LeadPage() {
         throw new Error(data.error || response.statusText || statusMessage);
       }
       setDecisionAnalysis(data as DealAiAnalysisResult);
-      setMessage(data.note ? String(data.note) : "AI build decision analysis is ready on this property record.");
+      setMessage(mergeText(
+        draft.changed ? "AI filled draft ARV/spec/budget/financing assumptions. Review and replace with verified comps, bids, and lender terms." : "",
+        data.note ? String(data.note) : "AI build decision analysis is ready on this property record.",
+      ));
     } catch (error) {
       const text = error instanceof Error ? error.message : "AI analysis failed.";
       setDecisionAiError(text);
@@ -1713,7 +2013,7 @@ export default function LeadPage() {
               </label>
               <div style={{ display: "grid", gap: 8, marginTop: 12 }}>
                 <button onClick={runDecisionAiAnalysis} disabled={decisionAiRunning || !decisionDeal} style={{ ...primaryButton, opacity: decisionAiRunning || !decisionDeal ? 0.55 : 1 }}>
-                  {decisionAiRunning ? "Analyzing..." : "Run AI Analysis"}
+                  {decisionAiRunning ? "Analyzing..." : "Run AI + Fill Draft"}
                 </button>
                 <button onClick={() => saveDecisionDeal(false)} disabled={decisionSaving || !decisionDeal} style={{ ...secondaryButton, opacity: decisionSaving || !decisionDeal ? 0.55 : 1 }}>
                   {decisionSaving ? "Saving..." : "Save Draft"}
