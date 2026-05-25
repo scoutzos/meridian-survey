@@ -1355,7 +1355,7 @@ export default function LeadPage() {
         return [];
       }
       const candidates = (payload.candidates || [])
-        .filter(candidate => candidate.address && candidate.price)
+        .filter(candidate => candidate.address)
         .slice(0, 8);
       if (!candidates.length) {
         if (!options.silent) setMessage("Web search ran, but no usable new-build comp candidates were parsed. Try a broader location or add comps manually.");
@@ -1393,7 +1393,7 @@ export default function LeadPage() {
           },
           similarityScore: candidate.score,
           matchReason: candidate.matchReason,
-          similarityNotes: `${candidate.status === "sold" ? "Sold" : labelForStatus(candidate.status)} public web candidate${candidate.newConstruction ? " with new-build signal" : ""}${candidate.sqft ? ` · ${candidate.sqft.toLocaleString()} sf` : ""}${candidate.beds ? ` · ${candidate.beds} bd` : ""}${candidate.baths ? `/${candidate.baths} ba` : ""}.`,
+          similarityNotes: `${candidate.status === "sold" ? "Sold" : labelForStatus(candidate.status)} public web candidate${candidate.newConstruction ? " with new-build signal" : ""}${candidate.price ? ` · ${money(candidate.price)}` : " · price not parsed"}${candidate.sqft ? ` · ${candidate.sqft.toLocaleString()} sf` : ""}${candidate.beds ? ` · ${candidate.beds} bd` : ""}${candidate.baths ? `/${candidate.baths} ba` : ""}.`,
           adjustmentNotes: "Use as preliminary market evidence only until MLS/county sale records verify status, sale date, year built, sqft, bed/bath, builder, and school district.",
           includeInValuation: candidate.status === "sold" && candidate.newConstruction && candidate.score >= 58,
           confidence: candidate.confidence,

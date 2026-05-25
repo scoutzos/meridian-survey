@@ -409,9 +409,12 @@ function extractCandidates(result: SearchResult, lead: WebCompLeadPayload): WebC
     return { ...base, ...scored };
   }).filter(candidate => {
     if (!candidate.address || normalizeAddress(candidate.address) === subjectKey) return false;
-    if (!candidate.price || candidate.price < 120_000) return false;
+    if (candidate.price !== null && candidate.price < 120_000) return false;
     if (isLandOnly(candidate.snippet) && !candidate.sqft && !candidate.beds) return false;
-    return candidate.status === "sold" || candidate.newConstruction || Boolean(candidate.sqft || candidate.beds);
+    return Boolean(candidate.price)
+      || candidate.status === "sold"
+      || candidate.newConstruction
+      || Boolean(candidate.sqft || candidate.beds);
   });
 }
 
