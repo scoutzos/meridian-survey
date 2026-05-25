@@ -12,7 +12,7 @@ import ParsedListingFacts from "@/components/ParsedListingFacts";
 import { createActionItem } from "@/lib/action-items";
 import { checkLeadSmsCompliance, renderMessageForRecipient } from "@/lib/bulk-sms";
 import { calculateBuildAnalysis } from "@/lib/build-underwriting";
-import type { DealAiAnalysisResult } from "@/lib/deal-ai";
+import type { DealAiAnalysisResult, DealAiPortalContext } from "@/lib/deal-ai";
 import {
   calculateDealAnalysis,
   createDeal,
@@ -262,6 +262,29 @@ function mergeText(...parts: Array<string | null | undefined>): string {
     .join("\n\n");
 }
 
+function compactAiValue(value: unknown): unknown {
+  if (value === null || value === undefined) return null;
+  if (typeof value === "string") return value.length > 900 ? `${value.slice(0, 900)}...` : value;
+  if (typeof value === "number" || typeof value === "boolean") return value;
+  try {
+    const text = JSON.stringify(value);
+    return text.length > 900 ? `${text.slice(0, 900)}...` : value;
+  } catch {
+    return String(value).slice(0, 900);
+  }
+}
+
+function aiRawFactSnapshot(rawData: Record<string, unknown> | null | undefined): Record<string, unknown> {
+  const raw = rawData || {};
+  const priority = /^(listing|parsed|price|public tax|tax|zestimate|rent|source|mls|hoa|utilities|water|sewer|flood|schools|nearby|similar|description|what's special|year|built|bed|bath|sqft|lot|acres|zoning|subdivision|region|walk|bike)/i;
+  return Object.fromEntries(
+    Object.entries(raw)
+      .filter(([key, value]) => value !== null && value !== undefined && String(value).trim() && priority.test(key))
+      .slice(0, 90)
+      .map(([key, value]) => [key, compactAiValue(value)]),
+  );
+}
+
 export default function LeadPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
@@ -489,6 +512,71 @@ export default function LeadPage() {
       links: Array.from(new Set([...(base.links || []), lead.property_url, lead.parcel_link, lead.comping_link].filter((value): value is string => !!value))),
     };
   }, [buildPreviewDeal, decisionEvidence, decisionNotes, lead]);
+  const decisionPortalContext = useMemo<DealAiPortalContext | null>(() => {
+    if (!lead) return null;
+    return {
+      property_record: {
+        id: lead.id,
+        address: lead.property_address,
+        parcel_id: lead.parcel_id,
+        county: lead.county,
+        city: lead.city,
+        state: lead.state,
+        zip: lead.zip,
+        acreage: lead.acreage,
+        asking_price: lead.asking_price,
+        zoning: lead.zoning,
+        subdivision: lead.subdivision,
+        hoa_status: lead.hoa_status || (lead.in_hoa === true ? "Yes" : lead.in_hoa === false ? "No" : null),
+        utilities: String(lead.raw_data?.["Listing Utilities For Property"] || lead.raw_data?.["Utilities"] || lead.raw_data?.["Listing Utilities"] || ""),
+        flood_zone: joinValues([percentValue(lead.flood_zone_percent), lead.flood_zone_type]),
+        wetlands: percentValue(lead.wetlands_percent),
+        topography: lead.topography || null,
+        property_url: lead.property_url,
+        parcel_link: lead.parcel_link,
+        comping_link: lead.comping_link,
+      },
+      parsed_listing_facts: aiRawFactSnapshot(lead.raw_data),
+      research_items: researchItems.map(item => ({
+        id: item.id,
+        category: item.category,
+        title: item.title,
+        status: item.status,
+        result_summary: item.result_summary,
+        evidence_value: item.evidence_value,
+        source_name: item.source_name,
+        source_url: item.source_url,
+        notes: item.notes,
+      })),
+      comp_records: compRecords.map(comp => ({
+        id: comp.id,
+        comp_type: comp.comp_type,
+        address: comp.address,
+        parcel_id: comp.parcel_id,
+        county: comp.county,
+        city: comp.city,
+        state: comp.state,
+        zip: comp.zip,
+        price: comp.price,
+        acreage: comp.acreage,
+        price_per_acre: comp.price_per_acre,
+        sale_or_list_date: comp.sale_or_list_date,
+        distance_miles: comp.distance_miles,
+        similarity_score: comp.similarity_score,
+        source_system: comp.source_system,
+        source_url: comp.source_url,
+        listing_text: comp.listing_text ? `${comp.listing_text.slice(0, 1600)}${comp.listing_text.length > 1600 ? "..." : ""}` : null,
+        listing_details: comp.listing_details || null,
+        raw_data: comp.raw_data || null,
+        similarity_notes: comp.similarity_notes,
+        adjustment_notes: comp.adjustment_notes,
+        include_in_valuation: comp.include_in_valuation,
+        confidence: comp.confidence,
+      })),
+      member_notes: [decisionEvidence, decisionNotes].filter(Boolean),
+      generated_at: new Date().toISOString(),
+    };
+  }, [compRecords, decisionEvidence, decisionNotes, lead, researchItems]);
   const decisionCalculator = useMemo(() => decisionDeal ? calculateDealAnalysis(decisionDeal) : null, [decisionDeal]);
   const decisionBuild = useMemo(() => decisionDeal ? calculateBuildAnalysis(decisionDeal.build_analysis, decisionDeal) : null, [decisionDeal]);
   const decisionGates = useMemo(() => {
@@ -845,9 +933,15 @@ export default function LeadPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           deal: decisionDeal,
+          portal_context: decisionPortalContext,
           context: [
             "This analysis is running inside the property record Build Decision tab.",
+            "Use the attached portal_context as source-of-truth evidence before using freeform notes.",
+            "Automatically evaluate property record facts, parsed Zillow/FMLS facts, research checklist, saved comps, build budget, financing, and exit strategy.",
             "Follow Meridian's land-to-build decision framework: property identity, buildability, sold new-build comps, build budget, financing, exit strategy, offer guidance, and vote readiness.",
+            "Separate sold new-build comps from land comps and active listings. Active listings are not ARV proof.",
+            "Calculate max land offer with residual math: supported ARV minus build costs, soft costs, financing, selling costs, target profit, and contingency.",
+            "Point green-light statements to evidence_sources. If evidence is missing, create next_actions instead of approving.",
             "Do not invent comps or external facts. If sold new-build comps are missing, mark the comp gate as missing and specify the exact comp search needed.",
             "Give a Buy / Negotiate / Research More / Pass style recommendation through the existing recommendation fields.",
           ].join("\n"),

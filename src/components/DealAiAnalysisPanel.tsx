@@ -46,6 +46,8 @@ export default function DealAiAnalysisPanel({
           <div style={metricGrid}>
             <Mini label="Confidence" value={result.confidence} />
             <Mini label="Decision" value={decisionLabel(result.offer_guidance.decision)} />
+            <Mini label="Comp support" value={supportLabel(result.comp_intelligence.arv_support)} />
+            <Mini label="Max land" value={result.residual_offer.max_land_offer} />
             <Mini label="Source" value={sourceLabel(result)} />
             <Mini label="Missing" value={String(result.missing_info.length)} />
             <Mini label="Next actions" value={String(result.next_actions.length)} />
@@ -70,6 +72,31 @@ export default function DealAiAnalysisPanel({
                 {result.offer_guidance.contingency_terms.slice(0, 6).map(term => <p key={term} style={body}>- {term}</p>)}
               </div>
             )}
+          </div>
+
+          <div style={twoCol}>
+            <div style={noteBox}>
+              <p style={miniLabel}>Comps intelligence</p>
+              <h4 style={offerTitle}>{supportLabel(result.comp_intelligence.arv_support)}</h4>
+              <div style={metricGrid}>
+                <Mini label="Sold" value={String(result.comp_intelligence.sold_comp_count)} />
+                <Mini label="Sold new-build" value={String(result.comp_intelligence.sold_new_build_count)} />
+                <Mini label="Active" value={String(result.comp_intelligence.active_comp_count)} />
+                <Mini label="Median new-build" value={result.comp_intelligence.median_sold_new_build_price} />
+              </div>
+              <p style={{ ...body, marginTop: 8 }}>{result.comp_intelligence.summary}</p>
+            </div>
+            <div style={noteBox}>
+              <p style={miniLabel}>Residual offer math</p>
+              <h4 style={offerTitle}>{result.residual_offer.max_land_offer}</h4>
+              <div style={metricGrid}>
+                <Mini label="Supported ARV" value={result.residual_offer.supported_arv} />
+                <Mini label="Build costs" value={result.residual_offer.build_costs} />
+                <Mini label="Soft costs" value={result.residual_offer.soft_costs} />
+                <Mini label="Target profit" value={result.residual_offer.target_profit} />
+              </div>
+              <p style={{ ...body, marginTop: 8 }}>{result.residual_offer.formula}</p>
+            </div>
           </div>
 
           <div style={noteBox}>
@@ -106,6 +133,39 @@ export default function DealAiAnalysisPanel({
                   `Reject: ${result.comp_strategy.reject_filters.join(", ")}`,
                 ]}
               />
+              {result.comp_intelligence.comp_insights.length > 0 && (
+                <div style={noteBox}>
+                  <p style={miniLabel}>Saved comp scoring</p>
+                  <div style={{ display: "grid", gap: 7, marginTop: 8 }}>
+                    {result.comp_intelligence.comp_insights.slice(0, 6).map(comp => (
+                      <div key={comp.id} style={actionRow}>
+                        <span style={compPill(comp.proof_type)}>{comp.score}</span>
+                        <div>
+                          <strong style={{ color: "var(--obsidian)", fontSize: 12 }}>{comp.address}</strong>
+                          <p style={{ ...body, marginTop: 2 }}>{comp.comp_type} · {comp.proof_type.replace("-", " ")} · {comp.price} · {comp.distance} · {comp.date}</p>
+                          {comp.concerns[0] && <p style={{ ...body, marginTop: 2 }}>Concern: {comp.concerns[0]}</p>}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {result.evidence_sources.length > 0 && (
+                <div style={noteBox}>
+                  <p style={miniLabel}>Evidence used</p>
+                  <div style={{ display: "grid", gap: 7, marginTop: 8 }}>
+                    {result.evidence_sources.slice(0, 8).map(source => (
+                      <div key={`${source.source_type}-${source.label}`} style={actionRow}>
+                        <span style={priorityPill(source.status === "blocked" || source.status === "missing" ? "high" : "low")}>{source.source_type.replace("-", " ")}</span>
+                        <div>
+                          <strong style={{ color: "var(--obsidian)", fontSize: 12 }}>{source.label}</strong>
+                          <p style={{ ...body, marginTop: 2 }}>{source.status} · {source.detail}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </>
           )}
 
@@ -157,6 +217,13 @@ function decisionLabel(decision: DealAiAnalysisResult["offer_guidance"]["decisio
   if (decision === "negotiate") return "Negotiate";
   if (decision === "pass") return "Pass";
   return "Research More";
+}
+
+function supportLabel(status: DealAiAnalysisResult["comp_intelligence"]["arv_support"]): string {
+  if (status === "supported") return "Comps Support ARV";
+  if (status === "unsupported") return "Comps Do Not Support ARV";
+  if (status === "insufficient") return "Need Sold New-Build Comps";
+  return "ARV Support Unknown";
 }
 
 function frameworkRows(result: DealAiAnalysisResult) {
@@ -231,6 +298,25 @@ function priorityPill(priority: string): React.CSSProperties {
     textTransform: "uppercase",
     letterSpacing: "0.08em",
     alignSelf: "start",
+  };
+}
+
+function compPill(proofType: string): React.CSSProperties {
+  const good = proofType === "arv-proof";
+  const bad = proofType === "not-arv-proof";
+  return {
+    borderRadius: 999,
+    border: good ? "1px solid rgba(31,90,64,0.28)" : bad ? "1px solid rgba(141,63,49,0.28)" : "1px solid var(--fog)",
+    background: good ? "rgba(31,90,64,0.10)" : bad ? "rgba(141,63,49,0.10)" : "var(--surface)",
+    color: good ? "#1f5a40" : bad ? "#8d3f31" : "var(--muted)",
+    padding: "3px 7px",
+    fontSize: 9,
+    fontWeight: 800,
+    textTransform: "uppercase",
+    letterSpacing: "0.08em",
+    alignSelf: "start",
+    minWidth: 34,
+    textAlign: "center",
   };
 }
 

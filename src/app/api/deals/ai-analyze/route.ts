@@ -4,6 +4,7 @@ import {
   buildFallbackDealAiAnalysis,
   normalizeDealAiAnalysis,
   type DealAiAnalysisResult,
+  type DealAiPortalContext,
 } from "@/lib/deal-ai";
 import { calculateBuildAnalysis } from "@/lib/build-underwriting";
 import { calculateDealAnalysis, type DealInput } from "@/lib/deals";
@@ -14,6 +15,7 @@ export const maxDuration = 60;
 type AnalyzeRequest = {
   deal?: DealInput;
   context?: string;
+  portal_context?: DealAiPortalContext;
 };
 
 type DealAiProvider = "openai" | "openrouter";
@@ -32,6 +34,10 @@ const SYSTEM_PROMPT = [
   "Analyze land and new-build deal packets using Meridian's land-to-build decision framework.",
   "Do not invent facts or comps. Treat unavailable facts as missing information.",
   "Prioritize sold new-construction comps for build deals.",
+  "Use portal_context as the source-of-truth evidence packet: property record, parsed listing facts, research checklist, saved comps, build budget, member financing assumptions, and exit strategy.",
+  "Active listings can support market interest but cannot prove ARV. Saved comps only count toward ARV when they are sold and have a credible new-build signal.",
+  "Explain the residual offer math: supported ARV minus build costs, soft costs, financing, selling costs, target profit, and contingency.",
+  "Every green-light statement must be backed by an evidence_sources item. If the evidence is missing, mark the related gate needs-proof or blocked.",
   "Grade every decision_framework gate: property identity, buildability, sold new-build comps, build budget, financing, exit strategy, offer decision, and vote readiness.",
   "Only mark a gate ready when the provided packet contains enough evidence. Otherwise use needs-proof or blocked.",
   "Use offer_guidance.decision as buy, negotiate, research-more, or pass. Do not say buy if sold new-build comps, build budget, financing, or buildability are missing.",
@@ -53,7 +59,7 @@ export async function POST(req: NextRequest) {
   }
 
   const deal = body.deal;
-  const fallback = buildFallbackDealAiAnalysis(deal);
+  const fallback = buildFallbackDealAiAnalysis(deal, undefined, body.portal_context);
   const client = resolveDealAiClient();
 
   if (!client.apiKey) {
@@ -65,8 +71,8 @@ export async function POST(req: NextRequest) {
 
   try {
     const ai = client.provider === "openrouter"
-      ? await analyzeWithOpenRouter(deal, body.context || "", client, fallback)
-      : await analyzeWithOpenAI(deal, body.context || "", client, fallback);
+      ? await analyzeWithOpenRouter(deal, body.context || "", body.portal_context, client, fallback)
+      : await analyzeWithOpenAI(deal, body.context || "", body.portal_context, client, fallback);
     return NextResponse.json(ai);
   } catch (error) {
     const message = error instanceof Error ? error.message : "AI analysis failed.";
@@ -105,10 +111,11 @@ function resolveDealAiClient(): DealAiClient {
 async function analyzeWithOpenAI(
   deal: DealInput,
   context: string,
+  portalContext: DealAiPortalContext | undefined,
   client: DealAiClient,
   fallback: DealAiAnalysisResult,
 ): Promise<DealAiAnalysisResult> {
-  const payload = buildAnalysisPayload(deal, context);
+  const payload = buildAnalysisPayload(deal, context, portalContext);
 
   const res = await fetch("https://api.openai.com/v1/responses", {
     method: "POST",
@@ -164,10 +171,11 @@ async function analyzeWithOpenAI(
 async function analyzeWithOpenRouter(
   deal: DealInput,
   context: string,
+  portalContext: DealAiPortalContext | undefined,
   client: DealAiClient,
   fallback: DealAiAnalysisResult,
 ): Promise<DealAiAnalysisResult> {
-  const payload = buildAnalysisPayload(deal, context);
+  const payload = buildAnalysisPayload(deal, context, portalContext);
   const headers: Record<string, string> = {
     authorization: `Bearer ${client.apiKey}`,
     "content-type": "application/json",
@@ -223,7 +231,7 @@ async function analyzeWithOpenRouter(
   };
 }
 
-function buildAnalysisPayload(deal: DealInput, context: string) {
+function buildAnalysisPayload(deal: DealInput, context: string, portalContext?: DealAiPortalContext) {
   const calculator = calculateDealAnalysis(deal);
   const build = calculateBuildAnalysis(deal.build_analysis, deal);
   return {
@@ -257,6 +265,7 @@ function buildAnalysisPayload(deal: DealInput, context: string) {
       calculator_notes: deal.calculator_notes,
       build_analysis: deal.build_analysis,
     },
+    portal_context: portalContext || null,
     calculator,
     build,
     decision_framework_rubric: {
