@@ -197,16 +197,7 @@ async function analyzeWithOpenRouter(
         { role: "user", content: JSON.stringify(payload) },
       ],
       response_format: {
-        type: "json_schema",
-        json_schema: {
-          name: "meridian_deal_ai_analysis",
-          strict: true,
-          schema: DEAL_AI_ANALYSIS_SCHEMA,
-        },
-      },
-      provider: {
-        require_parameters: true,
-        data_collection: "deny",
+        type: "json_object",
       },
       temperature: 0.2,
       max_tokens: 2200,
